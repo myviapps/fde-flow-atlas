@@ -138,3 +138,6 @@ In the repository settings on GitHub, open **Pages**, choose "Deploy from a bran
 ## Credits
 
 Built as a companion to the FDE Academy course outline. Companies and people in the case studies and templates are invented.
+
+---
+Maintained by Vijay Sundar.
