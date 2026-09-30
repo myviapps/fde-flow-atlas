@@ -1,0 +1,122 @@
+{
+ "dataformats": {
+  "title": "Oystermere Freight: carrier files that broke the delivery dashboard",
+  "company": "Oystermere Freight (made up), road and parcel logistics, about 900 staff, United Kingdom and the Netherlands",
+  "situation": "Oystermere received nightly delivery files from 14 partner carriers and fed them into a customer-facing delivery dashboard and an AI assistant that answered 'where is my parcel' questions. About 4 percent of deliveries showed wrong times or garbled consignee names, and customer service logged around 60 complaints a week about the assistant quoting impossible delivery times.",
+  "problem": "Each carrier used its own conventions: some files were Windows-1252, some UTF-8 with a BOM, two Dutch carriers wrote day-first local times with no zone, and one sent Excel serial dates. The existing loader used one generic pandas read for every file, so it guessed differently each night; adding more guesses would only move the errors around.",
+  "approach": [
+   "Pulled a week of raw files for every carrier and wrote a one-page profile per source: encoding, delimiter, date format, time zone, ID pattern and amount style, confirmed by email with each carrier's contact.",
+   "Changed the loader to read bytes, decode with the profile's encoding (utf-8-sig or cp1252), and fail loudly on any decode error instead of replacing characters.",
+   "Parsed each time column with the profile's format and IANA zone (Europe/Amsterdam or Europe/London), converted to UTC at ingestion, and flagged times that fell in a daylight saving gap or repeated hour.",
+   "Used a regex per carrier to extract the consignment number from free-text reference fields, with a shared test file of 200 real references.",
+   "Added a Pydantic model for a delivery record and wrote accepted rows to Parquet and rejected rows to a per-carrier reject file with reasons.",
+   "Sent each carrier a weekly reject summary and set an alert when any carrier's reject rate passed 2 percent."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "# sources/carriers/velderhoek.yaml  (one profile per carrier)\ncarrier: velderhoek\nencoding: cp1252            # confirmed with their IT team\ndelimiter: \";\"\nheader_row: 1\ncolumns:\n  consignment:\n    regex: '\\bVLD\\d{9}\\b'\n  delivered_at:\n    format: \"%d-%m-%Y %H:%M\"   # day first\n    timezone: Europe/Amsterdam # local time, no offset in the file\n    on_dst_ambiguous: flag     # repeated hour goes to review\n  cod_amount:\n    decimal_sep: \",\"\n    thousands_sep: \".\"\n    currency: EUR\nrejects:\n  send_to: ops-data@velderhoek.example\n  alert_if_rate_above: 0.02"
+  },
+  "outcome": "Within three weeks wrong times and garbled names fell from about 4 percent of deliveries to 0.3 percent, and complaints about impossible delivery times dropped from about 60 a week to 7. Two carriers fixed their exports after seeing their weekly reject summary, and onboarding a new carrier now means writing one profile file instead of changing code.",
+  "lessons": [
+   "Write down each source's encoding, date format and time zone; do not let a library guess.",
+   "Convert to UTC once, at ingestion, and flag daylight saving edge cases instead of guessing.",
+   "Reject files with reasons turn data quality into a shared, fixable problem.",
+   "Per-source configuration scales better than special cases in code."
+  ],
+  "discuss": [
+   "A carrier cannot change its export for six months. How would you handle its repeated-hour times in the meantime?",
+   "What would you show the customer service lead to prove the assistant's answers are now trustworthy?",
+   "Where would you draw the line between fixing data in your pipeline and asking the source to fix it?"
+  ]
+ },
+ "pytooling": {
+  "title": "Pennyrigg Insurance: a claims script nobody else could run",
+  "company": "Pennyrigg Insurance (made up), regional motor and home insurer, about 650 staff, United Kingdom",
+  "situation": "A claims analyst had written a set of Python scripts that pulled new claims from the claims system each night and loaded them into the reporting database. They ran on his desktop through a scheduled task. When he went on extended leave, the job failed on 9 of the next 20 nights and nobody else could get it running on a server.",
+  "problem": "The scripts imported each other through relative paths, depended on libraries installed by hand into his personal Python, and had the API URL and a token written into the code. Copying the folder to a server just moved the problem, and a full rewrite would have taken weeks the claims team did not have.",
+  "approach": [
+   "Created a uv project with a src/claimsync layout, moved the scripts in unchanged, and listed the four libraries actually imported in pyproject.toml; uv.lock pinned the versions that worked on the desktop.",
+   "Replaced the hard-coded URL and token with a Settings object read from environment variables, which stopped with a clear message when a setting was missing; the token moved into the customer's secrets store.",
+   "Ran ruff check --fix and ruff format in one commit, then reviewed the remaining findings; one unused variable exposed a discount that was computed and never applied.",
+   "Added type hints to the three core functions and ran mypy on them, which found two places where a missing region returned None and later crashed.",
+   "Wrote a Makefile with install and check targets, a pre-commit config for ruff, and a CI job running make check, plus a README with the exact run command for the scheduler.",
+   "Paired with the customer's platform engineer to deploy it on a server with uv run as the scheduled command and log output to their central logging."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "README.md (excerpt)\n\n## Install\n    uv sync\n\n## Configure\n    cp .env.example .env      # then fill in real values from the vault\n    Required: CLAIMS_API_URL, CLAIMS_API_TOKEN\n    Optional: LOG_LEVEL (INFO), BATCH_SIZE (500)\n\n## Run\n    uv run claimsync --since yesterday\n\n## Check before every change\n    make check                # ruff, mypy, pytest; CI runs the same\n\n## Scheduler\n    Runs 02:15 daily on claims-etl-01 as the svc-claimsync account\n    Logs: central logging, logger name 'claimsync'"
+  },
+  "outcome": "Over the following two months the job failed on 1 night out of 60, down from 9 of 20, and that failure was an upstream outage that the new start-up log made obvious within minutes. A second analyst made her first change to the code within a week, and the fixed discount bug corrected about 1,100 GBP a month of misreported premium.",
+  "lessons": [
+   "A project that installs with one command is the first step of any handover.",
+   "Settings belong in the environment; fail fast and name what is missing.",
+   "Linters and type checkers find real bugs, not just style issues.",
+   "Local checks, hooks and CI should all run the same commands."
+  ],
+  "discuss": [
+   "The customer's server has no internet access. How would you install the locked dependencies?",
+   "How much type checking would you require from the claims team going forward, and why?",
+   "What would you put in the handover session so the analyst's team can own the code?"
+  ]
+ },
+ "entnetwork": {
+  "title": "Garnetvale Bank: an AI pilot blocked by the network for three weeks",
+  "company": "Garnetvale Bank (made up), retail and business bank, about 5,000 staff, Ireland",
+  "situation": "The FDE team built a complaints-summarising assistant in two weeks on test data. When it was deployed on the bank's servers, every call to the model provider failed, and the pilot date for 40 complaint handlers slipped by three weeks while tickets bounced between the bank's network and application teams.",
+  "problem": "There were several separate failures stacked on top of each other: no proxy settings in the container, TLS inspection with a corporate CA the Python client did not trust, and a firewall that only allowed approved hostnames. Each team could see only its own layer, and the obvious workaround, turning off certificate checks, was rightly rejected by the security team.",
+  "approach": [
+   "Ran the same diagnostic script from the server and from inside the container, recording DNS results, direct TCP, curl through the proxy and the certificate issuer; the container had no proxy variables while the host did.",
+   "Passed HTTPS_PROXY, HTTP_PROXY and NO_PROXY into the container through the deployment config, with the bank's internal domains in NO_PROXY.",
+   "Confirmed TLS inspection with openssl s_client, obtained the corporate root CA from the security team, and built it into the image as part of a combined bundle referenced by REQUESTS_CA_BUNDLE and SSL_CERT_FILE.",
+   "Submitted one firewall and proxy request listing the three provider hostnames, port 443, the two source servers, the data classification and a test plan, and presented it at the weekly change board.",
+   "Asked the network team to confirm that the proxy's URL category for the provider was allowed, after a 403 block page appeared for one of the hostnames.",
+   "Added the diagnostic script and the expected output to the runbook so the bank's support team could check the path themselves."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "# deploy/values-prod.yaml (excerpt)\nenv:\n  HTTPS_PROXY: http://proxy.garnetvale.internal:8080\n  HTTP_PROXY: http://proxy.garnetvale.internal:8080\n  NO_PROXY: localhost,127.0.0.1,.garnetvale.internal,10.0.0.0/8\n  REQUESTS_CA_BUNDLE: /etc/ssl/garnetvale/ca-bundle.pem\n  SSL_CERT_FILE: /etc/ssl/garnetvale/ca-bundle.pem\n# ca-bundle.pem = certifi bundle + Garnetvale root CA, built into the image\nstartupCheck:\n  command: [\"/app/netcheck.sh\", \"api.vendor.example\"]\n  failDeploymentIf: \"status != 200\"\n# firewall change NET-4471: 3 hostnames, 443, via proxy, from 10.40.12.0/24"
+  },
+  "outcome": "Once all the evidence went in one request, the change board approved it within a week and the assistant went live for the 40 handlers, with verification fully on. A later deployment to a second business unit took two days of network work instead of three weeks, because the runbook and request template were reused.",
+  "lessons": [
+   "Corporate network failures are often several problems stacked; test each layer from the failing machine.",
+   "Fix certificate errors by trusting the corporate CA, never by disabling verification.",
+   "One precise access request with hostnames, ports, sources and purpose moves faster than many vague tickets.",
+   "Containers do not inherit the host's proxy settings or trusted CAs."
+  ],
+  "discuss": [
+   "The provider only publishes IP ranges that change monthly, and the bank's firewall only accepts IPs. What options would you propose?",
+   "How would you design the pilot to avoid needing any inbound access?",
+   "What should the first-week network questions be in your discovery checklist for a regulated customer?"
+  ]
+ },
+ "poc": {
+  "title": "Quarrymoor Water: a POC that turned into a paid pilot in four weeks",
+  "company": "Quarrymoor Water (made up), regional water and wastewater utility, about 2,300 staff, England",
+  "situation": "Quarrymoor's maintenance planners read about 3,000 field fault reports a month, typed by crews and call-centre staff, and assigned each to a crew and priority. Time from report to assignment averaged 47 minutes, and a previous vendor's six-month free trial of a text classifier had ended with no decision and some frustration.",
+  "problem": "The sponsor wanted a quick 'pilot', but there was no labelled data, no access to the job system and no agreed definition of success. Repeating the last vendor's open-ended trial would have produced the same result, and jumping straight to a pilot with live crews was too risky without evidence.",
+  "approach": [
+   "Ran one discovery call to find the decision behind the request: the COO would fund a pilot if triage accuracy and cost were proven on historical data.",
+   "Wrote and got signed a one-page success criteria sheet with four criteria, a 300-report labelled test set chosen by the planning lead, blind review, and a decision rule leading to a paid pilot.",
+   "Scoped the POC to one region, three months of historical reports and no live-system integration, with fixed four-week time and ranked scope items.",
+   "Sent data and access requests on day one, before the kick-off meeting, and tracked the customer's commitments in a shared plan.",
+   "Sized the work at 11 to 21 engineer-days against 30 usable days, and moved a request to draft complaint replies onto the pilot list.",
+   "Answered the parallel 140-question RFP with honest compliance levels, then ran the readout with results against each criterion, including the one missed, and a mutual action plan to pilot kick-off."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "POC READOUT RESULTS  (Quarrymoor Water, North region, 300 blind-reviewed reports)\n\n#  Criterion                 Target        Measured     Result\n1  Correct fault category     >= 85%        89%          met\n2  Correct priority           >= 90%, P1    92%, P1      met\n                              recall 100%   recall 100%\n3  Time to assign (replay)    <= 15 min     19 min       not met\n   Why: assignments still wait for supervisor sign-off; AI step itself < 1 min\n   Fix for pilot: supervisors approve AI suggestions in a batch every 10 min\n4  Cost per report            <= 0.05 GBP   0.012 GBP    met\n\nDecision rule (signed 3 Mar): criteria 1, 2, 4 met -> paid pilot, North region\nRecommendation: start pilot 12 May with 14 planners and 6 supervisors"
+  },
+  "outcome": "Three of four criteria were met and the COO approved a three-month paid pilot within a week of the readout, four weeks after kick-off. The pilot contract was signed 25 days after the readout, compared with an open-ended six months in the previous vendor's trial, and in the pilot's first month average time to assign fell from 47 minutes to 16.",
+  "lessons": [
+   "Signed success criteria with a decision rule turn a POC into a decision instead of a demo.",
+   "Fixed time with ranked scope keeps a POC from drifting.",
+   "Access and data requests on day one protect the time box.",
+   "Naming a missed criterion, with the cause and a fix, builds trust."
+  ],
+  "discuss": [
+   "The sponsor refuses to sign a decision rule before the POC. Would you still run it, and on what terms?",
+   "How would you decide whether to charge for a POC?",
+   "What would you do if the labelled test set chosen by the customer looked unrepresentative?"
+  ]
+ }
+}

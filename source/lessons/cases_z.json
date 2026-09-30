@@ -1,0 +1,120 @@
+{
+ "regulated": {
+  "title": "Harrowby Community Hospitals: a RAG pilot stopped by a missing BAA",
+  "company": "Harrowby Community Hospitals (made up), a group of four US hospitals with about 6,000 staff",
+  "situation": "Harrowby's nurses spent about 25 minutes per shift searching a 3,000-page policy and procedure library, and the chief nursing officer sponsored a RAG assistant pilot. The FDE's team had a prototype working on public sample documents within two weeks, and the plan was to add real discharge notes next so the assistant could answer patient-specific questions.",
+  "problem": "In the security review, the hospital's privacy officer asked for the BAA covering the LLM provider's endpoint. The vendor's BAA covered the core platform but not the specific model endpoint the prototype used, and patient notes are PHI. Simply stripping names in the prompt was not enough, because notes contain dates, record numbers and other identifiers.",
+  "approach": [
+   "Paused all plans to send PHI and told the sponsor the same day, with a one-page explanation and a revised timeline.",
+   "Split the pilot: phase 1 used only the policy library, which contains no PHI, and went ahead on the existing setup.",
+   "Worked with the vendor's legal team to move patient-specific work to a model endpoint covered by the signed BAA, and confirmed the cloud host's BAA covered the vector store and logs.",
+   "Applied the minimum necessary rule: the phase 2 pipeline pulled only DocumentReference and Encounter resources through a narrowly scoped FHIR API, not full patient records.",
+   "Turned off prompt and response logging in a third-party observability tool that had no BAA, and kept audit logs inside the hospital's cloud account.",
+   "Built an evidence folder (data-flow diagram, subprocessor list with BAA status, access list) for the privacy officer."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "SUBPROCESSOR AND BAA TRACKER  -  Harrowby RAG pilot  (reviewed with privacy office)\n\nService              Touches PHI?   BAA signed   Region      Notes\n-------------------  -------------  -----------  ----------  ------------------------------\nCloud host (VMs, DB) Phase 2 yes    Yes          US-East     covers vector store and backups\nLLM endpoint A       No (phase 1)   No           US          policy library only\nLLM endpoint B       Phase 2 yes    Yes          US          covered endpoint for notes\nObservability SaaS   Would          No           US          prompt logging OFF; metrics only\nFHIR API (hospital)  Yes            n/a          on-prem     scope: DocumentReference, Encounter\n\nRule: no PHI to any row without 'Yes' in BAA signed. Owner: FDE lead. Review: every change."
+  },
+  "outcome": "Phase 1 went live four weeks later than first planned for the whole pilot, and cut policy search time from about 25 to 9 minutes per shift across 180 nurses. Phase 2 passed privacy review on its first submission, and the tracker became the hospital's template for other AI vendors.",
+  "lessons": [
+   "Ask for the BAA covering the exact services and endpoints in week one, not at the security review.",
+   "Split pilots so the non-sensitive part can move while sensitive-data approvals are worked out.",
+   "Every tool that sees prompts, including logging and monitoring, is part of the data flow.",
+   "An evidence folder turns a review from weeks of back-and-forth into one meeting."
+  ],
+  "discuss": [
+   "Would de-identified notes using Safe Harbor have been enough for phase 2? What might the assistant lose?",
+   "How would you explain the delay to the sponsor without blaming the vendor or the privacy officer?",
+   "What would change if the hospital were in Germany instead of the US?"
+  ]
+ },
+ "fieldlife": {
+  "title": "Quillmoor Mutual: a first 90 days that nearly drowned in side requests",
+  "company": "Quillmoor Mutual (made up), a regional home and motor insurer, about 1,800 staff, Ireland",
+  "situation": "An FDE joined Quillmoor on site three days a week to build a claims-notes assistant, with a 12-week pilot for 20 claims handlers. Baseline handling time was about 24 minutes per claim. She also supported two other accounts remotely.",
+  "problem": "By week five she had accepted nine 'while you are here' requests from three managers: report tweaks, a spreadsheet macro, a letter generator. The pilot was two weeks behind, the data platform lead was slow to grant access, and she was working most evenings. Working harder would not fix a scope and relationship problem.",
+  "approach": [
+   "Rewrote her 30/60/90 plan in one page and reviewed it with the sponsor, the head of claims, making the pilot goal and date explicit again.",
+   "Moved all side requests to a shared list with a rough size each, and brought three trade options to the sponsor, who moved six requests to phase 2 and approved two small ones.",
+   "Asked the data platform lead for 20 minutes, learned he had been blamed for a past data leak, and offered read-only access to a masked view with an audit log; access came through that week.",
+   "Blocked her week by account: Monday to Wednesday for Quillmoor, Thursday for the other two, Friday for notes, triage and status updates.",
+   "Agreed support hours and an escalation path through her company's support rota, written into the pilot runbook."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "REQUEST LIST  -  Quillmoor claims pilot  (reviewed with sponsor, week 6)\n\n#  Request                    From          Size    Decision\n1  Letter generator           Motor claims  2 wks   Phase 2\n2  Excel macro for reserves   Finance       3 days  Phase 2 (other team)\n3  Extra field in summary     Home claims   2 hrs   Do now (goodwill budget)\n4  Weekly usage report        Sponsor       1 day   Do now (pilot metric)\n5  Fraud flag in summary      Fraud team    3 wks   Phase 2, needs model risk review\n...\nGoodwill budget: 4 hrs/week. Used this week: 2 hrs.\nPilot date: unchanged, 12 Dec."
+  },
+  "outcome": "The pilot ended one week late instead of the projected three, with handling time down from about 24 to 17 minutes per claim across the 20 handlers. Evening work dropped to occasional launch weeks, and the phase 2 list became the basis for a signed extension.",
+  "lessons": [
+   "Write every ask down and let the sponsor trade; you do not have to be the one who says no.",
+   "A slow blocker is often protecting a real risk; ask what would make them comfortable.",
+   "Block time by account to cut context switching, and make your weekly trade-offs visible.",
+   "Boundaries agreed early are easier to keep than boundaries set in a crisis."
+  ],
+  "discuss": [
+   "Which of the nine side requests would you have accepted in week one, and why?",
+   "How would you have spotted the scope problem in week two instead of week five?",
+   "What would you do if the sponsor insisted on every request and the original date?"
+  ]
+ },
+ "interviewrounds": {
+  "title": "A career-switcher prepares for an FDE loop round by round",
+  "company": "Illustrative story: Amara, a data analyst with 3 years of Python and SQL, applying to FDE roles at mid-size AI and data companies",
+  "situation": "Amara reached the onsite loop at two companies and was rejected by both. Her notes showed she had spent about 90 percent of her preparation on algorithm puzzles, then met a debugging round in an unfamiliar repo and a customer-framed system design question she had never practised.",
+  "problem": "More puzzle practice would not help, because the rounds she failed tested other things: method in unfamiliar code, and asking about customer constraints before designing. She also struggled with 'why FDE?' in screens and had no questions ready at the end of rounds.",
+  "approach": [
+   "Asked each new recruiter for the exact rounds, their length and whether AI tools were allowed, and wrote a preparation plan per round.",
+   "Wrote and timed a 90-second pitch around one measured story: a reporting tool she built with a sales team that cut weekly prep from 5 hours to 1.",
+   "Practised debugging twice a week by checking out old commits with known bugs in open-source Python repos and fixing them aloud against a 45-minute timer.",
+   "Ran four mock FDE system design rounds with a friend using Case bank prompts, spending the first 8 minutes only on questions about users, data, SSO and residency.",
+   "Built a STAR table of nine stories mapped to themes, including one real failure, and practised each to two minutes.",
+   "Prepared seven reverse-interview questions and chose two or three for each interviewer."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "LOOP PREP PLAN  -  company 3  (from recruiter call)\n\nRound               Length  What it filters for          My prep (hours)\nRecruiter screen    30 min  fit, pitch, logistics        1  (pitch x10 out loud)\nHiring manager      45 min  ownership, project depth     3  (2 projects, numbers)\nLive coding         60 min  practical Python, tests      6  (SQL bank, Build drill)\nDebugging           60 min  method in unfamiliar repo    6  (4 old-commit bugs)\nSystem design       60 min  customer constraints first   6  (4 mocks, Case bank)\nBehavioral          45 min  STAR, conflict, failure      3  (9 stories timed)\nAI tools allowed: coding yes (must explain), debugging no."
+  },
+  "outcome": "At her next three loops Amara passed the debugging round each time and received two offers, one of them for an FDE role. She used her reverse-interview answers about travel to choose the role with about 30 percent travel over one with about 60 percent.",
+  "lessons": [
+   "Ask the recruiter what each round tests, and prepare for that round specifically.",
+   "Debugging and design rounds reward a visible method more than speed.",
+   "A short, measured pitch and a ready STAR table remove most behavioral stress.",
+   "Your questions at the end help you choose the right role."
+  ],
+  "discuss": [
+   "How would you split 30 hours of preparation across the rounds for a loop you know well?",
+   "What would you do if you could not find the bug in a debugging round with 10 minutes left?",
+   "If you had only two weeks before the loop instead of six, which rounds would you prepare first and what would you drop, and why?"
+  ]
+ },
+ "portfolio": {
+  "title": "Rowan's portfolio rebuild: from 40 tutorial repos to three featured projects",
+  "company": "Illustrative story: Rowan, a backend developer with 5 years at a payments company, applying to FDE roles",
+  "situation": "Rowan sent 45 applications over two months and got 2 first calls. His GitHub had 40 public repos, most of them course exercises, and none of his strongest work was visible because it belonged to his employer.",
+  "problem": "His resume claimed customer-facing and AI skills, but a reviewer clicking through found nothing that proved them. He could not publish his real work, which was confidential, and adding more tutorial projects would make the profile noisier.",
+  "approach": [
+   "Archived 34 repos, pinned four, and wrote a six-line profile README linking each project and its demo.",
+   "Rebuilt the pattern of his best work project, a dispute-triage tool, from scratch with 3,000 synthetic disputes generated by a script, an invented bank name and a 'sample scenario, synthetic data' note.",
+   "Rewrote each featured README to lead with the problem, a GIF, the headline result and a three-command setup with a mock mode that needs no API key.",
+   "Added an evaluation set of 80 labelled disputes and reported accuracy, latency and cost per request in the README.",
+   "Recorded a three-minute demo from a written script and wrote two short posts, one a postmortem of a retry bug in his own project.",
+   "Contributed two small merged fixes to an open-source HTTP client library he used."
+  ],
+  "artifact": {
+   "lang": "Markdown",
+   "code": "# dispute-triage\n\nRoutes card dispute emails to the right queue with a reason code and a draft reply.\n*Sample scenario (fictional Brackenfold Bank), synthetic data generated by `data/make_disputes.py`.*\n\n![demo](docs/demo.gif)  |  [3-minute video](https://example.com/demo)\n\n**Result on 80 labelled disputes:** 92% correct queue, median 1.2 s, ~$0.002 per email.\n\n## Run it\n    cp .env.example .env    # or set MOCK_LLM=1 to run without a key\n    pip install -r requirements.txt\n    pytest && python -m triage.demo\n\n## Limits\nEnglish only. Misroutes most often on mixed disputes (see evals/errors.md)."
+  },
+  "outcome": "Over the next six weeks Rowan sent 30 applications and got 7 first calls. In four of them the interviewer asked about the dispute-triage project or its eval set, which gave him a concrete story to lead with.",
+  "lessons": [
+   "Fewer, stronger, pinned projects beat a long list of exercises.",
+   "Rebuild confidential work as a labelled sample scenario with synthetic data.",
+   "Results and a runnable setup in the first screen of the README are what reviewers remember."
+  ],
+  "discuss": [
+   "Which of your own projects would you feature for an AI-lab FDE role, and what would you measure?",
+   "Where is the line between describing past work and revealing confidential details?",
+   "Is a blog post or an open-source fix more valuable for your target roles? Why?"
+  ]
+ }
+}

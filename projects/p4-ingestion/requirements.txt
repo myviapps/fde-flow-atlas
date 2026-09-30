@@ -1,0 +1,3 @@
+pydantic>=2.6
+tenacity>=8.2
+pytest>=8.0

@@ -1,0 +1,230 @@
+{
+ "dataquality": [
+  {
+   "q": "A column has a value in every row, but 30% of those values are empty strings. Which dimension is really failing?",
+   "options": [
+    "Timeliness",
+    "Uniqueness",
+    "Completeness",
+    "Consistency"
+   ],
+   "answer": 2,
+   "why": "Empty strings are missing values in disguise, so completeness is low even though a null count shows zero. Always count blanks as well as nulls."
+  },
+  {
+   "q": "What is blocking in entity resolution?",
+   "options": [
+    "Stopping a load when a check fails",
+    "Only comparing records that share a cheap feature, like postcode",
+    "Hiding personal data from reviewers",
+    "Deleting records that score below the threshold"
+   ],
+   "answer": 1,
+   "why": "Blocking cuts the number of pairs to compare. Without it, two lists of 50,000 names mean 2.5 billion comparisons."
+  },
+  {
+   "q": "A migration finished. Row counts match exactly. The finance director asks if the data is right. What should you check next?",
+   "options": [
+    "Nothing more, matching counts prove it",
+    "Control totals and per-row checksums",
+    "Only the first 10 rows by eye",
+    "Whether the table has an index"
+   ],
+   "answer": 1,
+   "why": "Counts can match while values are wrong. Control totals catch wrong amounts in aggregate and checksums find the exact rows that differ."
+  },
+  {
+   "q": "A daily CRM file breaks your pipeline every few weeks because columns get renamed. What is the lasting fix?",
+   "options": [
+    "Rename the columns back by hand each time",
+    "Stop using the CRM file",
+    "Agree a data contract with a change notice period",
+    "Load every column as text so nothing fails"
+   ],
+   "answer": 2,
+   "why": "A contract with the owning team moves the fix to the source and gives you notice before changes. Hand fixes repeat forever."
+  },
+  {
+   "q": "A teammate sets one fuzzy-match threshold of 80 and auto-merges everything above it with no review. What is the main risk?",
+   "options": [
+    "Different companies with similar names get merged",
+    "Matching will run too slowly",
+    "Exact duplicates will be missed",
+    "The score will go above 100"
+   ],
+   "answer": 0,
+   "why": "At 80, names like 'Kestrel Dental' and 'Kestrel Motors' can merge wrongly. A review band between a low and a high threshold catches these."
+  }
+ ],
+ "spreadsheets": [
+  {
+   "q": "Which pandas operation is the code equivalent of an Excel XLOOKUP?",
+   "options": [
+    "groupby with sum",
+    "A left merge on the lookup key",
+    "drop_duplicates",
+    "concat of two tables"
+   ],
+   "answer": 1,
+   "why": "XLOOKUP finds a matching key in another table and brings back a value, which is exactly what a left join does."
+  },
+  {
+   "q": "Why write the number 2400 with a currency number format instead of the text '£2,400'?",
+   "options": [
+    "Text files are smaller",
+    "Excel cannot display text in bold",
+    "Users can still sort, filter and sum a real number",
+    "Number formats hide the value from users"
+   ],
+   "answer": 2,
+   "why": "A number format only changes the display. Text that looks like money breaks sums and sorting, so users end up retyping it."
+  },
+  {
+   "q": "Your script's weekly total is higher than the customer's. The workbook has a hidden row. What is the likely cause?",
+   "options": [
+    "A hidden TOTAL row was read and added again",
+    "pandas skips hidden rows by default",
+    "Merged cells doubled every value",
+    "The file was saved in the wrong time zone"
+   ],
+   "answer": 0,
+   "why": "Hidden rows are still in the file and pandas reads them. A hidden total row gets counted as if it were another record."
+  },
+  {
+   "q": "A customer wants a VBA macro replaced by a script. What should happen before the macro is switched off?",
+   "options": [
+    "Delete the macro so nobody runs both",
+    "Rewrite the report in a new BI tool",
+    "Ask IT to block all macros first",
+    "Run both on the same inputs and compare outputs"
+   ],
+   "answer": 3,
+   "why": "A parallel run proves the script gives the same results, and often finds hidden bugs in the macro, before the owner signs off."
+  },
+  {
+   "q": "Three receptionists edit one booking sheet and double-bookings keep happening. What is the strongest fix?",
+   "options": [
+    "Add a colour rule that turns clashes red",
+    "Move bookings to a database with a UNIQUE (room, start) rule",
+    "Split the sheet into one tab per person",
+    "Email the sheet around instead of sharing it"
+   ],
+   "answer": 1,
+   "why": "A database constraint rejects the clash on every write. Colour rules and data validation only warn, and users can paste over them."
+  }
+ ],
+ "webauto": [
+  {
+   "q": "A portal shows a table of orders. What should you check before writing a Playwright script to read it?",
+   "options": [
+    "Whether the page runs on Linux",
+    "Whether the table loads from a JSON call in the Network tab",
+    "Whether the table has more than 100 rows",
+    "Whether the site uses a dark theme"
+   ],
+   "answer": 1,
+   "why": "If the page fetches its data as JSON, you can call that directly: faster, cleaner and less likely to break than clicking through the page."
+  },
+  {
+   "q": "Which Playwright locator is most likely to survive a redesign of the page?",
+   "options": [
+    "locator('div > div:nth-child(3) > button')",
+    "locator('xpath=/html/body/div[2]/form/button')",
+    "get_by_role('button', name='Sign in')",
+    "locator('.btn-7f3a')"
+   ],
+   "answer": 2,
+   "why": "Role and visible name describe what a person sees, which rarely changes; positions and generated class names change with every layout tweak."
+  },
+  {
+   "q": "Your scraper reads a blank weight cell. What should it store?",
+   "options": [
+    "None, a missing value",
+    "0",
+    "The previous row's weight",
+    "The text 'blank'"
+   ],
+   "answer": 0,
+   "why": "A blank means unknown. Storing 0 would quietly make totals and averages wrong."
+  },
+  {
+   "q": "The portal requires MFA and the job must run nightly. Which is the acceptable approach?",
+   "options": [
+    "Use a clerk's login and SMS code sent to your phone",
+    "Retry the login until MFA is skipped",
+    "Use a CAPTCHA-solving service",
+    "A service account agreed with the security team, or a reused session a person renews"
+   ],
+   "answer": 3,
+   "why": "MFA is there to prove a person is present. Work with the customer's security team instead of around the control."
+  },
+  {
+   "q": "When is a browser agent a better fit than a Playwright script?",
+   "options": [
+    "A daily download from the same page",
+    "A rare task where every site's form is different, checked by a person",
+    "Any task where speed matters most",
+    "Any job that must give identical results every run"
+   ],
+   "answer": 1,
+   "why": "Agents cope with varied, unfamiliar pages but are slower, cost more per run and vary between runs, so they suit the rare, varied long tail."
+  }
+ ],
+ "typescript": [
+  {
+   "q": "Which file should you commit so teammates install exactly the same package versions?",
+   "options": [
+    "node_modules",
+    "tsconfig.json",
+    ".env",
+    "package-lock.json"
+   ],
+   "answer": 3,
+   "why": "The lockfile records exact versions. node_modules is rebuilt from it and should never be committed."
+  },
+  {
+   "q": "A handler does const body: Order = JSON.parse(raw). Why is this not safe?",
+   "options": [
+    "JSON.parse is slow",
+    "Types are erased at runtime, so nothing checks that raw is really an Order",
+    "Order must be an interface, not a type",
+    "JSON.parse only works in the browser"
+   ],
+   "answer": 1,
+   "why": "The annotation only tells the compiler what to assume. Validate the parsed value with a schema such as zod before using it."
+  },
+  {
+   "q": "Three independent API calls take about 300 ms each. How do you make the total close to 300 ms?",
+   "options": [
+    "Start all three and await Promise.all",
+    "Await each call in turn",
+    "Use setTimeout around each call",
+    "Put each call in its own try/catch"
+   ],
+   "answer": 0,
+   "why": "Promise.all runs the calls at the same time, so the total is about the slowest call instead of the sum."
+  },
+  {
+   "q": "Where should the code that calls the LLM API with your API key run?",
+   "options": [
+    "In the browser, to save server costs",
+    "In a React component",
+    "On a server, reading the key from an environment variable",
+    "In a public GitHub Action log"
+   ],
+   "answer": 2,
+   "why": "Anything in browser code can be read in developer tools. Keep the key and the model call on the server."
+  },
+  {
+   "q": "tsc says: Type 'number | null' is not assignable to type 'number'. What is the best fix?",
+   "options": [
+    "Add // @ts-ignore above the line",
+    "Handle the null case before using the value",
+    "Cast the value with as any",
+    "Turn off strict mode"
+   ],
+   "answer": 1,
+   "why": "The function can return null. Checking for it fixes the real bug; ignoring or casting only hides it."
+  }
+ ]
+}

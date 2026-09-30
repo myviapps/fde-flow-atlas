@@ -1,0 +1,456 @@
+[
+ {
+  "id": "cxagents",
+  "mod": 6,
+  "sec": "6.3",
+  "name": "Customer-service AI agents",
+  "title": "Customer-service AI agents: from SOPs to a safe launch",
+  "thesis": "A customer-service agent is a language model that answers customers and takes a few permitted actions, wrapped in the company's own policies, tools and escalation paths. The FDE's work is turning written procedures into instructions and tools, enforcing the rules in code, handing off to people with full context, and proving quality with simulated conversations before and after launch.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "msg",
+    90,
+    70,
+    "Customer message",
+    "chat, email, voice"
+   ],
+   [
+    "verify",
+    265,
+    70,
+    "Verify identity",
+    "order no. + email"
+   ],
+   [
+    "intent",
+    440,
+    70,
+    "Understand ask",
+    "question or request"
+   ],
+   [
+    "know",
+    615,
+    70,
+    "Knowledge search",
+    "policies, help pages"
+   ],
+   [
+    "act",
+    615,
+    210,
+    "Action tool",
+    "refund, lookup"
+   ],
+   [
+    "policy",
+    440,
+    210,
+    "Policy check",
+    "enforced in code"
+   ],
+   [
+    "reply",
+    265,
+    210,
+    "Reply to customer",
+    "answer or result"
+   ],
+   [
+    "human",
+    440,
+    350,
+    "Human handoff",
+    "with full context"
+   ],
+   [
+    "log",
+    265,
+    350,
+    "Log and measure",
+    "resolved? CSAT?"
+   ]
+  ],
+  "edges": [
+   [
+    "msg",
+    "verify"
+   ],
+   [
+    "verify",
+    "intent"
+   ],
+   [
+    "intent",
+    "know",
+    0,
+    "question"
+   ],
+   [
+    "intent",
+    "act",
+    0,
+    "request"
+   ],
+   [
+    "know",
+    "reply",
+    0,
+    "answer"
+   ],
+   [
+    "act",
+    "policy"
+   ],
+   [
+    "policy",
+    "reply",
+    0,
+    "allowed"
+   ],
+   [
+    "policy",
+    "human",
+    0,
+    "needs a person"
+   ],
+   [
+    "reply",
+    "log"
+   ],
+   [
+    "human",
+    "log"
+   ]
+  ],
+  "note": "Read the top row left to right: every conversation is verified and understood first. A question goes to the knowledge search, a request goes to an action tool whose policy check lives in code. Anything the rules do not allow, or that the customer asks for, goes to a human with the full context, and every outcome is logged so you can measure resolution, not just containment.",
+  "ideas": [
+   "Start from the company's SOPs and policies: each rule becomes an instruction, a tool limit or an escalation trigger.",
+   "The model decides what to try; the tool code decides what is allowed. Refund limits and identity checks belong in code.",
+   "A good handoff passes a summary, the verified identity, what was tried and why it escalated, so the customer never repeats themselves.",
+   "Simulated conversations with expected outcomes are the regression tests you run on every prompt, tool or model change.",
+   "Containment counts conversations with no human; resolution counts problems actually solved. Track both, plus CSAT and recontact."
+  ],
+  "traps": [
+   "Writing the refund policy only in the prompt, so one clever message gets a refund the policy forbids.",
+   "Celebrating a high containment rate when many customers simply gave up and came back through another channel.",
+   "Launching to all customers at once without a shadow period and a percentage rollout you can turn back."
+  ],
+  "qa": [
+   [
+    "A retailer wants their agent to issue refunds. How do you make that safe?",
+    "I build a refund tool that checks the rules itself: the order belongs to the verified customer, it is inside the return window, the amount is at most the order total, and anything above an auto-approve limit goes to a human queue. The prompt explains the policy so the agent sets expectations, but the tool code is what enforces it, and every call is logged."
+   ],
+   [
+    "Containment is 78 percent but CSAT fell. What do you look at?",
+    "Whether contained conversations were really resolved. I check recontact within 7 days, conversations where the customer left mid-flow, and the transcripts behind low CSAT scores grouped by intent. Often one intent, such as a damaged-item claim, is being answered with a policy quote instead of a fix, and the right change is a new action or an earlier handoff."
+   ],
+   [
+    "How would you roll out a new version of the agent?",
+    "Run the simulated conversation suite first and block on any regression. Then shadow mode, where the agent drafts replies that humans see but customers do not. Then a small percentage of real traffic, for example 5 percent, chosen by a stable hash of the customer ID, with daily transcript review and a kill switch, and only then widen it."
+   ]
+  ]
+ },
+ {
+  "id": "expansion",
+  "mod": 6,
+  "sec": "6.3",
+  "name": "Renewal and expansion",
+  "title": "Renewal, value realisation and expansion",
+  "thesis": "Go-live is the start of the account, not the end of the project. Customers renew and expand when someone can show, in their own numbers, the value the system delivered, spots risk early, and turns a working first use case into a second one that leadership asks for.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "After go-live, customer success owns the relationship and renewal; the FDE owns technical health and the next use case's feasibility.",
+   "A success plan written at kickoff lists the outcomes, the baseline and the target, so value realised can be counted later.",
+   "Renewal risk shows up months early: falling usage, a champion leaving, open severity-1 tickets, no executive contact.",
+   "The best second use case reuses the same data, integration or users as the first, so it is cheaper and faster to prove.",
+   "The executive business review is a decision meeting: value delivered, what is next and a clear ask."
+  ],
+  "traps": [
+   "Measuring only usage (logins, messages) and never converting it into the business outcome the sponsor was promised.",
+   "Waiting for the renewal quarter to find out the champion left six months ago.",
+   "Pitching a second use case that needs brand-new data and a new sponsor, when an adjacent team has the same problem."
+  ],
+  "qa": [
+   [
+    "How do you prove value six months after go-live?",
+    "I go back to the success plan signed at kickoff, take the baseline for each outcome, and measure the same thing the same way now: for example minutes per invoice from system logs, multiplied by volume and loaded cost. I show realised value against the committed target, explain any gap honestly, and have the customer's finance or operations owner agree the numbers before the executive review."
+   ],
+   [
+    "Name three early signs an account will not renew and what you do about each.",
+    "Weekly active users falling for a month: I find which team dropped and why, often a workflow change or a bug. The champion leaving: I find and onboard a new owner within two weeks and brief their manager. No executive has seen results this year: I propose a short executive business review with value numbers. Each sign gets an owner and a date in the account plan."
+   ],
+   [
+    "How would you find a second use case at a customer?",
+    "I look for teams next to the first one with a similar workflow, the same data sources or the same systems we already integrated. I score candidates on value, effort, data readiness and sponsor, and bring one or two with rough numbers to the sponsor, framed as reusing what already works."
+   ]
+  ]
+ },
+ {
+  "id": "psa",
+  "mod": 6,
+  "sec": "6.2",
+  "name": "Services ops and PSA",
+  "title": "Professional services operations and PSA",
+  "thesis": "Deploying AI for customers is also a services business with its own maths: how the work is priced, how many hours are billable, and whether each project makes or loses money. PSA platforms, playbooks and client portals make delivery repeatable, and FDEs who understand utilisation and margin scope work that their company can afford to keep doing.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "deal",
+    90,
+    70,
+    "Signed SOW",
+    "pricing model set"
+   ],
+   [
+    "staff",
+    265,
+    70,
+    "Resourcing",
+    "skills and dates"
+   ],
+   [
+    "plan",
+    440,
+    70,
+    "Project plan",
+    "from a playbook"
+   ],
+   [
+    "portal",
+    615,
+    70,
+    "Client portal",
+    "shared tasks"
+   ],
+   [
+    "time",
+    615,
+    220,
+    "Time tracking",
+    "billable or not"
+   ],
+   [
+    "bill",
+    440,
+    220,
+    "Invoicing",
+    "hours or milestone"
+   ],
+   [
+    "margin",
+    265,
+    220,
+    "Margin review",
+    "plan vs actual"
+   ],
+   [
+    "improve",
+    90,
+    220,
+    "Improve playbook",
+    "lessons learned"
+   ]
+  ],
+  "edges": [
+   [
+    "deal",
+    "staff"
+   ],
+   [
+    "staff",
+    "plan"
+   ],
+   [
+    "plan",
+    "portal"
+   ],
+   [
+    "portal",
+    "time"
+   ],
+   [
+    "time",
+    "bill"
+   ],
+   [
+    "bill",
+    "margin"
+   ],
+   [
+    "margin",
+    "improve"
+   ]
+  ],
+  "note": "Read the top row left to right, then the bottom row right to left. A PSA platform holds every box in one place: the contract terms set how hours turn into invoices, and the margin review at the end feeds changes back into the playbook the next project starts from.",
+  "ideas": [
+   "The pricing model decides who carries the risk of overrun: the customer in time and materials, your company in fixed fee.",
+   "Utilisation is billable hours divided by available hours; margin is revenue minus delivery cost, divided by revenue.",
+   "A PSA platform joins plans, resourcing, time, billing and the customer's view in one workspace.",
+   "Dynamic playbooks turn the last good project into the next project's plan, with tasks switched on by customer facts.",
+   "AI helps most with the paperwork of delivery: drafting status notes, filling time entries and flagging at-risk projects for a person to check."
+  ],
+  "traps": [
+   "Agreeing to a fixed fee on a scope nobody has measured, then absorbing every overrun.",
+   "Treating 100 percent utilisation as the goal, which leaves no time for training, sales support or reuse work.",
+   "Buying a PSA tool before agreeing a standard project template, so every project is still built by hand."
+  ],
+  "qa": [
+   [
+    "A customer wants a fixed price for an integration you have never done. What do you do?",
+    "I reduce the unknowns first: a short paid discovery or a time and materials phase to probe their APIs and data, then a fixed fee for the build once scope is measured. If they need one number now, I price the risk in, write clear assumptions and exclusions into the SOW, and add a change-request process for anything outside it."
+   ],
+   [
+    "Your team's projects hit their dates but margins keep falling. Where do you look?",
+    "At planned versus actual hours by project phase and by pricing model. Usually fixed-fee projects are overrunning in a specific phase, such as data migration or UAT, or unbillable work like rework is growing. I would fix the estimate for that phase in the playbook, tighten the assumptions in the SOW template and check that change requests are actually raised."
+   ],
+   [
+    "What does a client portal change for an FDE?",
+    "The customer sees the live plan and their own open tasks, so status meetings get shorter and it is obvious when a delay is on their side, for example a missing API key. It also means the plan must be kept honest and current, because the customer reads it."
+   ]
+  ]
+ },
+ {
+  "id": "lowcode",
+  "mod": 6,
+  "sec": "6.2",
+  "name": "Low-code AI platforms",
+  "title": "Low-code AI platforms",
+  "thesis": "Many customers want their AI agents built inside a platform they already own, such as Microsoft Copilot Studio, Salesforce Agentforce, ServiceNow, n8n or Zapier. The FDE's job is to fit the build to that platform, extend it with a small custom API where the platform runs out, respect the customer's governance rules, and hand it over so their own staff can keep it running.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "need",
+    90,
+    70,
+    "Business need",
+    "the use case"
+   ],
+   [
+    "platform",
+    265,
+    70,
+    "Pick platform",
+    "where users live"
+   ],
+   [
+    "build",
+    440,
+    70,
+    "Low-code agent",
+    "topics and flows"
+   ],
+   [
+    "conn",
+    615,
+    70,
+    "Custom connector",
+    "OpenAPI file"
+   ],
+   [
+    "api",
+    615,
+    220,
+    "Your small API",
+    "hard logic in code"
+   ],
+   [
+    "govern",
+    440,
+    220,
+    "Governance",
+    "envs and DLP",
+    1
+   ],
+   [
+    "publish",
+    265,
+    220,
+    "Publish",
+    "approved makers"
+   ],
+   [
+    "hand",
+    90,
+    220,
+    "Citizen devs",
+    "own and extend"
+   ]
+  ],
+  "edges": [
+   [
+    "need",
+    "platform"
+   ],
+   [
+    "platform",
+    "build"
+   ],
+   [
+    "build",
+    "conn",
+    0,
+    "calls"
+   ],
+   [
+    "conn",
+    "api"
+   ],
+   [
+    "build",
+    "govern",
+    0,
+    "checked"
+   ],
+   [
+    "govern",
+    "publish"
+   ],
+   [
+    "publish",
+    "hand"
+   ]
+  ],
+  "note": "Read the top row left to right: the need and the customer's platform shape the build, and a custom connector reaches a small API for anything the platform cannot do well. Then read down and along the bottom row: governance checks the build before it is published and handed to the customer's own makers.",
+  "ideas": [
+   "Low-code platforms let people build apps, workflows and agents with visual designers, prebuilt connectors and a little formula or script code.",
+   "The customer's existing platform often decides the build, because their users, data, security reviews and licences already live there.",
+   "A custom connector, described by an OpenAPI file, lets the platform call your own API for logic it cannot do well.",
+   "Governance means separate environments, data loss prevention (DLP) policies on connectors, and rules about who may publish.",
+   "Plan the handover from day one: citizen developers should own the simple parts, with a clear line for what needs an engineer."
+  ],
+  "traps": [
+   "Building a custom Python service when the customer's IT policy only allows agents built in their approved platform.",
+   "Forcing complex rules, heavy data work or strict tests into visual flows until nobody can read or test them.",
+   "Building straight in the production environment, then finding a DLP policy blocks your connector on launch day."
+  ],
+  "qa": [
+   [
+    "A customer runs everything on Microsoft 365 and asks for an HR policy agent. Would you write custom code?",
+    "Probably not at first. Copilot Studio would put the agent in Teams, where staff already work, reuse their sign-in and SharePoint content, and pass their existing security review. I would write code only for the parts the platform handles badly, such as a complex eligibility calculation, and expose it as a small API through a custom connector."
+   ],
+   [
+    "Your custom connector works in the dev environment but fails in production. What do you check first?",
+    "The DLP policy for the production environment. The connector is probably blocked there, or placed in a different data group from the other connectors the flow uses, so the two cannot be combined. I would ask the platform admin to classify it, and also check that the connection and credentials exist in production."
+   ],
+   [
+    "How do you decide when a low-code build should move to code?",
+    "I look for signals: logic that needs unit tests, heavy data processing, strict latency, hitting platform limits on runs or payload size, or costs per message that grow faster than value. Usually I move only that piece into an API and keep the platform as the front door users see."
+   ]
+  ]
+ }
+]

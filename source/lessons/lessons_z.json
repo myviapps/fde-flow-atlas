@@ -1,0 +1,697 @@
+{
+ "regulated": {
+  "plain": "A regulated industry is one where the law or an industry body sets rules for how data is stored, processed and audited. Healthcare, banking, payments and government are the big ones. A compliance framework is a written set of controls (specific rules such as 'every admin login uses multi-factor authentication') that an auditor checks. Some are laws, such as HIPAA or GDPR. Others are standards or certifications a customer demands in a contract, such as SOC 2, PCI DSS, ISO 27001 or FedRAMP. The general ideas (PII, encryption, least privilege, DPAs) live in the Compliance topic; this topic is the playbook for each industry.",
+  "analogy": "It is like cooking in different kitchens. A home kitchen has few rules, a restaurant has health inspections, and a hospital kitchen adds allergy labels, sealed trays and a log of who touched each meal. The recipe is the same; the rules around it change what you are allowed to do and what you must write down.",
+  "why": "The customers with the biggest budgets for AI are often hospitals, banks, insurers and government agencies. An FDE who asks 'do we have a BAA with the model provider?' or 'is this system in PCI scope?' in week one saves the project months. Getting it wrong can stop a pilot on the day of the security review, or worse, create a reportable breach.",
+  "subtopics": [
+   {
+    "title": "Healthcare: HIPAA, BAAs, PHI and FHIR",
+    "body": "HIPAA is the US law for health information. It applies to covered entities (health providers, health plans and clearinghouses) and to their business associates, the vendors who handle protected health information (PHI) for them. PHI is health information that can be linked to a person, such as a diagnosis next to a name, a date of birth or a medical record number. Before any vendor receives PHI, it must sign a Business Associate Agreement (BAA). That includes every subprocessor in the chain, such as your cloud host and your LLM provider.\n\nTwo rules shape daily work. The minimum necessary standard says you use only the PHI needed for the task. De-identified data is no longer PHI; HIPAA allows two methods: Safe Harbor, which removes 18 listed identifiers, or Expert Determination by a qualified statistician.\n\nHospital data usually arrives through HL7 standards. HL7 v2 is an older pipe-delimited message format (for example an ADT message when a patient is admitted). FHIR is the modern REST API, with JSON resources such as Patient, Observation and Encounter. Many electronic health record systems now expose FHIR APIs, usually secured with OAuth 2.0 scopes.",
+    "example": "Lindqvale Health wants an assistant that summarises discharge notes. The FDE asks for a FHIR scope limited to DocumentReference and Encounter, not the full Patient record, and checks that the hosting cloud and the model provider both have signed BAAs. The patient's name and address are not needed for a summary, so the pipeline drops them before the prompt is built.",
+    "code": "import requests\n\nFHIR_BASE = \"https://fhir.lindqvale.example/r4\"\nTOKEN = \"...\"  # OAuth token with read scope for DocumentReference only\n\n# Ask for one patient's discharge summaries (LOINC 18842-5), nothing else\nr = requests.get(\n    f\"{FHIR_BASE}/DocumentReference\",\n    params={\"patient\": \"12345\", \"type\": \"http://loinc.org|18842-5\"},\n    headers={\"Authorization\": f\"Bearer {TOKEN}\",\n             \"Accept\": \"application/fhir+json\"},\n    timeout=30,\n)\nbundle = r.json()                      # a FHIR Bundle resource\nfor entry in bundle.get(\"entry\", []):\n    doc = entry[\"resource\"]\n    print(doc[\"id\"], doc.get(\"date\"))  # keep only what the task needs",
+    "lang": "Python"
+   },
+   {
+    "title": "Finance: SOC 2, PCI DSS, SOX and model risk",
+    "body": "Banks, insurers and fintechs will ask for your SOC 2 Type II report first. It shows an auditor tested your controls over a period, often six to twelve months. Expect to hand over evidence: access reviews, change tickets, incident records.\n\nPCI DSS is the payment card industry's security standard. It applies to any system that stores, processes or transmits card data, called the cardholder data environment (CDE). Every system connected to the CDE is 'in scope' and must meet the controls. The best move is scope reduction: replace the card number (PAN) with a token from a payment provider, so your AI system never sees real card numbers and stays out of scope. Card security codes must never be stored after authorisation. The standard is versioned (4.0 and later); check the current version.\n\nSOX is a US law for public companies. For engineers it means IT general controls around financial systems: approved and tested changes, segregation of duties (the person who writes code does not deploy it alone) and access reviews.\n\nModel risk management, described in US bank supervisors' guidance SR 11-7, expects every model that drives decisions to be documented, independently validated and monitored. Banks increasingly treat LLM features as models under this process.",
+    "example": "Pemberly Mutual wants an agent that answers billing questions. The FDE designs it to see only a token such as tok_8f3k and the last four digits, never the full card number. The payment provider stays the only system in PCI scope, and the agent needs no PCI assessment. For SOX, every prompt change goes through a pull request approved by a second engineer.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Framework",
+      "Who asks for it",
+      "What it means for your build"
+     ],
+     "rows": [
+      [
+       "SOC 2 Type II",
+       "Almost every enterprise buyer",
+       "Provide the report; keep access and change evidence"
+      ],
+      [
+       "PCI DSS",
+       "Anyone taking card payments",
+       "Keep card numbers out; use tokens to stay out of scope"
+      ],
+      [
+       "SOX",
+       "US public companies",
+       "Reviewed changes, separated duties, access reviews"
+      ],
+      [
+       "SR 11-7 model risk",
+       "US banks",
+       "Model documentation, validation, ongoing monitoring"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Government: FedRAMP, GovCloud, CJIS",
+    "body": "US federal agencies can only use cloud services that have a FedRAMP authorisation. FedRAMP is based on the NIST SP 800-53 control catalogue and has Low, Moderate and High baselines depending on how sensitive the data is. Most agency work sits at Moderate. Authorisation takes months, and the program's process has been changing, so check its current rules. The Department of Defense adds its own Impact Levels (IL2, IL4, IL5, IL6); higher levels need more isolation.\n\nCloud providers run separate regions for this, such as AWS GovCloud (US) and Azure Government. They are physically and logically separated, and access is restricted to screened US persons. A model or service available in a commercial region may not be available in these regions yet, which often decides the architecture.\n\nCJIS is the FBI's security policy for criminal justice information, used by police and courts. It requires things such as background checks for people with access, strong authentication and audit logging. ITAR is an export-control rule for defence data that limits access to US persons. At a high level: in government work, who you are and where you sit can matter as much as the code.",
+    "example": "A state transport agency, Harrowgate DOT, wants document search over permits. The agency requires a FedRAMP Moderate service. The FDE confirms the embedding model and vector database are available in the government region before the design review, and plans for staff without the right clearance to work only on synthetic data.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Which authorisation does the agency require: FedRAMP Low, Moderate or High, or a DoD Impact Level?",
+     "Is every service we plan to use (model, vector store, logging) authorised and available in that region?",
+     "Does any data fall under CJIS or ITAR, and who on our team is allowed to see it?",
+     "Who is the agency's authorising official, and how long does their review usually take?",
+     "Can we develop on synthetic data outside the boundary and deploy inside it?"
+    ]
+   },
+   {
+    "title": "Data residency and cross-border transfer",
+    "body": "Data residency means where data is stored and processed. The EU's GDPR does not ban moving personal data out of the EU, but a transfer needs a legal basis: an adequacy decision for the destination country, Standard Contractual Clauses (SCCs) with a transfer assessment, or Binding Corporate Rules. For the US, the EU-US Data Privacy Framework covers companies that certify under it. These mechanisms have been challenged in court before, so check the current position.\n\nA DPIA (data protection impact assessment) is required before high-risk processing, which many AI projects on personal data are. In California, the CCPA as amended by the CPRA gives consumers rights to know, delete, correct, and opt out of the sale or sharing of their data. Vendors act as 'service providers' under a contract.\n\nFor an FDE the practical questions are: which region hosts every copy of the data, including logs, backups, vector indexes, evaluation sets and the model provider's endpoint? And when a person asks to be deleted, can you remove their chunks from the vector store and their prompts from the logs? If the answer is 'we are not sure', fix it before launch.",
+    "example": "Veltrana Insurance, based in Germany, wants all personal data processed in the EU. The FDE picks an EU region for the database and vector store and an EU-hosted model endpoint, turns off prompt logging in a US tool, and stores each chunk with a customer_id so a deletion request can remove every chunk for that person.",
+    "code": "# Delete one person's data everywhere we copied it (sketch)\ndef erase_customer(customer_id: str, db, vectors, log_store):\n    db.execute(\"DELETE FROM claims_notes WHERE customer_id = %s\", (customer_id,))\n    vectors.delete(filter={\"customer_id\": customer_id})   # chunks carry this tag\n    log_store.purge(field=\"customer_id\", value=customer_id)\n    # Backups age out on their normal schedule; record that in the response\n    return {\"customer_id\": customer_id, \"status\": \"erased\",\n            \"backups\": \"expire within 35 days\"}",
+    "lang": "Python"
+   },
+   {
+    "title": "ISO 27001, HITRUST and NIST",
+    "body": "Some frameworks are not laws but certifications that customers cite in contracts. ISO/IEC 27001 is the international standard for an information security management system (ISMS): a managed process for finding risks and choosing controls. The current edition is 2022, and its Annex A lists 93 controls in four themes (organisational, people, physical, technological). A certificate lasts three years, with yearly surveillance audits. European and Asian buyers often ask for it where US buyers ask for SOC 2.\n\nHITRUST is a certifiable framework popular with US healthcare. It combines requirements from HIPAA, NIST, ISO and others into one assessment, offered at different depths (e1, i1 and r2, from lightest to most thorough). NIST SP 800-53 is the large US federal control catalogue behind FedRAMP, and the NIST Cybersecurity Framework is a simpler, widely used way to organise a security program.\n\nYou do not need to memorise controls. You need to recognise the name, know who asks for it, and map your deployment to the customer's control list when they send a spreadsheet. Your own company's security team owns the certificate; you own explaining how your deployment fits it.",
+    "example": "A Dutch hospital group asks, 'Are you ISO 27001 certified, and does the certificate cover the AI service?' The FDE checks the certificate's scope statement, finds it covers the core platform but not a new beta feature, and says so plainly, offering a timeline from the security team.",
+    "code": "",
+    "lang": "Text"
+   },
+   {
+    "title": "How an FDE works inside these rules",
+    "body": "Treat compliance as a design input from day one. In week one, find out which frameworks apply, who the customer's compliance and security contacts are, and which data classes your system will touch. Then shape the design so the fewest systems are in scope: tokenise, de-identify, keep data in the right region and log access.\n\nAsk for sample data early, and expect to receive synthetic or de-identified data first. Plan for reviews: a security review, a privacy review, sometimes a model risk review. They take weeks, so start them in parallel with the build.\n\nKeep an evidence folder as you go: architecture diagram, data-flow diagram, list of subprocessors, access list, test results. When the auditor or the customer's risk team asks, you answer in hours. Never say 'we are compliant' without naming the framework and scope. Say what is true, for example 'our SOC 2 Type II report covers this service; the model provider has signed a BAA with us'. The table below is a quick map from framework to what changes in your deployment.",
+    "example": "At a regional bank, the FDE starts the model risk review in week two with a one-page model card, rather than waiting until the pilot ends. The review finishes the same week the pilot does, and go-live is not delayed.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Framework",
+      "Scope trigger",
+      "What changes in your deployment"
+     ],
+     "rows": [
+      [
+       "HIPAA",
+       "US health data (PHI)",
+       "BAAs with every vendor, minimum necessary, audit logs"
+      ],
+      [
+       "PCI DSS",
+       "Card numbers",
+       "Tokenise so your system stays out of the CDE"
+      ],
+      [
+       "SOX",
+       "US public company finance systems",
+       "Approved changes, separated duties"
+      ],
+      [
+       "FedRAMP / IL",
+       "US federal or defence data",
+       "Authorised services in a government region"
+      ],
+      [
+       "CJIS",
+       "Police and court data",
+       "Screened staff, strong auth, access logs"
+      ],
+      [
+       "GDPR / CCPA",
+       "Personal data of EU or California residents",
+       "Region choice, transfer basis, deletion path"
+      ],
+      [
+       "ISO 27001 / HITRUST",
+       "Contract requirement",
+       "Show certificate scope; map to their controls"
+      ]
+     ]
+    }
+   }
+  ],
+  "glossary": [
+   [
+    "PHI",
+    "Protected health information: health data linked to an identifiable person, covered by HIPAA."
+   ],
+   [
+    "BAA",
+    "Business Associate Agreement: the contract a vendor signs before it may handle PHI for a covered entity."
+   ],
+   [
+    "FHIR",
+    "Fast Healthcare Interoperability Resources: HL7's REST API standard for health data, using resources like Patient."
+   ],
+   [
+    "Cardholder data environment",
+    "In PCI DSS, the systems that store, process or transmit card data, plus systems connected to them."
+   ],
+   [
+    "Tokenisation",
+    "Replacing a sensitive value such as a card number with a random token that is useless outside the vault."
+   ],
+   [
+    "IT general controls",
+    "Controls over access, change management and operations that auditors test for SOX."
+   ],
+   [
+    "FedRAMP",
+    "The US government program that authorises cloud services for federal use, at Low, Moderate or High."
+   ],
+   [
+    "SCCs",
+    "Standard Contractual Clauses: EU-approved contract terms that allow personal data to be transferred abroad."
+   ],
+   [
+    "DPIA",
+    "Data protection impact assessment: a documented risk review GDPR requires before high-risk processing."
+   ],
+   [
+    "ISMS",
+    "Information security management system: the managed risk process that ISO 27001 certifies."
+   ]
+  ],
+  "practice": [
+   "Take any AI feature you have built and fill in the 'framework to deployment' table for a hospital customer: which rules apply and what you would change.",
+   "Draw a data-flow diagram for a card-payment support chatbot and mark which boxes are in PCI scope before and after tokenisation.",
+   "Write the week-one question list you would send to an EU insurer's privacy team, covering region, transfer basis, DPIA and deletion from vector stores and logs."
+  ]
+ },
+ "fieldlife": {
+  "plain": "Field life is the day-to-day reality of working inside a customer's organisation: getting access, travelling, learning who really decides things, and keeping several accounts moving without burning out. None of it is in a statement of work, but it decides whether the technical work lands. A 30/60/90 plan is a short written plan of what you will learn, build and deliver in your first 30, 60 and 90 days. Scope creep is the slow growth of work beyond what was agreed. Cognitive empathy means understanding how someone else sees a situation, even when you do not share their feelings.",
+  "analogy": "It is like joining a new sports team mid-season. You learn the playbook, figure out who the captain really listens to, pace yourself across a long season, and politely decline when three teammates each ask you to play their position too.",
+  "why": "Many FDE postings mention significant travel and being embedded with customer teams. The engineers who succeed are not only strong coders; they get access fast, win the trust of a sceptical team lead and protect the agreed scope. Customers remember how you worked with them long after they forget which framework you used.",
+  "subtopics": [
+   {
+    "title": "Your first two weeks and a 30/60/90 plan",
+    "body": "The first two weeks are mostly about access and trust. Access requests (badge, laptop, VPN, accounts in their identity provider, database read roles) often take longer than any code. Submit them on day one, keep a tracker with who approves each, and follow up every two days. While you wait, read their documentation, sit with users, and build on sample or synthetic data.\n\nMeet people in a deliberate order: your sponsor (the executive who wants this), the day-to-day owner, the users who will live with the tool, and the gatekeepers (security, data, IT). Ask each what success looks like to them and what went wrong last time someone tried.\n\nBy the end of week two, write a one-page 30/60/90 plan and review it with your sponsor. Thirty days: understand and prove access plus a first small win. Sixty days: a working pilot for real users. Ninety days: measured results and a plan for scale or handover. The plan is a conversation tool, so keep it short and change it when you learn more.",
+    "example": "At Fernhollow Insurance, the FDE's VPN request needs three approvals. On day one she asks her sponsor to name an owner for each, and gets access on day six instead of the usual three weeks. She spends the gap shadowing two claims handlers and finds the first quick win: a claim-summary draft.",
+    "code": "30/60/90 PLAN  -  Fernhollow claims assistant  (draft v2, reviewed with sponsor)\n\nDays 1-30   LEARN AND ACCESS\n  - Access: VPN, claims DB read role, sandbox LLM key (tracker in shared sheet)\n  - Shadow 4 handlers; list the 10 most common claim types\n  - First win: claim summary draft on 50 closed claims, reviewed by 2 handlers\n\nDays 31-60  PILOT\n  - 8 handlers use the assistant daily; feedback form in the tool\n  - Weekly metric: minutes per claim, % summaries accepted without edits\n\nDays 61-90  PROVE AND DECIDE\n  - Report results vs baseline (22 min per claim)\n  - Security review done; runbook written; go / extend / stop decision\n\nRisks: data access delays; handler time during month-end close",
+    "lang": "Text"
+   },
+   {
+    "title": "Travel and remote rhythm",
+    "body": "Being on site builds trust quickly, because people bring you problems at the coffee machine that never reach a ticket. But constant travel is tiring, so most FDE teams use a rhythm, such as on site for kick-off, key workshops and go-live, and remote in between.\n\nWhen you are on site, act like a guest who is also a colleague. Follow their dress code, security rules and meeting habits. Use only approved devices; some customers will not let your laptop on their network, and some forbid photos of screens or whiteboards. Lock your screen every time you stand up. Keep customer data off your personal phone.\n\nWhen remote, keep the relationship warm with a fixed weekly check-in, a short written status every Friday and fast replies in their chat tool. Watch time zones: put both zones in every meeting invite, and avoid scheduling that forces one side to always meet early or late. Log expenses as you go; a pile of receipts at the end of a month is a common source of stress.",
+    "example": "An FDE covering a logistics customer three time zones away agrees a rhythm: one on-site week per month, a Tuesday call at 16:00 their time, and a Friday written update. The customer's operations lead later says the Friday note is how he keeps his own boss informed.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Approved laptop only; confirm whether it may join their network or guest Wi-Fi",
+     "Screen lock on, privacy filter if you work in open areas",
+     "No photos of screens, whiteboards or badges without permission",
+     "Customer data never on personal devices or personal cloud storage",
+     "Both time zones in every invite",
+     "Expenses logged the same day",
+     "Friday status note sent before you leave"
+    ]
+   },
+   {
+    "title": "Reading the org with cognitive empathy",
+    "body": "Every organisation has a formal chart and a real one. The real one tells you who can say yes, who can quietly say no, and whose opinion the decision maker trusts. Power dynamics show up in small ways: who speaks first in meetings, whose calendar everyone works around, and which team got burned by the last vendor.\n\nThink in three groups. Sponsors want the project to succeed and have budget or authority. Blockers can slow or stop it; they are often protecting something real, such as security, headcount or their team's workload. Influencers have no formal power but shape opinion, such as the senior user everyone asks for help.\n\nCognitive empathy is the skill of understanding a person's view and incentives without having to agree. A security lead who blocks you is usually measured on avoiding incidents, so shipping features is not their goal. Ask what would make them comfortable, then bring that. A team lead worried about automation may fear losing staff; show how the tool removes the dull part of their job and involve them in testing. Never take sides in internal politics, and never say negative things about one person to another.",
+    "example": "At Brisenholm Bank, the data platform lead keeps delaying access. The FDE asks for 20 minutes and learns he was blamed for a leak two years ago. She offers read-only access to a masked view with an audit log. He approves it the same week and later defends the project in a steering meeting.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Person",
+      "Role in project",
+      "What they care about",
+      "My next move"
+     ],
+     "rows": [
+      [
+       "Head of Claims",
+       "Sponsor",
+       "Cost per claim, board visibility",
+       "Monthly one-page result"
+      ],
+      [
+       "Data platform lead",
+       "Possible blocker",
+       "No repeat of past leak",
+       "Masked view, audit log"
+      ],
+      [
+       "Senior handler",
+       "Influencer",
+       "Not adding clicks",
+       "Invite to test sessions"
+      ],
+      [
+       "IT security",
+       "Gatekeeper",
+       "Review evidence on time",
+       "Send data-flow diagram early"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Handling scope creep",
+    "body": "Scope creep rarely arrives as a big change request. It arrives as 'while you are here, could you also...'. Each ask is small and reasonable, and saying yes feels helpful. Ten of them later, the original goal is late and nobody remembers why.\n\nUse a simple rule: every new ask gets written down, sized and traded. Written down means it goes in a shared list, not only in your head. Sized means you say roughly how long it takes. Traded means the sponsor chooses: add it and move a date, swap it for something already planned, or put it in the backlog for a later phase. You are not the one saying no; the plan and the sponsor are.\n\nSome asks are fine to absorb, such as a five-minute fix that builds goodwill. Keep a small budget for these, perhaps half a day a week, and track them too. Anything that changes cost, timeline or risk goes through the formal change request in the statement of work (see the Documents and POCs topics). The flowchart below shows the path.",
+    "example": "At Fernhollow, a manager asks for the claim assistant to also draft letters to customers. The FDE writes it down, estimates two weeks plus a legal review, and brings it to the sponsor, who moves it to phase two. The pilot ships on its date.",
+    "code": "Subject: New request: customer letter drafts (sizing and options)\n\nHi Maren,\n\nPriya asked whether the assistant could also draft letters to customers.\nGood idea, and I have added it to our request list.\n\nRough size: about 2 weeks of build, plus a legal review of templates.\nOptions:\n  A) Add now: pilot date moves from 14 Nov to 28 Nov.\n  B) Swap: drop the Excel export feature, keep 14 Nov.\n  C) Phase 2: start after the pilot review on 5 Dec.\n\nMy suggestion is C, so the pilot results stay clean.\nCould you let me know by Thursday?\n\nThanks, Jonah",
+    "lang": "Text",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "ask",
+       90,
+       70,
+       "New ask",
+       "while you are here"
+      ],
+      [
+       "check",
+       265,
+       70,
+       "In the SOW?",
+       "agreed scope"
+      ],
+      [
+       "doit",
+       440,
+       70,
+       "Add to plan",
+       "no date change"
+      ],
+      [
+       "size",
+       265,
+       220,
+       "Write and size",
+       "shared list"
+      ],
+      [
+       "trade",
+       440,
+       220,
+       "Offer trades",
+       "add, swap, later"
+      ],
+      [
+       "decide",
+       615,
+       220,
+       "Sponsor decides",
+       "change request"
+      ]
+     ],
+     "edges": [
+      [
+       "ask",
+       "check"
+      ],
+      [
+       "check",
+       "doit",
+       0,
+       "yes"
+      ],
+      [
+       "check",
+       "size",
+       0,
+       "no"
+      ],
+      [
+       "size",
+       "trade"
+      ],
+      [
+       "trade",
+       "decide"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Juggling several accounts",
+    "body": "Many FDEs support two to four customers at once, at different stages: one in discovery, one in pilot, one in production. Every switch between them costs time, because you have to reload names, systems and open issues into your head.\n\nReduce the cost with structure. Keep one running notes file per account with a 'current state' block at the top: goal, next milestone, open risks, and waiting-on items. Group work by account in blocks of half a day or more instead of switching every hour. Put recurring customer calls on fixed days.\n\nOnce a week, do a triage: list every account, its next deadline and its biggest risk, and decide where your hours go. Share that with your manager so trade-offs are visible to everyone. When a product bug or missing feature blocks a customer, escalate it to your internal product, engineering or support teams with evidence: what the customer is trying to do, how often, and the revenue or deadline at risk. Then tell the customer honestly what you asked for and when you will update them.",
+    "example": "An FDE covering three accounts blocks Monday and Tuesday for a retailer in pilot, Wednesday morning for an insurer in discovery, and Thursday for a bank in production. Friday is for notes, triage and status updates. Her average reply time to all three stays under four hours.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Account",
+      "Stage",
+      "Next deadline",
+      "Biggest risk",
+      "Hours this week"
+     ],
+     "rows": [
+      [
+       "Orlanby Retail",
+       "Pilot",
+       "Pilot review, Fri",
+       "Low user adoption",
+       "16"
+      ],
+      [
+       "Fernhollow Ins.",
+       "Discovery",
+       "Proposal, next Wed",
+       "Unclear sponsor",
+       "8"
+      ],
+      [
+       "Brisenholm Bank",
+       "Production",
+       "Monthly report",
+       "Latency spikes",
+       "10"
+      ],
+      [
+       "Internal",
+       "-",
+       "Bug escalation",
+       "Feature gap",
+       "4"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "A sustainable pace and avoiding burnout",
+    "body": "Field work has natural peaks: a go-live, a war room during an outage, a demo for the board. Short peaks are fine. The danger is when peaks become the normal state: always reachable, always travelling, always the one who fixes things at night. That leads to burnout, a state of exhaustion, cynicism and lower performance that takes months to recover from.\n\nSet boundaries early, while the relationship is good. Agree support hours and an on-call process in writing, with a real escalation path that does not end with your personal phone. If you join a war room, agree who leads it, when the next update is due and when the team rests. Hand over clearly when you go off shift.\n\nWatch the early signs in yourself: dreading a customer's messages, sleeping badly before calls, cutting exercise and meals for work. Talk to your manager early; good FDE managers would rather move work than lose you. Protect recovery time after travel and after big launches, and take real holidays with a named backup.",
+    "example": "After a two-week go-live, an FDE asks his manager for a lighter week and hands the customer's alerts to the support rota for five days, as agreed in the runbook. The customer notices nothing, because the runbook and escalation path work.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Support hours and on-call rota written in the runbook",
+     "Escalation path that goes to a team, not to your personal phone",
+     "War rooms have a lead, an update time and an end time",
+     "Recovery day planned after long trips and launches",
+     "Holidays booked with a named backup who has access",
+     "A monthly honest check-in with your manager about load"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "30/60/90 plan",
+    "A one-page plan of what you will learn, build and deliver in your first 30, 60 and 90 days."
+   ],
+   [
+    "Sponsor",
+    "The senior customer person who wants the project and controls budget or priority."
+   ],
+   [
+    "Blocker",
+    "Someone who can slow or stop the project, often because they protect a real risk."
+   ],
+   [
+    "Cognitive empathy",
+    "Understanding how another person sees a situation and what drives them, without having to agree."
+   ],
+   [
+    "Scope creep",
+    "Gradual growth of work beyond the agreed scope, usually through many small asks."
+   ],
+   [
+    "Change request",
+    "A formal request to change scope, time or cost, agreed in writing by both sides."
+   ],
+   [
+    "Context switching",
+    "Moving attention between tasks or accounts, which costs time to reload each one."
+   ],
+   [
+    "War room",
+    "A focused, temporary group working an urgent incident or launch together."
+   ],
+   [
+    "Burnout",
+    "Long-term exhaustion and cynicism from sustained overload, which lowers performance."
+   ]
+  ],
+  "practice": [
+   "Write a one-page 30/60/90 plan for an imagined customer that wants an AI assistant for its support team.",
+   "Build a stakeholder table for a project you know: at least four people, their role, what they care about and your next move with each.",
+   "Draft the 'sizing and options' email for a scope-creep ask you have faced or can imagine, giving three trade options and a recommendation."
+  ]
+ },
+ "interviewrounds": {
+  "plain": "An interview loop is the series of conversations a company runs before making an offer. FDE loops usually include a recruiter screen, a hiring manager screen, one or two coding rounds, a debugging or code-reading round, a system design round framed around a customer, sometimes a take-home assignment, and a behavioral round. Each round tests something different, so each needs its own preparation. The Interview topic explains how loops are scored and covers the build, customer and business rounds; this topic walks through the rounds one by one with templates.",
+  "analogy": "It is like a driving test with several stations: a written theory check, parking, a road drive and a chat with the examiner. Being a great driver helps everywhere, but you still practise each station on its own.",
+  "why": "Strong engineers fail FDE loops because they prepare only for algorithms, then meet a debugging round in an unfamiliar repo or a system design question with a demanding customer attached. Knowing what each round filters for lets you spend preparation time where it counts and walk in calm.",
+  "subtopics": [
+   {
+    "title": "Recruiter and hiring manager screens",
+    "body": "The recruiter screen (20 to 30 minutes) checks basics: are you interested, is your experience roughly right, can you communicate clearly, and do salary expectations, location and travel fit? It is not technical, but a vague answer to 'why FDE?' ends many applications here. Prepare a 90-second pitch: who you are, one story where you built something for real users, and why customer-facing engineering suits you.\n\nThe hiring manager screen (30 to 45 minutes) goes deeper. The manager wants to know whether you can own a customer problem end to end. Expect 'tell me about a project you are proud of' and follow-ups on your role, trade-offs and results. Have two projects ready with numbers.\n\nOn salary: if the recruiter asks early, you can ask what range is budgeted for the role, and say you want to understand the level first. Ask them what the loop looks like, which rounds, how long, and whether AI tools are allowed in coding rounds. Write it down; it tells you what to practise.",
+    "example": "A candidate, Idris, answers 'why FDE?' with: 'In my last job I spent half my time with the operations team turning their spreadsheets into a small app. The part I liked most was watching them use it. I want a role where that is the job.' The recruiter moves him forward the same day.",
+    "code": "90-SECOND PITCH TEMPLATE\n\n1. Who I am (15 s)\n   \"I'm a backend engineer with 4 years in Python and data pipelines.\"\n2. Proof story (45 s)\n   \"At a logistics company I built a tool with the dispatch team that cut\n    manual re-planning from 3 hours to 40 minutes a day. I sat with them\n    weekly, shipped small versions, and measured the time saved.\"\n3. Why this role (20 s)\n   \"I want to do that full time: close to customers, shipping real systems.\"\n4. Hand back (10 s)\n   \"Could you tell me what the loop looks like?\"",
+    "lang": "Text"
+   },
+   {
+    "title": "Live coding and pair programming",
+    "body": "Live coding rounds give you a practical problem, often closer to real work than a puzzle: parse a log file, call an API and aggregate results, or build a small class with a few methods. Pair programming rounds feel like working with a colleague; the interviewer may add requirements halfway through.\n\nWhat they score is how you work, not only whether it runs. Restate the problem and ask one or two clarifying questions. Say your plan in two sentences before typing. Think aloud, so the interviewer can help if you drift. Start with the simplest version that works, then improve. Write a few tests or at least run small examples, including an edge case such as empty input.\n\nOn AI assistants: some companies allow them and watch how you use them, others forbid them. Ask beforehand and follow the rule exactly. If allowed, use them for boilerplate and check every line they produce out loud. For practice problems, see the SQL bank and Build drill topics, and practise with a timer.",
+    "example": "Asked to find the top three error types in a log file, a candidate writes the test first with four sample lines, then a ten-line function, runs it, and adds a case for lines without an error code. The interviewer later says the test was what convinced her.",
+    "code": "from collections import Counter\n\ndef top_errors(lines, n=3):\n    \"\"\"Return the n most common error codes, e.g. from 'ERROR E42 timeout'.\"\"\"\n    codes = []\n    for line in lines:\n        parts = line.split()\n        if len(parts) >= 2 and parts[0] == \"ERROR\":   # skip INFO and bad lines\n            codes.append(parts[1])\n    return Counter(codes).most_common(n)\n\n# Tests written first, said out loud\ndef test_top_errors():\n    logs = [\"ERROR E42 timeout\", \"INFO ok\", \"ERROR E42 again\", \"ERROR E7 disk\", \"\"]\n    assert top_errors(logs) == [(\"E42\", 2), (\"E7\", 1)]\n    assert top_errors([]) == []\n\ntest_top_errors()\nprint(\"tests pass\")   # tests pass",
+    "lang": "Python"
+   },
+   {
+    "title": "The debugging round",
+    "body": "In a debugging or code-reading round you get an unfamiliar repository with a failing test or a bug report, and 45 to 60 minutes. This mirrors FDE work closely: most of your time on site is spent inside code you did not write.\n\nWork in a visible, calm order. First read the README and the folder layout for two minutes. Then reproduce the bug: run the failing test and read the full error, including the stack trace. Form one hypothesis, check it with a print, a breakpoint or a small test, and narrow down. Say each step aloud: 'I think the date is parsed as local time; let me print it.' Resist rewriting large sections; the smallest correct fix plus a regression test is the goal.\n\nInterviewers look for method more than speed. A candidate who finds the bug in 40 minutes with a clear process often scores better than one who guesses right in 10 and cannot explain why. The Debugging topic covers the method in depth; practise on an open-source repo by checking out an old commit with a known bug.",
+    "example": "Given a billing service where totals are off by a cent, a candidate runs the failing test, spots floats in the trace, checks one calculation in the REPL, and replaces float with Decimal in one function. She adds a test for 0.1 + 0.2 and explains why money should never be a float.",
+    "code": "# A calm first 10 minutes in an unfamiliar repo\ncat README.md | head -40          # what is this and how is it run?\nls -R src | head -50              # where does the code live?\ngit log --oneline -10             # what changed recently?\npytest -x -q                      # stop at the first failure\npytest tests/test_billing.py::test_total -vv   # full detail on one test\ngrep -rn \"def total\" src/         # find the function in the trace\n# then: one hypothesis, one print or breakpoint(), re-run",
+    "lang": "bash"
+   },
+   {
+    "title": "FDE system design and the take-home",
+    "body": "A general system design round asks you to design something like a URL shortener. An FDE version adds a customer: 'Design a document Q&A system for a hospital group that uses Okta for SSO, keeps data in its own cloud account, and still runs a 15-year-old document store.' The interviewer scores whether you ask about the customer's constraints before drawing boxes.\n\nUse a steady structure: clarify users, data and constraints; sketch the simplest architecture; walk one request end to end; then discuss scale, security, cost, failure and how you would measure success. Say where you would push back on the customer and where you would adapt. The System design topic has the building blocks and the Case bank has practice prompts.\n\nA take-home is a small project done at home, usually with a time limit such as 3 to 4 hours. Respect the limit, and say in the README what you cut. Reviewers usually open the README first, then run it, then read the tests, then the code. A clear README with setup steps, design choices and trade-offs often matters more than an extra feature.",
+    "example": "For the hospital design prompt, a candidate spends the first eight minutes on questions: data volume, residency, who may see which documents, and whether the old store has an API. The final design uses a nightly export from the old store, permission-aware retrieval and a private model endpoint, and the interviewer notes the questions as the strongest part.",
+    "code": "TAKE-HOME README SKELETON\n\n# Claims triage service\n\n## Run it (3 commands)\n    python -m venv .venv && source .venv/bin/activate\n    pip install -r requirements.txt\n    pytest && uvicorn app.main:app --reload\n\n## What I built\nOne paragraph and a small diagram.\n\n## Decisions and trade-offs\n- SQLite instead of Postgres: enough for the task, one-line swap later.\n- Rules first, LLM only for unclear cases: cheaper and testable.\n\n## What I cut (time limit 4 h)\n- Auth, retries on the LLM call, a UI.\n\n## With another day I would\n- Add an eval set of 50 labelled claims and report accuracy.",
+    "lang": "Text"
+   },
+   {
+    "title": "Behavioral rounds with STAR",
+    "body": "Behavioral rounds ask about your past to predict how you will act on the job: 'Tell me about a time a customer was unhappy', 'a time you disagreed with your manager', 'a time you shipped something that failed'. FDE loops lean on conflict, ambiguity, ownership and customer empathy.\n\nAnswer with STAR: Situation (one or two sentences of context), Task (what you owned), Action (what you did, the longest part, in 'I' not 'we'), and Result (a number or a clear outcome, plus what you learned). Aim for about two minutes, then stop and let them ask.\n\nPrepare eight to ten stories from your own work and map each to several themes, since one good story can answer three different questions. Include one real failure where you own the mistake and show what you changed. The Career topic has a story bank template; here the point is delivery. Practise out loud with a timer, and record yourself once. Most people discover they spend too long on the situation and too little on the result.",
+    "example": "Asked about an unhappy customer, a candidate says: the report tool she built was timing out for a finance team at month end (S); she owned the fix (T); she profiled the query, added an index and a cached summary table, and called the finance lead daily until it held (A); report time went from 4 minutes to 9 seconds and the team renewed (R).",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Theme",
+      "Story",
+      "Result to quote"
+     ],
+     "rows": [
+      [
+       "Customer conflict",
+       "Finance report timeouts",
+       "4 min to 9 s; renewed"
+      ],
+      [
+       "Ambiguity",
+       "Vague 'use AI' request at a clinic",
+       "Found one workflow; 30% faster"
+      ],
+      [
+       "Failure",
+       "Shipped without load test",
+       "Outage 2 h; added load tests"
+      ],
+      [
+       "Disagreement",
+       "Pushed back on scope with manager",
+       "Pilot on time, phase 2 agreed"
+      ],
+      [
+       "Learning fast",
+       "Picked up Spark in a week",
+       "Pipeline live in 3 weeks"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "The reverse interview and the offer",
+    "body": "Every round ends with 'do you have questions for me?' Good questions help you decide and show you think like an FDE. Ask different people different things: engineers about tools and on-call, managers about how success is measured, and leaders about where the FDE team is going. Avoid questions you could answer from the website.\n\nAfter the loop, send a short thank-you note to the recruiter within a day. If you hear nothing within the time they gave, one polite follow-up is fine.\n\nWhen an offer comes, get it in writing and look at every part: level, base salary, equity (shares or options and how they vest), bonus, sign-on bonus, travel expectations, remote policy and start date. Research ranges for the level and location on public salary-sharing sites and with people you trust. Negotiate politely and specifically, with a real reason such as a competing offer or market data, and never invent one. The Career topic covers negotiation in more detail. The checklist below is a set of reverse-interview questions worth choosing from.",
+    "example": "A candidate asks the hiring manager, 'What does a great first 90 days look like here, and what made the last FDE who left struggle?' The honest answer about heavy travel helps her negotiate a remote-first arrangement before signing.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "How is an FDE's success measured after 6 and 12 months?",
+     "How many customers does an FDE usually carry at once?",
+     "What share of time is on site, and how is travel planned?",
+     "How does field feedback reach the product team, and can you give an example it changed?",
+     "What does on-call look like for deployed systems?",
+     "Where do FDEs go next: senior FDE, engineering, product, management?",
+     "What would make someone struggle in this role?"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Interview loop",
+    "The full set of interview rounds a company runs before deciding on an offer."
+   ],
+   [
+    "Recruiter screen",
+    "A short first call checking interest, basic fit, communication and practical details such as salary and location."
+   ],
+   [
+    "Pair programming round",
+    "A coding round where you work with the interviewer like a colleague, often with changing requirements."
+   ],
+   [
+    "Debugging round",
+    "A round where you find and fix a bug in an unfamiliar codebase while explaining your method."
+   ],
+   [
+    "Take-home",
+    "A small project done at home within a time limit, reviewed through its README, tests and code."
+   ],
+   [
+    "STAR",
+    "Situation, Task, Action, Result: a structure for answering behavioral questions."
+   ],
+   [
+    "Reverse interview",
+    "The questions you ask the company to judge whether the role suits you."
+   ],
+   [
+    "Total compensation",
+    "The full value of an offer: base salary, bonus, equity and other cash such as a sign-on bonus."
+   ]
+  ],
+  "practice": [
+   "Record your 90-second pitch, listen back once and cut it until it fits in 90 seconds.",
+   "Clone an open-source Python repo, check out an older commit with a known bug from its issue tracker, and debug it aloud for 45 minutes with a timer.",
+   "Run a mock FDE system design round with a friend using a Case bank prompt, spending the first 8 minutes only on questions, then ask for feedback on the questions."
+  ]
+ },
+ "portfolio": {
+  "plain": "A portfolio is public proof that you can build and explain real systems. For an FDE it usually means a GitHub profile with a few strong projects, clear READMEs, a short recorded demo, some written posts and perhaps small open-source contributions. Hiring managers read portfolios quickly, often in under a minute, so the goal is to make your best work easy to find and easy to trust. Proof beats claims: a working demo and a measured result say more than a list of skills.",
+  "analogy": "It is like an architect's portfolio. Nobody reads every drawing. They look at three strong projects, a photo of each finished building, and a sentence on the problem each one solved.",
+  "why": "FDE roles care about building for real users and explaining it clearly, and a portfolio shows both before you ever meet anyone. A candidate with a pinned project, a three-minute demo and a README that states results often gets the interview over a candidate with a stronger resume and nothing to click.",
+  "subtopics": [
+   {
+    "title": "A GitHub profile that works in 30 seconds",
+    "body": "Assume a reviewer spends 30 seconds on your GitHub page. Make those seconds count. GitHub lets you pin up to six repositories to the top of your profile; pin your three or four best, not your first homework. Give each a clear name and a one-line description that says what it does and for whom.\n\nAdd a profile README: a repository with the same name as your username, whose README.md shows at the top of your profile. Keep it short: one line on who you are, links to your best projects and demo videos, and how to contact you.\n\nCommit hygiene matters because reviewers click into repos. Use meaningful commit messages ('Add retry with backoff to CRM client'), keep secrets out of history (use a .env file listed in .gitignore and a .env.example), and delete forks and half-finished experiments from the pinned view. A green activity chart is nice but less important than three polished repos.",
+    "example": "A career-switcher, Tomasz, has 41 public repos, mostly course exercises. He archives 30, pins four projects (a RAG service, an MCP server, a data pipeline and a FastAPI app with tests), and writes a six-line profile README. A recruiter later mentions the RAG repo by name on the first call.",
+    "code": "<!-- README.md in the repo named after your username -->\n# Hi, I'm Tomasz\n\nBackend engineer moving into customer-facing AI work.\nI build small, tested systems and measure whether they help.\n\n**Start here**\n- [claims-rag](https://github.com/example/claims-rag): Q&A over 2,000 policy docs, faithfulness 0.91 on 60 test questions ([3-min demo](https://example.com/demo))\n- [crm-mcp-server](https://github.com/example/crm-mcp-server): MCP server exposing a CRM with read-only tools\n- [orders-pipeline](https://github.com/example/orders-pipeline): nightly ETL with dbt tests\n\nContact: tomasz@example.com",
+    "lang": "Markdown"
+   },
+   {
+    "title": "A project README that sells",
+    "body": "The README is your project's pitch and its manual in one. Most reviewers decide in the first screen, so put the most important things there: a one-sentence summary of the problem and who has it, a short GIF or screenshot of it working, and the headline result.\n\nThen give the details an engineer wants: an architecture diagram, how to run it in three commands or fewer, how you evaluated it, and the numbers (accuracy, latency, cost per request). Close with limitations and what you would do next. Admitting limits builds trust; claiming perfection loses it.\n\nWrite for two readers at once. A hiring manager should understand the problem and result without reading code. An engineer should be able to clone, run and test it in five minutes. If setup needs an API key, say so, give a .env.example and, where possible, a mock mode that runs without one. Test the instructions on a fresh machine or container before you share the link.",
+    "example": "Before: a README that says 'RAG project using LangChain and Chroma'. After: 'Answers insurance policy questions for claims handlers with citations. 60-question eval: 0.91 faithful, median 1.8 s, about $0.004 per question.' plus a GIF and three setup commands. The same project suddenly gets questions in interviews.",
+    "code": "# claims-rag\n\nAnswers claims handlers' policy questions with citations to the source clause.\n\n![demo](docs/demo.gif)\n\n**Result:** 0.91 faithfulness on 60 labelled questions, median 1.8 s, ~$0.004 per question.\n\n## Run it\n    cp .env.example .env        # add your API key, or set MOCK_LLM=1\n    pip install -r requirements.txt\n    pytest && python -m app\n\n## How it works\n    PDFs -> chunk -> embed -> vector store -> retrieve top 5 -> prompt MODEL -> answer + citations\n\n## Evaluation\nHow the 60 questions were written and scored. Script: `evals/run.py`.\n\n## Limits and next steps\nNo table extraction yet; English only; next: hybrid search.",
+    "lang": "Markdown"
+   },
+   {
+    "title": "Choosing which projects to feature",
+    "body": "Pick projects that match the roles you apply for, and make each one show a different strength. Three strong projects are better than ten thin ones.\n\nFor FDE roles at AI labs and AI platforms, feature an LLM system with evaluations, such as the agentic RAG service in Project A or the RAG and agent projects in this atlas, and an MCP server or tool-using agent. For data platform companies, feature a pipeline with tests and a warehouse model, plus a clear data-quality story. For SaaS and integration-heavy companies, feature an API integration that handles auth, retries and messy data, and a small full-stack app a user could click.\n\nEach featured project should look like customer work: a named user, a problem in their words, a measured result and honest limits. You can invent a realistic scenario ('a mid-size insurer's claims team') as long as you say it is a sample scenario with synthetic data.",
+    "example": "Applying mostly to AI-lab FDE roles, a candidate features her RAG service with evals, her MCP server and a FastAPI integration with retries. For one data platform application she swaps the MCP server for her dbt pipeline and moves it to the top of her profile README.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Target role",
+      "Feature first",
+      "Strength it shows"
+     ],
+     "rows": [
+      [
+       "AI lab FDE",
+       "RAG or agent with an eval set",
+       "LLM judgement, measurement"
+      ],
+      [
+       "AI lab FDE",
+       "MCP server or tool-using agent",
+       "Integrating models with systems"
+      ],
+      [
+       "Data platform FDE",
+       "Tested pipeline and warehouse model",
+       "Data modelling, quality"
+      ],
+      [
+       "SaaS / integration FDE",
+       "API integration with retries and auth",
+       "Messy real-world systems"
+      ],
+      [
+       "Any FDE",
+       "Small app a user can click",
+       "Product sense, end to end"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Writing in public",
+    "body": "Short technical writing shows the skill FDEs use daily: explaining a technical decision to someone else. You do not need a big audience. A handful of clear posts that a hiring manager can read in five minutes each is enough.\n\nGood topics come from your own projects: a bug that took a day to find and what caused it, a comparison you measured ('chunk size 300 versus 800 tokens on 60 questions'), a design decision and its trade-offs, or a postmortem of something that failed. Specific and measured beats general. 'What is RAG?' has been written many times; 'How I cut my RAG latency from 4 s to 1.5 s' has not.\n\nUse a simple structure: the problem in one paragraph, what you tried, the numbers, what you would do differently. Keep it to 600 to 1,000 words with one diagram or chart. Publish anywhere easy: a personal site, a blog platform, or a docs folder in the repo. Link each post from the project README and your profile. Never include employer or customer data, code or names without permission.",
+    "example": "An engineer writes 'Why my agent called the same tool 14 times', a 700-word postmortem on a missing stop condition. It is shared in a community forum, and two interviewers mention it, asking follow-up questions that turn the interview into a conversation.",
+    "code": "POST TEMPLATE  (600-1,000 words)\n\nTitle: a specific claim with a number\n  \"Cutting RAG latency from 4 s to 1.5 s without losing accuracy\"\n\n1. The problem (1 paragraph): who waited, how long, why it mattered\n2. How I measured (1 paragraph): the eval set, the metric, the baseline\n3. What I tried (3-4 short sections, each with a number)\n4. What worked and why (1 chart or table)\n5. What I would do differently\n6. Link to the repo and the eval script",
+    "lang": "Text"
+   },
+   {
+    "title": "A three-minute recorded demo",
+    "body": "A short screen recording with your voice lets a reviewer see your project work without installing anything, and it shows how you explain things to a customer. Keep it to about three minutes. Longer videos are rarely watched to the end.\n\nWrite a script and rehearse it. Open with the user and their problem, not with your tech stack. Show the before (the slow manual way), then the tool doing the job on realistic data, then one result number. Spend only 30 seconds on architecture at the end. The Demo topic covers live demos in depth; the same rules apply, except you can re-record until it is right.\n\nPractical tips: close notifications, use a clean browser profile, zoom in so text is readable on a laptop, and prepare the data in advance so nothing loads for long. Cut dead time in a simple editor. Put the link at the top of the README and on your profile. Check that no API keys, emails or real personal data are visible in any frame.",
+    "example": "A candidate's first demo is 11 minutes of setup and code. The rewrite is 3 minutes 10 seconds: a claims handler's question, the manual search, the tool answering with a citation, and '0.91 faithful on 60 questions'. Views to the end go from a few to most viewers, according to the hosting site's stats.",
+    "code": "3-MINUTE DEMO SCRIPT\n\n0:00-0:20  Who and what hurts\n  \"Claims handlers spend ~10 minutes finding the right policy clause.\"\n0:20-0:50  The old way\n  Show the 80-page PDF and the search that misses synonyms.\n0:50-2:10  The tool doing the job\n  Ask 2 real-style questions; show the answer, the citation, the source.\n  Show one question it refuses correctly (\"not in the policy\").\n2:10-2:40  Proof\n  \"On 60 test questions: 0.91 faithful, 1.8 s median.\"\n2:40-3:00  How it works and what's next\n  One diagram; one limitation; link to the repo.",
+    "lang": "Text"
+   },
+   {
+    "title": "Open source and customer-style work",
+    "body": "Small open-source contributions show you can work in someone else's codebase, follow their rules and communicate in public, which is exactly what FDEs do inside customers. Start small: fix a documentation error, add a missing test, or pick an issue labelled 'good first issue'. Read the contributing guide, keep the pull request focused, and respond politely to review. One merged pull request in a well-known library is worth more than many private experiments. Publishing a small public tool, such as an MCP server for a public API or a reusable dbt package, also counts.\n\nThe hard part is showing customer-style work without confidential data. Never publish code, data, names or screenshots from an employer or customer without written permission. Instead, rebuild the pattern: same problem shape, synthetic data, invented company name, and a note saying so. You can describe past work in writing at a general level ('built a claims triage tool for an insurer, cut handling time by about 25 percent') if your contract allows it. When in doubt, ask your former employer or leave it out.",
+    "example": "An engineer built a supplier-invoice matcher at work. For his portfolio he generates 5,000 synthetic invoices with a script, rebuilds the matcher from scratch with a new design, and labels the README 'sample scenario, synthetic data'. He talks about the real project only in general terms.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "No code copied from an employer or customer repository",
+     "Synthetic or public data only, with the generator script in the repo",
+     "Invented company name and a 'sample scenario' note in the README",
+     "No real names, emails, logos or screenshots of internal tools",
+     "API keys only in .env, with .env.example committed",
+     "Descriptions of past work checked against your contract"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Portfolio",
+    "Public proof of your work: projects, demos and writing that a reviewer can check."
+   ],
+   [
+    "Pinned repositories",
+    "Up to six repositories you choose to show at the top of your GitHub profile."
+   ],
+   [
+    "Profile README",
+    "A README in a repository named after your username, shown at the top of your GitHub profile."
+   ],
+   [
+    "Commit hygiene",
+    "Clear commit messages, small focused commits and no secrets in history."
+   ],
+   [
+    "Synthetic data",
+    "Generated data with a realistic shape that contains no real people or customers."
+   ],
+   [
+    "Good first issue",
+    "A label open-source projects put on issues suited to new contributors."
+   ],
+   [
+    "Demo script",
+    "A timed plan for what you show and say in a recorded or live demo."
+   ],
+   [
+    "Postmortem",
+    "A short write-up of what went wrong, why, and what changes as a result."
+   ]
+  ],
+  "practice": [
+   "Rewrite the README of your best project using the template: one-line problem, GIF, headline result, three-command setup, limits.",
+   "Record a three-minute demo of one project following the script, then cut anything that is not the user, the problem, the tool working or the result.",
+   "Find one 'good first issue' in a Python library you use, open a focused pull request and write down what you learned from the review."
+  ]
+ }
+}

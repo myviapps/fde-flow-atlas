@@ -1,0 +1,957 @@
+{
+ "discovery": {
+  "plain": "Customer discovery is the set of conversations and observations you do at the start of a project to find out what problem a customer really has. You interview the people involved, watch them work and write down what hurts in their own words. An interview guide is a short document listing what you want to learn and the questions you plan to ask. The end product is a problem statement: a short paragraph that names who has the problem, what it is, what it costs and how you will know it is solved.",
+  "analogy": "It is like a doctor taking a history before prescribing anything. The patient says 'I need antibiotics', and the doctor asks when it started, what makes it worse and what they have tried, and often finds a different cause.",
+  "why": "Customers often arrive with a solution already in mind, such as 'we need a chatbot'. An FDE who builds exactly that without discovery may ship something nobody uses. Discovery finds the real blocker, for example that support agents spend most of their time searching three old knowledge bases, which changes what you build.",
+  "subtopics": [
+   {
+    "title": "Preparing an interview guide",
+    "body": "An interview guide keeps you focused without turning the conversation into a script. It has three parts: what you want to learn (your goals), who you are talking to, and a short list of open questions grouped by theme.\n\nWrite 8 to 12 questions but expect to use about half. The guide is a safety net. The best material often comes from follow-ups like 'tell me more about that'.\n\nBefore each interview, read whatever you can find: the customer's org chart, recent tickets, a sample of the data. You will ask better questions and waste less of their time.",
+    "example": "An insurer wants to 'use AI for claims'. You schedule 45 minutes each with two claims handlers, a team lead and the claims operations director. Your goal is to learn where a claim waits the longest. Your guide has three themes: the daily workflow, the hardest recent claim, and how success is measured today.",
+    "code": "INTERVIEW GUIDE - Claims processing discovery\nGoal:      Find where claims wait longest and why\nPerson:    Claims handler, 3+ years, motor claims team\nTime:      45 min (5 intro, 30 questions, 10 wrap-up)\n\nWARM-UP\n  - What does a normal day look like for you?\nWORKFLOW\n  - Walk me through the last claim you closed, step by step.\n  - Where did you have to wait for something or someone?\n  - What tools or screens did you use? Any spreadsheets on the side?\nHARDEST CASE\n  - Tell me about a recent claim that took much longer than usual.\n  - What happened next? What did you do about it?\nMEASURES\n  - How does your manager know you are doing well?\nWRAP-UP\n  - What should I have asked that I did not?\n  - Who else should I talk to?",
+    "lang": "Text",
+    "checklist": [
+     "Goals written in one or two sentences",
+     "Background read: org chart, sample tickets or data",
+     "8 to 12 open questions grouped by theme",
+     "At least one 'last time you...' question",
+     "Recording or note-taker agreed with the interviewee",
+     "Closing question: who else should I talk to?"
+    ]
+   },
+   {
+    "title": "Open questions versus leading questions",
+    "body": "An open question lets the person answer in their own way, usually starting with what, how, tell me or walk me through. A leading question suggests the answer you want, for example 'Wouldn't it be faster if this were automated?'. People are polite, so they tend to agree with leading questions, and you learn nothing.\n\nAsk about the past, not the future. 'Would you use a tool that...' produces guesses. 'Tell me about the last time you...' produces facts.\n\nAfter asking, stay quiet. A pause of a few seconds often makes people add the most useful detail.",
+    "example": "At a hospital pharmacy you want to know if stock checks are painful. Leading: 'Stock checks must be a real pain, right?' Open: 'Walk me through yesterday's stock check.' The open question reveals that the pharmacist prints a report, walks the shelves and types counts back into a spreadsheet, which takes about an hour each morning.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Leading (avoid)",
+      "Open (use)"
+     ],
+     "rows": [
+      [
+       "Would an AI assistant help you?",
+       "Walk me through the last time you looked for an answer."
+      ],
+      [
+       "Is the search tool too slow?",
+       "What happens when you search for a policy?"
+      ],
+      [
+       "You'd want this on mobile, right?",
+       "Where are you when you need this information?"
+      ],
+      [
+       "Isn't the approval step pointless?",
+       "Why does the approval step exist, as far as you know?"
+      ],
+      [
+       "Would you pay for this?",
+       "What have you already tried to fix this, and what did it cost?"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "The five whys",
+    "body": "The five whys is a simple technique for finding a root cause. You take a problem and ask 'why does that happen?', then ask why again about the answer, usually about five times. Five is a rule of thumb. Stop when you reach a cause you can act on.\n\nThe first answer is often a symptom. Deeper answers reveal process or data problems that a better tool could actually fix.\n\nAsk the whys gently and in different words, so it feels like curiosity, not an interrogation.",
+    "example": "A retailer says 'our demand forecasts are wrong'. Why? The forecasts miss promotions. Why? Promotion dates are not in the forecasting data. Why? They live in a marketing spreadsheet. Why is it not loaded? Nobody owns getting it into the warehouse. The actionable cause is a missing data feed, which is a much smaller fix than a new forecasting model.",
+    "code": "",
+    "lang": "Text",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "p",
+       90,
+       70,
+       "Forecast wrong",
+       "the complaint"
+      ],
+      [
+       "w1",
+       265,
+       70,
+       "Misses promos",
+       "why 1"
+      ],
+      [
+       "w2",
+       440,
+       70,
+       "No promo data",
+       "why 2"
+      ],
+      [
+       "w3",
+       615,
+       70,
+       "In a spreadsheet",
+       "why 3"
+      ],
+      [
+       "w4",
+       615,
+       220,
+       "No data owner",
+       "why 4, root cause"
+      ],
+      [
+       "fix",
+       440,
+       220,
+       "Build the feed",
+       "actionable fix"
+      ]
+     ],
+     "edges": [
+      [
+       "p",
+       "w1",
+       0,
+       "why?"
+      ],
+      [
+       "w1",
+       "w2",
+       0,
+       "why?"
+      ],
+      [
+       "w2",
+       "w3",
+       0,
+       "why?"
+      ],
+      [
+       "w3",
+       "w4",
+       0,
+       "why?"
+      ],
+      [
+       "w4",
+       "fix"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Shadowing and capturing pain in their words",
+    "body": "Shadowing means sitting with a user, in person or on a screen share, and watching them do real work. People forget or skip steps when they describe their job. Watching shows the extra spreadsheet, the sticky note of passwords and the copy-paste between systems.\n\nWrite down pain as verbatim quotes, meaning the exact words the person used. 'I dread month-end' tells you more than your summary 'month-end is inefficient'. Quotes are also powerful later in a demo or a PRD.\n\nNote timings and counts when you can: how many screens, how many minutes, how many times a day. These become your baseline, the 'before' number you will improve.",
+    "example": "You shadow an accounts payable clerk at a logistics company for an hour. She opens an emailed invoice PDF, retypes 14 fields into the ERP, then checks the purchase order in a second system. You time five invoices at about 6 minutes each and write down her quote: 'The worst part is when the PO number is handwritten.'",
+    "code": "OBSERVATION LOG - AP clerk, 10:00-11:00\ntime   step                              tool         notes\n10:02  open invoice email                Outlook\n10:03  retype 14 fields                  ERP screen   'I always mistype VAT'\n10:06  look up PO number                 PO system    PO handwritten, zoomed in\n10:08  submit, next invoice              ERP\n...\nBaseline: 5 invoices, avg ~6 min each\nQuote:    'The worst part is when the PO number is handwritten.'",
+    "lang": "Text"
+   },
+   {
+    "title": "Mapping stakeholders",
+    "body": "A stakeholder is anyone who affects or is affected by the project. A stakeholder map lists them with their role, what they care about, how much influence they have and whether they support the project.\n\nCommon roles: the economic buyer (controls the budget), the sponsor (champions the project), users (do the daily work), IT and security (can block deployment) and data owners (control access to the data you need).\n\nMissing one of these is a common reason good projects stall. A security team you never met can delay a launch for weeks.",
+    "example": "For the insurer's claims project: the COO is the economic buyer and cares about cost per claim. The claims director is the sponsor. Handlers are the users and care about fewer retyped fields. The CISO cares about customer data leaving the network. The data platform lead owns access to the claims database.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Person",
+      "Role",
+      "Cares about",
+      "Influence"
+     ],
+     "rows": [
+      [
+       "COO",
+       "Economic buyer",
+       "Cost per claim",
+       "High"
+      ],
+      [
+       "Claims director",
+       "Sponsor",
+       "Cycle time, staff morale",
+       "High"
+      ],
+      [
+       "Claims handlers",
+       "Users",
+       "Less retyping, fewer escalations",
+       "Medium"
+      ],
+      [
+       "CISO",
+       "Can block",
+       "Data residency, access control",
+       "High"
+      ],
+      [
+       "Data platform lead",
+       "Data owner",
+       "Load on the database",
+       "Medium"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Writing the problem statement",
+    "body": "After the interviews, group your notes into themes, count how often each comes up, and pick the one with the most pain and the clearest path to improvement.\n\nThen write a problem statement: who has the problem, what it is, how often or how much it costs, why it happens and how success will be measured. Keep it to one paragraph.\n\nShare it with the sponsor and at least one user. If they say 'yes, that is it', you are ready to design. If they correct you, that is cheap now and expensive later.",
+    "example": "After eight interviews and two shadowing sessions at the logistics company, the strongest theme is manual invoice entry. You write the statement below and the finance director agrees, adding that month-end is when it matters most.",
+    "code": "PROBLEM STATEMENT\nWho:      Accounts payable clerks (6 people) at the logistics company\nProblem:  Manually retype invoice fields from PDFs into the ERP\nSize:     ~6 min per invoice, ~1,500 invoices a month (from our timing)\nWhy:      Invoices arrive as email PDFs in many layouts; no extraction\nImpact:   Month-end backlog, late-payment fees, retyping errors\nSuccess:  Median handling time under 2 min per invoice,\n          field error rate at or below today's, within 8 weeks\nEvidence: 8 interviews, 2 shadowing sessions, clerk quotes attached",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "Discovery",
+    "The early phase of a project spent learning the customer's real problem before building."
+   ],
+   [
+    "Interview guide",
+    "A short plan of goals and open questions used to steer a discovery conversation."
+   ],
+   [
+    "Open question",
+    "A question the person can answer freely, often starting with what, how or tell me."
+   ],
+   [
+    "Leading question",
+    "A question that suggests the answer the asker wants to hear."
+   ],
+   [
+    "Five whys",
+    "Asking why repeatedly to move from a symptom to an actionable root cause."
+   ],
+   [
+    "Shadowing",
+    "Watching a user do their real work to see steps and workarounds they do not mention."
+   ],
+   [
+    "Verbatim quote",
+    "The user's exact words, recorded without paraphrasing."
+   ],
+   [
+    "Stakeholder map",
+    "A table of people involved in a project with their role, interests and influence."
+   ],
+   [
+    "Baseline",
+    "The measured value of a metric before your change, used to show improvement."
+   ],
+   [
+    "Problem statement",
+    "A one-paragraph summary of who has the problem, what it is, its cost and how success is measured."
+   ]
+  ],
+  "practice": [
+   "Write an interview guide (goals plus 10 open questions) for a friend or colleague about a task they find tedious at work. Rewrite any question that is leading.",
+   "Interview that person for 20 minutes using your guide. Record at least five verbatim quotes and apply the five whys to their biggest complaint. Deliverable: one page of notes with the why chain.",
+   "Stretch: pick a public case study of a company adopting software, build a stakeholder map for it (at least five roles) and write a problem statement with a baseline and a success metric, marking which numbers you would need to verify."
+  ]
+ },
+ "docs": {
+  "plain": "In customer projects, three documents do most of the work. A statement of work (SOW) is a contract document that says exactly what will be delivered, by when and for how much. A product requirements document (PRD) explains the problem, who it is for and what success looks like. A technical design doc explains how the engineers will build it and why they chose that approach. A decision log is a running list of important choices, recording what was decided, why and by whom.",
+  "analogy": "Think of building a kitchen extension. The SOW is the signed quote from the builder, the PRD is the family's list of what the kitchen must do (seat six, fit a big fridge), and the design doc is the architect's drawings. The decision log is the notebook where you wrote 'switched to gas hob on 3 May because the electrics could not take induction'.",
+  "why": "FDEs often write or review all three. A vague SOW leads to arguments about what was promised. A missing PRD means the team builds the wrong thing. A missing design doc means the customer's security team sees the architecture for the first time a week before launch and blocks it.",
+  "subtopics": [
+   {
+    "title": "What each document is for",
+    "body": "Each document answers a different question for a different reader. The SOW answers 'what are we paying for?'. The PRD answers 'what problem are we solving and how will we know?'. The design doc answers 'how will we build it safely?'.\n\nThey are written roughly in order, but they overlap. Discovery feeds the PRD, the PRD's scope feeds the SOW, and the design doc is written once the requirements are clear enough to choose an approach.\n\nKeep them consistent. If the SOW promises five data sources and the PRD mentions three, someone will be disappointed.",
+    "example": "A regional bank hires your company to build an assistant that helps branch staff answer product questions. Sales and the bank's procurement team sign a SOW. You write a one-page PRD with the branch operations manager. Your engineers write a design doc that the bank's security architect reviews before any data is connected.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Document",
+      "Question it answers",
+      "Main readers",
+      "Typical length"
+     ],
+     "rows": [
+      [
+       "SOW",
+       "What will be delivered, when, for how much?",
+       "Legal, procurement, sponsor",
+       "3-10 pages"
+      ],
+      [
+       "PRD",
+       "What problem, for whom, what is success?",
+       "Product, customer, team",
+       "1-3 pages"
+      ],
+      [
+       "Design doc",
+       "How will we build it and why this way?",
+       "Engineers, security, customer IT",
+       "3-10 pages"
+      ],
+      [
+       "Decision log",
+       "What did we decide, when and why?",
+       "Everyone on the project",
+       "Grows over time"
+      ]
+     ]
+    },
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "disc",
+       90,
+       70,
+       "Discovery",
+       "problem statement"
+      ],
+      [
+       "prd",
+       265,
+       70,
+       "PRD",
+       "problem, metrics"
+      ],
+      [
+       "sow",
+       440,
+       70,
+       "SOW",
+       "scope, price"
+      ],
+      [
+       "design",
+       615,
+       70,
+       "Design doc",
+       "how to build"
+      ],
+      [
+       "build",
+       615,
+       220,
+       "Build",
+       "code, tests"
+      ],
+      [
+       "log",
+       440,
+       220,
+       "Decision log",
+       "why things changed",
+       1
+      ]
+     ],
+     "edges": [
+      [
+       "disc",
+       "prd"
+      ],
+      [
+       "prd",
+       "sow"
+      ],
+      [
+       "sow",
+       "design"
+      ],
+      [
+       "design",
+       "build"
+      ],
+      [
+       "build",
+       "log",
+       0,
+       "records"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "The statement of work",
+    "body": "A SOW is usually attached to a master services agreement, the main contract between the two companies. The SOW covers one project: objectives, scope, deliverables, timeline, acceptance criteria, responsibilities on both sides, assumptions and fees.\n\nAcceptance criteria are the most important part for an engineer. They are testable conditions the customer checks before signing off a deliverable. 'An AI assistant' is not testable. 'The assistant answers the agreed 100-question test set with at least 85% judged correct by the bank's reviewers' is.\n\nAlso list what is out of scope and what the customer must provide, such as data access by a certain date. Many delays come from customer dependencies that were never written down.",
+    "example": "For the bank project, the SOW lists three deliverables: a data connector to the product policy library, the assistant web app, and a two-week pilot in five branches. The bank must provide read access to the policy library by week 2. Integration with the core banking system is explicitly out of scope.",
+    "code": "STATEMENT OF WORK  (template)\n1. Background and objectives\n   <one paragraph: the problem and the business goal>\n2. Scope\n   In scope:     <bullets>\n   Out of scope: <bullets, be explicit>\n3. Deliverables and acceptance criteria\n   D1 <name>  - accepted when <testable condition>\n   D2 <name>  - accepted when <testable condition>\n4. Timeline and milestones\n   <milestone>  <week or date>\n5. Responsibilities\n   Provider: <what we do>\n   Customer: <data access, SMEs, environments, by when>\n6. Assumptions and risks\n7. Change control\n   Changes via written change request, assessed for time and cost\n8. Fees and payment schedule\n9. Sign-off  (names, roles, dates)",
+    "lang": "Text"
+   },
+   {
+    "title": "A one-page PRD",
+    "body": "A PRD describes the problem and the desired outcome. It does not describe the code. A one-page PRD forces you to be clear and makes it likely people actually read it.\n\nThe core sections are: problem, users, goals and success metrics, requirements (must, should, won't), and open questions. Put your baseline number from discovery next to each metric so success is measurable.\n\nThe 'won't' list is as useful as the 'must' list. It stops scope creep before it starts.",
+    "example": "For the bank assistant: the problem is that branch staff take a long time to find answers in a large policy library and sometimes give inconsistent answers. The success metric is time to answer a product question, with a baseline you measured in discovery, plus a quality check by the bank's reviewers.",
+    "code": "ONE-PAGE PRD  -  Branch product assistant\nProblem:   Branch staff search a large policy library to answer\n           customer questions; answers are slow and inconsistent.\nUsers:     Branch advisors (primary), branch managers (secondary)\nGoals and metrics:\n  - Median time to answer a product question: baseline <X min> -> target <Y>\n  - Answers judged correct by reviewers on the test set: target >= <Z>%\nMust:      Cite the policy page for every answer\n           Only use approved, current policy documents\nShould:    Show when a policy was last updated\nWon't:     Take actions in core banking; answer non-product questions\nOpen questions:\n  - Who approves new policy documents for the index?\n  - Is advisor feedback allowed to be logged?",
+    "lang": "Text"
+   },
+   {
+    "title": "The technical design doc",
+    "body": "A design doc explains how you will build the system and why you chose that way. It usually includes context, goals and non-goals, the proposed architecture, alternatives you considered, data and security, testing, rollout and open risks.\n\nThe 'alternatives considered' section is where reviewers learn the most. It shows you thought about other options and explains why you rejected them.\n\nShare it early, as a draft, with the customer's engineers and security team. Their comments are much cheaper at this stage than after the code is written.",
+    "example": "For the bank assistant, the design doc proposes retrieval-augmented generation over the policy library, hosted in the bank's cloud account. It compares this with fine-tuning a model on the policies and rejects fine-tuning because policies change weekly and answers need citations.",
+    "code": "TECHNICAL DESIGN DOC  (template)\nTitle / author / reviewers / status: draft | in review | approved\n1. Context         why this exists, link to PRD\n2. Goals           measurable, from the PRD\n   Non-goals       what this design will not handle\n3. Proposed design\n   - architecture diagram\n   - components and data flow\n   - APIs and data models\n4. Alternatives considered\n   Option B: <summary>  rejected because <reason>\n5. Data, security and privacy\n   where data lives, who can access it, PII handling, logging\n6. Testing and evaluation\n7. Rollout and rollback plan\n8. Risks and open questions",
+    "lang": "Text"
+   },
+   {
+    "title": "Keeping a decision log",
+    "body": "A decision log is a simple table, often in a shared doc, where each significant decision gets one row: date, decision, options considered, reason, who decided and any follow-up.\n\nIt answers the question 'why did we do it this way?' months later, when the original people may have moved on. It also stops the same debate from happening in every meeting.\n\nLog decisions that change scope, architecture, cost or risk. Small coding choices do not need an entry.",
+    "example": "Mid-project, the bank asks to add mortgage policies. You estimate two extra weeks. The sponsor decides to add mortgages and drop the branch manager dashboard to keep the date. You log it and raise a change request against the SOW.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Date",
+      "Decision",
+      "Reason",
+      "Owner"
+     ],
+     "rows": [
+      [
+       "2026-03-04",
+       "Use RAG, not fine-tuning",
+       "Policies change weekly; need citations",
+       "Tech lead"
+      ],
+      [
+       "2026-03-18",
+       "Host in bank's cloud account",
+       "Security review: data must stay in tenant",
+       "Bank CISO"
+      ],
+      [
+       "2026-04-02",
+       "Add mortgage policies, drop manager dashboard",
+       "Sponsor priority; keep pilot date",
+       "Sponsor"
+      ],
+      [
+       "2026-04-09",
+       "Weekly re-index of policy library",
+       "Matches policy publishing cycle",
+       "Data owner"
+      ]
+     ]
+    },
+    "checklist": [
+     "Every scope change has a log entry and, if needed, a SOW change request",
+     "Each entry names an owner and a date",
+     "Options considered are listed, not just the winner",
+     "The log is linked from the PRD and the design doc",
+     "The customer can read it"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Statement of work (SOW)",
+    "A contract document listing a project's scope, deliverables, timeline, acceptance criteria and fees."
+   ],
+   [
+    "Master services agreement (MSA)",
+    "The overall contract between two companies, under which individual SOWs are signed."
+   ],
+   [
+    "Acceptance criteria",
+    "Testable conditions a deliverable must meet before the customer signs it off."
+   ],
+   [
+    "Scope creep",
+    "Gradual growth of a project's requirements without matching changes to time or budget."
+   ],
+   [
+    "Change request",
+    "A written proposal to change scope, assessed for its effect on time and cost."
+   ],
+   [
+    "PRD",
+    "A product requirements document describing the problem, users, goals, requirements and success metrics."
+   ],
+   [
+    "Design doc",
+    "A technical document explaining how a system will be built, alternatives considered and risks."
+   ],
+   [
+    "Non-goal",
+    "Something a design deliberately will not handle, stated to prevent confusion."
+   ],
+   [
+    "Decision log",
+    "A running record of significant decisions with dates, reasons and owners."
+   ]
+  ],
+  "practice": [
+   "Take a small app idea you know well (for example a to-do app for a sports club) and write a one-page PRD using the template, including a 'won't' list.",
+   "Write a SOW for the same project with three deliverables, each with a testable acceptance criterion, plus an explicit out-of-scope list and customer responsibilities.",
+   "Stretch: write a two-page design doc for it with at least one alternative considered, then simulate a mid-project change and record it in a decision log with its effect on the SOW."
+  ]
+ },
+ "demo": {
+  "plain": "A demo is a live or recorded showing of software to people who need to understand or approve it. Storytelling means organizing the demo as a short story about a real user, instead of a list of features. The story has a before (how painful the task is today), a turning point (the moment the software makes it easy) and an after (the result and what it is worth). A good demo also plans for things going wrong and ends with a clear next step.",
+  "analogy": "A cooking show does not list every function of the oven. It follows one recipe from raw ingredients to a finished dish, and it always has a finished dish ready in the other oven in case something burns.",
+  "why": "FDEs demo constantly: to win a pilot, to show progress to a sponsor, to train end users. A clear story about the customer's own workflow makes a complex AI system easy to understand and approve. A chaotic feature tour, or a crash with no backup, can cost the trust you built in discovery.",
+  "subtopics": [
+   {
+    "title": "Build the demo around the user's workflow",
+    "body": "Start from a real person and a real task you saw in discovery. Show the steps in the order that person does them, using realistic data, and ideally the customer's own data if you are allowed.\n\nPick one workflow and do it well. Showing every feature makes the audience work to figure out what matters.\n\nName the user out loud: 'This is Priya, a claims handler. It's Monday and she has 40 new claims.' The audience will follow Priya more easily than a list of screens.",
+    "example": "For an insurer, you demo the assistant through one motor claim: Priya opens the claim, the assistant has already extracted the damage details from photos and the repair quote, flags a mismatch in the repair cost, and drafts the approval note. Three screens, one story.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "One named user from discovery",
+     "One workflow, shown in the user's real order",
+     "Realistic data, customer data only if approved",
+     "The key moment happens in the first half",
+     "Every screen shown earns its place in the story"
+    ]
+   },
+   {
+    "title": "The before and after story",
+    "body": "Show the pain before you show the fix. A quick 'before' makes the improvement obvious. This can be a screenshot of the current process, a timing from shadowing or a quote from a user.\n\nThen show the same task with your system. Keep the comparison fair: same task, same kind of input.\n\nFinish the 'after' with a number, using your discovery baseline. If you do not have a measured result yet, say it is an estimate and explain how you will measure it in the pilot.",
+    "example": "Before: 'Today Priya opens four systems and retypes the repair quote. We timed this at about 12 minutes per claim.' After: 'With the assistant, the same claim took about 3 minutes in our test with 20 claims. The pilot will measure it across the whole team.'",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Part",
+      "What you show",
+      "Time"
+     ],
+     "rows": [
+      [
+       "Before",
+       "Current process, a timing or a user quote",
+       "1-2 min"
+      ],
+      [
+       "Turning point",
+       "The live step where the task gets easy",
+       "2-4 min"
+      ],
+      [
+       "After",
+       "The result plus the metric that moved",
+       "1-2 min"
+      ],
+      [
+       "Ask",
+       "The specific next step and who owns it",
+       "1 min"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Tailoring to executives and end users",
+    "body": "Executives have little time and care about outcomes, cost, risk and timing. Lead with the result, show one short workflow, then talk about what it would take to roll out.\n\nEnd users care about whether it fits their daily work. They want to see their exact screens, how edge cases are handled and what happens when the AI is wrong. Give them more time in the product and ask for their feedback.\n\nOften you run two versions of the same demo for the same customer, one per audience.",
+    "example": "For the insurer's COO, you open with 'cost per claim could drop because handling time falls', show one claim in two minutes, then cover pilot plan and data security. For the claims handlers, you spend twenty minutes on real claims, including a blurry photo the assistant cannot read, and show how the handler corrects it.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "",
+      "Executives",
+      "End users"
+     ],
+     "rows": [
+      [
+       "Open with",
+       "Business result and number",
+       "Their daily task"
+      ],
+      [
+       "Depth",
+       "One short happy path",
+       "Several cases, including errors"
+      ],
+      [
+       "Talk about",
+       "Cost, risk, timeline, security",
+       "Speed, accuracy, how to correct it"
+      ],
+      [
+       "Close with",
+       "Decision or approval",
+       "Feedback and training date"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Handling live failures",
+    "body": "Live demos fail: the network drops, a model returns an odd answer, a login expires. Plan for this in advance so a failure costs you thirty seconds instead of the meeting.\n\nPrepare a fallback for every live step: a screen recording of the same flow, cached responses you can switch to, or screenshots. Test the whole demo on the same machine and network you will use, shortly before the meeting.\n\nWhen something breaks, name it in one calm sentence, switch to the fallback and continue the story. Follow up afterwards with the cause. Do not debug in front of the audience.",
+    "example": "Halfway through a demo to a hospital's operations director, the LLM call times out. You say: 'That call timed out, so let me show you the recording of the same step from this morning.' You play 40 seconds of video and carry on. That evening you email the director a short note: the cause was a rate limit on the demo account, now raised.",
+    "code": "DEMO FALLBACK PLAN\nStep                     Live source          Fallback\n1 Open claim             staging app          screenshot set A\n2 Extract from photos    live model call      cached JSON + video 0:40-1:20\n3 Flag cost mismatch     rules service        video 1:20-1:50\n4 Draft approval note    live model call      pre-generated note\n\nBefore the meeting:\n  [ ] full dry run on the demo laptop and venue network\n  [ ] logins refreshed, tokens valid for 24h\n  [ ] recording and screenshots open in a background tab\n  [ ] phone hotspot ready as backup network",
+    "lang": "Text"
+   },
+   {
+    "title": "A 10-minute demo script",
+    "body": "Write the demo down as a script with timings. You do not need to read it aloud, but writing it forces you to cut and to decide what each minute is for.\n\nA good default for ten minutes: one minute of context, two minutes of the before story, four minutes of the live workflow, one minute of the after and its number, and two minutes for the ask and questions.\n\nRehearse at least twice with a timer, once with a colleague acting as a skeptical executive.",
+    "example": "Below is a script for the insurer demo to the COO. The ask is specific: approval for a four-week pilot with one claims team, and a named person to arrange data access.",
+    "code": "10-MINUTE DEMO SCRIPT  -  Claims assistant, COO audience\n0:00  Context   'You asked us to reduce claim handling time.\n                 Here is one claim, today and with the assistant.'\n1:00  Before    Show Priya's current 4-system process.\n                 'We timed this at about 12 minutes per claim.'\n3:00  Live      Open claim -> extracted details -> cost mismatch flag\n                 -> drafted approval note. Priya reviews and approves.\n7:00  After     'Same claim: about 3 minutes in our 20-claim test.'\n                 Note: estimate; pilot will measure the full team.\n8:00  Ask       'We propose a 4-week pilot with the motor team.\n                 We need data access by the 15th. Who should own that?'\n8:30  Questions\n10:00 End",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "Demo",
+    "A live or recorded showing of software to explain or win approval for it."
+   ],
+   [
+    "Workflow",
+    "The sequence of steps a person follows to complete a task."
+   ],
+   [
+    "Before and after story",
+    "Showing the current painful process first, then the same task with the new system."
+   ],
+   [
+    "Aha moment",
+    "The point in a demo where the audience sees the value clearly."
+   ],
+   [
+    "Happy path",
+    "The normal case where everything works as expected."
+   ],
+   [
+    "Fallback",
+    "A prepared backup, such as a recording or cached result, used if a live step fails."
+   ],
+   [
+    "Dry run",
+    "A full rehearsal on the same setup you will use for the real demo."
+   ],
+   [
+    "The ask",
+    "The specific next step you request at the end, with an owner and date."
+   ]
+  ],
+  "practice": [
+   "Pick any app you use daily and write a 5-minute demo script around one user and one task, with a before, a turning point, an after and an ask.",
+   "Record yourself giving that demo with a timer. Then write a fallback plan for each live step and deliberately switch to a fallback once during a second run.",
+   "Stretch: write two versions of a 10-minute demo for one of your own projects, one for an executive and one for end users, and have a friend play each role and give feedback on what they remembered."
+  ]
+ },
+ "builddrill": {
+  "plain": "A timed build drill is an interview exercise where you build a small working program in a fixed time, usually 60 to 90 minutes. It can be a take-home, done alone and submitted, or a live build, done while an interviewer watches or pairs with you. The task is often a small API or tool based on a realistic customer problem. You are scored on how you approach the problem, whether the core works, code quality, tests and how you explain your trade-offs, meaning the choices you made and what you gave up.",
+  "analogy": "It is like a cooking competition with a clock. The judges care whether you served a complete, tasty main dish on time, not whether you started five fancy side dishes that never reached the plate.",
+  "why": "FDE work is building useful things fast under uncertainty, often with the customer watching. Companies use timed builds to see that directly. The same habits, such as clarifying first, shipping a thin working slice and being honest about shortcuts, are exactly what you use on a customer site.",
+  "subtopics": [
+   {
+    "title": "How the drill is run and scored",
+    "body": "Formats vary by company. A take-home usually arrives as a written prompt with a deadline, and you submit a repository. A live build is done on a video call or in person, where you share your screen and talk while you work. Some companies follow either with a review call where you walk through your code.\n\nThe exact rubric (the scoring guide) differs, but common criteria are problem understanding, a working solution, code clarity, tests, and communication. In live builds, how you think out loud counts a lot.\n\nIf the company tells you the rubric or lets you ask about it, use that. Ask whether you may use AI assistants and documentation, since policies differ.",
+    "example": "A company sends this prompt: 'A support team gets thousands of tickets a day. Build a small service that classifies a ticket into a category and returns a confidence. You have 90 minutes. Submit a repo with a README.'",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Criterion",
+      "What reviewers look for"
+     ],
+     "rows": [
+      [
+       "Problem understanding",
+       "Clarifying questions, stated assumptions"
+      ],
+      [
+       "Working solution",
+       "Core path runs end to end"
+      ],
+      [
+       "Code quality",
+       "Clear names, small functions, validation"
+      ],
+      [
+       "Tests",
+       "Happy path plus a failure case, and they pass"
+      ],
+      [
+       "Communication",
+       "README, thinking aloud, honest trade-offs"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "A minute-by-minute plan",
+    "body": "Split the time into phases and check the clock at each boundary. For 90 minutes: read (5), clarify (5), plan and cut (5), scaffold (10), core path (30), tests (15), README (10), present or final check (10).\n\nFor 60 minutes, shrink each phase roughly by a third but keep the order. Never skip clarifying or tests entirely.\n\nIf you fall behind, cut scope, not the tests or the README. Say out loud or write down what you cut.",
+    "example": "At minute 55 of the triage task, your core endpoint works with a keyword rule, but you wanted an LLM call too. The plan says tests start now. You write the two tests first, then use any leftover time for the LLM, and note it in the README as a next step.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Min 0-5: read the prompt twice, list inputs and outputs",
+     "Min 5-10: ask questions or write assumptions",
+     "Min 10-15: must-have and nice-to-have list",
+     "Min 15-25: scaffold app, model, health check, first run",
+     "Min 25-55: core path working end to end",
+     "Min 55-70: happy path test and one failure test",
+     "Min 70-80: README with run steps, assumptions, cuts",
+     "Min 80-90: final run, then present trade-offs"
+    ]
+   },
+   {
+    "title": "Clarifying questions",
+    "body": "Clarifying questions show the interviewer you work like an FDE: you understand the need before you build. Ask a few that change what you build. Too many questions eat your time.\n\nGood areas: who the user is, what the input looks like, what matters most (speed, accuracy, cost), and what 'done' means. In a take-home with nobody to ask, write the questions and your assumed answers at the top of the README.\n\nWrite answers down as you get them. They are your requirements.",
+    "example": "For the ticket triage task you ask: 'Is the category list fixed, and what are the categories? Is one ticket processed at a time or in batches? Is latency or accuracy more important?' The interviewer says the categories are billing, technical and general, one ticket at a time, accuracy matters more.",
+    "code": "## Assumptions (top of README)\n- Categories are fixed: billing, technical, general\n- One ticket per request; batch is out of scope\n- Ticket text is English, max 5,000 characters\n- Accuracy matters more than latency for this exercise\n- No authentication needed for the exercise (would add in production)",
+    "lang": "Text"
+   },
+   {
+    "title": "Scaffolding FastAPI and tests fast",
+    "body": "Scaffolding means creating the empty skeleton of the project: folders, dependencies, the app object and a first test. Practice this beforehand until it takes under ten minutes.\n\nA small FastAPI layout is enough: an app folder with main.py, a tests folder and a requirements file. Pydantic models validate input for you, so bad requests get a 422 error automatically.\n\nRun the app and one test as soon as the skeleton exists. Finding a broken setup at minute 20 is fine. Finding it at minute 80 is a disaster.",
+    "example": "You create the project, add a health endpoint and a TicketIn model with a length limit, and run pytest with one trivial test. Everything passes by minute 22, so you start the core path early.",
+    "code": "# set up in about 2 minutes\nmkdir triage && cd triage\npython -m venv .venv && source .venv/bin/activate\npip install fastapi uvicorn pytest httpx   # httpx is needed by TestClient\nmkdir app tests && touch app/__init__.py tests/__init__.py\npip freeze > requirements.txt\n\n# after writing app/main.py and tests/test_main.py:\nuvicorn app.main:app --reload            # try it at http://127.0.0.1:8000/docs\npytest -q                                # run tests often, not just at the end",
+    "lang": "bash"
+   },
+   {
+    "title": "What to cut",
+    "body": "You cannot build everything in 90 minutes, and reviewers know it. They want to see that you cut the right things.\n\nKeep: one working end-to-end path, input validation, basic error handling, a couple of tests and a README. Cut or stub: authentication, databases (use in-memory data), deployment, a front end, retries and caching, and a second or third feature.\n\nA stub is a simple stand-in that behaves correctly for now, like a keyword rule instead of an LLM call. Put it behind a clear function so it can be swapped later.",
+    "example": "For the triage task, you keep the endpoint, validation and tests. You replace the LLM with a keyword rule inside a classify() function, keep results in memory and skip auth. The README says: 'classify() is a stub; with more time I would call an LLM with the category list and evaluate it on labeled tickets.'",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Keep",
+      "Stub or cut"
+     ],
+     "rows": [
+      [
+       "One end-to-end path",
+       "Second and third features"
+      ],
+      [
+       "Input validation",
+       "Authentication"
+      ],
+      [
+       "Clear error responses",
+       "Database (use in-memory)"
+      ],
+      [
+       "Two meaningful tests",
+       "Front end, deployment"
+      ],
+      [
+       "README with assumptions",
+       "Caching, retries, metrics"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Presenting trade-offs at the end",
+    "body": "The last minutes are where you turn shortcuts into evidence of good judgment. Show the service working, run the tests live, then walk through each trade-off.\n\nFor each shortcut, say what you did, why it was right for the time box, what risk it carries and what you would do in production. Be honest about what does not work. Hiding a bug looks worse than naming it.\n\nFinish with the next two or three steps you would take, in priority order. This shows you can plan beyond the exercise.",
+    "example": "You say: 'I used a keyword rule so the API and tests were solid first. The risk is low accuracy on tickets without obvious words. Next I would call an LLM with the three categories, build a labeled set of 100 tickets to measure accuracy, then add auth and request logging.'",
+    "code": "## Trade-offs and next steps (end of README)\n| Shortcut            | Why now                  | Risk                  | Production fix               |\n|---------------------|--------------------------|-----------------------|------------------------------|\n| Keyword classifier  | Get API + tests working  | Low accuracy          | LLM call + labeled eval set  |\n| No auth             | Out of scope for drill   | Anyone can call it    | API keys or OAuth            |\n| In-memory only      | No persistence needed    | Data lost on restart  | Postgres table for results   |\n\nNext steps, in order:\n1. Labeled set of 100 tickets and an accuracy check\n2. Swap classify() for an LLM call, compare accuracy\n3. Auth, logging, deployment",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "Take-home",
+    "An exercise you complete alone in a set time and submit, usually as a code repository."
+   ],
+   [
+    "Live build",
+    "An exercise where you build while an interviewer watches or pairs with you."
+   ],
+   [
+    "Rubric",
+    "The scoring guide interviewers use to rate a submission."
+   ],
+   [
+    "Time box",
+    "A fixed amount of time given to a task or phase, after which you move on."
+   ],
+   [
+    "Scaffold",
+    "The initial skeleton of a project: folders, dependencies, app object and first test."
+   ],
+   [
+    "Stub",
+    "A simple stand-in implementation that can be replaced by the real one later."
+   ],
+   [
+    "Happy path",
+    "The normal case where valid input produces the expected output."
+   ],
+   [
+    "422 error",
+    "The HTTP status FastAPI returns when request data fails validation."
+   ],
+   [
+    "Trade-off",
+    "A choice where you gain something, like speed of delivery, by giving up something else."
+   ]
+  ],
+  "practice": [
+   "Practice the scaffold: from an empty folder, create a FastAPI app with a health endpoint, one Pydantic model and one passing pytest test. Repeat until it takes under 10 minutes.",
+   "Do a full 60-minute drill on the ticket triage prompt with a timer, following the phase plan. Deliverable: a repo with passing tests and a README containing assumptions, cuts and next steps.",
+   "Stretch: do a 90-minute live drill on a new prompt (for example 'summarize a batch of meeting notes into action items') while screen recording and talking aloud, then watch the recording and list three moments where you should have cut scope earlier."
+  ]
+ },
+ "career": {
+  "plain": "This lesson covers turning your experience into interviews and an offer. A resume is a one- or two-page summary of your work, and for FDE roles it should show that you built things, worked with users and produced measurable results. A story bank is a set of prepared stories from your career, told in the STAR format (Situation, Task, Action, Result), that you reuse to answer interview questions. The job search part covers which job titles to look for, how to use your network, and how to negotiate once you have an offer.",
+  "analogy": "Your resume is the shop window, your story bank is the stock room, and the interview is the conversation at the counter. The window gets people in the door, but you need the right stock ready when they ask for something specific.",
+  "why": "FDE interviews test technical depth, building skill, customer communication and business sense. With about eight years of experience, you already have the raw material. The work is framing it so recruiters see FDE-relevant impact in seconds and interviewers hear clear, specific stories.",
+  "subtopics": [
+   {
+    "title": "Impact bullets with numbers",
+    "body": "An impact bullet has three parts: a strong action verb, what you built or did, and the measurable result. Duties ('responsible for the data platform') say what your job was. Impact bullets say what changed because of you.\n\nUse numbers you can defend in an interview: time saved, cost reduced, users served, latency improved, revenue protected. If you do not have exact numbers, use honest approximations ('about', 'more than') and be ready to explain how you know. Never invent a number.\n\nFor FDE roles, include customer-facing work: discovery, demos, deployments at a customer, training users.",
+    "example": "Weak: 'Worked on project Vukti.' Stronger, as a template: 'Built [what Vukti does] using [key tech], used by [number and type of users], which [measurable result].' You fill in the real facts. Do the same for DATAVORE and your MCP work, keeping only what you can explain in detail.",
+    "code": "IMPACT BULLET TEMPLATE\n<Verb> <what you built/did> using <tech> for <who>, <result with number>.\n\nFill-in placeholders (replace with your real facts):\n- Built [Vukti: one-line description] with [stack], serving [N users /\n  teams], reducing [metric] from [before] to [after].\n- Designed [DATAVORE: component or pipeline] processing [volume] per\n  [period], cutting [time or cost] by [amount].\n- Implemented [MCP server/tooling: what it connects] so [who] could\n  [do what] in [time], replacing [old process].\n- Led [discovery/demo/rollout] with [customer or team], resulting in\n  [adoption / decision / metric].\n\nStrong verbs: built, shipped, designed, led, migrated, automated, reduced",
+    "lang": "Text"
+   },
+   {
+    "title": "An FDE-focused resume and LinkedIn",
+    "body": "Put the most relevant information at the top: a two-line summary, then experience with impact bullets, then a projects section and skills. Keep it to one or two pages. Recruiters often scan for a few seconds, so lead each role with your strongest bullet.\n\nYour summary should say what you are: for example 'Software engineer with about 8 years of experience building data and AI systems and working directly with users'. Adjust the words to your real background.\n\nLinkedIn should match the resume. Use a headline that includes the titles you want, list your projects with links where public, and turn on the setting that tells recruiters you are open to work if you are comfortable with that.",
+    "example": "A projects section can list Vukti, DATAVORE and your MCP work, each with one line describing what it is, the tech used and one result or link. Keep the descriptions to facts you can demo or discuss for ten minutes.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Two-line summary naming your target role and years of experience",
+     "Every role starts with its strongest impact bullet",
+     "At least half the bullets contain a number you can defend",
+     "Customer-facing work is visible (discovery, demos, deployments)",
+     "Projects section with Vukti, DATAVORE and MCP work, facts only",
+     "Skills grouped: languages, data, cloud, AI/LLM tooling",
+     "LinkedIn headline and experience match the resume",
+     "Links to public code or demos work"
+    ]
+   },
+   {
+    "title": "A STAR story bank mapped to the four pillars",
+    "body": "STAR stands for Situation (the context), Task (your responsibility), Action (what you did, in detail) and Result (the outcome, ideally with a number, plus what you learned). Most of the answer time should go on Action.\n\nBuild 8 to 12 stories and map each to the four FDE interview pillars: deep technical understanding, practical implementation, customer scenario and communication, and business acumen. One story can cover more than one pillar.\n\nWrite each story in short bullet form, not a full script, and practice telling it in about two minutes.",
+    "example": "The table shows how you might map story slots. The project names are placeholders for stories you choose. Fill in the details from your real experience.",
+    "code": "STAR STORY CARD\nTitle:     [short name, e.g. 'DATAVORE pipeline rescue']\nPillars:   [technical | implementation | customer | business]\nSituation: [context in 1-2 lines]\nTask:      [what you were responsible for]\nAction:    [3-5 bullets: what YOU did, decisions, tools]\nResult:    [outcome with number; what you learned]\nFollow-ups to expect: [why that design? what would you change?]",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Pillar",
+      "Question type",
+      "Story slot (you fill in)"
+     ],
+     "rows": [
+      [
+       "Deep technical",
+       "Hardest technical problem you solved",
+       "[Vukti or DATAVORE: a deep design choice]"
+      ],
+      [
+       "Practical implementation",
+       "Something you built fast that shipped",
+       "[MCP work: from idea to working tool]"
+      ],
+      [
+       "Customer and communication",
+       "Handling an unhappy or unclear stakeholder",
+       "[a real stakeholder situation]"
+      ],
+      [
+       "Business acumen",
+       "Work tied to cost, revenue or adoption",
+       "[project where a metric moved]"
+      ],
+      [
+       "Any pillar",
+       "A failure and what you learned",
+       "[an honest mistake and its fix]"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Finding FDE roles",
+    "body": "The same kind of job appears under different titles. Search for Forward Deployed Engineer, Solutions Engineer, AI Engineer, Deployment Strategist, Solutions Architect and Customer Engineer, then read the description. Look for words like 'customer-facing', 'deploy', 'embedded with customers' and 'build prototypes'.\n\nTitles do not map cleanly. Some Solutions Engineer roles are mostly pre-sales demos, and some are hands-on building. Some Deployment Strategist roles are less coding-heavy. The description tells you more than the title.\n\nKeep a simple tracker so you know where each application stands and when to follow up.",
+    "example": "You search a job board for 'forward deployed' and 'solutions engineer AI', find 30 postings, read them and shortlist 12 that mention building and deploying with customers. You add them to a tracker with the date applied and any contact you have at the company.",
+    "code": "import csv\nfrom datetime import date, timedelta\n\n# applications.csv columns: company,title,applied_on,status,contact\nwith open(\"applications.csv\") as f:\n    rows = list(csv.DictReader(f))\n\ntoday = date.today()\nfor r in rows:\n    applied = date.fromisoformat(r[\"applied_on\"])\n    # follow up if no reply after 7 days and still waiting\n    if r[\"status\"] == \"applied\" and today - applied > timedelta(days=7):\n        who = r[\"contact\"] or \"recruiter\"\n        print(f\"Follow up: {r['company']} ({r['title']}) via {who}\")",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Title",
+      "Usual emphasis"
+     ],
+     "rows": [
+      [
+       "Forward Deployed Engineer",
+       "Building and deploying at customers"
+      ],
+      [
+       "Solutions Engineer",
+       "Varies: demos and pre-sales to hands-on builds"
+      ],
+      [
+       "AI Engineer",
+       "Building LLM apps; customer contact varies"
+      ],
+      [
+       "Deployment Strategist",
+       "Scoping, delivery and stakeholder work"
+      ],
+      [
+       "Solutions Architect",
+       "Designing systems with customers"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Networking and referrals",
+    "body": "Many hires come through referrals, meaning someone inside the company recommends you. A short, specific message to the right person often works better than dozens of cold applications.\n\nStart with people you already know: former colleagues, classmates, people from meetups. Then reach out to FDEs or hiring managers at target companies with a brief note: who you are, why their company, one line of proof, and a small, easy ask.\n\nGive before you ask. Sharing a useful write-up or a demo of your MCP work in public gives people a reason to reply.",
+    "example": "You find a Forward Deployed Engineer at a target company who wrote a public post about deploying agents. You send the message below and ask for 15 minutes. If they agree, you ask about their day-to-day work and, only at the end, whether they would be open to referring you.",
+    "code": "Subject: Question about FDE work at <Company>\n\nHi <Name>,\n\nI read your post on <topic> and found <specific point> useful.\nI'm a software engineer with about 8 years of experience, recently\nbuilding [MCP work: one-line description] (link: <url>).\n\nI'm exploring Forward Deployed Engineer roles and would value 15 minutes\nto hear what the work looks like day to day at <Company>.\nWould any time next week suit you?\n\nThanks,\n<Your name>",
+    "lang": "Text"
+   },
+   {
+    "title": "Negotiating an offer",
+    "body": "Negotiation starts when you have a written offer. Before that, focus on showing you are the right person. If asked early about salary, you can say you want to understand the role and level first and ask what range is budgeted.\n\nResearch ranges for the title, level and location using salary-sharing sites and people you trust. Compensation often has several parts: base salary, equity (shares or options), bonus, sign-on bonus, level, remote policy and start date. You can negotiate on several of them.\n\nBe polite, specific and honest. Thank them, say you are excited, state what would make you ready to sign, and give a reason, such as a competing offer or market data. Do not invent competing offers.",
+    "example": "You receive an offer and your research suggests the base is below the range for the level. You reply with the template below, asking for a specific higher base and a review of the level, and leave room to discuss equity.",
+    "code": "Hi <Recruiter>,\n\nThank you for the offer. I'm excited about the role and the team.\n\nBased on my research for this level in <location>, and my experience\nleading customer deployments, I was expecting a base closer to <amount>.\nI'd also like to understand how the level was chosen, given <reason>.\n\nIf we can get the base to <amount>, I'm ready to move forward quickly.\nI'm also open to discussing the equity or sign-on components.\n\nBest,\n<Your name>",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "Impact bullet",
+    "A resume line with an action, what was built and a measurable result."
+   ],
+   [
+    "STAR",
+    "A story format: Situation, Task, Action, Result."
+   ],
+   [
+    "Story bank",
+    "A prepared set of STAR stories reused across interview questions."
+   ],
+   [
+    "Interview pillars",
+    "The areas an FDE loop scores: technical depth, implementation, customer communication and business acumen."
+   ],
+   [
+    "Referral",
+    "A recommendation from someone inside a company that puts your application in front of the hiring team."
+   ],
+   [
+    "Total compensation",
+    "The full value of an offer, including base salary, bonus, equity and other benefits."
+   ],
+   [
+    "Equity",
+    "Ownership in the company, usually as shares or options that vest over time."
+   ],
+   [
+    "Level",
+    "A company's seniority grade for a role, which sets the salary band."
+   ],
+   [
+    "Application tracker",
+    "A simple list of roles applied to, their status and follow-up dates."
+   ]
+  ],
+  "practice": [
+   "Rewrite three bullets from your current resume into impact bullets using the template, filling in the real facts for Vukti, DATAVORE and your MCP work. Mark any number you cannot yet verify.",
+   "Build a story bank of 8 STAR cards covering all four pillars, then record yourself telling two of them in under two minutes each. Deliverable: the eight cards plus notes on what to tighten.",
+   "Stretch: shortlist 10 roles across at least three titles, set up the application tracker, and send three tailored networking messages. After two weeks, review replies and adjust your message."
+  ]
+ }
+}

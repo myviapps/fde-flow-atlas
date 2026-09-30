@@ -1,0 +1,487 @@
+[
+ {
+  "id": "change",
+  "mod": 4,
+  "sec": "4.1",
+  "name": "Change and adoption",
+  "title": "Change management and adoption",
+  "thesis": "A working tool that nobody uses delivers no value. Adoption is planned work: find champions, train people for their real tasks, tell them what changes and why, measure who actually uses it, and treat resistance as information.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Most failed rollouts fail on people and process: users were not asked, not trained, or had no reason to change their habits.",
+   "Champions are respected users on each team who try the tool early, help colleagues and bring back problems.",
+   "Train by role and by task, with the user's own data, close to go-live, and repeat it for new starters.",
+   "A communication plan says who hears what, from whom, when and through which channel. The message comes from their own manager where possible.",
+   "Measure breadth (who uses it), depth (how much of the work goes through it) and outcome (did the business number move)."
+  ],
+  "traps": [
+   "Counting logins or licenses as adoption, while real work still happens in the old spreadsheet.",
+   "Running one big training session weeks before go-live, so people forget by the time they need it.",
+   "Treating resistant users as the problem to overrule, instead of asking what the tool breaks for them."
+  ],
+  "qa": [
+   [
+    "Your tool went live a month ago and usage is at 20 percent. What do you do?",
+    "First I find out who uses it and who does not, from usage data, then I talk to a few non-users and watch them work. Usually there is a concrete blocker: a missing field, a slow step, or managers still asking for the old report. I fix the top blocker, retire the old path with the sponsor's agreement, and use champions to help each team. I track weekly active users and share of tasks done in the tool until it stabilizes."
+   ],
+   [
+    "How do you pick champions?",
+    "I look for people who are respected by peers for doing the job well, curious about the tool, and willing to give honest feedback, one or two per team or shift. Seniority matters less than credibility. I give them early access, a direct line to me, and credit in front of their managers."
+   ],
+   [
+    "How would you measure adoption for an AI assistant used by support agents?",
+    "Breadth: share of licensed agents active each week. Depth: share of tickets where the assistant's draft was used or edited. Outcome: handle time and customer satisfaction against the baseline. I also watch quality signals like how often agents throw away the draft."
+   ]
+  ]
+ },
+ {
+  "id": "pm",
+  "mod": 4,
+  "sec": "4.2",
+  "name": "Project delivery basics",
+  "title": "Project delivery basics",
+  "thesis": "Delivery is a steady rhythm: a prioritized backlog of user stories, short sprints that end in a demo, and a weekly status report backed by a RAID log. Most FDE delays come from the customer's side, so dependencies get owners and dates like any other task.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "backlog",
+    90,
+    70,
+    "Backlog",
+    "user stories, MoSCoW"
+   ],
+   [
+    "planning",
+    265,
+    70,
+    "Sprint planning",
+    "pick top items"
+   ],
+   [
+    "build",
+    440,
+    70,
+    "Build and test",
+    "2-week sprint"
+   ],
+   [
+    "standup",
+    615,
+    70,
+    "Daily standup",
+    "15 min, blockers"
+   ],
+   [
+    "review",
+    615,
+    220,
+    "Sprint review",
+    "demo to customer"
+   ],
+   [
+    "retro",
+    440,
+    220,
+    "Retrospective",
+    "what to change"
+   ],
+   [
+    "raid",
+    265,
+    220,
+    "RAID log",
+    "risks, dependencies"
+   ],
+   [
+    "status",
+    90,
+    220,
+    "Weekly status",
+    "RAG, asks, dates"
+   ]
+  ],
+  "edges": [
+   [
+    "backlog",
+    "planning"
+   ],
+   [
+    "planning",
+    "build"
+   ],
+   [
+    "build",
+    "standup",
+    14
+   ],
+   [
+    "standup",
+    "build",
+    14,
+    "unblock"
+   ],
+   [
+    "standup",
+    "review",
+    0,
+    "sprint ends"
+   ],
+   [
+    "review",
+    "retro"
+   ],
+   [
+    "retro",
+    "raid",
+    0,
+    "new risks"
+   ],
+   [
+    "raid",
+    "status",
+    0,
+    "feeds"
+   ],
+   [
+    "status",
+    "backlog",
+    0,
+    "reprioritize"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Keep a backlog",
+    "n": [
+     "backlog"
+    ],
+    "e": [],
+    "d": "The backlog is the ordered list of work, written as user stories with acceptance criteria. Items are tagged Must, Should, Could or Won't so everyone sees what matters most."
+   },
+   {
+    "t": "Plan the sprint",
+    "n": [
+     "backlog",
+     "planning"
+    ],
+    "e": [
+     "backlog>planning"
+    ],
+    "d": "At sprint planning the team and the customer's product owner pick the top items that fit in the next two weeks. Each item must be small enough to finish and demo."
+   },
+   {
+    "t": "Build and test",
+    "n": [
+     "planning",
+     "build"
+    ],
+    "e": [
+     "planning>build"
+    ],
+    "d": "The team builds and tests the chosen items. Work is done when it meets the acceptance criteria, not when the code compiles."
+   },
+   {
+    "t": "Daily standup",
+    "n": [
+     "build",
+     "standup"
+    ],
+    "e": [
+     "build>standup",
+     "standup>build"
+    ],
+    "d": "A 15-minute daily check covers what was done, what is next and what is blocked. Blockers get an owner the same day, often someone on the customer side."
+   },
+   {
+    "t": "Sprint review",
+    "n": [
+     "standup",
+     "review"
+    ],
+    "e": [
+     "standup>review"
+    ],
+    "d": "At the end of the sprint the team demos working software to the customer. Their feedback becomes new or changed backlog items."
+   },
+   {
+    "t": "Retrospective",
+    "n": [
+     "review",
+     "retro"
+    ],
+    "e": [
+     "review>retro"
+    ],
+    "d": "The team spends 30 to 45 minutes on what went well, what did not, and one or two changes to try next sprint."
+   },
+   {
+    "t": "Update the RAID log",
+    "n": [
+     "retro",
+     "raid"
+    ],
+    "e": [
+     "retro>raid"
+    ],
+    "d": "New Risks, Assumptions, Issues and Dependencies go into the RAID log, each with an owner and a date."
+   },
+   {
+    "t": "Weekly status and reprioritize",
+    "n": [
+     "raid",
+     "status",
+     "backlog"
+    ],
+    "e": [
+     "raid>status",
+     "status>backlog"
+    ],
+    "d": "The weekly status report gives a red, amber or green rating, progress, next steps and the specific asks of the customer. Decisions from it reorder the backlog."
+   }
+  ],
+  "ideas": [
+   "A user story says who wants what and why, with acceptance criteria that make 'done' testable.",
+   "MoSCoW sorts scope into Must have, Should have, Could have and Won't have this time, which makes trade-offs explicit.",
+   "Sprints are short, fixed time boxes, often two weeks, that end with working software shown to the customer.",
+   "A RAID log tracks Risks, Assumptions, Issues and Dependencies, each with an owner and a due date.",
+   "The weekly status report is short, honest about color, and always lists what you need from the customer and by when."
+  ],
+  "traps": [
+   "Reporting green until the week before the deadline, then jumping to red. Amber early builds trust.",
+   "Letting customer dependencies such as data access or firewall rules sit untracked, then blaming them later.",
+   "Treating every request as a Must, so the real Musts slip."
+  ],
+  "qa": [
+   [
+    "The customer's IT team is three weeks late granting database access. What do you do?",
+    "I make sure it is in the RAID log with a named owner and the impact in days, raise it in the weekly status as an ask with a date, and escalate through the sponsor if it slips again. Meanwhile I keep the team productive with synthetic or sample data and work that does not need the database, and I re-plan the timeline openly."
+   ],
+   [
+    "How do you decide what goes into the first release?",
+    "I agree the success metric with the sponsor, then run a MoSCoW session on the backlog. Musts are the smallest set that lets a real user complete the main workflow and lets us measure the metric. Everything else is Should or Could, and I write down the Won'ts so they do not creep back."
+   ],
+   [
+    "What goes in a good weekly status report?",
+    "An overall red, amber or green with a one-line reason, what was done, what is next, top risks with owners, and a short list of asks of the customer with dates. It should fit on one screen."
+   ]
+  ]
+ },
+ {
+  "id": "roi",
+  "mod": 4,
+  "sec": "4.3",
+  "name": "Business cases and ROI",
+  "title": "Business cases and ROI",
+  "thesis": "A business case turns 'this AI tool is useful' into money a CFO can compare with other uses of the budget: a measured baseline, a realistic improvement and adoption rate, the full cost of building and running the system, and the ROI, payback and sensitivity that follow.",
+  "format": "flowchart",
+  "note": "Read the top row left to right to build the value, then the middle row right to left to net it against the full cost and test it. The result goes to the CFO as a decision with a range, not a single number.",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "baseline",
+    90,
+    70,
+    "Baseline",
+    "time, cost, errors"
+   ],
+   [
+    "impact",
+    265,
+    70,
+    "Improvement",
+    "per task, measured"
+   ],
+   [
+    "adoption",
+    440,
+    70,
+    "Adoption rate",
+    "who really uses it"
+   ],
+   [
+    "value",
+    615,
+    70,
+    "Annual value",
+    "hard vs soft"
+   ],
+   [
+    "cost",
+    615,
+    210,
+    "Full cost",
+    "build + run + people"
+   ],
+   [
+    "net",
+    440,
+    210,
+    "Net benefit",
+    "value minus cost"
+   ],
+   [
+    "metrics",
+    265,
+    210,
+    "ROI and payback",
+    "NPV over 3 years"
+   ],
+   [
+    "sens",
+    90,
+    210,
+    "Sensitivity",
+    "what if we're wrong"
+   ],
+   [
+    "cfo",
+    90,
+    350,
+    "CFO decision",
+    "fund, phase, or stop"
+   ]
+  ],
+  "edges": [
+   [
+    "baseline",
+    "impact"
+   ],
+   [
+    "impact",
+    "adoption"
+   ],
+   [
+    "adoption",
+    "value"
+   ],
+   [
+    "value",
+    "net"
+   ],
+   [
+    "cost",
+    "net"
+   ],
+   [
+    "net",
+    "metrics"
+   ],
+   [
+    "metrics",
+    "sens"
+   ],
+   [
+    "sens",
+    "cfo",
+    0,
+    "range + ask"
+   ]
+  ],
+  "ideas": [
+   "Start from a measured baseline: how long the task takes today, how often, and what it costs per hour including overheads.",
+   "Value = volume x improvement per task x adoption x cost per unit. Adoption is usually the weakest assumption.",
+   "Count the full cost: build, model or API usage, hosting, monitoring, support, training and the customer's own staff time.",
+   "ROI compares total gain to total cost. Payback is how many months until cumulative net benefit covers the upfront cost. NPV discounts future money.",
+   "Show a range with a pessimistic case and a break-even point. CFOs trust a case that shows where it breaks."
+  ],
+  "traps": [
+   "Treating saved hours as saved cash. Unless headcount, overtime or contractor spend drops, it is capacity freed up, which is a softer benefit.",
+   "Leaving out running costs such as LLM tokens, monitoring and the people who maintain the system.",
+   "Assuming 100 percent adoption from day one."
+  ],
+  "qa": [
+   [
+    "A CFO says 'your hours saved are not real savings'. How do you respond?",
+    "I agree the distinction matters. I split the benefits into hard savings, like reduced overtime or contractor spend, and capacity, which is time redeployed. Then I show that the hard savings alone cover the running cost, or I say plainly that they do not and the case depends on using the capacity for something specific, such as handling growth without new hires."
+   ],
+   [
+    "How would you estimate the value of an AI tool before a pilot?",
+    "I measure the baseline from their data, such as task volume and handling time, and use a conservative improvement estimate from a small test on real examples. I apply a realistic adoption ramp, price the time at loaded cost, and present low, base and high cases. The pilot's job is then to replace the assumptions with measurements."
+   ],
+   [
+    "What costs do people forget in an AI business case?",
+    "Ongoing model or API usage that grows with volume, evaluation and monitoring, prompt and model maintenance, security review, integration work, training users, and the customer's own staff time for data access and testing."
+   ]
+  ]
+ },
+ {
+  "id": "casebank",
+  "mod": 7,
+  "sec": "7.3",
+  "name": "Case practice bank",
+  "title": "Case interview practice bank",
+  "thesis": "FDE case interviews reward the same habits every time: restate the goal, ask a few sharp clarifying questions, map the users and data, pick a measurable success metric, and propose a thin first slice with named risks. Practicing eight realistic prompts across industries turns those habits into reflexes.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Spend the first two or three minutes on clarifying questions. They show judgment and change the answer.",
+   "Every strong answer names a user, a workflow step, a data source, a metric with a baseline, and a first slice you could ship in weeks.",
+   "Say your assumptions out loud when the interviewer does not give numbers, and do rough math in round figures.",
+   "Always cover risk: wrong outputs, data access, security or compliance, and adoption.",
+   "Practice aloud with a timer. A 25-minute case answered in structured spoken form is a different skill from reading one."
+  ],
+  "traps": [
+   "Jumping to architecture or model choice in the first minute, before knowing the user or the metric.",
+   "Asking fifteen clarifying questions and never committing to a plan.",
+   "Proposing a full platform when a narrow first slice with a human in the loop would prove value faster."
+  ],
+  "qa": [
+   [
+    "How do you practice case interviews on your own?",
+    "I pick a prompt from a bank, set a 25-minute timer, and answer out loud while recording myself. Then I score the recording against a rubric: clarifying questions, users and workflow, data, metric, first slice, risks and a clear close. I redo the weakest part the next day on a new prompt."
+   ],
+   [
+    "The interviewer refuses to give numbers. What do you do?",
+    "I state reasonable assumptions in round figures, say why they are reasonable, and continue. For example, 'I will assume 200 agents handling 40 tickets a day each'. Then I show how the answer would change if the number were ten times larger or smaller."
+   ],
+   [
+    "How do you end a case answer?",
+    "With a one-minute summary: the problem in one sentence, the first slice, the metric and target, the top two risks with mitigations, and what I would do in the first week. Then I ask if they would like me to go deeper on any part."
+   ]
+  ]
+ },
+ {
+  "id": "sqlbank",
+  "mod": 7,
+  "sec": "7.3",
+  "name": "SQL practice bank",
+  "title": "SQL interview practice",
+  "thesis": "SQL rounds test a small set of patterns again and again: filter, group, join, find what is missing, avoid double counting, and use window functions for rankings and gaps. Ten graded exercises on one small schema, each checked in SQLite, build those patterns step by step.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Read the schema first and say out loud what one row of each table means. Most wrong answers come from misreading the grain.",
+   "Build queries in small steps: run the join, look at the rows, then add the grouping.",
+   "LEFT JOIN plus IS NULL finds things that are missing, such as customers with no orders.",
+   "Joining a parent table to a child table repeats parent rows, so counts need COUNT(DISTINCT) or a pre-aggregated CTE.",
+   "Window functions such as RANK and LAG compute per-row answers within groups without collapsing the rows."
+  ],
+  "traps": [
+   "Putting a filter on the right-hand table of a LEFT JOIN in WHERE, which silently drops the unmatched rows.",
+   "Using COUNT(*) after a one-to-many join and reporting inflated order counts.",
+   "Using ROW_NUMBER when the question says to keep ties."
+  ],
+  "qa": [
+   [
+    "How do you check that a SQL answer is right in an interview?",
+    "I check the grain of the result, run a quick count on the base table to compare totals, test an edge case such as a customer with no orders, and look for NULLs and duplicates. Saying these checks out loud shows the interviewer I would catch wrong numbers before a customer does."
+   ],
+   [
+    "When do you use a CTE instead of a subquery?",
+    "When the query has steps, such as per-order totals and then per-customer averages. Named steps make the logic readable and let me test each part. Performance is usually similar in modern databases, so readability decides."
+   ],
+   [
+    "What is the difference between RANK, DENSE_RANK and ROW_NUMBER?",
+    "ROW_NUMBER gives unique numbers even for ties. RANK gives ties the same number and skips the next ones, so 1, 1, 3. DENSE_RANK gives ties the same number without gaps, so 1, 1, 2. For 'top item per group, keep ties', I use RANK or DENSE_RANK and filter on 1."
+   ]
+  ]
+ }
+]

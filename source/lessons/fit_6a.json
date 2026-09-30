@@ -1,0 +1,30 @@
+{
+ "fderoles": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Sorting real tasks into the role that owns them makes the differences stick; the reading explains the lifecycle and titles."
+ },
+ "fdeskills": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Rating yourself on a live radar makes gaps visible; the reading explains each axis and how to turn gaps into a route."
+ },
+ "asyncwriting": {
+  "best": [
+   "practice",
+   "interactive"
+  ],
+  "why": "Writing improves by rewriting real messages; a checker that flags a missing ask, owner or deadline gives instant feedback."
+ },
+ "ethics": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Working through realistic dilemmas and seeing the reasoning builds judgement; the reading gives the rules behind each choice."
+ }
+}

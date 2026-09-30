@@ -1,0 +1,660 @@
+{
+ "deploy": {
+  "title": "Brightwater Utilities: moving a summarizer off a single VM",
+  "company": "Brightwater Utilities (made up), regional water utility, about 1,800 staff, the Netherlands",
+  "situation": "An FDE team had built a service that summarizes field inspection reports for Brightwater's asset managers. During the pilot it ran as a Python process on one virtual machine, started by hand in a terminal session. It crashed about twice a week, and each crash meant someone noticed, logged in and restarted it, adding up to roughly 3 hours of downtime a month for 140 users.",
+  "problem": "Brightwater wanted the service in production on its own on-premises Kubernetes cluster, which only accepts non-root containers, pulls images from an internal registry and keeps passwords in a secrets vault. Simply copying the VM setup would fail the security review, would still need a person to restart it, and gave no safe way to roll back a bad release.",
+  "approach": [
+   "Wrote a multi-stage Dockerfile: dependencies installed in a build stage, only the app and its wheels copied into a slim runtime image that runs as an unprivileged user, with pinned library versions.",
+   "Built the image in CI, scanned it for known vulnerabilities, tagged it with the git commit hash and pushed it to Brightwater's internal registry instead of a public one.",
+   "Described the service as a Kubernetes Deployment with 3 replicas and a Service in front, so traffic is spread across healthy copies and a crashed pod is replaced automatically.",
+   "Added a readiness probe (is the model client connected?) and a liveness probe (is the process responding?), plus CPU and memory requests and limits so one pod cannot starve its neighbours.",
+   "Mounted the model API key from a Kubernetes Secret synced from the vault, and kept non-secret settings in a ConfigMap, so no credentials live in the image or the repository.",
+   "Configured rolling updates with maxUnavailable set to 0 and practised a rollback with kubectl rollout undo in staging before the first production release."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: report-summarizer\nspec:\n  replicas: 3\n  strategy:\n    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}\n  selector: {matchLabels: {app: report-summarizer}}\n  template:\n    metadata: {labels: {app: report-summarizer}}\n    spec:\n      securityContext: {runAsNonRoot: true}\n      containers:\n        - name: app\n          image: registry.internal/fde/report-summarizer:3f9c2ab\n          envFrom: [{configMapRef: {name: summarizer-config}}]\n          env:\n            - name: MODEL_API_KEY\n              valueFrom: {secretKeyRef: {name: summarizer-secrets, key: model-api-key}}\n          readinessProbe: {httpGet: {path: /ready, port: 8080}, periodSeconds: 10}\n          livenessProbe: {httpGet: {path: /health, port: 8080}, initialDelaySeconds: 20}\n          resources:\n            requests: {cpu: 250m, memory: 512Mi}\n            limits: {memory: 1Gi}"
+  },
+  "outcome": "Over the next quarter unplanned downtime fell from about 3 hours a month to 12 minutes in total, all during one node failure that Kubernetes recovered from on its own. Releases went from monthly to weekly, and one faulty release was rolled back in under 2 minutes with no user-facing errors.",
+  "lessons": [
+   "A container image turns 'it works on my VM' into a reproducible artifact that the customer's security team can scan and approve.",
+   "Replicas plus health probes replace the human who used to restart the service.",
+   "Secrets belong in the platform's secret store, never in the image or the repository.",
+   "Practise the rollback before you need it; the first production release is the wrong time to learn the command."
+  ],
+  "discuss": [
+   "Which checks belong in the readiness probe and which in the liveness probe, and what goes wrong if you mix them up?",
+   "If the customer's cluster had no autoscaler, how would you size replicas for a daily peak of report uploads?",
+   "How would you explain a rolling update and a rollback to a non-technical operations manager?"
+  ]
+ },
+ "cloud": {
+  "title": "Larchmont Retail: passing a cloud security review with Terraform",
+  "company": "Larchmont Retail Group (made up), home goods retailer, 240 stores and about 6,000 staff, Canada",
+  "situation": "A product-search assistant for Larchmont's store staff had been piloted in a development AWS account that engineers set up by clicking through the console. Moving it to the production account needed approval from the security team, and after 7 weeks the review was still open. Store staff in the pilot were answering about 30% of product questions faster, but only 12 stores had access.",
+  "problem": "The security team could not see exactly what had been built: the app role had broad administrator permissions and the database sat in a public subnet. Rebuilding the same setup by hand in production would repeat those mistakes and give reviewers nothing they could read line by line.",
+  "approach": [
+   "Wrote the whole stack in Terraform, one module each for the network, the database and the application, so every resource could be reviewed as text in a pull request.",
+   "Built a VPC with private subnets for the app and the database, and security groups that only let the database accept connections from the app's security group.",
+   "Replaced the administrator role with a least-privilege IAM role that can read one S3 bucket of product data, write logs and call the model endpoint, and nothing else.",
+   "Stored Terraform state remotely in an encrypted S3 bucket with a DynamoDB lock table, so two engineers could not apply conflicting changes.",
+   "Used one set of modules with separate variable files for staging and production, so both environments are built from identical code.",
+   "Attached the terraform plan output to the security review, so reviewers approved the exact changes that would be applied."
+  ],
+  "artifact": {
+   "lang": "HCL",
+   "code": "resource \"aws_iam_role_policy\" \"search_app\" {\n  name = \"search-app-least-privilege\"\n  role = aws_iam_role.search_app.id\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [\n      {\n        Effect   = \"Allow\"\n        Action   = [\"s3:GetObject\"]\n        Resource = \"${aws_s3_bucket.product_data.arn}/*\"\n      },\n      {\n        Effect   = \"Allow\"\n        Action   = [\"logs:CreateLogStream\", \"logs:PutLogEvents\"]\n        Resource = \"${aws_cloudwatch_log_group.search_app.arn}:*\"\n      },\n      {\n        Effect   = \"Allow\"\n        Action   = [\"bedrock:InvokeModel\"]\n        Resource = var.model_arn\n      }\n    ]\n  })\n}"
+  },
+  "outcome": "With the Terraform plan in hand, security approved production in 6 business days after 7 weeks of back and forth. Production was built in one day, staging matches it exactly, and a weekly drift check has flagged two manual console changes that were then reverted. The assistant rolled out to all 240 stores the following month.",
+  "lessons": [
+   "Security teams approve what they can read; infrastructure as code turns a vague review into a line-by-line one.",
+   "Least privilege means naming the exact actions and resources the app needs, not starting broad and trimming later.",
+   "Remote, locked state is what makes Terraform safe for more than one engineer.",
+   "One module set with per-environment variables keeps test and production from drifting apart."
+  ],
+  "discuss": [
+   "What would you do if the customer's security team insisted on a network rule you believe breaks the app?",
+   "How would the same design change if Larchmont ran on Azure or Google Cloud instead of AWS?",
+   "When is clicking in the console acceptable, and how do you stop it from creating drift?"
+  ]
+ },
+ "embeddings": {
+  "title": "Pinecrest Components: finding similar support tickets across two languages",
+  "company": "Pinecrest Components (made up), industrial parts distributor, about 400 staff, Germany",
+  "situation": "Pinecrest's technical support engineers answer questions about pumps, valves and seals. Before replying, they search about 120,000 past tickets for similar faults, written in German and English and full of abbreviations. With the existing keyword search, a genuinely similar ticket showed up in the top 5 results only 41% of the time, and engineers spent about 9 minutes per ticket hunting.",
+  "problem": "Keyword search fails when the same fault is described with different words, such as 'Leckage an der Dichtung' and 'seal is weeping'. A hand-built synonym list was tried but never kept up with new products and slang. The team needed search by meaning, which is what embeddings provide.",
+  "approach": [
+   "Built a test set of 200 real queries, each paired with the tickets a senior engineer judged relevant, so every change could be scored by recall at 5.",
+   "Compared three embedding models on that set and picked a multilingual model, because it placed German and English descriptions of the same fault close together.",
+   "Stored normalized vectors in PostgreSQL with pgvector alongside ticket metadata, and used cosine distance for search.",
+   "Found and fixed a silent bug: the chosen model expects a 'query:' prefix on questions and a 'passage:' prefix on documents, and leaving them off had cost 9 points of recall.",
+   "Added an HNSW index for speed and tuned ef_search on the test set until recall matched exact search within one point.",
+   "Filtered by product line before ranking, so a pump question never returned valve tickets that happened to use similar words."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "CREATE EXTENSION IF NOT EXISTS vector;\n\nCREATE TABLE ticket_chunks (\n  id           bigserial PRIMARY KEY,\n  ticket_id    text NOT NULL,\n  product_line text NOT NULL,\n  body         text NOT NULL,\n  embedding    vector(1024) NOT NULL\n);\n\nCREATE INDEX ON ticket_chunks\n  USING hnsw (embedding vector_cosine_ops);\n\n-- at query time\nSET hnsw.ef_search = 100;\nSELECT ticket_id, body,\n       1 - (embedding <=> $1) AS cosine_similarity\nFROM ticket_chunks\nWHERE product_line = $2\nORDER BY embedding <=> $1\nLIMIT 5;"
+  },
+  "outcome": "Recall at 5 on the test set rose from 41% to 78%, with a 95th percentile search time of about 60 milliseconds. In a follow-up survey, engineers reported the time to find a similar past ticket falling from about 9 minutes to about 3.",
+  "lessons": [
+   "Measure retrieval with a labelled test set before and after every change; otherwise model choice is guesswork.",
+   "Embedding models have usage rules, such as query and passage prefixes, and ignoring them fails silently.",
+   "Approximate indexes trade a little recall for speed, so tune them against your own test set.",
+   "Metadata filters often fix 'wrong but similar' results more cheaply than a better model."
+  ],
+  "discuss": [
+   "How would you detect that someone re-embedded the documents with a new model but left queries on the old one?",
+   "When would you add keyword search back alongside vector search instead of replacing it?",
+   "How many labelled queries are enough to trust a comparison between two embedding models?"
+  ]
+ },
+ "transformer": {
+  "title": "Solano Legal: explaining and cutting a tripled model bill",
+  "company": "Solano Legal Services (made up), commercial law firm, about 150 lawyers, Spain",
+  "situation": "Solano's contract review assistant flags risky clauses for lawyers. After it was extended from English to Spanish contracts, the monthly model bill rose from about 3,100 to 9,400 euros and the median response time on long contracts reached 40 seconds. The managing partner asked whether the vendor was 'charging more for Spanish'.",
+  "problem": "Nothing was charging more for Spanish as such. Costs and delays came from token counts: Spanish legal text splits into more tokens than equivalent English, whole 120-page contracts were sent on every question, and the model wrote long free-text answers one token at a time. Switching to a cheaper, weaker model was the obvious fix, but it would have lowered review quality.",
+  "approach": [
+   "Measured input and output tokens for 50 real contracts and showed that Spanish documents used about 25% more tokens than English ones of similar length.",
+   "Explained the two phases of generation to the firm: reading the prompt (prefill) is fast and parallel, while writing the answer (decode) happens one token at a time, so long answers drive latency.",
+   "Stopped sending whole contracts: clauses were split by heading and only the sections relevant to the question were included.",
+   "Asked for a short structured answer (clause number, risk level, one-sentence reason) instead of free text, cutting output tokens by about two thirds.",
+   "Rewrote nested clause numbers such as 14.3.2(b)(iv) into a simple id like C-0412 in the prompt, because the model sometimes misread long numbers that break into many tokens, then mapped the ids back for display.",
+   "Cached the fixed instructions and checklist at the start of every prompt using the provider's prompt caching."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import anthropic\n\nclient = anthropic.Anthropic()\nMODEL = \"your-model-id\"\n\ndef token_report(contracts):\n    rows = []\n    for c in contracts:\n        n = client.messages.count_tokens(\n            model=MODEL,\n            messages=[{\"role\": \"user\", \"content\": c[\"text\"]}],\n        ).input_tokens\n        rows.append((c[\"id\"], c[\"lang\"], len(c[\"text\"].split()), n))\n    for lang in (\"en\", \"es\"):\n        sel = [r for r in rows if r[1] == lang]\n        ratio = sum(r[3] for r in sel) / sum(r[2] for r in sel)\n        print(f\"{lang}: {ratio:.2f} tokens per word over {len(sel)} contracts\")\n    return rows"
+  },
+  "outcome": "The monthly bill fell from 9,400 to about 3,900 euros and median response time on long contracts from 40 to 14 seconds. On the 50-contract review set, the share of risky clauses correctly flagged stayed essentially the same, 0.92 before and 0.91 after, which the partners accepted.",
+  "lessons": [
+   "Cost and latency are driven by tokens in and tokens out, not by pages or words.",
+   "Output tokens are generated one at a time, so shorter structured answers are often the biggest latency win.",
+   "Different languages and odd strings such as part or clause numbers tokenize very differently.",
+   "Knowing the mechanics lets you give a customer an honest explanation instead of a vague reassurance."
+  ],
+  "discuss": [
+   "How would you explain prefill and decode to a managing partner in two sentences?",
+   "When is it worth paying for a longer context instead of retrieving only relevant sections?",
+   "What risks come with rewriting clause numbers before sending text to the model?"
+  ]
+ },
+ "context": {
+  "title": "Harbourview Property: fixing a tenant assistant by fixing its context",
+  "company": "Harbourview Property Management (made up), residential property manager, about 30,000 rental units, Australia",
+  "situation": "Harbourview's tenant assistant answers questions about repairs, rent and building rules. About 18% of conversations that were escalated to staff were escalated because the assistant had given a wrong answer, for example saying pets were allowed in a building that bans them. The internal team had rewritten the system prompt six times without improvement.",
+  "problem": "The prompt wording was not the cause. Logs of the full input showed three context failures: building-specific rules were often not retrieved, a work-order tool returned about 30,000 tokens of raw history, and long chats pushed the tenant's building and lease type out of the recent turns. More prompt tweaks could not fix information the model never saw.",
+  "approach": [
+   "Logged the complete assembled context for every call, so each wrong answer could be traced to what the model actually received.",
+   "Set a token budget per component: instructions, pinned tenant facts, retrieved rules, tool results and recent conversation, each with a cap.",
+   "Pinned key facts (tenant id, building, lease type) in their own block that is rebuilt every turn instead of relying on chat history.",
+   "Trimmed the work-order tool to return only the fields the task needs, the last five jobs, and a count of older ones.",
+   "Summarized conversation turns older than the last six, while keeping any commitments the assistant had made word for word.",
+   "Added a short checklist for each wrong answer, treated like a runtime error: was the fact in the context, was it buried, or did the model ignore it?"
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "BUDGET = {\"instructions\": 1500, \"pinned\": 300, \"rules\": 2500,\n          \"tools\": 1500, \"history\": 2000}\n\ndef build_context(tenant, question, history, rules, tool_results):\n    parts = [\n        (\"instructions\", SYSTEM_INSTRUCTIONS),\n        (\"pinned\", f\"Tenant {tenant.id}, building {tenant.building}, \"\n                   f\"lease type {tenant.lease_type}\"),\n        (\"rules\", \"\\n\".join(r.text for r in rules)),\n        (\"tools\", \"\\n\".join(trim_tool_output(t) for t in tool_results)),\n        (\"history\", compact_history(history, keep_last=6)),\n    ]\n    blocks = []\n    for name, text in parts:\n        text = truncate_to_tokens(text, BUDGET[name])\n        blocks.append(f\"<{name}>\\n{text}\\n</{name}>\")\n        log_component(name, count_tokens(text))\n    blocks.append(f\"<question>\\n{question}\\n</question>\")\n    return \"\\n\\n\".join(blocks)"
+  },
+  "outcome": "Over six weeks, escalations caused by wrong answers fell from 18% to 7%. Average input size dropped from about 26,000 to 7,000 tokens, which cut model cost per conversation by roughly 60% and made responses noticeably faster.",
+  "lessons": [
+   "When an agent is wrong, inspect the assembled context before touching the prompt wording.",
+   "Give each part of the context a budget; tool outputs and history expand to fill whatever space you allow.",
+   "Facts the model must never lose should be pinned and rebuilt every turn, not left in scrolling history.",
+   "Logging the full context turns vague complaints into debuggable cases."
+  ],
+  "discuss": [
+   "How would you decide the budget split when a new tool with large outputs is added?",
+   "What are the privacy implications of logging full contexts, and how would you handle them?",
+   "When is summarizing history risky, and what should never be summarized?"
+  ]
+ },
+ "ace": {
+  "title": "Meridian Payroll: an agent that stops repeating the same mistakes",
+  "company": "Meridian Payroll Services (made up), payroll outsourcing firm, about 600 staff, United Kingdom",
+  "situation": "Meridian uses an agent to draft responses to client payroll change requests, such as new starters, salary changes and tax code updates, which a human reviewer approves. Only 71% of drafts were accepted without correction, and reviewers kept fixing the same errors, such as treating Scottish income tax bands as the rest-of-UK bands.",
+  "problem": "Fine-tuning every month was too slow and costly for a team without ML engineers. An earlier attempt to have the model rewrite its whole system prompt after each week made the prompt shorter and vaguer each time, and specific rules like the Scottish band handling disappeared. The team needed improvement that kept details and could be audited.",
+  "approach": [
+   "Logged each run as a trajectory: the request, the tools called, the draft, and the reviewer's correction or approval.",
+   "Added a Reflector step that compares a corrected draft with the reviewer's version and proposes a short, specific lesson with the evidence that supports it.",
+   "Added a Curator that turns lessons into delta updates on an itemized playbook, adding a new entry or updating an existing one by id, rather than rewriting the whole text.",
+   "Kept helpful and harmful counters on each entry, incremented when reviewers accepted or corrected drafts that used it, and retired entries whose harmful count grew.",
+   "Removed near-duplicate entries by comparing their embeddings before adding new ones, keeping the playbook compact.",
+   "Checked each week's playbook on a held-out set of 120 past requests before promoting it to production."
+  ],
+  "artifact": {
+   "lang": "JSON",
+   "code": "{\n  \"ops\": [\n    {\n      \"op\": \"ADD\",\n      \"section\": \"tax_codes\",\n      \"content\": \"If the tax code starts with S, the employee is a Scottish taxpayer. Use Scottish income tax bands, not rest-of-UK bands, when estimating net pay.\",\n      \"evidence\": [\"run_20931\", \"run_21044\"]\n    },\n    {\n      \"op\": \"UPDATE\",\n      \"id\": \"pb-0037\",\n      \"content\": \"For mid-month salary changes, pro-rate by calendar days in the pay period, unless the client contract says working days.\"\n    }\n  ],\n  \"counters\": {\"pb-0037\": {\"helpful\": 14, \"harmful\": 2}}\n}"
+  },
+  "outcome": "Over six weeks, first-pass acceptance rose from 71% to 84% with no change to the underlying model. The playbook settled at 63 entries, about 4,000 tokens, and one entry that caused errors on a single client's contract was retired automatically by its harmful counter.",
+  "lessons": [
+   "An agent can improve from real use by editing its context, without retraining.",
+   "Small itemized edits keep hard-won details that whole-prompt rewrites tend to lose.",
+   "Counters on each lesson give you a cheap way to spot and remove lessons that hurt.",
+   "Always gate a new playbook on a held-out set, just like a model or prompt change."
+  ],
+  "discuss": [
+   "Who at the customer should be able to see and veto playbook entries, and why?",
+   "How would you stop a lesson that applies to one client from leaking into answers for others?",
+   "At what point would fine-tuning become a better choice than growing the playbook?"
+  ]
+ },
+ "skills": {
+  "title": "Cobalt Ridge: one finance agent, eleven procedures",
+  "company": "Cobalt Ridge Manufacturing (made up), industrial equipment maker, about 2,200 staff, United States",
+  "situation": "Cobalt Ridge's finance operations team used an internal agent for tasks such as vendor onboarding, invoice exceptions and intercompany reconciliations. All eleven procedures were pasted into a single system prompt of about 14,000 tokens. In a review of 300 requests, the agent followed the wrong procedure 22% of the time, for example applying the domestic vendor checklist to a foreign supplier.",
+  "problem": "The long prompt made every request slow and expensive, and similar procedures confused each other. Adding more warnings to the prompt made it longer and worse, and editing one procedure meant retesting all of them.",
+  "approach": [
+   "Turned each runbook into its own skill folder with a SKILL.md file, so the agent sees only the short descriptions until a request matches one.",
+   "Wrote each description to say both when to use the skill and when not to, naming the words users actually type, such as 'new supplier' or 'three-way match failed'.",
+   "Moved deterministic steps, like currency conversion and three-way matching of purchase order, receipt and invoice, into small scripts the skill calls, instead of asking the model to do arithmetic.",
+   "Put long reference material, such as country-specific tax form lists, in separate files that the skill reads only when needed.",
+   "Built a trigger test for each skill: 20 requests that should load it and 20 near-misses that should not, run on every change.",
+   "Gave each skill an owner in the finance team, who approves edits to that procedure alone."
+  ],
+  "artifact": {
+   "lang": "Markdown",
+   "code": "---\nname: foreign-vendor-onboarding\ndescription: Onboard a new supplier based outside the United States. Use when a user asks to add, set up or register a foreign or international vendor. Do not use for domestic vendors or for updating an existing vendor's bank details.\n---\n\n# Foreign vendor onboarding\n\n1. Collect legal name, country, tax form and bank details.\n2. Check the country's required tax form in reference/tax_forms.md.\n3. Run scripts/validate_iban.py on the bank account number.\n4. If the vendor is on the restricted list, stop and route to compliance.\n5. Create the vendor record as draft; never mark it active yourself."
+  },
+  "outcome": "The base prompt shrank from about 14,000 to 1,800 tokens, cutting average cost per request by about 70%. On a fresh sample of 300 requests, wrong-procedure errors fell from 22% to 5%, and the team changed two procedures in the following month without retesting the other nine.",
+  "lessons": [
+   "Progressive disclosure keeps the agent focused: descriptions first, full instructions only when relevant.",
+   "The description is the trigger; write it with the user's words and include when not to use the skill.",
+   "Put exact, repeatable steps in scripts and leave judgment to the model.",
+   "Separate skills can be owned, tested and changed independently."
+  ],
+  "discuss": [
+   "How would you handle a request that plausibly matches two skills?",
+   "What belongs in a skill versus a tool versus a retrieved document?",
+   "How would you roll out a changed skill safely to hundreds of finance users?"
+  ]
+ },
+ "rag": {
+  "title": "Tidewell Energy: answering technicians from wind turbine manuals",
+  "company": "Tidewell Energy (made up), wind farm operations and maintenance, about 900 staff, Denmark",
+  "situation": "Tidewell's technicians wanted to ask questions like 'what torque for the yaw bearing bolts on the 3.6 MW model?' instead of searching 14,000 pages of manuals, many of them scanned PDFs full of tables. A first pilot answered only 58% of 200 test questions correctly, and technicians quickly stopped trusting it.",
+  "problem": "The pilot split documents into fixed 500-word chunks, which cut torque tables in half, and it used vector search alone, which missed exact part numbers. Some vendor manuals were also licensed only to Tidewell's own staff, not to contractors. Swapping in a bigger model would not help, because the right passage often never reached the prompt.",
+  "approach": [
+   "Measured retrieval and answers separately on the 200 test questions and found retrieval recall at 5 was only 52%, which located the main problem.",
+   "Re-parsed the manuals with a layout-aware parser and OCR, kept each table whole as one chunk, and split text by headings with the section path added to each chunk.",
+   "Combined keyword search (BM25) with vector search and merged the two ranked lists using reciprocal rank fusion, so part numbers and paraphrases were both found.",
+   "Added a reranker that rescored the top 30 candidates and kept the best 6 for the prompt.",
+   "Stored an access list on every chunk and filtered on the user's groups inside the search query itself, so contractor accounts never retrieved restricted manuals.",
+   "Required the answer to cite chunk ids and to say 'not found in the manuals' when no passage supported it."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "def hybrid_search(query, user_groups, k=6):\n    kw = bm25_search(query, filter_groups=user_groups, limit=30)\n    vec = vector_search(embed(query), filter_groups=user_groups, limit=30)\n\n    # reciprocal rank fusion: reward chunks ranked high by either method\n    scores = {}\n    for results in (kw, vec):\n        for rank, chunk in enumerate(results):\n            scores[chunk.id] = scores.get(chunk.id, 0) + 1 / (60 + rank)\n\n    fused = sorted(scores, key=scores.get, reverse=True)[:30]\n    candidates = [get_chunk(cid) for cid in fused]\n    reranked = rerank(query, candidates)\n    return reranked[:k]"
+  },
+  "outcome": "Retrieval recall at 5 rose from 52% to 86%, and correct answers on the 200-question test set from 58% to 83%. In a red-team set of 300 queries from contractor accounts, no restricted manual content was returned.",
+  "lessons": [
+   "Measure retrieval on its own; if the right passage is missing, the model cannot answer correctly.",
+   "Parsing and chunking decisions, such as keeping tables whole, often matter more than the choice of model.",
+   "Hybrid search catches both exact identifiers and paraphrases.",
+   "Enforce permissions in the retrieval query, not by asking the model to hide things."
+  ],
+  "discuss": [
+   "How would you build the 200-question test set with technicians who have little spare time?",
+   "What should the system do when two manual versions disagree about a torque value?",
+   "When would fine-tuning be worth adding to this system, if ever?"
+  ]
+ },
+ "tools": {
+  "title": "Juniper Home Internet: a support bot that can act, within limits",
+  "company": "Juniper Home Internet (made up), broadband provider, about 400,000 subscribers, Ireland",
+  "situation": "About 35% of Juniper's support chats were about outages: is there a fault in my area, when will it be fixed, and can I get a credit. Human agents answered them by looking up three internal systems, with an average handle time of 7.5 minutes. Leadership wanted the chat assistant to handle these end to end.",
+  "problem": "The assistant could only talk, not look anything up or act. Giving the model direct access to the billing API was proposed, but it would let a confused or manipulated model issue any credit to any account. The team needed tool calling with tight validation and limits.",
+  "approach": [
+   "Designed three task-shaped tools, check_outage, book_technician and issue_service_credit, each with a clear description and a strict JSON schema, instead of exposing the raw billing API.",
+   "Took the customer's account id from the authenticated chat session on the server, never from the model's arguments, so the model could not act on another account.",
+   "Validated every call server-side: credits capped at 20 euros and only when check_outage confirmed a fault longer than 24 hours; larger amounts created an approval request for a human.",
+   "Attached an idempotency key to each write call, so a retried request could not issue the same credit twice.",
+   "Limited the agent loop to 8 tool calls per conversation and handed over to a human agent when the limit was reached or a tool returned an error twice.",
+   "Logged every tool request, validation result and response for audit and weekly review."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "CREDIT_TOOL = {\n    \"name\": \"issue_service_credit\",\n    \"description\": \"Credit the signed-in customer for a confirmed outage longer than 24 hours. Call check_outage first.\",\n    \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n            \"outage_id\": {\"type\": \"string\"},\n            \"amount_eur\": {\"type\": \"number\", \"minimum\": 1, \"maximum\": 20},\n        },\n        \"required\": [\"outage_id\", \"amount_eur\"],\n    },\n}\n\ndef run_issue_credit(args, session):\n    outage = outages.get(args[\"outage_id\"])\n    if not outage or session.account_id not in outage.affected_accounts:\n        return {\"error\": \"outage not found for this account\"}\n    if outage.duration_hours < 24:\n        return {\"error\": \"outage shorter than 24 hours, no credit due\"}\n    key = f\"{session.account_id}:{outage.id}\"\n    return billing.credit(session.account_id, args[\"amount_eur\"], idempotency_key=key)"
+  },
+  "outcome": "In the first two months, 31% of outage chats were resolved without a human, and average handle time for the rest fell by about 2.5 minutes because the bot had already gathered the details. No credit above the limit or to the wrong account was issued, and 40 larger credit requests were routed for approval as designed.",
+  "lessons": [
+   "Expose small, task-shaped tools, not your whole internal API.",
+   "Identity and authorization come from your server, never from arguments the model writes.",
+   "Write actions need limits, idempotency and a path to a human.",
+   "Cap the agent loop so a confused model cannot run forever."
+  ],
+  "discuss": [
+   "Which actions would you never let this bot take, even with limits?",
+   "How would you test that a customer cannot talk the bot into crediting another account?",
+   "Should this be a free-form agent or a fixed workflow with one model step, and why?"
+  ]
+ },
+ "mcp": {
+  "title": "Quillfeather Publishing: one rights server for three AI tools",
+  "company": "Quillfeather Publishing (made up), educational publisher, about 700 staff, United States",
+  "situation": "Quillfeather's editors must check that every image in a textbook is licensed for the right regions and formats. The rights database is only reachable through an internal web form, and a rights check took about a day by email. Editors wanted their chat assistant to check rights, developers wanted the same in their IDE assistant, and a custom agent that builds digital editions needed it too.",
+  "problem": "The plan on the table was three separate integrations, one per AI product, estimated at about 8 weeks and three codebases to maintain. Each would also need its own security review. The Model Context Protocol allowed one server that all three hosts could use.",
+  "approach": [
+   "Wrote one MCP server that wraps the rights database and exposes task-shaped tools, check_asset_rights and find_licensed_alternatives, rather than a generic SQL query tool.",
+   "Exposed licence terms as MCP resources, so a host can attach the full text of a licence to the conversation when needed.",
+   "Made every tool read-only; requests for new licences still go through the rights team's existing process.",
+   "Ran the server remotely over the streamable HTTP transport behind the company's single sign-on, with OAuth scopes limiting who can call which tool.",
+   "Tested each tool with the MCP Inspector and a small set of scripted calls, then connected the chat assistant, the IDE and the custom agent to the same server."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from mcp.server.fastmcp import FastMCP\n\nmcp = FastMCP(\"rights\")\n\n@mcp.tool()\ndef check_asset_rights(asset_id: str, region: str, format: str) -> dict:\n    \"\"\"Check whether an image or text asset is licensed for a region\n    (for example 'US', 'EU') and format ('print', 'ebook', 'web').\"\"\"\n    lic = rights_db.lookup(asset_id)\n    ok = region in lic.regions and format in lic.formats\n    return {\"asset_id\": asset_id, \"licensed\": ok,\n            \"expires\": lic.expires.isoformat(), \"licence_id\": lic.id}\n\n@mcp.resource(\"licence://{licence_id}\")\ndef licence_terms(licence_id: str) -> str:\n    \"\"\"Full text of a licence agreement.\"\"\"\n    return rights_db.licence_text(licence_id)\n\nif __name__ == \"__main__\":\n    mcp.run(transport=\"streamable-http\")"
+  },
+  "outcome": "One server replaced three planned integrations and was live in 3 weeks instead of the estimated 8. Rights checks that took about a day by email now take a few minutes, and in the first quarter editors caught 27 images with expiring or region-limited licences before print.",
+  "lessons": [
+   "MCP lets you build an integration once and use it from any compatible host.",
+   "Design tools around the task users actually do, not around database tables.",
+   "Start read-only; add write tools only with strong authorization and review.",
+   "A remote server needs the same identity and access controls as any other internal API."
+  ],
+  "discuss": [
+   "When would a plain REST API be a better choice than an MCP server?",
+   "How would you version the server's tools without breaking the three hosts that use it?",
+   "What would you log, and what would you avoid logging, on a server that reads licence contracts?"
+  ]
+ },
+ "finetune": {
+  "title": "Veldt Agritech: a small offline model for field reports",
+  "company": "Veldt Agritech (made up), agricultural cooperative, about 12,000 farmer members, South Africa",
+  "situation": "Veldt's field agents write short free-text reports after farm visits, which must be turned into structured records with crop, disease code and severity. Regional offices have unreliable internet, so the work had to run on a small server in each office. A large hosted model did the task with 94% accuracy but needed a connection, while a prompted 8-billion-parameter open model managed only 71% and produced malformed output 9% of the time.",
+  "problem": "The gap was about behaviour, not knowledge: the small model needed to follow Veldt's exact schema and disease codes reliably. Longer prompts with more examples helped little and slowed the model down. Retrieval would not help either, because the problem was output format and labeling habits, not missing documents.",
+  "approach": [
+   "Confirmed fine-tuning was the right tool: a fixed task, a strict format, a need to run small and offline, and enough examples to learn from.",
+   "Built about 3,000 training examples: 1,200 reports labelled by agronomists and 1,800 labelled by the large model and then spot-checked by agronomists, a light form of distillation.",
+   "Held back 400 agronomist-labelled reports as a test set that was never used in training.",
+   "Trained a QLoRA adapter on the 8B model loaded in 4-bit precision on one 24 GB GPU, in about 3 hours.",
+   "Validated every output against the JSON schema and fell back to a 'needs review' flag instead of guessing when validation failed.",
+   "Served the base model plus adapter with vLLM on each regional server."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import torch\nfrom transformers import AutoModelForCausalLM, BitsAndBytesConfig\nfrom peft import LoraConfig, get_peft_model\n\nbnb = BitsAndBytesConfig(\n    load_in_4bit=True,\n    bnb_4bit_quant_type=\"nf4\",\n    bnb_4bit_compute_dtype=torch.bfloat16,\n    bnb_4bit_use_double_quant=True,\n)\nmodel = AutoModelForCausalLM.from_pretrained(BASE_MODEL, quantization_config=bnb)\n\nlora = LoraConfig(\n    r=16, lora_alpha=32, lora_dropout=0.05,\n    target_modules=[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\"],\n    task_type=\"CAUSAL_LM\",\n)\nmodel = get_peft_model(model, lora)\nmodel.print_trainable_parameters()  # well under 1% of all weights"
+  },
+  "outcome": "On the 400-report test set, the fine-tuned model reached 89% accuracy, up from 71%, and malformed output fell from 9% to 0.4%. It runs offline at about 0.3 seconds per report, and the remaining hard cases are flagged for an agronomist instead of guessed.",
+  "lessons": [
+   "Fine-tune for behaviour and format; use retrieval for knowledge.",
+   "QLoRA makes fine-tuning possible on a single modest GPU by training a small adapter on a compressed model.",
+   "A held-out test set labelled by experts is what proves the fine-tune helped.",
+   "Labels from a larger model can bootstrap training data, but experts must check them."
+  ],
+  "discuss": [
+   "How would you retrain the adapter when Veldt adds new disease codes next season?",
+   "What are the risks of training on labels produced by another model?",
+   "Would you accept 89% offline over 94% online, and how would you present that trade-off?"
+  ]
+ },
+ "evals": {
+  "title": "Brookhaven Home Health: catching regressions before nurses do",
+  "company": "Brookhaven Home Health (made up), home care provider, about 3,500 caregivers, United States",
+  "situation": "Brookhaven uses an assistant to turn caregivers' visit notes into structured summaries that nurses review. A new prompt version looked better in a demo and was shipped, and within a week nurses reported two summaries that had left out a medication change. There was no systematic way to know whether a change made things better or worse.",
+  "problem": "Spot-checking a handful of examples misses rare but serious errors, and a medication omission matters far more than awkward phrasing. The team needed a repeatable test that scored what nurses care about, broken down by type of note, and that could block a bad release.",
+  "approach": [
+   "Built a golden set of 250 de-identified real notes, each with a nurse-written list of facts that must appear, tagged by slice such as medication change, fall, wound care and routine visit.",
+   "Wrote code checks first: output is valid JSON, every medication named in the note appears in the summary, and no medication appears that is not in the note.",
+   "Added an LLM judge with a short rubric for omissions and misstatements, returning a score and a reason for each case.",
+   "Calibrated the judge against two nurses on 100 cases and adjusted the rubric until agreement reached 88%.",
+   "Reported results by slice, not just overall, and ran the suite in CI on every prompt or model change.",
+   "Set a release gate: no drop on the medication slice, and no more than a 2-point drop on any other slice."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "suite: visit-summary\ndataset: golden/visit_notes_v3.jsonl   # 250 cases\nslices: [medication_change, fall, wound_care, routine]\nchecks:\n  - type: code\n    name: valid_json\n  - type: code\n    name: medication_recall      # every med in note appears in summary\n  - type: code\n    name: no_invented_medication\n  - type: llm_judge\n    name: omission_rubric\n    rubric: rubrics/omission_v2.md\n    scale: [0, 1, 2]\ngate:\n  medication_change.medication_recall: {min_delta: 0.0}\n  '*.omission_rubric': {min_delta: -0.02}\nreport: [overall, by_slice, diff_vs_baseline]"
+  },
+  "outcome": "Two months later the suite blocked a prompt change that looked fine overall but dropped medication recall on the medication-change slice from 97% to 90%. Reported medication omissions went from two in a week to none in the following eight weeks.",
+  "lessons": [
+   "An eval set built from real cases is how you prove quality, not a good demo.",
+   "Use code checks for anything that can be checked exactly, and a judge only for the rest.",
+   "Calibrate an LLM judge against human experts before trusting its scores.",
+   "Report by slice; an average can hide a regression on the cases that matter most."
+  ],
+  "discuss": [
+   "How would you keep the golden set up to date as note styles change?",
+   "What agreement level between judge and nurses would you accept, and why?",
+   "Who at the customer should own the release gate thresholds?"
+  ]
+ },
+ "case": {
+  "title": "Saltmarsh Veterinary: turning 'use AI to cut admin' into a pilot",
+  "company": "Saltmarsh Veterinary Group (made up), veterinary clinic chain, 85 clinics and about 1,300 staff, United Kingdom",
+  "situation": "Saltmarsh's chief executive told the FDE team: 'our vets drown in admin, use AI to fix it.' There was a budget and a six-month deadline but no defined problem. Vet turnover had risen to 19% a year, and exit interviews blamed paperwork.",
+  "problem": "'Admin' covered dozens of tasks, from clinical notes to rotas. Building a general assistant for all of it would take months and would be hard to measure. The team needed to break the request into parts, find the task that hurt most and could be measured, and start there.",
+  "approach": [
+   "Restated the goal in business terms with the chief executive: give vets back clinical time and reduce turnover, not 'use AI' for its own sake.",
+   "Identified users (vets and nurses), the sponsor (the chief executive), and gatekeepers (the clinical director and the data protection officer).",
+   "Shadowed six vets for a day each and mapped the workflow, which showed that pet insurance claim forms took about 25 minutes each and 30% were rejected first time for missing details.",
+   "Checked the data reality: clinical notes and invoices were in the practice management system and exportable; insurer requirements were in PDFs.",
+   "Agreed a success metric (minutes per claim form), a baseline (25 minutes, 30% rejection) and a guardrail (no rise in clinical errors on submitted forms).",
+   "Proposed a thin slice: pre-fill claim forms from notes and invoices for the three most common insurers, in four clinics, with the vet approving every form."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "CASE FRAMING: Saltmarsh claims pilot\n\nGoal: return clinical time to vets; reduce turnover\nSponsor: CEO   Users: vets, nurses\nGatekeepers: clinical director, data protection officer\n\nBottleneck found: insurance claim forms\n  Baseline: 25 min per form, 30% first-time rejection\nData: notes + invoices (PMS export), insurer rules (PDF)\n\nSuccess metric: minutes per claim form\nTarget: under 12 min in pilot clinics\nGuardrail: no rise in clinical errors on forms\n\nThin slice: pre-fill forms for top 3 insurers\n  4 clinics, 8 weeks, vet approves every form\nRisks: insurer format changes, PMS export access"
+  },
+  "outcome": "In the eight-week pilot, time per claim form fell from 25 to about 9 minutes and first-time rejections from 30% to 14%. Vets in the pilot clinics saved about 3 hours a week each, and the sponsor approved rollout to 30 more clinics.",
+  "lessons": [
+   "Restate a vague goal in business terms before discussing technology.",
+   "Watching the real workflow finds the bottleneck faster than asking people what they want.",
+   "Always pair a success metric with a baseline and a guardrail.",
+   "A thin slice that proves value in weeks beats a broad plan that proves nothing for months."
+  ],
+  "discuss": [
+   "What would you have done if the shadowing showed no single dominant bottleneck?",
+   "How would you handle a sponsor who insists on a broad chatbot instead of the thin slice?",
+   "Which guardrail metric would matter most to the clinical director, and how would you measure it?"
+  ]
+ },
+ "exec": {
+  "title": "Crestline Hotels: keeping a guest assistant alive after a bad weekend",
+  "company": "Crestline Hotels (made up), hotel group, 60 hotels and about 9,000 staff, Portugal and Spain",
+  "situation": "Crestline's guest messaging assistant answers questions about check-out times, parking and breakfast, handling about 70% of messages without staff. On a busy holiday weekend it told guests at several hotels the wrong late check-out time, and front desks received dozens of complaints. On Monday morning the chief operating officer emailed the sponsor: 'turn it off, it is embarrassing us.'",
+  "problem": "Turning the assistant off would push about 4,000 messages a week back to front desk staff and probably end the contract. A long technical explanation would not help either: the COO needed to know what happened, whether it was fixed and what it would cost the hotels. The FDE had to fix the fault and manage the conversation at the same time.",
+  "approach": [
+   "Split into two tracks: one engineer found and fixed the cause, a hotel-specific setting that a template update had overwritten, while the FDE handled communication.",
+   "Called the COO within the hour and began by listening and restating: 'guests got wrong information from us during your busiest weekend, and your staff took the heat.'",
+   "Sent a written update that gave the answer first, then the cause in one plain sentence, then the fix and the proof, following a situation, complication, question, answer structure.",
+   "Translated metrics into business terms: 38 affected guests, 11 hotels, about 60 staff hours of messages the assistant still handled that weekend.",
+   "Asked for one clear decision: keep the assistant on with a new check that blocks hotel-setting changes without review, and hold a review in two weeks.",
+   "Followed up at the promised time with the new check in place and a list of affected guests for the hotels to contact."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Subject: Guest assistant: wrong late check-out times fixed, one decision needed\n\nMaria,\n\nThe wrong late check-out times are fixed as of 11:40 today, and\nwe have confirmed correct answers at all 60 hotels.\n\nWhat happened: a template update on Friday overwrote the late\ncheck-out setting for 11 hotels. 38 guests received a wrong time.\n\nWhat we changed: hotel settings can no longer change without a\nreview, and a daily check compares answers with each hotel's policy.\n\nImpact: the assistant still handled about 4,100 messages this\nweekend, roughly 60 staff hours.\n\nDecision needed: keep the assistant on while we review together\non 14 October? The list of affected guests is attached.\n\nI will update you again at 17:00 today."
+  },
+  "outcome": "The COO agreed to keep the assistant on, and the review two weeks later found no further errors. Complaints about assistant answers stayed below 0.2% of messages over the next quarter, and Crestline renewed the contract and added 8 hotels.",
+  "lessons": [
+   "Run the technical fix and the communication as separate tracks with separate owners.",
+   "Listen and restate the executive's concern before explaining anything.",
+   "Lead with the answer and translate numbers into money, guests and staff time.",
+   "End with one clear decision and a specific time for the next update, then keep that promise."
+  ],
+  "discuss": [
+   "What would you do if the fix was not ready when you had promised an update?",
+   "How much technical detail belongs in an email to a COO, and where would the rest go?",
+   "How would you handle the sponsor who forwarded the complaint without telling you first?"
+  ]
+ },
+ "moat": {
+  "title": "Halden Facilities: custom fields without forking the product",
+  "company": "Halden Facilities (made up), facilities management company, about 5,000 staff, Norway, a customer of a made-up document AI vendor",
+  "situation": "The FDE worked for a vendor whose product extracts data from supplier invoices. Halden asked for five extra fields specific to its contracts, such as building code and service contract id, and a special approval step for invoices over 200,000 kroner. The vendor's field team already maintained three customer-specific code branches, which absorbed about 30% of engineering time.",
+  "problem": "Building Halden's requests as another branch would be fastest this month but would add one more version to maintain forever. Refusing would stall the deployment. The FDE had to decide, for each request, whether it belonged in Halden's configuration, in a customer adapter, or in the core product.",
+  "approach": [
+   "Sorted each request with a simple test: used by one customer only, configure it; seen at several customers, raise it for the product roadmap; never fork the core code.",
+   "Implemented Halden's five fields as configuration: field definitions and extraction hints in a customer config file the product already supported.",
+   "Noticed that three other customers had asked for amount-based approval routing, so wrote it up for the product team with the four use cases, and it was added to the core product one release later.",
+   "Recorded every correction Halden's staff made to extracted fields, with consent in the contract, as labelled data for improving the extraction model across customers.",
+   "Tracked FDE hours as product research (work that fed the roadmap) versus delivery cost (work only Halden benefits from) and reported the split monthly."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "customer: halden-facilities\nextraction:\n  extra_fields:\n    - name: building_code\n      type: string\n      pattern: '^HF-[0-9]{4}$'\n      hint: 'Often printed near the delivery address as HF-1234'\n    - name: service_contract_id\n      type: string\n      hint: 'Labelled Kontrakt or Avtale on Norwegian invoices'\nrouting:\n  # uses the core amount-based approval feature\n  approval_rules:\n    - if: total_amount > 200000\n      currency: NOK\n      route_to: finance-controller\nfeedback:\n  capture_corrections: true\n  share_for_model_training: true   # per contract clause 7.3"
+  },
+  "outcome": "Halden went live in 5 weeks with no new code branch. Over two quarters, the correction data from Halden and other customers helped cut the average field correction rate from 12% to 6%, and FDE hours per new customer fell from about 220 to 140 as more requests were met by configuration.",
+  "lessons": [
+   "Decide where work lives before building it: configuration, adapter, or core product.",
+   "A request seen at several customers is a product signal, not a one-off.",
+   "Forks feel fast and become permanent cost.",
+   "User corrections, collected with permission, are process data that competitors cannot copy."
+  ],
+  "discuss": [
+   "What would you do if a large customer offered to pay extra for a custom fork?",
+   "How would you persuade a product manager to prioritize a feature seen at four customers?",
+   "What contract terms should cover using a customer's corrections to improve a shared model?"
+  ]
+ },
+ "arc": {
+  "title": "Maplestone Housing: a 12-week path from 'AI for repairs' to live",
+  "company": "Maplestone Housing Association (made up), social housing provider, about 45,000 homes, United Kingdom",
+  "situation": "Maplestone's board approved a budget for 'AI for repairs' with a deadline of one quarter. Tenants report about 1,400 repairs a week by phone and web form, and a small triage team decides the trade and urgency. Triage took about 2 days on average, and 27% of jobs were sent to the wrong trade, which meant a wasted visit.",
+  "problem": "The request was vague, and past technology projects at Maplestone had either stayed as demos or gone live with nobody able to run them. The FDE needed a plan that produced a measured result in 12 weeks and left a customer team able to own the system.",
+  "approach": [
+   "Weeks 1-2 (scope): sat with the triage team, confirmed the baseline of 2 days and 27% wrong trade, and agreed SMART success criteria with the director of property services.",
+   "Chose one pilot: suggest trade and urgency for web-form repairs only, with a triage officer approving each suggestion, leaving phone calls for later.",
+   "Weeks 3-6 (prototype): built a classifier using past repair records, tested it weekly with four triage officers, and changed the screen twice based on their feedback.",
+   "Weeks 7-10 (harden): integrated with the repairs system, added an evaluation set of 500 labelled jobs, logging, access controls and a fallback to manual triage.",
+   "Measured against the agreed criteria in week 10 and shared the results with the sponsor before full launch.",
+   "Weeks 11-12 (hand over): trained three Maplestone staff to monitor, retrain and adjust the system, wrote runbooks, and set up a small internal centre of excellence for the next use case."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "SUCCESS CRITERIA (agreed week 2)\n\nSpecific:   suggest trade + urgency for web-form repair requests\nMeasurable: wrong-trade rate and hours from report to triage\nAchievable: officer approves every suggestion in pilot\nRelevant:   fewer wasted visits, faster repairs for tenants\nTime-bound: measured in week 10\n\nTargets:\n  wrong-trade rate     27%     -> under 15%\n  time to triage       2 days  -> under 1 day\n  guardrail            no rise in missed emergency repairs\n\nPhases:\n  wk 1-2 scope | wk 3-6 prototype | wk 7-10 harden | wk 11-12 hand over"
+  },
+  "outcome": "By week 10, web-form repairs were triaged in about 4 hours on average instead of 2 days, and the wrong-trade rate fell from 27% to 11%, with no rise in missed emergencies. After handover, Maplestone's own team extended the system to phone repairs three months later without the FDE team.",
+  "lessons": [
+   "Agree the baseline and success criteria in the first two weeks, in writing.",
+   "Choose one pilot that is narrow enough to finish and meaningful enough to matter.",
+   "Prototype with the real users every week, not just at the end.",
+   "Plan handover from the start; a system nobody can run will not last."
+  ],
+  "discuss": [
+   "What would you do if the data needed for the prototype turned out to be poor in week 3?",
+   "Why start with web forms rather than phone calls, and when would you revisit that?",
+   "What does a customer team need to know to own a system like this?"
+  ]
+ },
+ "pod": {
+  "title": "Aurelia Foods: a three-person pod that changed plans on day four",
+  "company": "Aurelia Foods (made up), packaged food manufacturer, 5 plants and about 2,400 staff, Italy",
+  "situation": "A pod of one Echo (deployment strategist) and two Deltas (engineers) was sent to Aurelia with one mission: cut the time planners spend building weekly production schedules, then about 6 hours per planner per week across 14 planners. The company's average time-to-value for new deployments was about 14 weeks.",
+  "problem": "On day four the pod discovered that the ERP system did not hold changeover times between product lines, the key input their plan depended on. Escalating to headquarters for a new plan would have cost at least two weeks, and the engineers were already losing half their days to customer status meetings.",
+  "approach": [
+   "Used mission-type tactics: headquarters had set the goal and the reason, so the pod decided the new route itself and informed leadership afterwards.",
+   "Changed approach within a day: the Deltas extracted changeover times from 18 months of shift logs, and the Echo agreed with plant managers to confirm the ten most common ones.",
+   "The Echo took over all status meetings and customer admin, sending one written update a week, so the Deltas had most of their time for building.",
+   "Shipped small pieces to planners every week, a changeover lookup, then a draft schedule, then conflict warnings, and kept only the pieces planners actually used.",
+   "Retired the conflict warnings after two weeks when usage showed planners ignored them, and put the time into the draft schedule instead.",
+   "Tracked time-to-value from contract signature to the first week planners saved measurable time."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "MISSION BRIEF: Aurelia pod\n\nIntent: planners spend less time building weekly schedules\n        so plants react faster to demand changes.\nWhy it matters: renewal and expansion to 3 more plants.\nSuccess: planner hours per week, from 6 toward 3.\nBoundaries:\n  - no writes to the ERP without Aurelia IT sign-off\n  - production data stays in Aurelia's cloud tenant\nPod decides: data sources, tools, order of work.\nEscalate only if: a boundary must change, or the goal\n                  looks unreachable.\nReporting: one written update every Friday (Echo)."
+  },
+  "outcome": "Planners saw measurable time savings in week 7, a time-to-value of 7 weeks against the company average of 14. By week 12, planner time on schedules had fallen from about 6 to 2.5 hours a week, and Aurelia signed to expand to three more plants.",
+  "lessons": [
+   "Give the pod the goal and the reason, then let the people on site choose the route.",
+   "Separate roles protect engineering time: the Echo absorbs meetings so the Deltas can build.",
+   "Ship small, watch what gets used, and drop what does not.",
+   "Time-to-value is a clear shared measure for the pod and the customer."
+  ],
+  "discuss": [
+   "What decisions should a pod never make without escalating?",
+   "How would you tell a customer that a feature they asked for was dropped because nobody used it?",
+   "What are the risks if the Echo shields the engineers from the customer too much?"
+  ]
+ },
+ "lastmile": {
+  "title": "Pemberton Dental: getting a recall product working in 140 practices",
+  "company": "Pemberton Dental Partners (made up), dental practice group, 140 practices, United Kingdom",
+  "situation": "Pemberton bought a patient recall product that reminds patients when check-ups are due. It worked well in the demo, but connecting each practice took about 6 weeks, and 14% of patient records were rejected on import. After four months only 22 practices were live, and the renewal review was approaching.",
+  "problem": "The practices ran an old practice management system with an API that had no reliable documentation, date formats that varied by practice, and phone numbers stored in several ways. There were also workflow exceptions: NHS patients and private patients have different recall rules, and some practices skip recalls for patients under active treatment. The vendor's core team was busy, so the gap had to be closed in the field.",
+  "approach": [
+   "Probed the undocumented API with recorded requests against a test practice, writing down every endpoint, field and error code actually returned.",
+   "Wrapped the API in a small typed client with timeouts, retries with backoff for its frequent 503 errors, and tests built from the recorded responses.",
+   "Repaired schemas at the boundary with a validation model that normalizes dates, phone numbers and patient type before data reaches the product.",
+   "Encoded workflow exceptions as rules in configuration, such as recall intervals for NHS and private patients and a skip rule for active treatment plans.",
+   "Sent records that still failed validation to a review queue with a clear reason, instead of silently dropping them.",
+   "Wrote an onboarding playbook and a script that runs the checks for a new practice, so practice managers could self-serve most steps."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from datetime import date, datetime\nfrom typing import Literal\nfrom pydantic import BaseModel, field_validator\nDATE_FORMATS = (\"%d/%m/%Y\", \"%Y-%m-%d\", \"%d-%b-%y\", \"%d.%m.%Y\")\nclass Patient(BaseModel):\n    patient_id: str\n    last_checkup: date\n    mobile: str | None\n    patient_type: Literal[\"nhs\", \"private\"]\n    @field_validator(\"last_checkup\", mode=\"before\")\n    @classmethod\n    def parse_date(cls, v):\n        for fmt in DATE_FORMATS:\n            try:\n                return datetime.strptime(v.strip(), fmt).date()\n            except ValueError:\n                continue\n        raise ValueError(f\"unrecognized date: {v!r}\")\n    @field_validator(\"mobile\", mode=\"before\")\n    @classmethod\n    def normalize_mobile(cls, v):\n        digits = \"\".join(ch for ch in (v or \"\") if ch.isdigit())\n        if digits.startswith(\"07\") and len(digits) == 11:\n            return \"+44\" + digits[1:]\n        return None  # unknown format: send to review queue"
+  },
+  "outcome": "Onboarding time per practice fell from about 6 weeks to 9 working days, and record rejections from 14% to about 1%, with every remaining rejection visible in the review queue. All 140 practices were live within five months, and the fixes were passed to the vendor's product team for the next customer on the same system.",
+  "lessons": [
+   "Demos assume clean data; the last mile is where real value is won or lost.",
+   "When an API has no documentation, record what it actually does and test against that.",
+   "Fix messy data at the boundary, before it reaches the product, and never drop records silently.",
+   "Write down every fix as a playbook or reusable code so the next onboarding is faster."
+  ],
+  "discuss": [
+   "How would you decide which fixes should move into the core product?",
+   "What would you do if a practice's data was too poor to repair automatically?",
+   "How would you explain the delay to Pemberton's leadership without blaming the old system's vendor?"
+  ]
+ },
+ "fluency": {
+  "title": "Wrenfield Clinics: a junior analyst learns to use AI well",
+  "company": "Wrenfield Clinics (made up), physiotherapy clinic chain, 20 clinics and about 300 staff, India",
+  "situation": "Priya, a junior operations analyst, spent about 6 hours each month building a report on appointment no-shows for the clinic managers. She wanted to use an AI assistant to speed it up and, longer term, to move toward a technical AI role. Her first attempt produced a draft with a no-show rate that was wrong by 4 points, which her manager caught.",
+  "problem": "Using AI casually had made her faster but less trustworthy. Taking random online courses would not fix it either. She needed a learning route matched to her goal and a habit for using AI on real work that her manager could trust.",
+  "approach": [
+   "Wrote down her target role and the gap: basic Python and statistics were in place; machine learning foundations and hands-on practice were missing.",
+   "Planned a route of about 8 hours a week: a machine learning foundations course first, then a top-down practical deep learning course, with one small project from her own work each month.",
+   "Applied Delegation: decided the AI would draft the commentary and suggest charts, while she kept the number crunching in a spreadsheet she controlled.",
+   "Applied Description: gave the assistant the table of figures, the audience and the format she wanted, instead of asking it to 'analyse no-shows'.",
+   "Applied Discernment: checked every number in the draft against her spreadsheet and removed claims the data did not support.",
+   "Applied Diligence: noted at the end of each report which parts were drafted with AI and confirmed no patient names were ever pasted in."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "MONTHLY NO-SHOW REPORT: AI checklist (4Ds)\n\nDelegation\n  AI drafts: commentary, chart ideas\n  I do:      all calculations, final wording\nDescription\n  Give: summary table, audience (clinic managers),\n        length (1 page), tone (plain, no jargon)\nDiscernment\n  [ ] every number matches my spreadsheet\n  [ ] every claim is supported by the table\n  [ ] no invented causes for trends\nDiligence\n  [ ] no patient names or phone numbers pasted\n  [ ] footer: 'Commentary drafted with AI, checked by Priya'"
+  },
+  "outcome": "Report time fell from about 6 hours to 2.5 hours a month, and her manager found no errors in the next three reports. Over four months she completed the foundations course and two small projects, one of which the clinic now uses to flag patients likely to miss appointments.",
+  "lessons": [
+   "A learning route should start from a target role and the gap, not from a list of popular courses.",
+   "AI fluency is a habit: decide what to delegate, describe the task well, check the output, and be open about use.",
+   "Keep calculations you are accountable for in a place you control and can verify.",
+   "Small projects from your own work teach more than courses alone."
+  ],
+  "discuss": [
+   "Which parts of your own work would you not delegate to an AI assistant, and why?",
+   "How would you explain your AI checking process to a sceptical manager?",
+   "How would you pick between two courses that cover similar material?"
+  ]
+ },
+ "interview": {
+  "title": "Preparing for an FDE loop: a backend engineer rebalances his practice",
+  "company": "Daniel (made up), backend engineer at Tallow & Finch (made up), an online furniture retailer of about 250 staff, United States",
+  "situation": "Daniel had four years of backend experience and applied for forward deployed engineer roles. He prepared almost entirely with algorithm puzzles, about 80% of 60 study hours. In his first loop he did well on coding but struggled in the customer scenario round, when the interviewer played a vague operations director, and was rejected.",
+  "problem": "His preparation did not match what FDE loops score: deep technical understanding, practical implementation, customer scenario and communication, and business acumen. More algorithm practice would not fix a weak customer round or thin answers on business metrics.",
+  "approach": [
+   "Mapped the loop's four pillars and their weights (40%, 30%, 20%, 10%) and split his next 60 hours in roughly the same proportions.",
+   "For deep technical, practised explaining RAG, embeddings and agent loops out loud, then asked a friend to push with 'why' follow-ups until he reached the limit of his knowledge.",
+   "For practical implementation, did three timed 90-minute builds against real public APIs, including error handling, tests and a short README.",
+   "For the customer round, did four mock sessions with a friend playing a vague stakeholder, practising clarifying questions, a success metric and a thin first step.",
+   "For business acumen, learned the basic numbers FDE leaders watch, such as time-to-value and delivery cost, and connected them to his own past projects.",
+   "Wrote five STAR stories (situation, task, action, result) from his work, each with a measured result, and linked a small deployed project in his portfolio."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "PREP PLAN: 60 hours over 6 weeks\n\nPillar                       Weight  Hours  Practice\nDeep technical                 40%     24   explain aloud + why-drills\nPractical implementation       30%     18   3 timed API builds\nCustomer scenario/comms        20%     12   4 mock stakeholder rounds\nBusiness acumen                10%      6   TTV, delivery cost, stories\n\nSTAR stories (each with a number):\n  1. Cut checkout API p95 latency 38%\n  2. Migrated orders DB with zero downtime\n  3. Calmed an angry merchant escalation\n  4. Pushed back on scope, shipped in 3 weeks\n  5. Mentored intern to first production PR"
+  },
+  "outcome": "In mock customer rounds scored with a simple rubric, his average rose from 2 to 4 out of 5 over four sessions. His second FDE loop, three months after the first, ended in an offer, with interviewer feedback singling out his clarifying questions in the customer round.",
+  "lessons": [
+   "Prepare in proportion to how the loop is scored, not to what feels comfortable.",
+   "The customer round tests how you think with a vague stakeholder, and it can be practised.",
+   "Stories with measured results prove skills that a CV only claims.",
+   "A small deployed project gives interviewers something concrete to probe."
+  ],
+  "discuss": [
+   "Which of the four pillars is your weakest today, and how would you practise it this week?",
+   "What makes a STAR story convincing to an FDE interviewer rather than a standard engineering one?",
+   "How would you answer 'why FDE and not a regular software engineering role?'"
+  ]
+ },
+ "projecta": {
+  "title": "Ashgrove Council: an agentic RAG service for planning officers",
+  "company": "Ashgrove Borough Council (made up), local government, about 1,200 staff, United Kingdom",
+  "situation": "Ashgrove's planning officers answer questions from applicants and councillors using about 9,000 pages of local plans, design guides and past appeal decisions. Finding the right policy took officers about 20 minutes per question, and around 600 questions arrived each month. An FDE built a service with the same design as the course's Project A to help.",
+  "problem": "A simple one-shot chatbot had been tried and gave confident answers citing the wrong policy version, and some draft policies were visible only to senior officers. Hosted large models were also costly at the expected volume. The service needed to search well, check its own evidence, respect permissions and report its quality, speed and cost.",
+  "approach": [
+   "Stored chunks in PostgreSQL with pgvector, each with policy version, status and an access list, and combined keyword and vector search filtered by the user's role.",
+   "Built the agent as a LangGraph graph: retrieve, grade the evidence, then either generate an answer or rewrite the query and retrieve again, with at most two retries.",
+   "Made the grader return structured output (relevant or not, and which chunk ids support the answer) so routing decisions were based on data, not free text.",
+   "Fine-tuned a small open model with QLoRA on 1,500 officer-approved answers to write in the council's citation style, keeping a large hosted model as a fallback for low-confidence cases.",
+   "Served the graph behind a FastAPI endpoint and ran an evaluation suite of 250 real questions reporting answer correctness, citation accuracy, p95 latency and cost per question.",
+   "Answered 'I cannot find a current policy on this' when the grader found no supporting evidence after the retries."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from langgraph.graph import StateGraph, START, END\n\ng = StateGraph(RagState)\ng.add_node(\"retrieve\", retrieve)        # hybrid search with role filter\ng.add_node(\"grade\", grade_evidence)     # structured: relevant, chunk_ids\ng.add_node(\"rewrite\", rewrite_query)\ng.add_node(\"generate\", generate_answer)\ng.add_node(\"refuse\", no_evidence_answer)\n\ng.add_edge(START, \"retrieve\")\ng.add_edge(\"retrieve\", \"grade\")\n\ndef route(state: RagState) -> str:\n    if state[\"grade\"].relevant:\n        return \"generate\"\n    return \"rewrite\" if state[\"retries\"] < 2 else \"refuse\"\n\ng.add_conditional_edges(\"grade\", route,\n    {\"generate\": \"generate\", \"rewrite\": \"rewrite\", \"refuse\": \"refuse\"})\ng.add_edge(\"rewrite\", \"retrieve\")\ng.add_edge(\"generate\", END)\ng.add_edge(\"refuse\", END)\napp = g.compile()"
+  },
+  "outcome": "On the 250-question set, answer correctness reached 84% against 61% for the earlier one-shot chatbot, and citations pointed to the current policy version 96% of the time. The p95 latency was 6 seconds, cost per question fell about 70% compared with using only the large model, and officers reported the time per question falling from about 20 to 8 minutes.",
+  "lessons": [
+   "An agentic loop that grades its own evidence and retries fixes many 'confident but wrong' answers.",
+   "Put permissions and document versions in the index, not in the prompt.",
+   "Structured output makes agent routing predictable and testable.",
+   "Report quality, latency and cost together; customers decide on all three."
+  ],
+  "discuss": [
+   "When would you drop the fine-tuned model and use only the hosted one?",
+   "How would you stop the rewrite loop from drifting away from the officer's actual question?",
+   "Which of these numbers would a council's head of planning care about most, and why?"
+  ]
+ },
+ "projectb": {
+  "title": "Tallis Analytics: a coding agent that learns the house rules",
+  "company": "Tallis Analytics (made up), data platform company, about 250 engineers, Canada",
+  "situation": "Tallis piloted a coding agent that fixes small bugs and writes tests in its main repository of about 1.2 million lines. On an internal benchmark of 80 past tickets, the agent's changes passed review and tests only 46% of the time. Reviewers kept seeing the same mistakes: editing generated files, running the wrong test command and ignoring the team's error-handling pattern.",
+  "problem": "Longer instructions in the system prompt helped briefly, but each new rule made the prompt harder to maintain and the agent still read huge files into its context. Fine-tuning a model on Tallis's code was not an option under its data policy. The FDE built an agent in the style of the course's Project B that learns from its own failures in an auditable way.",
+  "approach": [
+   "Built the agent as a LangGraph graph with shared state: plan, search files, read only the matching sections, edit, run tests, then a Reflector and a Curator step after each task.",
+   "Gave it file tools that search first and then read limited line ranges, so it no longer pulled whole large files into context.",
+   "Compiled the prompt each run from fixed parts: task, repository map, relevant playbook entries and recent tool results, each with a token budget.",
+   "Had the Reflector compare failed runs with the reviewer's fix and propose specific lessons, and the Curator add or update playbook entries by id instead of rewriting the playbook.",
+   "Prevented context collapse by keeping entries short and itemized, removing duplicates and retiring entries with high harmful counts.",
+   "Measured weekly on the 80-ticket benchmark plus a held-out set of 40 newer tickets that the playbook never learned from."
+  ],
+  "artifact": {
+   "lang": "JSON",
+   "code": "[\n  {\n    \"id\": \"pb-012\",\n    \"section\": \"repo_rules\",\n    \"content\": \"Never edit files under src/generated/. Change the .proto file in schemas/ and run make codegen.\",\n    \"helpful\": 19, \"harmful\": 0\n  },\n  {\n    \"id\": \"pb-027\",\n    \"section\": \"testing\",\n    \"content\": \"Run tests with make test-unit PKG=<package>, not pytest directly; the make target sets required env vars.\",\n    \"helpful\": 23, \"harmful\": 1\n  },\n  {\n    \"id\": \"pb-041\",\n    \"section\": \"style\",\n    \"content\": \"Wrap external calls with retry_with_backoff from common/net.py and raise ServiceError, not bare exceptions.\",\n    \"helpful\": 11, \"harmful\": 0\n  }\n]"
+  },
+  "outcome": "Over four weeks the pass rate on the 80-ticket benchmark rose from 46% to 63%, and on the 40 held-out tickets from 44% to 58%, showing the lessons generalized. Average context per step fell by about half, and reviewers could read and edit all 48 playbook entries directly.",
+  "lessons": [
+   "An agent that records small, specific lessons can stop repeating the same mistakes without retraining.",
+   "Search-then-read file tools keep context small and focused on large codebases.",
+   "A held-out set shows whether lessons generalize or only memorize the benchmark.",
+   "A readable playbook lets the customer's engineers audit and correct what the agent learned."
+  ],
+  "discuss": [
+   "How would you stop a wrong lesson from spreading before its harmful counter catches it?",
+   "Who on the customer's team should approve playbook changes?",
+   "How would you present these results to an engineering director who distrusts coding agents?"
+  ]
+ }
+}

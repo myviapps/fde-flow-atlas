@@ -1,0 +1,1026 @@
+{
+ "apistyles": {
+  "plain": "An API (application programming interface) is the agreed way one program asks another program for data or asks it to do something. An API style is a family of conventions for that conversation. REST uses ordinary web addresses and HTTP verbs, GraphQL lets the caller write a query for exactly the fields it wants, gRPC sends compact typed binary messages between services, and webhooks reverse the direction so the other system calls you when something happens. Most real projects use two or three of these side by side.",
+  "analogy": "REST is ordering from a fixed menu, one dish per request. GraphQL is telling the waiter exactly which items and portions you want on one plate. gRPC is the kitchen's internal ticket system, fast and terse but only readable by staff. A webhook is the restaurant texting you when your table is ready, so you do not have to keep asking at the door.",
+  "why": "FDEs spend much of their time connecting a product to a customer's systems, and each system speaks its own style. A logistics customer might offer a REST API for shipments, a webhook for delivery events and an internal gRPC service for pricing. Knowing which style fits which job, and how to read an OpenAPI spec quickly, lets you build integrations in days instead of weeks.",
+  "subtopics": [
+   {
+    "title": "REST: resources, verbs, status codes",
+    "body": "REST (representational state transfer) organizes an API around resources, which are the nouns of the system: orders, customers, invoices. Each resource has a URL, such as /orders/42. You act on it with HTTP verbs: GET reads, POST creates, PUT or PATCH updates, DELETE removes. The HTTP basics themselves are covered in the http concept.\n\nThe server answers with a status code that tells you what happened. 200 means OK, 201 means created, 400 means your request was malformed, 401 means you are not logged in, 404 means the thing does not exist, 429 means slow down, and 5xx means the server failed.\n\nREST is popular because every language, tool and developer already understands it. Its weak spot is that the server decides the response shape, so a screen may need several calls to gather everything, or receive far more data than it uses.",
+    "example": "A retailer called Lindqvist Outdoor exposes GET /orders?status=open&limit=50. Your script receives 50 orders as JSON. To show each order's customer name, it then calls GET /customers/{id} for each order, making 51 requests in total. That extra chatter is the problem GraphQL was designed to reduce.",
+    "code": "import requests\n\nBASE = \"https://api.example-retailer.com/v1\"\nHEADERS = {\"Authorization\": \"Bearer <token>\"}\n\n# GET a filtered list of resources\nr = requests.get(f\"{BASE}/orders\", params={\"status\": \"open\", \"limit\": 50},\n                 headers=HEADERS, timeout=10)\nr.raise_for_status()                 # turns 4xx/5xx into an exception\norders = r.json()[\"data\"]\n\n# POST creates a new resource; expect 201 Created\nnew = requests.post(f\"{BASE}/orders/{orders[0]['id']}/notes\",\n                    json={\"text\": \"Customer called about delivery\"},\n                    headers=HEADERS, timeout=10)\nprint(new.status_code)               # 201 on success",
+    "lang": "Python"
+   },
+   {
+    "title": "GraphQL: the client chooses the shape",
+    "body": "GraphQL exposes a single endpoint, usually /graphql, and a schema that lists every type and field. The client sends a query naming exactly which fields it needs, including related objects, and the server returns JSON in that same shape.\n\nThis helps when many different clients (a mobile app, a web dashboard, a partner) need different slices of the same data. One request can replace several REST calls, and nobody downloads fields they do not use.\n\nThe costs are real. HTTP caching is harder because everything is a POST to one URL. A careless query can ask for deeply nested data and overload the server, so servers set depth and cost limits. On the server side, resolving each nested field naively causes many database queries, the N+1 problem, which is usually fixed with batching.",
+    "example": "The Lindqvist Outdoor mobile app shows open orders with the customer's first name and the item count. With GraphQL it sends one query asking for orders { id total customer { firstName } items { sku } }. The response is about 8 KB instead of the roughly 60 KB the REST calls returned, and it takes one round trip instead of 51.",
+    "code": "import requests\n\nquery = \"\"\"\nquery OpenOrders($limit: Int!) {\n  orders(status: OPEN, first: $limit) {\n    id\n    total\n    customer { firstName }     # related object in the same request\n    items { sku quantity }\n  }\n}\n\"\"\"\nr = requests.post(\"https://api.example-retailer.com/graphql\",\n                  json={\"query\": query, \"variables\": {\"limit\": 50}},\n                  headers={\"Authorization\": \"Bearer <token>\"}, timeout=10)\nbody = r.json()\nif \"errors\" in body:                  # GraphQL often returns 200 with errors inside\n    raise RuntimeError(body[\"errors\"])\nprint(body[\"data\"][\"orders\"][0])",
+    "lang": "Python"
+   },
+   {
+    "title": "gRPC and Protobuf for internal services",
+    "body": "gRPC is a framework for calling a function on another service as if it were local. You describe the service and its messages in a .proto file using Protocol Buffers (Protobuf), a compact binary format. A code generator then produces client and server code in many languages, so both sides agree on types at compile time.\n\ngRPC runs over HTTP/2, which keeps one connection open and can stream many messages in both directions. Messages are smaller and faster to parse than JSON.\n\nThe trade-off is reach. Browsers cannot call gRPC directly without a proxy, you cannot read a binary message with your eyes, and customers' developers are less familiar with it. It shines between services that one team controls.",
+    "example": "A freight company runs a pricing service called by its booking service about 3,000 times per second. Moving that call from JSON over REST to gRPC cut the payload size and gave both teams a shared contract file, so a renamed field became a build error instead of a production bug.",
+    "code": "// pricing.proto\nsyntax = \"proto3\";\n\npackage pricing.v1;              // version lives in the package name\n\nservice Pricing {\n  rpc Quote (QuoteRequest) returns (QuoteReply);\n}\n\nmessage QuoteRequest {\n  string origin_postcode = 1;     // field numbers identify fields on the wire\n  string dest_postcode   = 2;\n  double weight_kg       = 3;\n}\n\nmessage QuoteReply {\n  int64  price_cents = 1;\n  string currency    = 2;\n}\n// Generate Python code:\n// python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. pricing.proto",
+    "lang": "Protobuf"
+   },
+   {
+    "title": "Polling versus webhooks",
+    "body": "Polling means your code asks the other system on a timer: 'any new orders since 10:05?'. It is simple and works with any API, but most calls return nothing, and you learn about changes only at the next poll.\n\nA webhook is an HTTP POST the other system sends to a URL you give it whenever an event happens, such as order.paid. You get the news within seconds and make no wasted calls. In exchange you must run a public endpoint, verify that each call really came from the sender (usually an HMAC signature header computed with a shared secret), reply quickly with a 2xx code, and handle duplicates and out-of-order events, because senders retry.\n\nA common robust pattern is both: webhooks for speed, plus a slow reconciliation poll that catches anything missed during an outage.",
+    "example": "A carrier offers a shipment status API and webhooks. Polling 4,000 open shipments every 5 minutes would be 48,000 calls an hour. With webhooks the carrier sends about 900 events an hour, and a nightly poll of shipments not updated in 24 hours catches the rare missed event.",
+    "code": "import hmac, hashlib\nfrom fastapi import FastAPI, Request, HTTPException\n\napp = FastAPI()\nSECRET = b\"shared-webhook-secret\"          # from a secret store in real code\n\n@app.post(\"/webhooks/carrier\")\nasync def carrier_hook(request: Request):\n    raw = await request.body()\n    sent = request.headers.get(\"X-Signature\", \"\")\n    expected = hmac.new(SECRET, raw, hashlib.sha256).hexdigest()\n    if not hmac.compare_digest(sent, expected):   # reject forged calls\n        raise HTTPException(status_code=401)\n    event = await request.json()\n    enqueue(event)            # do slow work later; reply fast\n    return {\"ok\": True}       # 200 tells the sender not to retry",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Aspect",
+      "Polling",
+      "Webhooks"
+     ],
+     "rows": [
+      [
+       "Who starts the call",
+       "You, on a timer",
+       "The other system, on an event"
+      ],
+      [
+       "Freshness",
+       "Up to one interval late",
+       "Usually seconds"
+      ],
+      [
+       "Wasted calls",
+       "Many empty responses",
+       "Almost none"
+      ],
+      [
+       "What you must run",
+       "A scheduled job",
+       "A public, secured endpoint"
+      ],
+      [
+       "Main risks",
+       "Rate limits, delay",
+       "Forged calls, duplicates, missed events"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Versioning and OpenAPI specs",
+    "body": "An OpenAPI specification is a YAML or JSON document that describes a REST API: every path, verb, parameter, request body, response and error. Tools read it to generate documentation pages, client libraries, mock servers and tests. FastAPI generates one for you automatically at /openapi.json.\n\nAs an FDE, the spec is often the fastest way to understand a customer's API. Load it into a viewer, find the endpoints you need, and generate a typed client instead of hand-writing requests.\n\nAPIs change, and changes are either additive or breaking. Adding an optional field or a new endpoint is additive and safe. Removing or renaming a field, changing a type, or making an optional field required is breaking. Breaking changes need a new version, often in the path (/v2/orders) or a header, running beside the old one until clients have moved.",
+    "example": "An insurer wants to split 'name' into 'first_name' and 'last_name' on its claims API. Changing /v1 would break three partner integrations. Instead it adds the new fields to /v1 alongside 'name' (additive), launches /v2 without 'name', and sets a sunset date for /v1 twelve months out, tracking which partners still call it.",
+    "code": "openapi: 3.0.3\ninfo:\n  title: Claims API\n  version: 2.0.0\npaths:\n  /v2/claims/{claimId}:\n    get:\n      summary: Get one claim\n      parameters:\n        - name: claimId\n          in: path\n          required: true\n          schema: {type: string}\n      responses:\n        \"200\":\n          description: The claim\n          content:\n            application/json:\n              schema:\n                type: object\n                required: [id, status]\n                properties:\n                  id: {type: string}\n                  status: {type: string, enum: [open, approved, rejected]}\n                  first_name: {type: string}\n        \"404\": {description: Claim not found}",
+    "lang": "YAML",
+    "checklist": [
+     "Safe: add a new endpoint",
+     "Safe: add an optional response field",
+     "Breaking: remove or rename a field",
+     "Breaking: change a field's type or allowed values",
+     "Breaking: make an optional request field required",
+     "For breaking changes: new version, spec updated, deprecation date announced, old-version traffic monitored"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "API",
+    "An agreed interface one program uses to request data or actions from another."
+   ],
+   [
+    "REST",
+    "An API style built around resources at URLs, acted on with HTTP verbs."
+   ],
+   [
+    "GraphQL",
+    "An API style with one endpoint where the client's query decides which fields come back."
+   ],
+   [
+    "gRPC",
+    "A framework for typed, fast calls between services using Protobuf over HTTP/2."
+   ],
+   [
+    "Protobuf",
+    "Protocol Buffers, a compact binary format defined by .proto schema files."
+   ],
+   [
+    "Webhook",
+    "An HTTP call another system makes to your URL when an event happens."
+   ],
+   [
+    "Polling",
+    "Repeatedly asking a system on a timer whether anything has changed."
+   ],
+   [
+    "HMAC signature",
+    "A hash of the message made with a shared secret, proving who sent it and that it was not altered."
+   ],
+   [
+    "OpenAPI",
+    "A standard YAML or JSON format that describes a REST API's endpoints and data."
+   ],
+   [
+    "Breaking change",
+    "A change that makes existing clients fail, such as removing a field."
+   ]
+  ],
+  "practice": [
+   "Pick a public REST API with an OpenAPI spec (for example a weather or open data API). Open the spec in a viewer, list three endpoints, and write a Python script that calls one and prints a status code and two fields.",
+   "Build a FastAPI webhook receiver that verifies an HMAC SHA-256 signature, returns 401 for bad signatures, and ignores an event id it has already seen. Test it with curl using a correct and an incorrect signature.",
+   "Stretch: write a pricing.proto with one RPC, generate Python code with grpc_tools, implement a tiny server and client, then write one paragraph comparing it to the same call done in REST."
+  ]
+ },
+ "nosql": {
+  "plain": "A relational database stores data in tables with fixed columns and uses SQL and joins to combine them, as covered in the dbbasics and sql concepts. NoSQL is a loose name for databases that store data in other shapes: whole documents, key and value pairs, very wide rows spread across many machines, graphs of connected nodes, or vectors (lists of numbers) for similarity search. Each shape makes one kind of question fast and cheap, and makes others awkward. Choosing a database means matching its shape to the questions your application asks most.",
+  "analogy": "A relational database is a set of well-labeled filing cabinets with cross-references. A document store is a folder per customer with everything about them inside. A key-value store is a coat check: hand over a ticket, get one coat back instantly. A graph database is a map of who knows whom, and a vector database is a librarian who finds books that feel similar to the one in your hand.",
+  "why": "Customers often have strong opinions, such as 'we should move to MongoDB' or 'we need a vector database for AI'. An FDE must ask what the queries and volumes are and recommend something the customer's team can run. A wrong pick costs months of migration; a sensible one might be 'keep Postgres, add Redis for sessions and pgvector for search'.",
+  "subtopics": [
+   {
+    "title": "Why relational is the default",
+    "body": "Relational databases such as PostgreSQL, MySQL and SQL Server have strengths that are easy to take for granted. They enforce a schema, so bad data is rejected. They support transactions with ACID guarantees (see the acid concept), so a payment and its ledger entry succeed or fail together. And SQL lets anyone ask new questions without changing the application.\n\nModern Postgres also covers many 'NoSQL' needs. A JSONB column stores flexible JSON documents with indexes. The pgvector extension adds vector search. Read replicas and partitioning handle large volumes.\n\nSo the question is rarely 'SQL or NoSQL'. It is 'which access pattern is so important, or so large, that a specialized store is worth running a second system?'",
+    "example": "A 200-person insurer asks for MongoDB to store policy documents that vary by product. Each policy is read as a whole on one screen, but finance also runs monthly SQL reports joining policies to payments. Storing the variable part in a Postgres JSONB column keeps the reports working and avoids a second database to secure.",
+    "code": "-- Flexible attributes inside a relational table\nCREATE TABLE policies (\n    id          bigserial PRIMARY KEY,\n    customer_id bigint NOT NULL REFERENCES customers(id),\n    product     text   NOT NULL,\n    details     jsonb  NOT NULL          -- differs per product\n);\n\n-- Index that speeds up queries inside the JSON\nCREATE INDEX ON policies USING gin (details);\n\n-- Find pet policies covering dogs older than 8\nSELECT id, details->>'pet_name' AS pet\nFROM policies\nWHERE product = 'pet'\n  AND details @> '{\"species\": \"dog\"}'\n  AND (details->>'age_years')::int > 8;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Document databases: MongoDB",
+    "body": "A document database stores records as documents, which are JSON-like objects that can contain nested lists and sub-objects. Documents live in collections, roughly like tables, but two documents in the same collection can have different fields.\n\nThe design rule is to store together what you read together. An order document can embed its line items and shipping address, so one read returns everything the order page needs. Things that are shared or grow without limit, like a product used by millions of orders, are usually referenced by id instead of embedded.\n\nMongoDB supports indexes, rich queries and an aggregation pipeline, and multi-document transactions exist, but heavy cross-collection joins are less natural than in SQL.",
+    "example": "A furniture marketplace stores 40,000 products where a sofa has fabric and seat depth, and a lamp has wattage and bulb type. In MongoDB each product document carries only its own attributes, and the product page reads one document by id.",
+    "code": "from pymongo import MongoClient\n\ndb = MongoClient(\"mongodb://localhost:27017\")[\"shop\"]\n\n# Documents in one collection can have different fields\ndb.products.insert_many([\n    {\"sku\": \"SOFA-12\", \"type\": \"sofa\", \"price\": 899,\n     \"attrs\": {\"fabric\": \"linen\", \"seat_depth_cm\": 58}},\n    {\"sku\": \"LAMP-3\", \"type\": \"lamp\", \"price\": 49,\n     \"attrs\": {\"watts\": 8, \"bulb\": \"E27\"}},\n])\n\ndb.products.create_index(\"sku\", unique=True)\n\n# Query by a nested field\nfor p in db.products.find({\"type\": \"sofa\", \"attrs.fabric\": \"linen\"}):\n    print(p[\"sku\"], p[\"price\"])",
+    "lang": "Python"
+   },
+   {
+    "title": "Key-value stores: Redis and DynamoDB",
+    "body": "A key-value store does one thing very well: given a key, return or store its value. Redis keeps data in memory, so reads take well under a millisecond, and it offers extras like expiry times, counters and sorted sets. It is widely used for caches (see the caching concept), sessions and rate limiting.\n\nAmazon DynamoDB is a managed key-value and document database. Each table has a partition key, and optionally a sort key. Items with the same partition key are stored together, and you can query them by sort key range. DynamoDB scales very large, but you must design the keys around your queries in advance, because queries that do not use the key need a slow scan or a secondary index.\n\nThe common mistake is a hot partition: a key that most traffic shares, such as today's date, so one partition takes all the load.",
+    "example": "A parcel tracking app stores scan events in DynamoDB with partition key parcel_id and sort key scanned_at. 'Show all scans for parcel P-88412, newest first' is one fast query. 'All parcels scanned in Leeds yesterday' is not supported by that key and would need a global secondary index.",
+    "code": "import boto3\nfrom boto3.dynamodb.conditions import Key\n\ntable = boto3.resource(\"dynamodb\").Table(\"parcel_scans\")\n# Table keys: partition key parcel_id, sort key scanned_at (ISO time string)\n\ntable.put_item(Item={\n    \"parcel_id\": \"P-88412\",\n    \"scanned_at\": \"2026-03-02T09:14:00Z\",\n    \"depot\": \"Leeds\",\n    \"status\": \"out_for_delivery\",\n})\n\n# Fast: uses the partition key and sorts by the sort key\nresp = table.query(\n    KeyConditionExpression=Key(\"parcel_id\").eq(\"P-88412\"),\n    ScanIndexForward=False,        # newest first\n    Limit=10,\n)\nfor item in resp[\"Items\"]:\n    print(item[\"scanned_at\"], item[\"status\"])",
+    "lang": "Python"
+   },
+   {
+    "title": "Wide-column and graph databases",
+    "body": "Wide-column databases such as Apache Cassandra (and cloud services like Google Bigtable) are built for very high write volumes spread over many machines. Like DynamoDB, you pick a partition key that decides which machine holds the data, and clustering columns that sort rows inside a partition. You design one table per query, and duplicating data across tables is normal.\n\nGraph databases such as Neo4j store nodes (people, accounts, devices) and relationships (OWNS, SENT_MONEY_TO) as first-class data. Questions that follow chains of links, like 'which accounts are within three transfers of this flagged one', are short queries in a graph language such as Cypher, but would need many self-joins in SQL.\n\nBoth are specialist tools. Reach for them when the access pattern clearly matches, and the customer can operate them.",
+    "example": "A payments company logs 50,000 card events per second and keeps them in Cassandra partitioned by card and day. Its fraud team loads a subset of accounts and transfers into Neo4j to find rings of accounts that pass money around in loops.",
+    "code": "-- Cassandra (CQL): one table designed for one query\nCREATE TABLE card_events_by_day (\n    card_id   text,\n    day       date,\n    event_ts  timestamp,\n    amount    decimal,\n    merchant  text,\n    PRIMARY KEY ((card_id, day), event_ts)   -- partition key, then clustering\n) WITH CLUSTERING ORDER BY (event_ts DESC);\n\n// Neo4j (Cypher): accounts within 3 transfers of a flagged account\nMATCH (f:Account {id: 'A-1009'})-[:SENT_MONEY_TO*1..3]->(other:Account)\nWHERE other.id <> f.id\nRETURN DISTINCT other.id\nLIMIT 50;",
+    "lang": "Text"
+   },
+   {
+    "title": "Vector databases for AI search",
+    "body": "An embedding is a list of numbers that represents the meaning of a piece of text or an image (see the embeddings concept). Similar meanings produce vectors that are close together. A vector database stores these vectors and quickly finds the nearest ones to a query vector, using approximate indexes such as HNSW.\n\nThis powers semantic search and retrieval-augmented generation (the rag concept). Options include dedicated services such as Pinecone, Weaviate, Qdrant and Milvus, and extensions like pgvector for Postgres.\n\nFor many enterprise projects, pgvector is a good first choice: the vectors sit next to the rows they describe, you can filter with normal SQL (for example by customer or permission), and there is no new system for the security team to review.",
+    "example": "A legal team has 300,000 contract clauses. Each clause row in Postgres gets a 1,024-number embedding. A question like 'termination for convenience with 30 days notice' is embedded, and the query returns the 5 closest clauses from contracts the user is allowed to see.",
+    "code": "CREATE EXTENSION IF NOT EXISTS vector;\n\nCREATE TABLE clauses (\n    id          bigserial PRIMARY KEY,\n    contract_id bigint NOT NULL,\n    team_id     int    NOT NULL,       -- used for permission filtering\n    body        text   NOT NULL,\n    embedding   vector(1024)           -- produced by an embedding model\n);\n\n-- Approximate nearest-neighbour index using cosine distance\nCREATE INDEX ON clauses USING hnsw (embedding vector_cosine_ops);\n\n-- $1 is the query embedding, $2 the user's team\nSELECT id, contract_id, left(body, 120) AS preview\nFROM clauses\nWHERE team_id = $2\nORDER BY embedding <=> $1              -- <=> is cosine distance\nLIMIT 5;",
+    "lang": "SQL"
+   },
+   {
+    "title": "A decision table for picking a database",
+    "body": "Start by writing down the five to ten most important queries and writes, with rough volumes and required response times. Then look for the store whose shape makes those operations simple. If a relational database handles them, stop there.\n\nNext, weigh the operational side. Who will run backups, upgrades and monitoring? Is there a managed service in the customer's cloud? Does their security team already approve it? A technically ideal database that nobody can support is a poor choice.\n\nIt is normal to combine stores, a pattern called polyglot persistence: Postgres as the system of record, Redis for fast ephemeral data, and a search or vector index built from Postgres. Keep one clear source of truth and treat the others as copies you can rebuild.",
+    "example": "A travel agency lists its needs: bookings with payments (transactions, reports), user sessions (millions of short reads), and 'find hotels like this one' (similarity). The answer: Postgres for bookings, Redis for sessions with a 30-minute expiry, and pgvector on the hotels table.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Type",
+      "Examples",
+      "Best at",
+      "Weak at"
+     ],
+     "rows": [
+      [
+       "Relational",
+       "Postgres, MySQL",
+       "Transactions, joins, ad hoc SQL",
+       "Huge write scale-out"
+      ],
+      [
+       "Document",
+       "MongoDB",
+       "Varied records read as a whole",
+       "Many-way joins"
+      ],
+      [
+       "Key-value",
+       "Redis, DynamoDB",
+       "Get or set by key, very fast",
+       "Queries off the key"
+      ],
+      [
+       "Wide-column",
+       "Cassandra, Bigtable",
+       "Massive writes by partition",
+       "Ad hoc queries"
+      ],
+      [
+       "Graph",
+       "Neo4j",
+       "Multi-hop relationships",
+       "Bulk aggregates"
+      ],
+      [
+       "Vector",
+       "pgvector, Qdrant",
+       "Similarity search",
+       "Exact filters alone"
+      ]
+     ]
+    },
+    "checklist": [
+     "Top queries and writes listed with volumes and latency targets",
+     "Checked whether Postgres (with JSONB or pgvector) already covers them",
+     "Transactions and reporting needs identified",
+     "Partition or primary key designed to avoid hot spots",
+     "Managed service available in the customer's cloud",
+     "Backup, restore and monitoring owner named",
+     "One system of record agreed; other stores rebuildable from it"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "NoSQL",
+    "A broad label for databases that do not use the relational table model as their main shape."
+   ],
+   [
+    "Document",
+    "A JSON-like record that can hold nested fields and lists."
+   ],
+   [
+    "Key-value store",
+    "A database that stores and retrieves values by a unique key."
+   ],
+   [
+    "Partition key",
+    "The field that decides which storage partition or machine holds an item."
+   ],
+   [
+    "Hot partition",
+    "A partition that receives far more traffic than others, becoming a bottleneck."
+   ],
+   [
+    "Wide-column store",
+    "A database spreading rows across many machines by partition key, built for heavy writes."
+   ],
+   [
+    "Graph database",
+    "A database storing nodes and relationships, optimized for following links."
+   ],
+   [
+    "Vector database",
+    "A store that finds the vectors nearest to a query vector for similarity search."
+   ],
+   [
+    "JSONB",
+    "A Postgres column type that stores JSON in a binary, indexable form."
+   ],
+   [
+    "Polyglot persistence",
+    "Using several database types in one system, each for the job it does best."
+   ]
+  ],
+  "practice": [
+   "Run Postgres and Redis in Docker. Store 20 products with a JSONB attributes column, query them by a nested attribute, and cache one product in Redis with a 60-second expiry.",
+   "Design a DynamoDB table (partition and sort key) for a food delivery app that must answer 'orders for this customer, newest first' and 'status history for this order'. Explain in writing why a date-based partition key would be a bad idea.",
+   "Stretch: for a made-up customer with five listed access patterns, fill in the decision table and write a one-page recommendation naming each store, its role and who operates it."
+  ]
+ },
+ "streaming": {
+  "plain": "An event is a small record that says something happened, such as 'order 991 was paid at 10:04'. Batch processing collects events or rows and processes them together on a schedule, for example every night. Stream processing handles each event within seconds of it happening. Apache Kafka is the most common platform for streaming: it stores events in topics, which are append-only logs that many programs can read independently. Change data capture (CDC) is a way to turn every change in a database into such an event.",
+  "analogy": "Batch is emptying the post box once a day and sorting everything at the kitchen table. Streaming is a conveyor belt at a sorting office: each parcel is read and routed as it passes, and the belt keeps a camera recording so you can replay the last week if a sorter made mistakes.",
+  "why": "Some customer problems need answers in seconds: stopping a fraudulent card payment, rerouting a delivery van, alerting a nurse. An FDE must recognize when streaming is really needed, and then build it without losing or double counting events. Just as often the right advice is that a 15-minute batch is enough and much cheaper to run.",
+  "subtopics": [
+   {
+    "title": "Events versus batches",
+    "body": "In a batch job, you read a bounded set of data (all of yesterday's orders), compute, and write the result. It is simple to reason about and to rerun. The etl concept covers these pipelines.\n\nIn streaming, data is unbounded: it never ends. Your program runs continuously, reading each event and updating results. Latency drops from hours to seconds, but you now run a service that must stay up, and you must think about late or duplicate events.\n\nA useful test is to ask what decision the data feeds and how quickly that decision is made. If people look at a report each morning, batch wins. If a machine must act before a customer leaves the checkout, streaming wins. Micro-batches every few minutes are a middle path.",
+    "example": "A grocery chain wanted 'real-time' sales dashboards. Discovery showed store managers checked them twice a day. A 10-minute micro-batch met the need at a fraction of the cost. The same chain's card fraud check, which must answer in under a second, did need streaming.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Question",
+      "Batch",
+      "Streaming"
+     ],
+     "rows": [
+      [
+       "Data shape",
+       "Bounded chunk",
+       "Unbounded flow of events"
+      ],
+      [
+       "Typical latency",
+       "Minutes to a day",
+       "Milliseconds to seconds"
+      ],
+      [
+       "Rerun a day",
+       "Easy: run the job again",
+       "Replay from stored offsets"
+      ],
+      [
+       "Operations",
+       "Scheduled job",
+       "Always-on service with lag alerts"
+      ],
+      [
+       "Good for",
+       "Reports, training data",
+       "Fraud, alerts, live tracking"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Kafka topics, partitions and offsets",
+    "body": "A Kafka cluster is a group of servers called brokers. Producers write events to named topics. Each topic is split into partitions, and each partition is an ordered, append-only log stored on several brokers for safety (replication).\n\nEvery event in a partition gets an increasing number called its offset. Consumers read from an offset forward and remember where they got to. Kafka keeps events for a configured retention time, often days, whether or not they have been read, so a new consumer can start from the beginning and a broken one can rewind.\n\nAn event has an optional key. Kafka hashes the key to choose the partition, so all events with the same key land in the same partition in order. Order across different partitions is not guaranteed. Choose the key to be whatever must stay in order, such as the account id.",
+    "example": "A bank creates a topic card-payments with 12 partitions, keyed by card number. All payments for card 4411... go to, say, partition 7, in the order they happened. Payments for different cards are spread across all 12 partitions so the load is shared.",
+    "code": "# Create a topic with 12 partitions, each copied to 3 brokers\nkafka-topics.sh --bootstrap-server kafka:9092 --create \\\n  --topic card-payments --partitions 12 --replication-factor 3\n\n# Produce two keyed events (key:value)\nkafka-console-producer.sh --bootstrap-server kafka:9092 \\\n  --topic card-payments --property parse.key=true --property key.separator=:\n> card-4411:{\"amount\": 42.10, \"merchant\": \"cafe\"}\n> card-4411:{\"amount\": 980.00, \"merchant\": \"electronics\"}\n\n# Read from the start of every partition\nkafka-console-consumer.sh --bootstrap-server kafka:9092 \\\n  --topic card-payments --from-beginning --property print.key=true",
+    "lang": "bash"
+   },
+   {
+    "title": "Consumer groups and scaling",
+    "body": "A consumer group is a set of consumer processes that share the work of reading a topic. Kafka assigns each partition to exactly one member of the group. With 12 partitions and 3 consumers, each gets 4. Add a fourth consumer and Kafka rebalances so each gets 3.\n\nThis gives two rules of thumb. First, the number of partitions is the ceiling on parallelism in one group: a thirteenth consumer on a 12-partition topic sits idle. Second, different groups are independent. A fraud scorer and an analytics loader can both read every event, each with its own offsets.\n\nThe key metric to watch is consumer lag: how many events have been written but not yet processed. Rising lag means consumers cannot keep up.",
+    "example": "The bank's fraud-scorer group runs 4 consumers on the 12-partition topic. At Black Friday peak, lag climbs past 50,000 events, so the team scales to 12 consumers. Lag drains in 6 minutes. A separate group, wh-loader (the warehouse loader), keeps reading at its own pace, unaffected.",
+    "code": "# Show each partition's committed offset, end offset and lag\nkafka-consumer-groups.sh --bootstrap-server kafka:9092 \\\n  --describe --group fraud-scorer\n\n# Example output (trimmed)\n# TOPIC          PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG\n# card-payments  0          1804211         1804230         19\n# card-payments  1          1799876         1812440         12564",
+    "lang": "bash",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "topic",
+       90,
+       70,
+       "card-payments",
+       "12 partitions"
+      ],
+      [
+       "p1",
+       265,
+       70,
+       "Partitions 0-5",
+       "keyed by card"
+      ],
+      [
+       "p2",
+       440,
+       70,
+       "Partitions 6-11",
+       "keyed by card"
+      ],
+      [
+       "ga",
+       440,
+       220,
+       "fraud-scorer",
+       "group, 2 members"
+      ],
+      [
+       "gb",
+       265,
+       220,
+       "wh-loader",
+       "group, own offsets"
+      ]
+     ],
+     "edges": [
+      [
+       "topic",
+       "p1"
+      ],
+      [
+       "p1",
+       "p2"
+      ],
+      [
+       "p2",
+       "ga",
+       0,
+       "member 2"
+      ],
+      [
+       "p1",
+       "gb",
+       0,
+       "all events"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Stream processing: state and windows",
+    "body": "Simple stream logic looks at one event at a time: is this payment over 5,000 euros? More useful logic needs state, meaning memory of earlier events. For example: has this card made more than 5 payments in the last 10 minutes?\n\nA window groups events by time. A tumbling window cuts time into fixed, non-overlapping blocks (10:00 to 10:05, 10:05 to 10:10). A sliding window moves continuously. Events carry an event time (when it happened) that can differ from processing time (when you saw it), and late events are common on mobile networks.\n\nFrameworks such as Kafka Streams, Apache Flink and Spark Structured Streaming handle state, windows and late data for you, and save state so it survives restarts. For small jobs, a plain consumer with a database is often enough.",
+    "example": "A ride-hailing company counts trip requests per city in 1-minute tumbling windows to adjust prices. Events that arrive more than 2 minutes late are sent to a side table instead of changing a window that has already been published.",
+    "code": "from collections import defaultdict\nfrom datetime import datetime\n\nWINDOW_SECONDS = 60\ncounts = defaultdict(int)             # state: (city, window_start) -> count\n\ndef window_start(ts: datetime) -> int:\n    epoch = int(ts.timestamp())\n    return epoch - epoch % WINDOW_SECONDS  # round down to the minute\n\ndef handle(event: dict):\n    ts = datetime.fromisoformat(event[\"requested_at\"])  # event time\n    key = (event[\"city\"], window_start(ts))\n    counts[key] += 1\n\nfor e in [\n    {\"city\": \"Porto\", \"requested_at\": \"2026-05-01T10:00:05+00:00\"},\n    {\"city\": \"Porto\", \"requested_at\": \"2026-05-01T10:00:40+00:00\"},\n    {\"city\": \"Porto\", \"requested_at\": \"2026-05-01T10:01:02+00:00\"},\n]:\n    handle(e)\nprint(dict(counts))                   # two windows: 2 events, then 1",
+    "lang": "Python"
+   },
+   {
+    "title": "Change data capture with Debezium",
+    "body": "Often the events you need are changes to a customer's existing database, and you cannot change their application to publish events. Change data capture (CDC) solves this. Log-based CDC reads the database's own transaction log, such as the Postgres write-ahead log or the MySQL binlog, where every committed change is recorded.\n\nDebezium is an open-source CDC tool that runs as a set of Kafka Connect connectors. It first takes a snapshot of existing rows, then streams every insert, update and delete into Kafka topics, one per table by default. Each event holds the row before and after the change plus metadata.\n\nCDC needs cooperation from the customer's DBA: a replication user, logical replication enabled, and monitoring of how much log the database is keeping for the connector. A stopped connector can make the log grow until disk fills.",
+    "example": "A retailer's order system runs on Postgres and cannot be modified. The FDE registers a Debezium connector for the public.orders and public.payments tables. Within seconds of a checkout, the change appears in the topic shop.public.orders, where the fraud scorer reads it.",
+    "code": "{\n  \"name\": \"shop-orders-cdc\",\n  \"config\": {\n    \"connector.class\": \"io.debezium.connector.postgresql.PostgresConnector\",\n    \"database.hostname\": \"orders-db.internal\",\n    \"database.port\": \"5432\",\n    \"database.user\": \"debezium_repl\",\n    \"database.password\": \"${file:/secrets/db.properties:password}\",\n    \"database.dbname\": \"shop\",\n    \"topic.prefix\": \"shop\",\n    \"plugin.name\": \"pgoutput\",\n    \"table.include.list\": \"public.orders,public.payments\",\n    \"snapshot.mode\": \"initial\"\n  }\n}",
+    "lang": "JSON"
+   },
+   {
+    "title": "Delivery guarantees and idempotency",
+    "body": "When a consumer crashes, what happens to the event it was working on depends on when it committed its offset. Commit before processing and a crash loses the event: at-most-once. Commit after processing and a crash means the event is read again: at-least-once. Exactly-once means every event affects the result exactly one time.\n\nKafka offers exactly-once semantics for reading from Kafka and writing back to Kafka, using idempotent producers and transactions. As soon as you write to an outside system, such as a database or an email service, you need to make that write safe to repeat.\n\nThat is idempotency: doing the same operation twice has the same effect as doing it once. Use a unique event id or business key and write with an upsert, or record processed ids and skip repeats. At-least-once plus idempotent writes is the practical standard.",
+    "example": "A consumer sends a 'payment received' SMS and then crashes before committing. On restart it rereads the event. Because it first inserts the event id into a sent_notifications table with a unique constraint, the second insert fails and no duplicate SMS goes out.",
+    "code": "-- Record each processed event once; repeats do nothing\nCREATE TABLE fraud_alerts (\n    order_id   bigint PRIMARY KEY,\n    score      numeric NOT NULL,\n    created_at timestamptz NOT NULL DEFAULT now()\n);\n\nINSERT INTO fraud_alerts (order_id, score)\nVALUES (991, 0.93)\nON CONFLICT (order_id) DO UPDATE\n    SET score = EXCLUDED.score;    -- same result if run twice",
+    "lang": "SQL",
+    "checklist": [
+     "Offsets committed only after the work succeeds",
+     "Every event has a unique id or business key",
+     "Writes to outside systems are upserts or deduplicated",
+     "Consumer lag is monitored with an alert threshold",
+     "Poison events that always fail go to a dead-letter topic",
+     "Replay from an earlier offset has been tested"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Event",
+    "A record that something happened, with a time and details."
+   ],
+   [
+    "Topic",
+    "A named, append-only log of events in Kafka."
+   ],
+   [
+    "Partition",
+    "One ordered slice of a topic; order is guaranteed only within it."
+   ],
+   [
+    "Offset",
+    "The position number of an event within a partition."
+   ],
+   [
+    "Consumer group",
+    "A set of consumers sharing a topic's partitions, each partition read by one member."
+   ],
+   [
+    "Consumer lag",
+    "How many events are written but not yet processed by a group."
+   ],
+   [
+    "Window",
+    "A time range used to group events, such as each 5 minutes."
+   ],
+   [
+    "Change data capture",
+    "Turning each database change into an event, often by reading the transaction log."
+   ],
+   [
+    "At-least-once",
+    "No events are lost, but some may be processed more than once."
+   ],
+   [
+    "Idempotent",
+    "Safe to repeat: doing it twice has the same effect as doing it once."
+   ]
+  ],
+  "practice": [
+   "Run a single-node Kafka in Docker, create a topic with 3 partitions, produce 20 keyed messages with the console producer and read them back. Note which partition each key landed in.",
+   "Write a Python consumer in a group with manual commits that inserts events into SQLite with INSERT OR IGNORE on the event id. Kill it mid-run, restart it, and show that the row count has no duplicates.",
+   "Stretch: set up Postgres with logical replication and a Debezium connector (the Debezium tutorial images help). Update a row and inspect the before and after fields in the resulting Kafka event."
+  ]
+ },
+ "cicd": {
+  "plain": "CI/CD stands for continuous integration and continuous delivery (or deployment). Continuous integration means every code change is merged often and automatically checked by a pipeline: linting (style and error checks), tests and security scans. Continuous delivery means every change that passes is packaged and ready to release with one approval. Continuous deployment goes one step further and releases automatically. A pipeline is the ordered set of automated jobs that does this, and GitHub Actions is one popular tool for running pipelines.",
+  "analogy": "It is like a bakery's quality line. Every tray passes the same checks: weight, temperature, a taste test. Only trays that pass go into the display case in the shop's back room, and the manager decides when to put them out front. If a batch turns out bad, it is pulled and yesterday's recipe is used again within minutes.",
+  "why": "FDEs ship code into customer environments where outages are expensive and security teams ask how changes are controlled. A clear pipeline with tests, scans, environments and approvals is often what gets you permission to deploy at all. It also lets a small team ship fixes daily during a pilot without breaking things.",
+  "subtopics": [
+   {
+    "title": "CI, delivery and deployment",
+    "body": "Without CI, developers work on long-lived branches and merge rarely. Merges become painful, bugs are found late, and nobody is sure the main branch works. With CI, each pull request runs the same automated checks, and main stays in a working state.\n\nContinuous delivery adds packaging and deployment automation. Every commit on main produces a versioned artifact, such as a Docker image, and deploys to a staging environment. Going to production is one click or one approval.\n\nContinuous deployment removes that click. It suits teams with strong tests and monitoring. Many enterprise customers choose delivery with approval because their change management rules require a named person to approve each production release.",
+    "example": "A health analytics startup deployed by SSH-ing into a server and running git pull, roughly weekly. After adding CI and continuous delivery, it merged 6 to 10 small pull requests a day, each deployed to staging automatically, with one approved production release each afternoon.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Practice",
+      "What is automated",
+      "Human step"
+     ],
+     "rows": [
+      [
+       "Continuous integration",
+       "Build, lint, test on every change",
+       "Review and merge the PR"
+      ],
+      [
+       "Continuous delivery",
+       "Above plus package and deploy to staging",
+       "Approve production release"
+      ],
+      [
+       "Continuous deployment",
+       "Everything through production",
+       "None; monitor and roll back"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Anatomy of a GitHub Actions workflow",
+    "body": "A workflow is a YAML file in the .github/workflows folder of a repository. The 'on' key lists the triggers, such as pull_request, push to certain branches, a schedule, or a manual button (workflow_dispatch).\n\nA workflow contains jobs. Each job runs on a runner, which is a fresh virtual machine (GitHub-hosted, like ubuntu-latest) or a machine you provide (self-hosted, useful inside a customer's network). Jobs run in parallel unless one declares 'needs' on another.\n\nEach job has steps. A step either runs a shell command with 'run' or uses a reusable action with 'uses', such as actions/checkout to fetch the code. A matrix lets one job run several times with different settings, for example across Python versions.",
+    "example": "A data API must support Python 3.11 and 3.12. The test job uses a matrix, so every pull request runs the tests twice in parallel. The pull request shows two green checks, and branch protection rules block merging until both pass.",
+    "code": "name: tests\non:\n  pull_request:                  # every PR\n  workflow_dispatch:             # plus a manual 'Run' button\n\njobs:\n  test:\n    runs-on: ubuntu-latest       # fresh GitHub-hosted VM\n    strategy:\n      matrix:\n        python: [\"3.11\", \"3.12\"]  # job runs once per version\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: ${{ matrix.python }}\n          cache: pip             # reuse downloaded packages\n      - run: pip install -r requirements.txt\n      - run: pytest -q",
+    "lang": "YAML"
+   },
+   {
+    "title": "Pipeline stages: lint, test, scan, build",
+    "body": "Order the stages so the cheapest and fastest checks run first. A linter like ruff finishes in seconds and catches typos, unused imports and style problems. Unit tests (see the tdd concept) come next, then slower integration tests that use a real database in a container.\n\nSecurity scanning checks for known-vulnerable dependencies (pip-audit, npm audit, Dependabot), leaked secrets (secret scanning tools), and vulnerable packages inside container images (for example Trivy). Customers' security teams often ask for evidence of these checks.\n\nThe build stage produces the artifact. Build it once, tag it with the commit SHA (the unique id of the commit), push it to a registry, and promote that exact image through every environment. Rebuilding for production risks shipping something you never tested.",
+    "example": "An FDE team's pipeline takes 7 minutes: lint 20 seconds, unit tests 2 minutes, integration tests against a Postgres service container 3 minutes, scans 1 minute, image build 40 seconds. When a dependency with a critical vulnerability is added, the scan step fails and the PR shows exactly which package and version to upgrade.",
+    "code": "  integration:\n    runs-on: ubuntu-latest\n    services:\n      postgres:                         # throwaway DB for this job\n        image: postgres:16\n        env:\n          POSTGRES_PASSWORD: test\n        ports: [\"5432:5432\"]\n        options: >-\n          --health-cmd pg_isready --health-interval 5s --health-retries 10\n    steps:\n      - uses: actions/checkout@v4\n      - run: pip install -r requirements.txt pytest\n      - run: pytest tests/integration -q\n        env:\n          DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres\n      - name: Scan image for vulnerabilities\n        run: |\n          docker build -t app:${{ github.sha }} .\n          trivy image --exit-code 1 --severity CRITICAL app:${{ github.sha }}",
+    "lang": "YAML",
+    "checklist": [
+     "Linter runs first and fails fast",
+     "Unit tests run on every pull request",
+     "Integration tests use a disposable database",
+     "Dependency and secret scanning enabled",
+     "Image built once and tagged with the commit SHA",
+     "Branch protection requires green checks before merge",
+     "Pipeline finishes in under about 10 minutes"
+    ]
+   },
+   {
+    "title": "Environments and secrets",
+    "body": "An environment is a place your app runs with its own configuration: development, staging, production. Staging should look like production (same image, similar infrastructure) but use test data, so you can check a release before users see it.\n\nIn GitHub Actions, an environment is also a named object with its own secrets and protection rules. Secrets are encrypted values like API keys that the workflow can read but that are hidden in logs. Protection rules can require a reviewer to approve before a job targeting production runs, and restrict which branches may deploy there.\n\nWhere possible, avoid long-lived cloud keys entirely. GitHub Actions supports OpenID Connect (OIDC), which lets a job exchange a short-lived token for temporary cloud credentials scoped to one role.",
+    "example": "A logistics customer requires that only the main branch can deploy to production and that one of two named managers approves. The FDE creates a production environment with those rules and stores the database URL as an environment secret. Staging deploys on every merge with its own separate secret.",
+    "code": "  deploy-prod:\n    needs: deploy-staging\n    runs-on: ubuntu-latest\n    environment: production            # required reviewers set in repo settings\n    permissions:\n      id-token: write                  # allow OIDC token for cloud login\n      contents: read\n    steps:\n      - uses: actions/checkout@v4\n      - uses: aws-actions/configure-aws-credentials@v4\n        with:\n          role-to-assume: arn:aws:iam::123456789012:role/deploy-prod\n          aws-region: eu-west-1        # short-lived credentials, no stored keys\n      - run: ./scripts/deploy.sh production ${{ github.sha }}\n        env:\n          DATABASE_URL: ${{ secrets.DATABASE_URL }}   # masked in logs",
+    "lang": "YAML"
+   },
+   {
+    "title": "Feature flags: deploy is not release",
+    "body": "A feature flag is a switch, checked at runtime, that turns a piece of behavior on or off without deploying new code. It lets you merge and deploy unfinished or risky work switched off, then release it when ready.\n\nFlags can target groups: internal staff first, then 5 percent of users, then everyone. This is a gradual rollout. If error rates rise, you switch the flag off in seconds, which is faster than any rollback.\n\nFlags can live in a config file, a database table, or a flag service (LaunchDarkly, Unleash, and cloud options are common). Clean them up after a feature is fully released, because old flags pile up into confusing code paths.",
+    "example": "An FDE adds an AI summary to a claims screen at an insurer. The feature ships behind the flag ai_summary, enabled first for 12 claims handlers in one team. After a week of feedback and a check that handle time fell, the flag is raised to 25 percent, then 100 percent of 400 handlers.",
+    "code": "import hashlib\n\nFLAGS = {\n    \"ai_summary\": {\"enabled\": True, \"percent\": 25, \"allow\": {\"team-motor-3\"}},\n}\n\ndef bucket(user_id: str) -> int:\n    # stable 0-99 bucket so a user always gets the same answer\n    return int(hashlib.sha256(user_id.encode()).hexdigest(), 16) % 100\n\ndef is_on(flag: str, user_id: str, team: str) -> bool:\n    f = FLAGS.get(flag)\n    if not f or not f[\"enabled\"]:\n        return False                  # kill switch: set enabled False\n    if team in f[\"allow\"]:\n        return True                   # pilot team always on\n    return bucket(user_id) < f[\"percent\"]\n\nprint(is_on(\"ai_summary\", \"user-8812\", \"team-home-1\"))",
+    "lang": "Python"
+   },
+   {
+    "title": "Rollbacks and safe releases",
+    "body": "A rollback returns production to the last known good version. Because every image is tagged with its commit SHA, rolling back is just deploying the previous tag. Practice it so it takes minutes, and write down the exact command.\n\nDatabase changes are the tricky part. If a release renames a column, the old code cannot run after rollback. The fix is the expand and contract pattern: first add the new column and write to both (expand), deploy code that reads the new one, and only later remove the old column (contract). Each step can be rolled back on its own.\n\nOther safe release techniques include blue-green deployments (two identical environments, switch traffic between them) and canary releases (send a small share of traffic to the new version first). The deploy concept covers how Kubernetes rolls out new pods.",
+    "example": "A release at 14:10 raises the error rate on /claims from 0.2 percent to 4 percent. The on-call FDE runs the rollback script with the previous SHA. By 14:16 errors are back to normal. The follow-up adds a test for the failing case and a smoke test that calls /claims after each deploy.",
+    "code": "#!/usr/bin/env bash\n# rollback.sh <environment> <previous_sha>\nset -euo pipefail\nENV=$1\nPREV=$2\n\necho \"Rolling back $ENV to $PREV\"\n./scripts/deploy.sh \"$ENV\" \"$PREV\"          # same script, older image tag\n\n# Smoke test: fail loudly if the service is not healthy\nfor i in 1 2 3 4 5; do\n  if curl -fsS \"https://$ENV.example.com/health\" > /dev/null; then\n    echo \"Healthy after rollback\"; exit 0\n  fi\n  sleep 10\ndone\necho \"Still unhealthy, escalate\"; exit 1",
+    "lang": "bash"
+   }
+  ],
+  "glossary": [
+   [
+    "Continuous integration",
+    "Merging small changes often, each checked automatically by a pipeline."
+   ],
+   [
+    "Continuous delivery",
+    "Keeping every passing change packaged and ready to release with one approval."
+   ],
+   [
+    "Continuous deployment",
+    "Releasing every passing change to production automatically."
+   ],
+   [
+    "Workflow",
+    "A GitHub Actions YAML file defining triggers, jobs and steps."
+   ],
+   [
+    "Runner",
+    "The machine that executes a workflow job."
+   ],
+   [
+    "Artifact",
+    "The built output of a pipeline, such as a Docker image."
+   ],
+   [
+    "Environment",
+    "A named deployment target, like staging or production, with its own settings and rules."
+   ],
+   [
+    "Feature flag",
+    "A runtime switch that turns behavior on or off without a new deploy."
+   ],
+   [
+    "Rollback",
+    "Returning production to the previous known good version."
+   ],
+   [
+    "Expand and contract",
+    "Changing a database schema in backward-compatible steps so each release can be rolled back."
+   ]
+  ],
+  "practice": [
+   "Create a small Python repo with one function and two pytest tests. Add a GitHub Actions workflow that runs ruff and pytest on pull requests, then open a PR with a failing test and watch it go red.",
+   "Extend the workflow: build a Docker image tagged with github.sha, add a staging environment job that only runs on main, and a production job gated by a required reviewer.",
+   "Stretch: add a percentage-based feature flag to the app, deploy two versions, and write a rollback script plus a one-page runbook describing exactly how to roll back and how to switch the flag off."
+  ]
+ },
+ "integration": {
+  "plain": "Enterprise integration means connecting your application to the systems a large company already runs, many of them decades old. Data may arrive as files dropped on an SFTP server (a secure file transfer server), as EDI messages (a strict standard format for orders and invoices between companies), through SOAP web services (an older XML-based API style), from a read-only copy of a database, or through the APIs of big business platforms like SAP (an ERP, enterprise resource planning system) and Salesforce (a CRM, customer relationship management system). The job is to get data in and out reliably, safely and within each system's limits.",
+  "analogy": "It is like setting up a new kitchen in an old hotel. Deliveries come by van, by mail order and through a hatch from the bakery next door, each with its own paperwork. You build one receiving room where every delivery is checked, labeled and put on the same shelves, so the cooks never have to care how it arrived.",
+  "why": "Almost every FDE engagement at a large company hits this wall in week one: the data the AI needs lives in SAP, a mainframe export or a partner's EDI feed. An FDE who can say 'fine, we will pick up the nightly file and reconcile it against the replica' unblocks the project, while one who waits for a modern API may wait months.",
+  "subtopics": [
+   {
+    "title": "The legacy integration landscape",
+    "body": "Large companies grow their systems over decades, so a single customer may use five integration methods at once. It helps to recognize each one quickly and know its usual strengths and pain points.\n\nThe main question for each source is: how fresh must the data be, and how much control do we have? A nightly file is simple but a day old. An API is fresher but has rate limits and needs credentials. A database replica gives you full SQL but couples you to internal table structures that may change without notice.\n\nWhatever the sources, aim for one integration layer that pulls from each, normalizes into one clean internal model, and is monitored. Your application code should never need to know that customer numbers arrive with leading zeros from SAP and without them from the CRM.",
+    "example": "A pump manufacturer's AI demand forecast needs sales orders (SAP), distributor orders (EDI from 40 distributors), service tickets (Salesforce) and a daily inventory file (SFTP from a warehouse partner). The FDE maps each to a source, method, freshness and owner before writing any code.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Method",
+      "Looks like",
+      "Freshness",
+      "Common pain"
+     ],
+     "rows": [
+      [
+       "SFTP file drop",
+       "CSV or fixed-width files",
+       "Hourly to daily",
+       "Partial or duplicate files"
+      ],
+      [
+       "EDI",
+       "X12 or EDIFACT text",
+       "Minutes to hours",
+       "Strict formats, partner quirks"
+      ],
+      [
+       "SOAP",
+       "XML over HTTP, WSDL",
+       "On request",
+       "Verbose XML, old auth"
+      ],
+      [
+       "DB replica",
+       "Read-only SQL access",
+       "Seconds to minutes",
+       "Internal schemas change"
+      ],
+      [
+       "ERP/CRM API",
+       "REST or OData JSON",
+       "On request",
+       "Rate limits, permissions"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "SFTP file drops done properly",
+    "body": "SFTP (SSH File Transfer Protocol) moves files over an encrypted SSH connection. A typical agreement is: 'every night at 02:00 our system writes orders_YYYYMMDD.csv to /outbound'. It is old but reliable, and many security teams already approve it.\n\nThe risks are in the details. You might read a file while it is still being written. The same file might be re-sent. A column might be added without warning. So agree on a naming pattern, a completion signal (a .done marker file or a trailer row with the record count), and an encoding.\n\nProcess each file into a staging table, validate it, then move it to a processed folder or a failed folder. Store a checksum of each file so a repeat is detected. Alert if the expected file has not arrived by a set time.",
+    "example": "A warehouse partner drops inventory_20260302.csv and then inventory_20260302.done. The job waits for the .done file, checks that the row count matches the 18,442 in the trailer, loads the rows, records the file's SHA-256, and moves it to /processed. On 3 March no file arrives by 04:00 and an alert goes to the partner's support mailbox.",
+    "code": "import hashlib, paramiko\n\ndef fetch_ready_files(host, user, key_path, seen_hashes):\n    t = paramiko.Transport((host, 22))\n    t.connect(username=user, pkey=paramiko.RSAKey.from_private_key_file(key_path))\n    sftp = paramiko.SFTPClient.from_transport(t)\n    names = sftp.listdir(\"/outbound\")\n    for name in names:\n        if not name.endswith(\".csv\"):\n            continue\n        if name.replace(\".csv\", \".done\") not in names:\n            continue                              # still being written\n        with sftp.open(f\"/outbound/{name}\", \"rb\") as f:\n            data = f.read()\n        digest = hashlib.sha256(data).hexdigest()\n        if digest in seen_hashes:\n            continue                              # already loaded once\n        yield name, data, digest\n    sftp.close(); t.close()",
+    "lang": "Python",
+    "checklist": [
+     "File naming pattern agreed in writing",
+     "Completion signal agreed (.done file or trailer count)",
+     "Encoding and delimiter confirmed with a sample file",
+     "Checksum stored so repeats are skipped",
+     "Processed and failed folders used after each run",
+     "Late-file alert with a named contact on the sender side",
+     "SSH key authentication, not passwords"
+    ]
+   },
+   {
+    "title": "EDI and SOAP: old formats still in use",
+    "body": "EDI (electronic data interchange) is how many companies exchange business documents with trading partners. The two main standards are ANSI X12, common in North America, and UN/EDIFACT, common in Europe. Documents have numbers, such as X12 850 (purchase order) and 810 (invoice). The text is compact: segments separated by a terminator, elements separated by a delimiter. Companies often use an EDI translator or a value-added network to send and receive them, and you usually receive already-parsed data or use a parsing library.\n\nSOAP is an XML-based web service protocol. Its contract is a WSDL file that describes operations and message types. Banks, insurers, logistics firms and government agencies still run many SOAP services. In Python, the zeep library reads a WSDL and gives you normal function calls, so you rarely write the XML by hand.",
+    "example": "A distributor sends an X12 850 purchase order for 12 pumps of model P-400. The EDI translator hands the integration hub a parsed record. Separately, the customer's credit check runs on a SOAP service; the hub calls CheckCredit with the distributor's account number before the order is accepted.",
+    "code": "# Part of an X12 850 purchase order (segments end with ~, elements split by *)\n# BEG*00*SA*PO-77812**20260302~        purpose, type, PO number, date\n# PO1*1*12*EA*1450.00**VP*P-400~       line 1: qty 12, each, unit price, part\n# CTT*1~                               number of line items\n\n# Calling a SOAP service with zeep\nfrom zeep import Client\nfrom zeep.transports import Transport\nimport requests\n\nsession = requests.Session()\nsession.auth = (\"svc_integration\", \"<from secret store>\")\nclient = Client(\"https://erp.example.internal/credit?wsdl\",\n                transport=Transport(session=session, timeout=15))\nresult = client.service.CheckCredit(accountNumber=\"D-10442\", amount=17400.00)\nprint(result.approved, result.availableCredit)",
+    "lang": "Python"
+   },
+   {
+    "title": "Reading from database replicas",
+    "body": "Sometimes the fastest path is direct read access to a replica: a continuously updated, read-only copy of a production database. Queries on the replica do not slow down the main system. Ask for a dedicated read-only user limited to the tables you need, ideally through database views that the customer's team maintains, so internal schema changes do not break you silently.\n\nTo pull only new or changed rows, use a watermark: remember the largest updated_at value you loaded last time, and next time ask only for rows after it. Overlap by a few minutes to catch rows committed late, and make the load an upsert so the overlap does no harm. Deletes are not visible this way; for those, use soft-delete flags or log-based CDC (see the streaming concept).",
+    "example": "An insurer grants read access to a replica view v_claims_for_ai. Every 15 minutes the job loads claims changed since the last watermark minus 5 minutes. A typical run moves 300 to 800 rows in under 2 seconds, with no measurable load on the claims system.",
+    "code": "-- Incremental extract using a watermark with a safety overlap\n-- :last_wm is the max updated_at from the previous successful run\nSELECT claim_id,\n       policy_id,\n       status,\n       claim_amount,\n       updated_at\nFROM   v_claims_for_ai                       -- view agreed with the DBA\nWHERE  updated_at > :last_wm - interval '5 minutes'\nORDER  BY updated_at;\n\n-- Load side: safe to repeat thanks to the upsert\nINSERT INTO stg_claims AS s (claim_id, policy_id, status, claim_amount, updated_at)\nVALUES (:claim_id, :policy_id, :status, :claim_amount, :updated_at)\nON CONFLICT (claim_id) DO UPDATE\nSET status = EXCLUDED.status,\n    claim_amount = EXCLUDED.claim_amount,\n    updated_at = EXCLUDED.updated_at\nWHERE s.updated_at < EXCLUDED.updated_at;",
+    "lang": "SQL"
+   },
+   {
+    "title": "ERP and CRM APIs, and iPaaS tools",
+    "body": "SAP and Salesforce are the systems FDEs meet most. At a high level: SAP's newer products (S/4HANA and SAP's cloud services) expose many business objects through OData, a REST-based protocol with standard query options, while older SAP ECC systems often use RFC/BAPI function calls or IDoc messages, usually reached through middleware. Salesforce offers a REST API where you query records with SOQL, a SQL-like language, plus a Bulk API for large volumes.\n\nAn iPaaS (integration platform as a service) is a hosted tool with ready-made connectors and visual flows, such as MuleSoft, Boomi, Workato or Azure Logic Apps. If the customer already uses one, building your connector there means their IT team can maintain it. Custom code wins when logic is complex, you need version-controlled tests, or volumes make per-task pricing expensive.",
+    "example": "For a service-ticket model, the FDE pulls closed Salesforce cases from the last 90 days with SOQL through the REST API. The customer's IT team already runs MuleSoft for SAP, so SAP order data arrives through an existing MuleSoft flow they extend, instead of a new direct connection.",
+    "code": "import requests\n\nINSTANCE = \"https://yourorg.my.salesforce.com\"\nTOKEN = \"<OAuth access token for the integration user>\"\nsoql = (\"SELECT Id, CaseNumber, Subject, Status, ClosedDate \"\n        \"FROM Case WHERE IsClosed = true AND ClosedDate = LAST_N_DAYS:90\")\n\nurl = f\"{INSTANCE}/services/data/v60.0/query\"   # API version in the path\nparams = {\"q\": soql}\nrows = []\nwhile url:\n    r = requests.get(url, params=params,\n                     headers={\"Authorization\": f\"Bearer {TOKEN}\"}, timeout=30)\n    r.raise_for_status()\n    body = r.json()\n    rows.extend(body[\"records\"])\n    nxt = body.get(\"nextRecordsUrl\")               # results come in pages\n    url, params = (INSTANCE + nxt, None) if nxt else (None, None)\nprint(len(rows), \"cases\")",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Choose",
+      "When"
+     ],
+     "rows": [
+      [
+       "Customer's iPaaS",
+       "They own it, IT will maintain it, flows are standard"
+      ],
+      [
+       "Custom code",
+       "Complex logic, tests in CI, high volume"
+      ],
+      [
+       "Both",
+       "iPaaS moves data in; your code transforms and serves it"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Rate limits and service accounts",
+    "body": "Enterprise APIs protect themselves with rate limits: a maximum number of calls per second, per minute or per day. Exceeding them returns HTTP 429 (too many requests) and sometimes a Retry-After header saying how long to wait. Salesforce, for example, has a daily API request allocation shared by every integration in the org, so a careless backfill can starve other teams.\n\nRespect limits by batching (fewer calls carrying more records), caching reference data, using bulk APIs for large loads, scheduling backfills at quiet times, and backing off on 429 with exponential delays plus random jitter.\n\nIntegrations should run as a service account: a non-human identity created for the integration, with only the permissions it needs (least privilege), credentials stored in a secret manager, and an owner on the customer side. Never use an employee's personal login.",
+    "example": "A backfill of 2 million CRM records at 50 records per call would need 40,000 calls and exhaust the daily allowance. Using the bulk API in batches of 10,000 and running overnight, it needs a few hundred calls. The integration runs as svc_ai_reader, which can read Cases and Accounts only.",
+    "code": "import random, time, requests\n\ndef call_with_backoff(method, url, max_tries=6, **kw):\n    for attempt in range(max_tries):\n        r = requests.request(method, url, timeout=30, **kw)\n        if r.status_code not in (429, 503):\n            r.raise_for_status()\n            return r\n        wait = r.headers.get(\"Retry-After\")\n        if wait and wait.isdigit():\n            delay = int(wait)                       # server told us how long\n        else:\n            delay = min(60, 2 ** attempt) + random.uniform(0, 1)  # backoff + jitter\n        time.sleep(delay)\n    raise RuntimeError(f\"Gave up after {max_tries} tries: {url}\")",
+    "lang": "Python",
+    "checklist": [
+     "Documented rate limits and daily quotas written down",
+     "Service account created, not a personal login",
+     "Least-privilege permissions reviewed with the customer",
+     "Credentials in a secret manager with rotation",
+     "Backoff with jitter on 429 and 503",
+     "Bulk API used for large loads, scheduled off-peak",
+     "Quota usage monitored with an alert"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "SFTP",
+    "A protocol for transferring files securely over an SSH connection."
+   ],
+   [
+    "EDI",
+    "Electronic data interchange: standard formats (X12, EDIFACT) for business documents between companies."
+   ],
+   [
+    "SOAP",
+    "An XML-based web service protocol whose operations are described in a WSDL file."
+   ],
+   [
+    "WSDL",
+    "An XML document describing a SOAP service's operations and message types."
+   ],
+   [
+    "Read replica",
+    "A read-only, continuously updated copy of a database."
+   ],
+   [
+    "Watermark",
+    "A saved marker, such as the latest updated_at loaded, used to fetch only newer rows."
+   ],
+   [
+    "ERP",
+    "Enterprise resource planning software such as SAP, which runs finance, supply chain and operations."
+   ],
+   [
+    "iPaaS",
+    "A hosted integration platform with prebuilt connectors and visual flows."
+   ],
+   [
+    "Rate limit",
+    "A cap on how many API calls a client may make in a time period."
+   ],
+   [
+    "Service account",
+    "A non-human identity with limited permissions used by an integration."
+   ]
+  ],
+  "practice": [
+   "Run an SFTP server in Docker (for example the atmoz/sftp image). Write a Python job that picks up CSV files only when a matching .done file exists, skips files whose checksum it has seen, and moves them to a processed folder.",
+   "Write a watermark-based incremental loader between two SQLite or Postgres databases, with a 5-minute overlap and an upsert. Show that running it twice in a row changes nothing.",
+   "Stretch: build a small mock API that returns 429 with Retry-After on every fifth call, and a client that uses backoff with jitter to fetch 500 records. Log how many retries happened and the total time."
+  ]
+ },
+ "bi": {
+  "plain": "Business intelligence (BI) is the practice of turning company data into reports and dashboards that people use to make decisions. A BI tool connects to a database or data warehouse and lets users build charts, tables and filters without writing a full application. A KPI (key performance indicator) is a number that shows whether the business is meeting a goal, like on-time delivery rate. A metrics layer is a single place where each metric is defined, so every dashboard calculates it the same way.",
+  "analogy": "A dashboard is like a car's instrument panel. It shows a few numbers you need while driving (speed, fuel, warning lights), not every sensor reading. The metrics layer is the agreed definition of what 'fuel remaining' means, so the panel, the app and the mechanic all read the same value.",
+  "why": "FDE projects succeed when the customer can see the result. A clean KPI dashboard showing handle time down 18 percent since the AI launch is often what secures the expansion. FDEs also get pulled into 'why do these two reports disagree?' problems, and fixing metric definitions builds trust fast.",
+  "subtopics": [
+   {
+    "title": "What BI tools do",
+    "body": "A BI tool sits on top of your data. It connects to a source (Postgres, Snowflake, BigQuery, Databricks and many others), lets you define datasets or models, build visualizations, arrange them on dashboards, and share them with permissions. Most also offer scheduled email reports and alerts.\n\nThe popular tools differ mostly in who builds with them and where definitions live. Power BI and Tableau are rich desktop-style authoring tools used by analysts. Looker defines metrics in a modeling language (LookML) kept in version control. Metabase is an open-source tool that is quick to set up and friendly for simple questions.\n\nAs an FDE you will usually use whatever the customer already owns. Your job is good data and clear definitions under it, which the warehouse concept's dbt models help provide.",
+    "example": "A clinic chain uses Microsoft 365 and already pays for Power BI. The FDE does not propose a new tool. Instead they publish a clean modeled table of appointments to the warehouse and build the pilot dashboard in Power BI, which the chain's analyst can maintain afterwards.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Tool",
+      "Typical fit",
+      "Where logic lives"
+     ],
+     "rows": [
+      [
+       "Power BI",
+       "Microsoft-centric organizations",
+       "Data model and DAX measures"
+      ],
+      [
+       "Tableau",
+       "Analyst teams, rich visual exploration",
+       "Workbooks and data sources"
+      ],
+      [
+       "Looker",
+       "Teams wanting governed, code-defined metrics",
+       "LookML files in git"
+      ],
+      [
+       "Metabase",
+       "Quick, low-cost, open-source setups",
+       "Saved questions and models"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Metrics layers: define it once",
+    "body": "If each analyst writes their own SQL for 'revenue', you get several revenues: one with tax, one without, one using order date, one using payment date. Meetings turn into arguments about numbers.\n\nA metrics layer, or semantic layer, stores metric definitions in one place: the measure (sum of amount), filters (exclude refunds and test orders), the time dimension, and allowed breakdowns. BI tools and other consumers ask for 'revenue by region by month', and the layer writes the SQL. Examples include LookML in Looker, the dbt Semantic Layer (MetricFlow), and the data models in Power BI.\n\nEven without a dedicated tool, you can get most of the benefit with one modeled table per business process and a short written definition for each KPI, owned by a named person.",
+    "example": "An online retailer had three 'weekly revenue' figures differing by up to 6 percent. The finance lead agreed a definition: paid orders, excluding tax, shipping and refunds, by payment date in Europe/Madrid time. The FDE encoded it once as a dbt metric and pointed all three dashboards at it.",
+    "code": "# dbt Semantic Layer (MetricFlow) definition\nsemantic_models:\n  - name: orders\n    model: ref('fct_orders')\n    defaults:\n      agg_time_dimension: paid_date\n    entities:\n      - name: order_id\n        type: primary\n    dimensions:\n      - name: paid_date\n        type: time\n        type_params:\n          time_granularity: day\n      - name: region\n        type: categorical\n    measures:\n      - name: net_revenue\n        agg: sum\n        expr: net_amount          # excludes tax, shipping, refunds\n\nmetrics:\n  - name: net_revenue\n    label: Net revenue\n    type: simple\n    type_params:\n      measure: net_revenue",
+    "lang": "YAML"
+   },
+   {
+    "title": "Writing the KPI query in SQL",
+    "body": "Behind every chart is a query. Write KPI queries against clean, modeled tables (facts and dimensions), not raw application tables. Be explicit about the time grain: are you counting per day, week or month, and in which time zone?\n\nStructure the query with CTEs (named subqueries using WITH) so each step is readable: filter the rows, aggregate to the grain, then compute ratios and comparisons. Compute ratios from summed numerators and denominators, never by averaging daily percentages, which gives small days too much weight.\n\nAdd the comparison the reader needs, such as the same period last year or a target, so the number means something. Window functions like LAG make this easy.",
+    "example": "A delivery company's KPI is on-time delivery rate per week. In week 9 it delivered 41,200 parcels, 38,316 on time: 93.0 percent, up from 91.4 percent the week before. The query below produces exactly those columns for a line chart and a headline tile.",
+    "code": "WITH deliveries AS (\n    SELECT date_trunc('week', delivered_at AT TIME ZONE 'Europe/London') AS week,\n           (delivered_at <= promised_by) AS on_time\n    FROM fct_deliveries\n    WHERE delivered_at >= now() - interval '26 weeks'\n      AND is_test = false                      -- keep test parcels out\n),\nweekly AS (\n    SELECT week,\n           count(*)                           AS delivered,\n           count(*) FILTER (WHERE on_time)    AS on_time\n    FROM deliveries\n    GROUP BY week\n)\nSELECT week,\n       delivered,\n       round(100.0 * on_time / delivered, 1)  AS on_time_pct,\n       round(100.0 * on_time / delivered, 1)\n         - lag(round(100.0 * on_time / delivered, 1)) OVER (ORDER BY week)\n                                              AS change_vs_prev_week\nFROM weekly\nORDER BY week;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Designing a dashboard people use",
+    "body": "Start from the audience and the decisions. Ask: who opens this, how often, and what will they do differently based on it? A regional operations manager checking daily needs different content from an executive glancing monthly.\n\nLay it out top to bottom in order of importance. Three to five headline KPIs with a comparison (vs target or last period) go on top. Trends over time come next, usually line charts. Breakdowns by region, team or product follow, usually sorted bar charts. Detail tables go last or on a drill-through page.\n\nKeep chart types simple, label units, start bar charts at zero, use color only to highlight what matters, and show when the data was last refreshed. A dashboard nobody opens after two weeks is a failed dashboard; check usage and ask users what they skip.",
+    "example": "For a claims team lead, the FDE builds one page: four tiles (open claims, median days to settle, AI-assisted share, backlog over 30 days), a 12-week trend of days to settle, a bar chart by handler team, and a table of the 20 oldest claims with links. The first version had 14 charts; interviews cut it to these 7.",
+    "code": "",
+    "lang": "Text",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "aud",
+       90,
+       70,
+       "Audience",
+       "who and how often"
+      ],
+      [
+       "dec",
+       265,
+       70,
+       "Decisions",
+       "what they act on"
+      ],
+      [
+       "kpi",
+       440,
+       70,
+       "3-5 KPIs",
+       "with a comparison"
+      ],
+      [
+       "trend",
+       615,
+       70,
+       "Trends",
+       "line charts"
+      ],
+      [
+       "brk",
+       615,
+       220,
+       "Breakdowns",
+       "sorted bars"
+      ],
+      [
+       "det",
+       440,
+       220,
+       "Detail table",
+       "drill-through"
+      ],
+      [
+       "rev",
+       265,
+       220,
+       "Review usage",
+       "cut what is unused"
+      ]
+     ],
+     "edges": [
+      [
+       "aud",
+       "dec"
+      ],
+      [
+       "dec",
+       "kpi"
+      ],
+      [
+       "kpi",
+       "trend"
+      ],
+      [
+       "trend",
+       "brk"
+      ],
+      [
+       "brk",
+       "det"
+      ],
+      [
+       "det",
+       "rev"
+      ]
+     ]
+    },
+    "checklist": [
+     "Audience and decisions written at the top of the spec",
+     "Three to five headline KPIs, each with a comparison",
+     "Each KPI has a written definition and a named owner",
+     "Units and time zone labeled",
+     "Bar charts start at zero; color used only to highlight",
+     "Last refreshed time visible",
+     "Loads in a few seconds with default filters",
+     "Usage reviewed after two weeks"
+    ]
+   },
+   {
+    "title": "Performance, freshness and trust",
+    "body": "Slow dashboards lose users. The usual causes are heavy queries against large raw tables, too many charts each firing its own query, and BI tools connected to a production application database where they compete with real users.\n\nFixes: point BI at a warehouse or a read replica, pre-aggregate into summary tables at the grain the dashboard needs (daily by region, for example), use the BI tool's extract or cache features, and reduce default date ranges.\n\nTrust comes from consistency and transparency. Show the refresh time, test the source models (dbt tests for nulls and duplicates), reconcile a headline number against a trusted system such as the finance ledger before launch, and give each dashboard an owner who answers questions about it.",
+    "example": "A 40-clinic physiotherapy chain's utilization dashboard took 45 seconds to load because it scanned 30 million appointment slot rows. A nightly summary table at clinic by day grain has about 58,000 rows, and the dashboard now loads in 2 seconds.",
+    "code": "-- Pre-aggregated table the dashboard reads instead of raw slots\nCREATE TABLE agg_clinic_daily AS\nSELECT clinic_id,\n       slot_date,\n       count(*)                                  AS slots_offered,\n       count(*) FILTER (WHERE status = 'booked') AS slots_booked,\n       count(*) FILTER (WHERE status = 'no_show') AS no_shows\nFROM fct_appointment_slots\nGROUP BY clinic_id, slot_date;\n\n-- Dashboard query: fast, and the ratio uses summed parts\nSELECT clinic_id,\n       round(100.0 * sum(slots_booked) / nullif(sum(slots_offered), 0), 1)\n         AS utilization_pct\nFROM agg_clinic_daily\nWHERE slot_date >= current_date - 28\nGROUP BY clinic_id\nORDER BY utilization_pct;",
+    "lang": "SQL",
+    "table": {
+     "headers": [
+      "Symptom",
+      "Likely cause",
+      "Fix"
+     ],
+     "rows": [
+      [
+       "Takes 30+ seconds",
+       "Scanning raw tables",
+       "Pre-aggregate at dashboard grain"
+      ],
+      [
+       "App slows during reports",
+       "BI on production DB",
+       "Use warehouse or replica"
+      ],
+      [
+       "Numbers differ by team",
+       "Many metric definitions",
+       "One definition in metrics layer"
+      ],
+      [
+       "Users doubt the data",
+       "Unknown freshness",
+       "Show refresh time, reconcile totals"
+      ]
+     ]
+    }
+   }
+  ],
+  "glossary": [
+   [
+    "Business intelligence",
+    "Tools and practices that turn data into reports and dashboards for decisions."
+   ],
+   [
+    "Dashboard",
+    "A single screen of related charts and numbers for one audience."
+   ],
+   [
+    "KPI",
+    "Key performance indicator: a number that shows progress toward a business goal."
+   ],
+   [
+    "Metrics layer",
+    "A single place where metric definitions live so every tool computes them the same way."
+   ],
+   [
+    "Semantic layer",
+    "Another name for a metrics layer, mapping business terms to data."
+   ],
+   [
+    "Grain",
+    "The level of detail of a table or query, such as one row per clinic per day."
+   ],
+   [
+    "Pre-aggregation",
+    "Computing summary tables ahead of time so dashboards query fewer rows."
+   ],
+   [
+    "Drill-through",
+    "Clicking a chart element to open a more detailed view."
+   ],
+   [
+    "CTE",
+    "A named subquery created with WITH to make SQL easier to read."
+   ]
+  ],
+  "practice": [
+   "Install Metabase with Docker, connect it to a Postgres database with a sample orders table, and build a dashboard with three KPI tiles, one trend line and one breakdown bar chart.",
+   "Write the SQL for a weekly KPI of your choice with a comparison to the previous week, using CTEs and summed numerators and denominators. Then write a one-paragraph definition of the KPI as a finance owner would sign it.",
+   "Stretch: take a cluttered dashboard (make one with 12 charts), interview a friend playing the user about what decisions they make, and redesign it to at most 7 elements. Write down what you cut and why."
+  ]
+ }
+}

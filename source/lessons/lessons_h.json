@@ -1,0 +1,372 @@
+{
+ "internet": {
+  "plain": "The internet is a huge number of computers joined together so they can send each other messages. Almost every message follows one pattern: a client (the program that asks, like your web browser or phone app) sends a request to a server (a program on another computer that waits for requests and answers them). To find the right computer, names like example.com are turned into numbers called IP addresses by a system called DNS. The two computers then open a reliable connection, lock it with encryption, and exchange the request and the reply using a simple text format called HTTP.",
+  "analogy": "Sending a request on the internet is like posting a letter to a company. DNS is the directory that turns the company's name into a street address, the port is the department number on the envelope, TCP is registered mail that makes sure nothing is lost, and TLS is a sealed envelope that only the real company can open.",
+  "why": "An FDE spends a lot of time making their product talk to a customer's systems, and most of those conversations go over the network. When a hospital says 'your app cannot reach our server', you need to know whether the problem is the name, the address, a blocked port, a certificate or the application itself. Knowing the layers turns a vague complaint into a five-minute diagnosis.",
+  "subtopics": [
+   {
+    "title": "Clients, servers and requests",
+    "body": "A computer program that asks for something is a client. A program that listens and answers is a server. The same machine can be both: your laptop runs a browser (a client) and could also run a small server.\n\nThe question the client sends is called a request. The answer is called a response. Every web page you open is at least one request and one response, and usually many: one for the page, and more for each picture, font and script it uses.\n\nWhen programs talk to other programs this way, without a person clicking, it is called an API (Application Programming Interface). An API is just a server that answers requests with data, often in a format called JSON, instead of web pages.",
+    "example": "A pharmacy chain has a stock system. A shop's till is the client. When a cashier scans a box of paracetamol, the till sends a request 'how many of product 4471 are left at store 12?' to the stock server. The server looks it up and responds '37'. Nobody sees a web page, but it is the same client and server pattern as your browser.",
+    "code": "# A request and its response are plain text. This is roughly what\n# a browser sends when you open https://shop.example.com/cart\n\nGET /cart HTTP/1.1              # method, path, protocol version\nHost: shop.example.com          # which site on this server\nUser-Agent: Mozilla/5.0         # who is asking\nAccept: text/html               # what format I want back\n\n# ...and roughly what comes back:\n\nHTTP/1.1 200 OK                 # status code 200 = success\nContent-Type: text/html         # the body is a web page\nContent-Length: 1532            # the body is 1532 bytes long\n\n<html> ... the cart page ... </html>",
+    "lang": "Text"
+   },
+   {
+    "title": "IP addresses and DNS lookups",
+    "body": "Every machine on a network has an IP address, a number that says where it is. The common kind (IPv4) looks like four numbers from 0 to 255 separated by dots, such as 203.0.113.10. A newer kind (IPv6) is longer and uses letters and colons.\n\nPeople remember names, not numbers. DNS, the Domain Name System, is a worldwide directory that maps names like shop.example.com to IP addresses. Your computer asks a DNS resolver (usually run by your internet provider or company) and gets the number back.\n\nAnswers are cached, which means saved for a while, so repeated lookups are instant. This is also why a DNS change can take minutes or hours to reach everyone: old answers linger until they expire.",
+    "example": "An insurer moves its claims API to a new server with a new IP address and updates DNS. For the next hour some offices can reach it and some cannot. The offices that fail still have the old address cached. Running nslookup claims.insurer.example on a failing laptop shows the old number, which proves it is a DNS caching issue and not a broken server.",
+    "code": "# Ask DNS for the address of a name\nnslookup example.com\n\n# A more detailed tool, common on Mac and Linux\ndig example.com +short        # prints just the IP address(es)\n\n# Check whether the machine answers at all.\n# ping sends small test messages and times the replies.\nping -c 4 example.com         # -c 4 = send 4 and stop (Mac/Linux)\n# On Windows use: ping -n 4 example.com\n\n# Note: many servers ignore ping for security reasons,\n# so no reply does not always mean the server is down.",
+    "lang": "bash"
+   },
+   {
+    "title": "Ports and TCP connections",
+    "body": "One machine can run many server programs at once: a web server, a database, an email server. A port is a number from 0 to 65535 that picks which program you want. Some are standard: 80 for HTTP, 443 for HTTPS, 22 for SSH (remote login), 5432 for the PostgreSQL database.\n\nThe full destination is therefore an IP address plus a port, written like 203.0.113.10:443.\n\nTCP, the Transmission Control Protocol, is the set of rules for a reliable conversation. Data is chopped into small packets. TCP numbers them, resends any that get lost, and puts them back in order at the other end. Before any data flows, the two sides do a short 'handshake' to agree they are both ready.\n\nA firewall is a filter that allows or blocks traffic by address and port. Many 'it does not connect' problems at customers are a firewall blocking a port.",
+    "example": "A logistics company wants your product to read from their PostgreSQL database. DNS works and ping works, but your connection hangs and then times out. Testing port 5432 shows it is closed from outside. Their network team had only opened port 443. Asking them to allow port 5432 from your server's IP address fixes it.",
+    "code": "# From a Mac/Linux terminal, netcat (nc) tests a TCP port:\n#   nc -vz example.com 443    'succeeded' means port 443 is open\n#   nc -vz example.com 5432   'timed out' usually means a firewall\n\n# The same test in Python, works everywhere\nimport socket\ns = socket.socket()           # a TCP socket\ns.settimeout(3)               # give up after 3 seconds\ntry:\n    s.connect((\"example.com\", 443))\n    print(\"port 443 is open\")\nexcept OSError as e:\n    print(\"cannot connect:\", e)\nfinally:\n    s.close()",
+    "lang": "Python"
+   },
+   {
+    "title": "HTTPS and TLS at a high level",
+    "body": "Plain HTTP sends text that anyone on the path, such as a café Wi-Fi owner, could read or change. HTTPS fixes this by wrapping HTTP inside TLS, Transport Layer Security.\n\nTLS does two jobs. First, identity: the server shows a certificate, a digital ID card signed by a trusted certificate authority, which proves it really owns the name you asked for. Second, secrecy: both sides agree on secret keys and encrypt everything after that.\n\nCertificates expire, often after about 90 days to a year. An expired certificate, or one issued for the wrong name, makes browsers and programs refuse to connect. Large companies often inspect traffic with their own certificates, which can make your program fail until you trust their certificate authority.",
+    "example": "A bank's internal API suddenly fails from your integration with an error mentioning 'certificate has expired'. Nothing changed in your code. curl -v shows the certificate's expiry date was yesterday. The fix is on the bank's side: renew the certificate. The safe response is to tell them, and never to switch off certificate checking.",
+    "code": "# From a terminal, see the TLS details of a site:\n#   curl -v https://example.com/ 2>&1 | grep -iE \"SSL|TLS|expire|subject\"\n\n# In Python, requests checks certificates by default\nimport requests\nr = requests.get(\"https://example.com/\", timeout=10)\nprint(r.status_code)          # 200 if all went well\n\n# NEVER do this in real code; it turns off the identity check\n# requests.get(url, verify=False)\n\n# If a company uses its own certificate authority, point to it:\n# requests.get(url, verify=\"/path/to/company-ca.pem\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Running your own tiny web server",
+    "body": "The best way to feel the client and server pattern is to be the server. Python can run a small web server with only its standard library, meaning nothing extra to install.\n\nThe server below listens on port 8000 on your own computer. Your computer's own address is called localhost, or 127.0.0.1. When you open http://localhost:8000/hello in a browser, the browser is the client and your script is the server.\n\nEach request calls do_GET. You choose the status code, add headers and write the body. That is all a web server really does; frameworks like FastAPI or Flask add convenience on top of this.",
+    "example": "Run the script, then in a second terminal type curl -v http://localhost:8000/hello. You will see the request line GET /hello, the response 200 OK and the JSON body {\"message\": \"hello\", \"path\": \"/hello\"}. Try /anything and the path in the reply changes. Stop the server with Ctrl+C.",
+    "code": "# server.py  (run: python server.py)\nimport json\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\n\nclass Handler(BaseHTTPRequestHandler):\n    def do_GET(self):                         # called for each GET request\n        body = json.dumps({\"message\": \"hello\", \"path\": self.path})\n        self.send_response(200)               # status code\n        self.send_header(\"Content-Type\", \"application/json\")\n        self.end_headers()\n        self.wfile.write(body.encode())       # the response body\n\nHTTPServer((\"127.0.0.1\", 8000), Handler).serve_forever()",
+    "lang": "Python"
+   },
+   {
+    "title": "Debugging a connection layer by layer",
+    "body": "When something 'does not connect', check the layers in the order they happen. Stop at the first one that fails, because every later step depends on it.\n\n1. Name: does DNS return an IP address? 2. Route and port: can you open a TCP connection to that IP on the right port? 3. TLS: is the certificate valid for this name and not expired? 4. HTTP: what status code comes back? 401 or 403 means your login or permissions are wrong, 404 means the path is wrong, 5xx means the server itself failed.\n\nWrite down what you ran and what you saw. A customer's network team will act much faster on 'port 443 to 10.2.3.4 times out from our server 198.51.100.7' than on 'it does not work'.",
+    "example": "A retailer's product feed stops updating. nslookup feed.retailer.example returns an address, so DNS is fine. nc -vz on port 443 succeeds, so the network is fine. curl -v shows the TLS handshake works and then HTTP 401 Unauthorized. The problem is an expired API key, which is a two-minute fix once you know where to look.",
+    "code": "#!/bin/bash\n# check.sh HOST PORT PATH  e.g. ./check.sh example.com 443 /\nHOST=$1; PORT=$2; URLPATH=$3\n\necho \"1. DNS\";   nslookup \"$HOST\" || exit 1\necho \"2. TCP\";   nc -vz -w 5 \"$HOST\" \"$PORT\" || exit 1\necho \"3+4. TLS and HTTP\"\n# -s silent, -o discard body, -w print the status code only\ncurl -s -o /dev/null -w \"HTTP status: %{http_code}\\n\" \\\n     \"https://$HOST:$PORT$URLPATH\"",
+    "lang": "bash"
+   }
+  ],
+  "glossary": [
+   [
+    "Client",
+    "The program that sends a request, such as a browser, app or script."
+   ],
+   [
+    "Server",
+    "A program that waits for requests and sends back responses."
+   ],
+   [
+    "IP address",
+    "A number that identifies a machine on a network, such as 203.0.113.10."
+   ],
+   [
+    "DNS",
+    "Domain Name System: the directory that turns names like example.com into IP addresses."
+   ],
+   [
+    "Port",
+    "A number that selects which program on a machine you are talking to, such as 443 for HTTPS."
+   ],
+   [
+    "TCP",
+    "Transmission Control Protocol: rules that deliver data reliably and in order."
+   ],
+   [
+    "HTTP",
+    "HyperText Transfer Protocol: the text format for web requests and responses."
+   ],
+   [
+    "TLS / HTTPS",
+    "TLS encrypts a connection and proves the server's identity; HTTPS is HTTP sent over TLS."
+   ],
+   [
+    "Status code",
+    "A three-digit number in every HTTP response, such as 200 OK, 404 Not Found or 500 Server Error."
+   ],
+   [
+    "Firewall",
+    "A filter that allows or blocks network traffic based on addresses and ports."
+   ]
+  ],
+  "practice": [
+   "Run nslookup, ping and curl -v against three websites you use. For each, write down the IP address, whether ping replied, the TLS version and the HTTP status code.",
+   "Run the tiny Python server from this lesson. Call it with your browser and with curl -v. Then change it so /health returns {\"status\": \"ok\"} and any other path returns status 404.",
+   "Stretch: write the layer-by-layer check as a Python script using socket, ssl and requests. Given a host and port, it should print which of DNS, TCP, TLS or HTTP failed first, with the error message."
+  ]
+ },
+ "dbbasics": {
+  "plain": "A database is a program that stores data in an organised way so many people and programs can find, add and change it safely. The most common kind, a relational database, keeps data in tables: each table has named columns (like name or city) and each row is one record (like one customer). SQL (Structured Query Language, often said 'sequel') is the language you use to ask a database questions and make changes. Popular databases include PostgreSQL, MySQL, SQL Server and SQLite, which is a small database kept in a single file.",
+  "analogy": "A database is like a library with a very strict librarian. Every book has a unique catalogue number (the primary key), the shelves are organised by type (tables), and instead of walking the aisles you hand the librarian a slip saying exactly what you want, and they fetch it quickly.",
+  "why": "Nearly every customer an FDE works with keeps their important data in databases: orders, patients, claims, shipments. The first week of a project is often spent reading their tables with SQL to understand what data exists and whether it is clean. Being able to write a quick JOIN to answer 'how many orders per region last month?' earns trust fast.",
+  "subtopics": [
+   {
+    "title": "Database versus spreadsheet",
+    "body": "A spreadsheet like Excel is great for one person looking at a few thousand rows. You can type anything in any cell, which is flexible but risky.\n\nA database adds rules and scale. Each column has a type, so a date column cannot hold the word 'soon'. Many users and programs can read and write at the same moment without overwriting each other. It can hold millions or billions of rows and still find one in milliseconds.\n\nA database also supports transactions: a group of changes that either all happen or none happen. If a bank moves money from one account to another, the database guarantees you never see the money taken out but not yet put in.",
+    "example": "A small clinic tracks appointments in a shared spreadsheet. Two receptionists book the same 10:00 slot at the same time and one booking silently overwrites the other. In a database, a rule saying 'doctor plus time must be unique' would reject the second booking with an error, and the receptionist would pick another slot.",
+    "code": "-- The same data as a spreadsheet, but with rules attached\nCREATE TABLE appointments (\n  id         INTEGER PRIMARY KEY,   -- unique number for each row\n  doctor     TEXT    NOT NULL,      -- must be filled in\n  patient    TEXT    NOT NULL,\n  starts_at  TEXT    NOT NULL,      -- e.g. '2026-10-01 10:00'\n  UNIQUE (doctor, starts_at)        -- no double booking\n);\n\nINSERT INTO appointments (doctor, patient, starts_at)\nVALUES ('Dr Rao', 'Meera', '2026-10-01 10:00');   -- works\n\nINSERT INTO appointments (doctor, patient, starts_at)\nVALUES ('Dr Rao', 'Tom',   '2026-10-01 10:00');   -- rejected: not unique",
+    "lang": "SQL"
+   },
+   {
+    "title": "Tables, rows, columns and keys",
+    "body": "A table holds one kind of thing: customers, orders, products. A column is one property of that thing, with a name and a type such as INTEGER (whole number), REAL (decimal number) or TEXT. A row is one actual thing, like the customer Asha from Pune.\n\nThe primary key is a column whose value is different for every row and never empty. It is usually a number called id. Names are bad keys, because two customers can share a name and people change names.\n\nA foreign key is a column in one table that holds the primary key of a row in another table. The orders table has customer_id, which says which customer placed the order. This is how tables are linked without copying the customer's details into every order.",
+    "example": "An online bookshop has customers (id, name, city) and orders (id, customer_id, total). Customer 1 is Asha, customer 2 is Ben. Order 101 has customer_id 1 and total 42.50. To know who placed order 101 you look up id 1 in customers and find Asha. If Asha changes city, you change one row, and all her orders stay linked to her.",
+    "code": "-- customers                     orders\n-- +----+-------+--------+        +-----+-------------+-------+\n-- | id | name  | city   |        | id  | customer_id | total |\n-- +----+-------+--------+        +-----+-------------+-------+\n-- |  1 | Asha  | Pune   | <----- | 101 |      1      | 42.50 |\n-- |  2 | Ben   | Leeds  | <----- | 102 |      2      |  9.99 |\n-- +----+-------+--------+   \\--- | 103 |      1      | 15.00 |\n--                                +-----+-------------+-------+\nCREATE TABLE customers (\n  id   INTEGER PRIMARY KEY,\n  name TEXT NOT NULL,\n  city TEXT\n);\nCREATE TABLE orders (\n  id          INTEGER PRIMARY KEY,\n  customer_id INTEGER REFERENCES customers(id),  -- foreign key\n  total       REAL\n);",
+    "lang": "SQL"
+   },
+   {
+    "title": "Reading data: SELECT, WHERE, ORDER BY",
+    "body": "SELECT is how you read. You list the columns you want after SELECT, name the table after FROM, and the database returns matching rows. SELECT * means all columns, which is fine for a quick look and wasteful in real code.\n\nWHERE filters rows. You can compare with =, <>, >, <, combine conditions with AND and OR, and match text patterns with LIKE, where % means 'any characters'.\n\nORDER BY sorts the result, ASC for smallest first (the default) and DESC for largest first. LIMIT keeps only the first few rows. Aggregate functions like COUNT, SUM and AVG summarise many rows into one number, and GROUP BY does that per group.",
+    "example": "Using the bookshop tables: 'Show orders over 10, biggest first' returns order 101 (42.50) then 103 (15.00). Order 102 (9.99) is filtered out by WHERE. 'Total spent per customer' groups by customer_id and gives customer 1: 57.50 and customer 2: 9.99.",
+    "code": "-- All orders over 10, largest first\nSELECT id, customer_id, total\nFROM orders\nWHERE total > 10\nORDER BY total DESC;\n\n-- Customers whose name starts with A\nSELECT name, city FROM customers WHERE name LIKE 'A%';\n\n-- How much each customer spent in total\nSELECT customer_id, COUNT(*) AS n_orders, SUM(total) AS spent\nFROM orders\nGROUP BY customer_id\nORDER BY spent DESC\nLIMIT 10;               -- top 10 only",
+    "lang": "SQL"
+   },
+   {
+    "title": "Changing data: INSERT, UPDATE, DELETE",
+    "body": "INSERT adds new rows. You name the columns and give the values. If the primary key is an INTEGER PRIMARY KEY, SQLite fills it in for you.\n\nUPDATE changes existing rows and DELETE removes them. Both take a WHERE clause that picks which rows. This is the most important safety rule in SQL: an UPDATE or DELETE without WHERE applies to every row in the table.\n\nA good habit is to run the same WHERE as a SELECT first, check the rows it matches, and only then run the UPDATE or DELETE. Inside a transaction you can also ROLLBACK, meaning undo, if the result looks wrong before you COMMIT.",
+    "example": "Ben moves from Leeds to York. The correct change is UPDATE customers SET city = 'York' WHERE id = 2, which touches one row. If you forget WHERE id = 2, every customer now lives in York. Running SELECT * FROM customers WHERE id = 2 first shows exactly the one row you are about to change.",
+    "code": "BEGIN;                                   -- start a transaction\n\nINSERT INTO customers (name, city) VALUES ('Chen', 'Leeds');\n\nSELECT * FROM customers WHERE id = 2;    -- check first: 1 row, Ben\nUPDATE customers SET city = 'York' WHERE id = 2;\n\nDELETE FROM orders WHERE id = 102;       -- remove one order\n\n-- Happy? make it permanent.  Unhappy? use ROLLBACK instead.\nCOMMIT;\n\n-- DANGER: no WHERE, so this changes every row\n-- UPDATE customers SET city = 'York';",
+    "lang": "SQL"
+   },
+   {
+    "title": "Your first JOIN",
+    "body": "A JOIN combines rows from two tables that belong together. You tell the database how they match using ON, usually 'the foreign key equals the primary key'.\n\nAn INNER JOIN, written as plain JOIN, keeps only rows that have a match on both sides. A LEFT JOIN keeps every row from the left table even if there is no match, and fills the missing columns with NULL, which means 'no value'.\n\nShort names after a table, like orders o, are called aliases. They save typing: o.total means the total column of orders.",
+    "example": "'Show each order with the customer's name' joins orders to customers on customer_id = id, giving (101, Asha, 42.50), (102, Ben, 9.99), (103, Asha, 15.00). Now add customer 3, Chen, who has no orders. An inner join leaves Chen out. A LEFT JOIN from customers to orders shows Chen with a NULL total, which is how you find customers who never bought anything.",
+    "code": "-- Each order with the name of the customer who placed it\nSELECT o.id, c.name, o.total\nFROM orders o\nJOIN customers c ON c.id = o.customer_id\nORDER BY o.id;\n\n-- Every customer and how much they spent, including zero\nSELECT c.name, COALESCE(SUM(o.total), 0) AS spent  -- NULL becomes 0\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nGROUP BY c.id, c.name;\n\n-- Customers who never ordered\nSELECT c.name\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nWHERE o.id IS NULL;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Using SQLite from Python",
+    "body": "Python includes the sqlite3 module, so you can practise SQL with no installation. sqlite3.connect opens a database file, creating it if needed. Passing \":memory:\" makes a throwaway database in memory.\n\nYou send SQL with execute. For values that come from users or files, always use ? placeholders and pass the values separately. Gluing text into the SQL string allows SQL injection, where a crafted input like '; DROP TABLE customers; -- is run as a command.\n\nChanges are only saved after commit. Reading gives rows back as tuples; setting row_factory to sqlite3.Row lets you use column names instead. Using the connection in a with block commits automatically if no error happens.",
+    "example": "A school exports marks to a CSV file. You load them into SQLite with executemany, then run one query to list the top three students per subject. The whole thing is 20 lines and runs anywhere Python runs, which makes it a handy tool for exploring a customer's data export on day one.",
+    "code": "import sqlite3\n\ncon = sqlite3.connect(\":memory:\")          # temporary database\ncon.row_factory = sqlite3.Row               # rows act like dicts\ncon.execute(\"CREATE TABLE marks (student TEXT, subject TEXT, score INTEGER)\")\n\ndata = [(\"Asha\", \"Maths\", 91), (\"Ben\", \"Maths\", 78),\n        (\"Chen\", \"Maths\", 85), (\"Asha\", \"Art\", 70)]\nwith con:                                   # commits at the end\n    con.executemany(\"INSERT INTO marks VALUES (?, ?, ?)\", data)\n\nsubject = \"Maths\"                           # imagine this came from a user\nrows = con.execute(\n    \"SELECT student, score FROM marks WHERE subject = ? \"\n    \"ORDER BY score DESC LIMIT 3\", (subject,)).fetchall()\nfor r in rows:\n    print(r[\"student\"], r[\"score\"])         # Asha 91, Chen 85, Ben 78",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Database",
+    "A program that stores data in an organised way and lets many users read and change it safely."
+   ],
+   [
+    "Table",
+    "A set of rows that all have the same columns, holding one kind of thing."
+   ],
+   [
+    "Row",
+    "One record in a table, such as one customer."
+   ],
+   [
+    "Column",
+    "One named, typed property that every row has, such as city."
+   ],
+   [
+    "Primary key",
+    "A column whose value is unique and never empty, used to identify each row."
+   ],
+   [
+    "Foreign key",
+    "A column that stores another table's primary key to link the two tables."
+   ],
+   [
+    "SQL",
+    "Structured Query Language, used to read and change data in relational databases."
+   ],
+   [
+    "JOIN",
+    "A SQL operation that combines rows from two tables that match on a condition."
+   ],
+   [
+    "Transaction",
+    "A group of changes that are saved together with COMMIT or undone together with ROLLBACK."
+   ],
+   [
+    "SQL injection",
+    "An attack where user input is run as SQL because it was pasted into the query text."
+   ]
+  ],
+  "practice": [
+   "In Python with sqlite3, create customers and orders tables for a small bakery, insert 5 customers and 10 orders, and print the name and total spent for every customer, highest first.",
+   "Write the SQL to find customers who never ordered, the single biggest order with the customer's name, and the average order value per city. Check each answer by hand.",
+   "Stretch: download any public CSV file (for example a city's open data), load it into SQLite with Python, add a primary key, and write five questions about the data as SQL queries with a one-line answer for each."
+  ]
+ },
+ "mlbasics": {
+  "plain": "Artificial intelligence (AI) is the broad goal of making computers do things that normally need human judgement, like reading text, recognising pictures or making predictions. Machine learning (ML) is the main way this is done today: instead of a programmer writing every rule, the computer is shown many examples and finds the pattern itself. The result of that learning is called a model, which is a formula with numbers inside it that turns inputs into a prediction. Large language models (LLMs), like the ones behind chat assistants, are a very large kind of ML model trained on text.",
+  "analogy": "Writing rules is like giving a new cook a recipe with exact amounts. Machine learning is like letting them taste 500 dishes along with the ratings people gave, until they can guess how good a new dish will be without a recipe.",
+  "why": "FDEs increasingly deploy AI systems into customer workflows, and customers ask basic questions: 'How does it learn?', 'Why did it get this one wrong?', 'Will it work on our data?'. You need to explain training, testing and overfitting in plain words, and spot when a demo's accuracy number was measured on the same data it was trained on.",
+  "subtopics": [
+   {
+    "title": "Rules versus learning from data",
+    "body": "Normal software is a set of rules written by people: if this, then that. It works well when the rules are clear, like calculating tax from a known table.\n\nSome problems have rules that are too fuzzy or too many to write. What makes an email spam? What price will a flat sell for? People can give examples much more easily than rules.\n\nMachine learning flips the process. You give the computer examples with the right answers, and a learning algorithm adjusts a model until it gives similar answers. The model can then answer new cases it has never seen.",
+    "example": "An estate agent first tries rules: 'price = 3000 per m2, plus 10% if it has a balcony'. It is often far off because many things matter. With ML, the agent collects 5,000 past sales with size, rooms, area and final price, and lets a model learn how much each factor matters. The model's guesses end up closer than the hand rules.",
+    "code": "# The rules way: a person decides the logic\ndef price_by_rule(size_m2, has_balcony):\n    price = 3.0 * size_m2            # 3.0 thousand per m2, a guess\n    if has_balcony:\n        price *= 1.10                # +10%, another guess\n    return price\n\nprint(price_by_rule(80, True))       # 264.0\n\n# The ML way: give examples, let the computer find the numbers\nexamples = [\n    # (size, balcony) -> real sale price in thousands\n    ((80, 1), 251), ((60, 0), 178), ((95, 1), 301), ((70, 0), 212),\n]\n# A learning algorithm (next subtopics) finds the best numbers\n# from these examples instead of us guessing them.",
+    "lang": "Python"
+   },
+   {
+    "title": "Features, labels and examples",
+    "body": "Each example is one row of data, like one past flat sale. The features are the input columns you will know at prediction time: size, number of rooms, area. The label is the answer you want the model to predict: the sale price.\n\nBy convention the table of features is called X (capital, because it has many columns) and the list of labels is called y. Learning from examples that have labels is called supervised learning.\n\nWhen the label is a number, like a price, the task is regression. When the label is a category, like spam or not spam, the task is classification. Choosing good features, and making sure no feature secretly contains the answer, matters more than choosing a fancy algorithm.",
+    "example": "A telecom company wants to predict which customers will cancel next month. Features: months as a customer, monthly bill, number of support calls. Label: cancelled (yes or no), so this is classification. A feature like 'date of cancellation' would be a mistake, because it is only known after the fact. That mistake is called leakage.",
+    "code": "# Each row is one past customer\n#  months  bill  support_calls | cancelled\n#    24    40.0        0       |    0\n#     3    75.0        4       |    1\n#    12    55.0        1       |    0\n#     5    80.0        3       |    1\n\nX = [[24, 40.0, 0],     # features: what we know in advance\n     [3,  75.0, 4],\n     [12, 55.0, 1],\n     [5,  80.0, 3]]\ny = [0, 1, 0, 1]        # labels: the answer (1 = cancelled)\n\n# y holds categories, so this is classification.\n# If y held numbers like 251.0 it would be regression.",
+    "lang": "Python"
+   },
+   {
+    "title": "Training and inference with scikit-learn",
+    "body": "Training is the learning step. The algorithm starts with some numbers inside the model, measures how wrong its guesses are on the training examples, and nudges the numbers to reduce that error. The numbers it learns are called parameters.\n\nLinear regression is the simplest model. For one feature it learns a straight line: prediction = slope x feature + intercept. The slope says how much the label rises for each unit of the feature, and the intercept is where the line starts.\n\nInference is using the trained model to predict for new inputs. Training can be slow and happens occasionally. Inference is usually fast and happens every time someone uses the model. scikit-learn, a popular Python library, uses fit for training and predict for inference.",
+    "example": "Ten flats between 50 and 140 m2 sold for between 155 and 421 thousand. After fit, the model's slope is about 2.98 and its intercept about 2.4, so it has learned 'roughly 3 thousand per m2'. For a new 95 m2 flat, predict gives about 285.2 thousand. You can check that by hand: 2.98 x 95 + 2.4 is about 285.5, and the small gap is only rounding.",
+    "code": "# pip install scikit-learn\nfrom sklearn.linear_model import LinearRegression\n\nX = [[50], [60], [70], [80], [90], [100], [110], [120], [130], [140]]\ny = [155, 178, 212, 236, 274, 298, 327, 365, 386, 421]\n\nmodel = LinearRegression()\nmodel.fit(X, y)                                  # training\n\nprint(\"slope:\", round(model.coef_[0], 2))       # about 2.98\nprint(\"intercept:\", round(model.intercept_, 1)) # about 2.4\n\nprint(model.predict([[95]]))                    # inference, about 285.2",
+    "lang": "Python"
+   },
+   {
+    "title": "Overfitting and the train/test split",
+    "body": "A model can do well on its training examples for two reasons: it learned the real pattern, or it memorised the examples, including their random noise. Memorising is called overfitting, and it means the model does badly on new data.\n\nThe defence is simple: before training, set aside part of the data as a test set, often 20%. Train only on the rest. Then score the model on the test set. That score estimates how the model will do in real life.\n\nA very flexible model, like a high-degree curve or a huge decision tree, can fit training data perfectly and still fail the test. If the training score is much better than the test score, suspect overfitting. Fixes include simpler models, more data, and fewer or better features.",
+    "example": "A hospital builds a model to predict how long patients stay. On training data it is right to within half a day. On the held-out test patients it is off by four days. The model had learned quirks of specific past patients. A simpler model scores slightly worse in training but much better on test, so it is the one to deploy.",
+    "code": "from sklearn.model_selection import train_test_split\nfrom sklearn.tree import DecisionTreeRegressor\nfrom sklearn.linear_model import LinearRegression\n\nX = [[50], [60], [70], [80], [90], [100], [110], [120], [130], [140]]\ny = [155, 178, 212, 236, 274, 298, 327, 365, 386, 421]\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2,\n                                          random_state=0)\n\nfor m in [LinearRegression(), DecisionTreeRegressor()]:\n    m.fit(X_tr, y_tr)                      # train on 80%\n    print(type(m).__name__,\n          \"train R2:\", round(m.score(X_tr, y_tr), 3),   # R2: 1.0 is perfect\n          \"test R2:\", round(m.score(X_te, y_te), 3))    # the honest score\n# The tree scores a perfect 1.0 on training data because it memorises\n# every example. Compare its test score with the straight line's.",
+    "lang": "Python"
+   },
+   {
+    "title": "Neural networks and where LLMs fit",
+    "body": "A neural network is a model made of layers. Each layer multiplies its inputs by a grid of learned numbers called weights, adds them up, and passes the result through a simple function, often one that turns negative numbers into zero. Stacking many layers lets the network learn very complicated patterns. Using many layers is called deep learning.\n\nTraining works the same way as before: guess, measure the error, nudge the weights. With millions or billions of weights this needs a lot of data and specialised chips called GPUs.\n\nA large language model (LLM) is a very large neural network, usually of a design called a transformer, trained on huge amounts of text to predict the next token, which is a word or piece of a word. Asking a chat assistant a question is inference: the trained model predicts one token at a time until the answer is complete.",
+    "example": "Think of the flat price model again. Linear regression has 2 learned numbers. A small neural network for the same task might have a few hundred and could capture curves, like prices rising faster for very large flats. An LLM has billions of learned numbers, and its 'label' during training is simply the next word in a sentence taken from its training text.",
+    "code": "AI  (computers doing tasks that need judgement)\n |\n +-- Rule-based systems   (people write the rules)\n |\n +-- Machine learning     (model learns from examples)\n      |\n      +-- Classic models  linear regression, decision trees\n      |\n      +-- Deep learning   neural networks with many layers\n           |\n           +-- Transformers\n                |\n                +-- LLMs  trained to predict the next token\n\ninput -> [layer: weights x input] -> [layer] -> ... -> scores",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "Artificial intelligence (AI)",
+    "The broad field of making computers perform tasks that normally need human judgement."
+   ],
+   [
+    "Machine learning (ML)",
+    "Building models that learn patterns from example data instead of hand-written rules."
+   ],
+   [
+    "Model",
+    "A formula with learned numbers inside it that turns inputs into a prediction."
+   ],
+   [
+    "Feature",
+    "An input value the model uses, such as the size of a flat."
+   ],
+   [
+    "Label",
+    "The correct answer for an example, which the model learns to predict."
+   ],
+   [
+    "Training",
+    "Adjusting a model's numbers so its predictions match the labels in the training data."
+   ],
+   [
+    "Inference",
+    "Using a trained model to make predictions on new inputs."
+   ],
+   [
+    "Overfitting",
+    "When a model memorises its training data and does badly on new data."
+   ],
+   [
+    "Test set",
+    "Examples held back from training and used only to measure the model honestly."
+   ],
+   [
+    "Neural network",
+    "A model built from layers of weighted sums, able to learn complex patterns."
+   ]
+  ],
+  "practice": [
+   "Run the scikit-learn linear regression from this lesson. Change one price in y to a wild value (for example 900) and write down how the slope, the intercept and the prediction for 95 m2 change.",
+   "Make a table of 20 made-up examples for a problem you know (for example, hours studied and exam score). Split it 80/20, train a LinearRegression, and report the train and test R2 scores in one sentence each.",
+   "Stretch: load scikit-learn's built-in diabetes dataset (sklearn.datasets.load_diabetes), compare LinearRegression and DecisionTreeRegressor with a train/test split, and write three sentences explaining which one overfits and how you can tell."
+  ]
+ },
+ "mathbasics": {
+  "plain": "You do not need advanced math to work with AI systems, but four ideas come up constantly. A vector is a list of numbers, and the dot product is a way to combine two vectors into one number that says how similar they are. A matrix is a grid of numbers, and multiplying a matrix by a vector is how a neural network transforms its input. Softmax turns a list of scores into probabilities (numbers between 0 and 1 that add up to 1), and percentiles such as p50 and p95 describe how fast or slow a system is for most of its users.",
+  "analogy": "A vector is like a recipe card listing grams of flour, sugar and butter. The dot product is like pricing that recipe: multiply each amount by its price per gram and add them up. A matrix is a whole price list for several shops, giving you one total per shop.",
+  "why": "When an FDE builds search over a customer's documents, similarity scores come from dot products between vectors. When a customer asks why the model was 'only 60% sure', the number came from softmax. When they say 'it feels slow', you answer with p50 and p95 latency, not an average, and you need to explain the difference in a meeting.",
+  "subtopics": [
+   {
+    "title": "Vectors: lists of numbers with meaning",
+    "body": "A vector is an ordered list of numbers. The order matters, because each position stands for something. A flat could be [80, 3, 2]: 80 m2, 3 rooms, 2nd floor. The number of positions is the vector's length, also called its dimension.\n\nYou can add two vectors of the same length position by position, and you can multiply a vector by a single number, which scales every position.\n\nIn AI, text is turned into vectors called embeddings. An embedding model reads a sentence and outputs, for example, 768 numbers. You cannot read what each number means, but sentences with similar meaning get similar vectors. numpy is the standard Python library for this kind of math.",
+    "example": "A shop describes each customer by how much they spent on [books, games, music] this year. Asha is [120, 0, 30]. Ben is [10, 200, 40]. If both double their spending next year, Asha becomes 2 x [120, 0, 30] = [240, 0, 60]. Adding Asha and Ben gives the pair's total, [130, 200, 70].",
+    "code": "import numpy as np          # pip install numpy\n\nasha = np.array([120, 0, 30])   # spend on books, games, music\nben  = np.array([10, 200, 40])\n\nprint(asha + ben)     # [130 200  70]   add position by position\nprint(2 * asha)       # [240   0  60]   scale every position\nprint(len(asha))      # 3               the dimension\n\n# Length (size) of a vector: square root of the sum of squares\nv = np.array([3, 4])\nprint(np.linalg.norm(v))  # 5.0  because sqrt(3*3 + 4*4) = sqrt(25)",
+    "lang": "Python"
+   },
+   {
+    "title": "The dot product and similarity",
+    "body": "The dot product of two vectors of the same length is: multiply each pair of matching positions, then add all the results. For a = [2, 1, 3] and b = [1, 0, 2]: 2x1 + 1x0 + 3x2 = 2 + 0 + 6 = 8.\n\nThe dot product is large when both vectors have big numbers in the same positions. It is zero when they have nothing in common, and negative when they point opposite ways.\n\nLonger vectors give bigger dot products just because they are bigger. Cosine similarity fixes this by dividing by both lengths, giving a score from -1 to 1 that only measures direction. Search systems for LLM apps compare a question's embedding with each document's embedding this way and return the documents with the highest scores.",
+    "example": "Three help articles have tiny made-up embeddings over the topics [billing, login, shipping]: refunds [0.9, 0.1, 0.2], password reset [0.1, 0.9, 0.0], delivery times [0.1, 0.0, 0.9]. A user asks 'I was charged twice', embedded as [0.8, 0.2, 0.1]. Dot products: refunds 0.72 + 0.02 + 0.02 = 0.76, password 0.08 + 0.18 + 0 = 0.26, delivery 0.08 + 0 + 0.09 = 0.17. Refunds wins.",
+    "code": "import numpy as np\n\na = np.array([2, 1, 3]); b = np.array([1, 0, 2])\nprint(a @ b)                         # 8   (@ means dot product)\n\ndocs = {\"refunds\":        np.array([0.9, 0.1, 0.2]),\n        \"password reset\": np.array([0.1, 0.9, 0.0]),\n        \"delivery times\": np.array([0.1, 0.0, 0.9])}\nquery = np.array([0.8, 0.2, 0.1])    # 'I was charged twice'\n\nfor name, vec in docs.items():\n    dot = query @ vec\n    cos = dot / (np.linalg.norm(query) * np.linalg.norm(vec))\n    print(f\"{name:15s} dot={dot:.2f} cosine={cos:.2f}\")\n# refunds scores highest on both measures",
+    "lang": "Python"
+   },
+   {
+    "title": "Matrices and matrix times vector",
+    "body": "A matrix is a rectangle of numbers with rows and columns. A matrix with 2 rows and 3 columns is called 2 by 3, written 2x3.\n\nTo multiply a matrix by a vector, take the dot product of each row with the vector. Each row gives one number, so a 2x3 matrix times a length-3 vector gives a length-2 vector. The vector's length must equal the number of columns, or the multiplication is not defined and numpy raises an error.\n\nThis is the main operation inside a neural network. Each layer holds a matrix of learned weights. The input vector goes in, gets multiplied, and a new vector comes out, usually followed by a simple function like 'replace negatives with 0'. Stack many layers and you have a deep network.",
+    "example": "W = [[1, 0, 1], [0, 2, 0]] and a = [2, 1, 3]. Row one: 1x2 + 0x1 + 1x3 = 5. Row two: 0x2 + 2x1 + 0x3 = 2. So W times a = [5, 2]. In business terms: if the rows are two shops' price lists and a is a shopping basket, the result is the basket's total at each shop.",
+    "code": "import numpy as np\n\nW = np.array([[1, 0, 1],       # 2 rows, 3 columns: shape (2, 3)\n              [0, 2, 0]])\na = np.array([2, 1, 3])        # length 3, matches 3 columns\n\nprint(W.shape)                 # (2, 3)\nprint(W @ a)                   # [5 2]  one dot product per row\n\n# A tiny neural network layer: weights, then 'negatives become 0'\nW1 = np.array([[0.5, -1.0, 0.2],\n               [1.0,  0.3, -0.4]])\nh = np.maximum(0, W1 @ a)      # ReLU function\nprint(h)                       # [0.6 1.1]\n\n# W @ np.array([1, 2])  would fail: shapes (2,3) and (2,) do not match",
+    "lang": "Python"
+   },
+   {
+    "title": "Probability and softmax",
+    "body": "A probability is a number from 0 to 1 that says how likely something is: 0 means never, 1 means certain, 0.5 means half the time. If you list every possible outcome, their probabilities add up to exactly 1.\n\nA model's last layer outputs raw scores, one per possible answer. These are also called logits and can be any size, including negative. Softmax converts them into probabilities in two steps: raise e (a constant, about 2.718) to the power of each score, which makes every value positive and exaggerates differences, then divide each by the total.\n\nAn LLM does this over its whole vocabulary, often tens of thousands of tokens, to get the probability of each possible next token. A setting called temperature divides the scores before softmax: a low temperature makes the top choice dominate, a high temperature spreads the probability out, which gives more varied text.",
+    "example": "A support ticket classifier gives raw scores billing 2.0, technical 1.0, other 0.1. e^2.0 is about 7.39, e^1.0 about 2.72, e^0.1 about 1.11. The total is about 11.21. Dividing gives billing 0.66, technical 0.24, other 0.10. They add to 1, and billing is the most likely category.",
+    "code": "import numpy as np\n\ndef softmax(scores, temperature=1.0):\n    z = np.array(scores) / temperature\n    z = z - z.max()                  # avoids overflow, same result\n    e = np.exp(z)                    # e to the power of each score\n    return e / e.sum()               # divide by the total\n\nscores = [2.0, 1.0, 0.1]             # billing, technical, other\nprint(softmax(scores).round(2))      # [0.66 0.24 0.1 ]\nprint(softmax(scores).sum())         # 1.0 (up to rounding)\n\nprint(softmax(scores, 0.5).round(2)) # low temp: top choice dominates\nprint(softmax(scores, 2.0).round(2)) # high temp: more spread out",
+    "lang": "Python"
+   },
+   {
+    "title": "Averages, medians and p50/p95",
+    "body": "The mean, or average, is the sum divided by the count. It is pulled a long way by a few extreme values, called outliers.\n\nA percentile answers 'what value are X% of measurements at or below?'. The 50th percentile, p50, is the median: the middle value when sorted. p95 is the value that 95% of measurements are at or below, so only the slowest 5% are above it. p99 goes further into the tail.\n\nFor response times, often called latency and measured in milliseconds (ms), report p50 for the typical experience and p95 or p99 for the slow cases. An agreement about acceptable speed, such as 'p95 under 800 ms', is common in customer contracts, often as part of an SLA (Service Level Agreement).",
+    "example": "Ten calls to an LLM app take 95, 98, 101, 105, 110, 115, 120, 125, 130 and 900 ms. The mean is 1899 / 10 = 189.9 ms, which matches no real call. Sorted, the middle two are 110 and 115, so p50 = 112.5 ms. With only ten values, numpy estimates p95 at about 553 ms by interpolating between 130 and 900. The story for the customer: 'Typical calls take about 110 ms, but a small share are very slow and we are investigating those.'",
+    "code": "import numpy as np\n\nms = np.array([120, 95, 110, 130, 105, 98, 101, 115, 900, 125])\n\nprint(\"mean:\", ms.mean())                 # 189.9\nprint(\"sorted:\", np.sort(ms))\nprint(\"p50:\", np.percentile(ms, 50))      # 112.5  the median\nprint(\"p95:\", np.percentile(ms, 95))      # about 553.5\nprint(\"p99:\", np.percentile(ms, 99))      # about 830.7, deep in the tail\n\n# By hand for p50: sort, take the middle.\n# 10 values -> average the 5th and 6th: (110 + 115) / 2 = 112.5\n\n# Checking a target such as 'p95 under 800 ms':\nprint(\"meets target:\", np.percentile(ms, 95) < 800)   # True",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Vector",
+    "An ordered list of numbers where each position has a meaning."
+   ],
+   [
+    "Dot product",
+    "Multiply matching positions of two vectors and add the results into one number."
+   ],
+   [
+    "Embedding",
+    "A vector produced by a model to represent the meaning of text, images or other data."
+   ],
+   [
+    "Cosine similarity",
+    "The dot product divided by both vectors' lengths, giving a similarity from -1 to 1."
+   ],
+   [
+    "Matrix",
+    "A rectangular grid of numbers with rows and columns."
+   ],
+   [
+    "Probability",
+    "A number from 0 to 1 saying how likely an outcome is; all outcomes add up to 1."
+   ],
+   [
+    "Softmax",
+    "A function that turns raw scores into positive probabilities that sum to 1."
+   ],
+   [
+    "Logits",
+    "The raw scores a model outputs before softmax is applied."
+   ],
+   [
+    "Median (p50)",
+    "The middle value of sorted data; half the values are below it."
+   ],
+   [
+    "p95",
+    "The value that 95% of measurements are at or below, used to describe the slow tail."
+   ]
+  ],
+  "practice": [
+   "By hand, compute the dot product of [1, 2, 3] and [4, 0, -1], and the result of [[1, 1, 0], [0, 1, 1]] times [2, 3, 4]. Check both answers with numpy.",
+   "Write a softmax function in numpy. Apply it to the scores [3.0, 1.0, 0.2] at temperatures 0.5, 1 and 2, and describe in one sentence what temperature does.",
+   "Stretch: generate 1,000 fake response times with numpy (for example 950 values around 120 ms and 50 values around 1,500 ms). Compute the mean, p50, p95 and p99, and write a three-sentence status update to a customer that explains the numbers without jargon."
+  ]
+ }
+}

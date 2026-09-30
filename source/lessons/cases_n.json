@@ -1,0 +1,170 @@
+{
+ "apistyles": {
+  "title": "Tremholt Freight: replacing a minute-by-minute poll with carrier webhooks",
+  "company": "Tremholt Freight (made up), freight forwarder, 650 staff, Germany",
+  "situation": "Tremholt's customer portal showed shipment status by polling three partner carriers' REST APIs every minute for about 5,000 open shipments. The busiest carrier started returning 429 errors most afternoons, and customer service logged around 120 calls a week from customers whose portal status was hours out of date.",
+  "problem": "Polling faster or buying a higher API tier would raise cost and still waste over 95 percent of calls on shipments that had not changed. Two of the three carriers offered signed webhooks, but Tremholt had never run a public endpoint and worried about fake or duplicate events.",
+  "approach": [
+   "Read each carrier's OpenAPI spec and webhook documentation, listing event types, payload fields and the signature scheme (HMAC SHA-256 over the raw body).",
+   "Built a small FastAPI receiver that verifies the signature, rejects bad calls with 401, stores the raw event, puts it on a queue and returns 200 within about 50 ms.",
+   "Made processing idempotent by keying on the carrier's event id, so retries and duplicates changed nothing, and ignored events older than the latest status already stored.",
+   "Kept polling only for the third carrier and slowed it to every 10 minutes, and added an hourly reconciliation poll for any shipment with no update in 24 hours.",
+   "Wrapped Tremholt's own status data in a versioned /v1 REST API with an OpenAPI spec, so the portal and two large customers' systems read from one contract."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "@app.post(\"/webhooks/{carrier}\")\nasync def receive(carrier: str, request: Request):\n    raw = await request.body()\n    secret = SECRETS[carrier]                         # one secret per carrier\n    expected = hmac.new(secret, raw, hashlib.sha256).hexdigest()\n    if not hmac.compare_digest(request.headers.get(\"X-Signature\", \"\"), expected):\n        raise HTTPException(status_code=401)\n    event = json.loads(raw)\n    inserted = db.execute(\n        \"INSERT INTO carrier_events (carrier, event_id, body) VALUES (%s, %s, %s) \"\n        \"ON CONFLICT (carrier, event_id) DO NOTHING\",\n        (carrier, event[\"id\"], raw.decode()),\n    ).rowcount\n    if inserted:\n        queue.send({\"carrier\": carrier, \"event_id\": event[\"id\"]})\n    return {\"ok\": True}                               # fast 200 so they stop retrying"
+  },
+  "outcome": "Calls to the two webhook carriers fell from about 430,000 a day to about 9,000 events plus the hourly reconciliation, and the 429 errors stopped. Median delay between a carrier scan and the portal update went from 11 minutes to under 1 minute, and 'status is out of date' calls dropped from about 120 to about 35 a week.",
+  "lessons": [
+   "Webhooks give fresher data with far fewer calls, but only with signature checks, fast replies and idempotent handling.",
+   "Keep a slow reconciliation poll as a safety net for events missed during outages.",
+   "Publishing your own API with an OpenAPI spec and a version number lets several consumers share one contract."
+  ],
+  "discuss": [
+   "What would you do if a carrier's webhook endpoint went silent for three hours without any errors?",
+   "When would you choose to keep polling even though webhooks are available?"
+  ]
+ },
+ "nosql": {
+  "title": "Quellora Home: talking a retailer out of a full database migration",
+  "company": "Quellora Home (made up), online furniture retailer, 220 staff, Portugal",
+  "situation": "Quellora's leadership asked the FDE team to move everything from Postgres to MongoDB because product pages were slow and a new AI 'find similar items' feature was planned. Product pages had a median load time of 1.8 seconds, and the catalog held 38,000 products with very different attributes per category.",
+  "problem": "A full migration would take months and break finance's SQL reports, which join orders, payments and refunds. The slowness had not been measured, so there was no evidence that a different database would fix it.",
+  "approach": [
+   "Listed the eight most important reads and writes with volumes, including product page loads (about 60 per second at peak), checkout transactions and monthly finance reports.",
+   "Profiled the product page and found it ran 14 queries against an attribute table with one row per attribute, so a single product needed dozens of rows joined back together.",
+   "Moved variable attributes into a JSONB column with a GIN index, so each product page reads one row, while orders and payments stayed relational with their transactions and joins.",
+   "Moved user sessions and carts from Postgres to Redis with a 30-minute expiry, removing about 40 percent of write traffic from the main database.",
+   "Added pgvector to the products table for 'similar items', storing one embedding per product and filtering by in-stock status in the same SQL query.",
+   "Wrote a one-page decision table for leadership showing each access pattern, the chosen store and why MongoDB was not needed now."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "ACCESS PATTERN                  VOLUME        STORE              WHY\nProduct page by id              60/s peak     Postgres + JSONB   one row, flexible attrs\nFilter by attribute             10/s          Postgres GIN index JSON containment queries\nCheckout (order + payment)      2/s           Postgres           needs a transaction\nSessions and carts              300/s         Redis, TTL 30 min  key lookups, short-lived\nSimilar items                   15/s          pgvector (HNSW)    filter by stock in SQL\nFinance monthly reports         monthly       Postgres replica   joins, ad hoc SQL\n\nSystem of record: Postgres. Redis data can be lost without harm.\nRevisit MongoDB only if catalog writes exceed what one Postgres primary handles."
+  },
+  "outcome": "Median product page load fell from 1.8 seconds to 0.4 seconds and database CPU at peak dropped from about 75 percent to 40 percent. The similar-items feature shipped in five weeks on pgvector, and finance reports kept working with no migration project.",
+  "lessons": [
+   "Measure the slow path before choosing a new database; the cause is often a query or schema problem.",
+   "Postgres with JSONB and pgvector covers many document and vector needs with one system to run.",
+   "Use specialized stores such as Redis for data whose access pattern clearly fits, and keep one system of record."
+  ],
+  "discuss": [
+   "What evidence would make you recommend a move to a document database after all?",
+   "How would you explain to a non-technical executive why their preferred database was not chosen?"
+  ]
+ },
+ "streaming": {
+  "title": "Varnbrook Mutual: moving card fraud checks from nightly batch to streaming",
+  "company": "Varnbrook Mutual (made up), building society with card accounts, 1,900 staff, United Kingdom",
+  "situation": "Varnbrook ran its fraud rules as a nightly batch job over the day's card transactions. Fraud was often spotted 12 to 30 hours after the first bad payment, by which time a compromised card had typically made several more purchases. Losses from card fraud averaged about 38,000 pounds a month.",
+  "problem": "Running the batch every hour would still leave a gap of up to an hour and would hammer the core banking database with repeated scans. The core system was vendor software, so its code could not be changed to publish events.",
+  "approach": [
+   "Agreed with the DBA to enable logical replication on the transactions database and create a dedicated replication user, then deployed Debezium to stream inserts from two tables into Kafka.",
+   "Created the topic with 12 partitions keyed by card id, so every transaction for one card stays in order in one partition.",
+   "Wrote the fraud scorer as a consumer group of four instances, keeping per-card state for a 10-minute window: count of payments, distinct merchant countries and total amount.",
+   "Used at-least-once delivery with offsets committed after processing, and wrote alerts with an upsert keyed by transaction id so reprocessing could never create duplicate alerts.",
+   "Added dashboards and alerts for consumer lag and for the database's retained replication log size, with a runbook for a stuck connector.",
+   "Kept the nightly batch running in parallel for four weeks and compared its alerts to the streaming alerts before switching the batch off."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "WINDOW = timedelta(minutes=10)\nrecent = defaultdict(deque)          # card_id -> deque of (time, amount, country)\n\ndef score(tx):\n    q = recent[tx[\"card_id\"]]\n    now = tx[\"ts\"]\n    q.append((now, tx[\"amount\"], tx[\"country\"]))\n    while q and now - q[0][0] > WINDOW:  # drop events outside the window\n        q.popleft()\n    countries = {c for _, _, c in q}\n    total = sum(a for _, a, _ in q)\n    if len(q) >= 6 or len(countries) >= 3 or total > 3000:\n        upsert_alert(tx[\"tx_id\"], reason=f\"{len(q)} tx, {len(countries)} countries\")\n\nwhile True:\n    msg = consumer.poll(1.0)\n    if msg is None or msg.error():\n        continue\n    score(parse_debezium(msg.value()))\n    consumer.commit(message=msg)       # commit after the alert is safely written"
+  },
+  "outcome": "Median time from first suspicious payment to alert fell from about 18 hours to 40 seconds. Over the first three months card fraud losses averaged about 24,000 pounds a month, roughly 37 percent lower, and the core database showed no measurable extra load.",
+  "lessons": [
+   "Log-based CDC gets events out of systems you cannot modify, without polling their tables.",
+   "Choose the partition key for the ordering you need; here all events for one card must stay in order.",
+   "At-least-once with idempotent writes is a practical, robust default for writing to outside systems.",
+   "Run the old batch in parallel before switching, so you can prove the new pipeline is complete."
+  ],
+  "discuss": [
+   "In-memory state is lost if a consumer restarts. How would you rebuild or persist the 10-minute window?",
+   "Which fraud checks would you still leave in a nightly batch, and why?"
+  ]
+ },
+ "cicd": {
+  "title": "Olvenmark Health Analytics: from SSH deploys to a gated pipeline",
+  "company": "Olvenmark Health Analytics (made up), hospital analytics software vendor, 90 staff, Sweden",
+  "situation": "Olvenmark's FDE team maintained a patient-flow prediction service for three hospital regions. Deploys meant SSH-ing into a server and running git pull and a restart, about once a week. In one quarter two deploys broke production, one for 3 hours, and a regional hospital's IT security team paused further releases until changes were controlled.",
+  "problem": "Asking engineers to 'be more careful' would not satisfy the hospital's change control, which required evidence of testing, scanning and a named approver for each release. Deploying less often would make each release bigger and riskier.",
+  "approach": [
+   "Added a GitHub Actions workflow that runs ruff, unit tests and integration tests against a Postgres service container on every pull request, and required it to pass before merging.",
+   "Added dependency scanning with pip-audit and image scanning with Trivy, failing the build on critical vulnerabilities.",
+   "Built the Docker image once on merge to main, tagged it with the commit SHA and deployed that same image to staging automatically.",
+   "Created a production environment in GitHub with two required reviewers from the hospital-facing team and switched cloud access to short-lived OIDC credentials, removing stored keys.",
+   "Put a new model version behind a feature flag, enabled first for one hospital's two wards, so model changes could be turned off in seconds.",
+   "Wrote and rehearsed a rollback script that redeploys the previous image tag and runs a health check."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "RELEASE RECORD (generated from the pipeline run)\nRelease:        2026-04-14  image app:3f9c2e1\nPull requests:  #412 bed-occupancy fix, #415 new feature flag ward_model_v2\nChecks:         lint pass, unit 184/184, integration 22/22\nScans:          pip-audit 0 known vulns, trivy 0 critical\nStaging:        deployed 10:42, smoke test pass\nApproved by:    reviewer A, reviewer B at 13:05\nProduction:     deployed 13:07, health check pass\nFlags changed:  ward_model_v2 on for region-2 wards 4B, 5A\nRollback plan:  ./rollback.sh production 8a41d07  (tested 2026-04-10)"
+  },
+  "outcome": "The hospital security team approved the process and releases resumed within three weeks. Over the next two quarters the team went from weekly to about four releases a week with no multi-hour outages; the one bad release was rolled back in 6 minutes.",
+  "lessons": [
+   "A pipeline with tests, scans and approvals is often what earns permission to deploy in regulated customers.",
+   "Build once, tag with the commit SHA and promote the same image through each environment.",
+   "Feature flags and a rehearsed rollback make frequent releases safer than rare big ones."
+  ],
+  "discuss": [
+   "The hospital wants every release approved, but you need to ship an urgent fix at 2 a.m. How would you design for that?",
+   "How would you handle a database migration in this pipeline so rollback still works?"
+  ]
+ },
+ "integration": {
+  "title": "Corvastro Pumps: feeding a demand forecast from SAP, EDI and SFTP",
+  "company": "Corvastro Pumps (made up), industrial pump manufacturer, 2,300 staff, Italy",
+  "situation": "Corvastro wanted an AI demand forecast to cut stockouts of spare parts, which caused about 9 percent of service orders to be delayed. The data it needed sat in an older SAP ECC system, EDI orders from 35 distributors, Salesforce service cases and a nightly inventory file from a third-party warehouse.",
+  "problem": "Corvastro's IT roadmap promised a modern API platform in 18 months, and the pilot had 12 weeks. Direct access to SAP's production database was not allowed, and one early script using a manager's Salesforce login broke when the manager changed his password.",
+  "approach": [
+   "Mapped each source with its method, freshness, owner and contact, and agreed a single internal data model for parts, orders and stock.",
+   "Extended Corvastro's existing MuleSoft flow, owned by IT, to export SAP sales orders and material master data to a staging schema every 30 minutes, instead of building a new SAP connection.",
+   "Took distributor purchase orders already parsed by Corvastro's EDI translator from its output tables, and mapped distributor part codes to Corvastro part numbers with a maintained lookup table.",
+   "Built an SFTP pickup job for the warehouse inventory file that waits for a .done marker, checks the trailer row count and records file checksums to skip repeats.",
+   "Replaced the personal Salesforce login with a service account limited to reading Cases and Assets, stored its credentials in the customer's vault, and used backoff on 429 responses.",
+   "Added monitoring for late files, failed loads and daily API quota use, with alerts to both the FDE team and the owning Corvastro team."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "sources:\n  sap_sales_orders:\n    method: mulesoft_flow        # owned by Corvastro IT\n    freshness: 30m\n    owner: erp-team@corvastro.example\n  distributor_orders:\n    method: edi_translator_tables  # X12 850 / EDIFACT ORDERS, pre-parsed\n    freshness: 15m\n    part_code_map: ref/distributor_part_map.csv\n  warehouse_inventory:\n    method: sftp\n    path: /outbound/inventory_{yyyymmdd}.csv\n    ready_marker: .done\n    expected_by: \"04:00 Europe/Rome\"\n    checks: [trailer_row_count, sha256_dedupe]\n  salesforce_cases:\n    method: rest_api\n    account: svc_forecast_reader   # read-only: Case, Asset\n    daily_call_budget: 5000\n    on_429: exponential_backoff_with_jitter"
+  },
+  "outcome": "All four sources were loading reliably by week 6, with late-file alerts firing twice in the pilot and both resolved the same morning. In the pilot product line, delayed service orders due to stockouts fell from about 9 percent to about 6 percent over the following quarter.",
+  "lessons": [
+   "Work with the integration tools and teams the customer already has; extending their iPaaS flow was faster and easier to hand over.",
+   "File drops need agreed completion signals, checksums and late-file alerts to be reliable.",
+   "Integrations must run as service accounts with least privilege, never as a person.",
+   "Mapping every source to an owner and freshness target up front prevents surprises later."
+  ],
+  "discuss": [
+   "SAP ECC is being replaced by S/4HANA in two years. How would you design the integration so the switch costs little?",
+   "A distributor starts sending EDI orders with a new part code format without warning. How should the pipeline react?"
+  ]
+ },
+ "bi": {
+  "title": "Tallowfen Physio: one definition of an active patient",
+  "company": "Tallowfen Physio (made up), physiotherapy clinic chain, 40 clinics and 600 staff, Canada",
+  "situation": "Tallowfen had deployed an AI scheduling assistant and needed to show whether it improved clinic utilization. The company had 14 Power BI dashboards, and three of them reported 'active patients' as 11,200, 13,900 and 16,400 for the same month. Leadership meetings spent more time arguing about numbers than acting on them.",
+  "problem": "Building yet another dashboard for the AI pilot would add a fourth number. The disagreement came from different definitions in each report's SQL, not from the tool, so the fix had to happen in the data model and the metric definitions.",
+  "approach": [
+   "Collected the SQL behind each 'active patient' figure and found three definitions: any booking in 90 days, any attended visit in 90 days, and any record not marked discharged.",
+   "Ran a 45-minute session with the clinical operations director and finance, who agreed: a patient with at least one attended visit in the last 60 days, excluding cancelled and no-show visits.",
+   "Built modeled tables in the warehouse, fct_visits and a daily summary agg_clinic_daily, and encoded active patients and utilization once in the Power BI data model with written descriptions.",
+   "Designed one pilot dashboard with four KPI tiles (utilization, active patients, no-show rate, AI-booked share), a 16-week trend, a bar chart by clinic and a detail table, and showed the refresh time.",
+   "Reconciled the headline visit count against the billing system for two months before launch, and repointed the three existing dashboards to the shared definitions."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "-- Agreed definition, signed off by clinical ops and finance\n-- Active patient: >= 1 attended visit in the 60 days up to the report date\nWITH attended AS (\n    SELECT patient_id, clinic_id, visit_date\n    FROM fct_visits\n    WHERE status = 'attended'              -- excludes cancelled, no_show\n)\nSELECT d.report_date,\n       count(DISTINCT a.patient_id) AS active_patients\nFROM dim_date d\nJOIN attended a\n  ON a.visit_date >  d.report_date - 60\n AND a.visit_date <= d.report_date\nWHERE d.is_month_end                    -- one row per month\n  AND d.report_date >= current_date - interval '12 months'\nGROUP BY d.report_date\nORDER BY d.report_date;"
+  },
+  "outcome": "All dashboards now show one active patient figure, 12,650 for the reference month, and the pilot dashboard loads in about 2 seconds instead of 40. Over 16 weeks, pilot clinics' utilization rose from 71 to 77 percent against 72 to 73 percent in comparison clinics, a result leadership accepted without dispute.",
+  "lessons": [
+   "Conflicting numbers are usually conflicting definitions; fix them with the business owners before touching charts.",
+   "Define each metric once, in a metrics layer or shared model, and point every dashboard at it.",
+   "A dashboard that proves AI impact needs a baseline and a comparison group, not just a current value."
+  ],
+  "discuss": [
+   "Clinical operations and finance cannot agree on a definition. How would you move forward?",
+   "Which of the four KPI tiles would you remove if the dashboard had room for only three, and why?"
+  ]
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "regulated": {
+  "best": [
+   "reading",
+   "document"
+  ],
+  "why": "Frameworks are learned by understanding what each one means for a build, then filling in a week-one checklist."
+ },
+ "fieldlife": {
+  "best": [
+   "reading",
+   "document"
+  ],
+  "why": "Field life is judgement about people and time, best learned from stories plus plans and trackers you fill in."
+ },
+ "interviewrounds": {
+  "best": [
+   "practice",
+   "flowchart"
+  ],
+  "why": "Each round is a skill you rehearse with a timer; the loop map shows what to prepare in what order."
+ },
+ "portfolio": {
+  "best": [
+   "project",
+   "document"
+  ],
+  "why": "You learn this by building: fill in the README and demo templates on your own projects."
+ }
+}

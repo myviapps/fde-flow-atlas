@@ -1,0 +1,702 @@
+{
+ "oop": {
+  "plain": "Object-oriented programming (OOP) is a way of organizing code around things, such as an order, a customer or an invoice. A class is the definition of one kind of thing: what data it holds (its attributes) and what it can do (its methods, which are functions that belong to the class). An object, also called an instance, is one concrete thing made from the class, such as order 1001 with its own items and total. Python also gives you tools around classes: dataclasses for quick record types, type hints to say what kind of value each variable holds, and modules and packages to split a project into files.",
+  "analogy": "A class is like the cookie cutter and the objects are the cookies. Every cookie has the same shape, but each one can have different icing. Composition is like a kitchen that has an oven: the kitchen does not need to be an oven to bake, it just uses one.",
+  "why": "Customer integrations grow fast. A 40-line script that reads one supplier's CSV becomes 900 lines once three suppliers, two warehouses and a retry rule are added, and loose dicts passed everywhere make bugs hard to find. Classes give each concept a clear home, and FDEs also read vendor SDKs, which are almost always written as classes, so you need to understand them to debug the customer's stack.",
+  "subtopics": [
+   {
+    "title": "Classes, objects and __init__",
+    "body": "You define a class with the class keyword. Inside it, __init__ is a special method that Python runs every time you create a new object. Its job is to set up the object's starting data.\n\nThe first parameter of every method is self. It is the object currently being built or used. Writing self.customer = customer stores the value on that particular object, so two orders keep separate customers.\n\nYou create an object by calling the class like a function: Order(1001, 'Lindqvist Bakery'). Python makes an empty object, passes it to __init__ as self along with your arguments, and hands the finished object back to you.",
+    "example": "A wholesale food distributor has orders from many cafes. Instead of a dict like {'id': 1001, 'cust': 'Lindqvist Bakery', 'lines': [...]}, where one typo in a key causes a silent bug, you define an Order class. Order 1001 for Lindqvist Bakery and order 1002 for Harbourview Cafe are two objects from the same class, each with its own list of lines.",
+    "code": "class Order:\n    def __init__(self, order_id, customer):\n        # self is the new object; store data on it\n        self.order_id = order_id\n        self.customer = customer\n        self.lines = []          # a fresh list for each order\n\no1 = Order(1001, \"Lindqvist Bakery\")   # runs __init__\no2 = Order(1002, \"Harbourview Cafe\")\n\no1.lines.append((\"flour 25kg\", 2, 18.50))\nprint(o1.customer, len(o1.lines))   # Lindqvist Bakery 1\nprint(o2.customer, len(o2.lines))   # Harbourview Cafe 0\nprint(type(o1))                     # <class '__main__.Order'>",
+    "lang": "Python"
+   },
+   {
+    "title": "Methods and attributes",
+    "body": "A method is a function written inside a class. When you call o1.total(), Python quietly turns that into Order.total(o1), so self inside the method is o1. Methods read and change the object's own attributes, which keeps the logic next to the data it uses.\n\nThere are two kinds of attributes. Instance attributes live on one object (self.lines). Class attributes are defined in the class body and shared by every object, which suits constants such as a tax rate.\n\nPython also has special methods with double underscores, often called dunder methods. __repr__ controls how the object prints, which makes debugging much easier. A leading single underscore, as in _cache, is a convention meaning 'internal, do not touch from outside'.",
+    "example": "The distributor charges 12% VAT on every order. You store VAT_RATE once as a class attribute, add an add_line method that validates quantity, and a total method that sums the lines and applies VAT. Order 1001 with 2 bags of flour at 18.50 comes to 37.00 before VAT and 41.44 after.",
+    "code": "class Order:\n    VAT_RATE = 0.12                      # class attribute, shared\n\n    def __init__(self, order_id, customer):\n        self.order_id = order_id          # instance attributes\n        self.customer = customer\n        self.lines = []\n\n    def add_line(self, sku, qty, unit_price):\n        if qty <= 0:\n            raise ValueError(f\"qty must be positive, got {qty}\")\n        self.lines.append((sku, qty, unit_price))\n\n    def total(self):\n        net = sum(q * p for _, q, p in self.lines)\n        return round(net * (1 + self.VAT_RATE), 2)\n\n    def __repr__(self):                   # used by print() and the REPL\n        return f\"Order({self.order_id}, {self.customer!r}, {len(self.lines)} lines)\"\n\no1 = Order(1001, \"Lindqvist Bakery\")\no1.add_line(\"flour-25kg\", 2, 18.50)\nprint(o1, o1.total())   # Order(1001, 'Lindqvist Bakery', 1 lines) 41.44",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Piece",
+      "Where it lives",
+      "Example"
+     ],
+     "rows": [
+      [
+       "Instance attribute",
+       "On one object",
+       "self.lines"
+      ],
+      [
+       "Class attribute",
+       "On the class, shared",
+       "VAT_RATE = 0.12"
+      ],
+      [
+       "Method",
+       "In the class, gets self",
+       "def total(self)"
+      ],
+      [
+       "Dunder method",
+       "Hook Python calls for you",
+       "__init__, __repr__"
+      ],
+      [
+       "_private name",
+       "Convention only",
+       "self._cache"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Inheritance versus composition",
+    "body": "Inheritance lets a new class start from an existing one: class EmailNotifier(Notifier) gets all of Notifier's methods and can override some of them. Use it when the child really is a kind of the parent and can be used anywhere the parent is expected. super() calls the parent's version of a method.\n\nComposition means a class holds other objects as attributes and asks them to do work. An OrderService has a notifier; it does not need to be one. You can pass in an email notifier in production and a fake one in tests without changing OrderService.\n\nA good rule of thumb: prefer composition, and use inheritance for shallow 'is a' families that share one interface. Deep chains of inheritance are hard to follow because behavior is spread across many files.",
+    "example": "The distributor wants confirmations by email for most cafes and by SMS for two food trucks. You write a small Notifier base class with a send method, and two children that override it. OrderService receives whichever notifier fits the customer. When a third channel (a webhook) arrives, you add one class and OrderService does not change.",
+    "code": "class Notifier:\n    def send(self, to, text):\n        raise NotImplementedError     # children must override\n\nclass EmailNotifier(Notifier):        # inheritance: is a Notifier\n    def send(self, to, text):\n        print(f\"EMAIL to {to}: {text}\")\n\nclass SmsNotifier(Notifier):\n    def send(self, to, text):\n        print(f\"SMS to {to}: {text[:160]}\")\n\nclass OrderService:\n    def __init__(self, notifier: Notifier):\n        self.notifier = notifier      # composition: has a Notifier\n\n    def confirm(self, order, contact):\n        self.notifier.send(contact, f\"Order {order.order_id} confirmed\")\n\nOrderService(EmailNotifier()).confirm(o1, \"orders@lindqvist.example\")\nOrderService(SmsNotifier()).confirm(o1, \"+46 70 000 0000\")",
+    "lang": "Python",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "svc",
+       90,
+       70,
+       "OrderService",
+       "has a notifier"
+      ],
+      [
+       "base",
+       265,
+       70,
+       "Notifier",
+       "send(to, text)"
+      ],
+      [
+       "email",
+       440,
+       70,
+       "EmailNotifier",
+       "is a Notifier"
+      ],
+      [
+       "sms",
+       440,
+       220,
+       "SmsNotifier",
+       "is a Notifier"
+      ],
+      [
+       "fake",
+       265,
+       220,
+       "FakeNotifier",
+       "for tests",
+       1
+      ]
+     ],
+     "edges": [
+      [
+       "svc",
+       "base",
+       0,
+       "uses"
+      ],
+      [
+       "email",
+       "base",
+       0,
+       "inherits"
+      ],
+      [
+       "sms",
+       "base",
+       0,
+       "inherits"
+      ],
+      [
+       "fake",
+       "base",
+       0,
+       "inherits"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Dataclasses and type hints",
+    "body": "Many classes are mostly records: a bundle of named fields. Writing __init__, __repr__ and __eq__ by hand for each one is tedious. The @dataclass decorator reads the annotated fields and writes those methods for you.\n\nType hints are the annotations after a colon, such as qty: int or lines: list[Line]. They tell readers and tools what each value should be. Python itself does not check them when the program runs; editors and a type checker such as mypy use them to catch mistakes before you run the code.\n\nTwo details matter. Mutable defaults like a list must use field(default_factory=list), or every object would share the same list. And frozen=True makes an object read-only, which is useful for values that should never change after creation, such as a parsed configuration.",
+    "example": "You rewrite Order as a dataclass with a nested Line dataclass. The file shrinks from 25 lines to 15, printing an order now shows every field, and two orders with the same data compare equal, which makes unit tests simpler. When a colleague passes qty='2' as a string, mypy flags it before it reaches the customer.",
+    "code": "from dataclasses import dataclass, field\nfrom datetime import date\n\n@dataclass(frozen=True)\nclass Line:\n    sku: str\n    qty: int\n    unit_price: float\n\n@dataclass\nclass Order:\n    order_id: int\n    customer: str\n    placed: date\n    lines: list[Line] = field(default_factory=list)  # never lines=[]\n\n    def total(self, vat: float = 0.12) -> float:\n        return round(sum(l.qty * l.unit_price for l in self.lines) * (1 + vat), 2)\n\no = Order(1001, \"Lindqvist Bakery\", date(2026, 3, 2))\no.lines.append(Line(\"flour-25kg\", 2, 18.50))\nprint(o)          # Order(order_id=1001, customer='Lindqvist Bakery', ...)\nprint(o.total())  # 41.44",
+    "lang": "Python"
+   },
+   {
+    "title": "Modules, packages and the virtual environment",
+    "body": "A module is simply a .py file. A package is a folder of modules that Python can import from, and the folder name becomes part of the import path: from orderflow.models import Order. Splitting code this way keeps each file focused on one job.\n\nThe line if __name__ == '__main__': runs only when you execute the file directly, and not when another file imports it. That lets a module be both importable and runnable.\n\nAs covered in the Python basics concepts, each project should live in its own virtual environment, a folder with its own Python and installed libraries. Pin your dependencies in requirements.txt or pyproject.toml so a colleague, or the customer's server, can rebuild exactly the same setup.",
+    "example": "The distributor integration becomes a package called orderflow: models.py holds the dataclasses, notify.py the notifier classes, suppliers.py one adapter class per supplier file format, and cli.py the entry point the nightly job calls. Tests import from orderflow, so the same code runs in tests and in production.",
+    "code": "# Project layout\n# orderflow-project/\n#   pyproject.toml\n#   src/orderflow/__init__.py\n#   src/orderflow/models.py      (Order, Line)\n#   src/orderflow/notify.py      (Notifier classes)\n#   src/orderflow/cli.py         (entry point)\n#   tests/test_models.py\n\npython -m venv .venv                 # create the environment\nsource .venv/bin/activate            # Windows: .venv\\Scripts\\activate\npip install -e \".[dev]\"              # install your package in editable mode\npython -m orderflow.cli --date 2026-03-02\npytest -q                            # tests import orderflow like any library\npip freeze > requirements-lock.txt   # record exact versions",
+    "lang": "bash",
+    "checklist": [
+     "One virtual environment per project, never the system Python",
+     "Each module has one clear job (models, client, transforms, cli)",
+     "Dataclasses for records, plain functions for pure transformations",
+     "Mutable defaults use field(default_factory=...)",
+     "Type hints on public functions and methods",
+     "Script entry points guarded by if __name__ == '__main__'",
+     "Dependencies pinned and tests run with pytest"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Class",
+    "A blueprint that defines the attributes and methods a kind of object has."
+   ],
+   [
+    "Object (instance)",
+    "One concrete value created from a class, with its own attribute values."
+   ],
+   [
+    "__init__",
+    "The method Python runs to set up a new object right after creating it."
+   ],
+   [
+    "self",
+    "The name for the current object inside a method; Python passes it in automatically."
+   ],
+   [
+    "Method",
+    "A function defined inside a class that works on the object's data."
+   ],
+   [
+    "Inheritance",
+    "Creating a class from an existing one so it reuses and can override the parent's methods."
+   ],
+   [
+    "Composition",
+    "Building a class that holds other objects and delegates work to them."
+   ],
+   [
+    "Dataclass",
+    "A class marked with @dataclass that gets __init__, __repr__ and __eq__ written automatically."
+   ],
+   [
+    "Type hint",
+    "An annotation such as qty: int that documents the expected type; checked by tools, not at runtime."
+   ],
+   [
+    "Package",
+    "A folder of Python modules that can be imported by name."
+   ]
+  ],
+  "practice": [
+   "Write a Customer class with name, email and a list of orders. Add a method lifetime_value() that sums the order totals, create three customers and print them sorted by lifetime value.",
+   "Convert Customer and Order to dataclasses with type hints, run mypy on the file, then deliberately pass a string where an int is expected and read the error mypy gives you.",
+   "Stretch: build a small package with a Notifier base class, EmailNotifier and a FakeNotifier that records messages in a list. Write two pytest tests for an OrderService that use FakeNotifier to check that confirm() sends exactly one message with the right order id."
+  ]
+ },
+ "asyncpy": {
+  "plain": "I/O means input and output: reading a file, querying a database or calling a web API. Blocking I/O means your program stops and waits until the answer arrives. Non-blocking or asynchronous I/O means the program can start a request, go do other work while it waits, and come back when the reply is ready. In Python you write this with async def (which defines a coroutine, a function that can pause) and await (the point where it pauses). The event loop is the scheduler inside asyncio that keeps track of all paused coroutines and resumes each one when its data has arrived.",
+  "analogy": "A waiter who takes one table's order, then stands at the kitchen window until that food is ready, is doing blocking I/O. A good waiter puts the order in, serves other tables, and goes back when the bell rings. One waiter, many tables in progress: that is the event loop.",
+  "why": "FDE work is full of 'call this API for every record' jobs: enrich 50,000 customer addresses, pull 2,000 documents from a document store, score 10,000 tickets with an LLM. Done one at a time, each call might take half a second and the job runs for hours. With async and a sensible limit it finishes in minutes, while staying inside the customer's rate limits.",
+  "subtopics": [
+   {
+    "title": "Blocking versus non-blocking I/O",
+    "body": "When your code calls requests.get(url), the CPU sends a few bytes and then does nothing useful for maybe 300 milliseconds while the other server works and the reply travels back. The program is blocked. For one call this is fine. For 1,000 calls in a row, you wait 1,000 times in sequence.\n\nWork where the time goes into waiting is called I/O-bound. Work where the time goes into calculating, such as resizing images or parsing a huge file, is called CPU-bound. Async only helps I/O-bound work, because it overlaps the waiting.\n\nA quick way to feel the difference is to simulate slow calls with sleep. Ten one-second waits take ten seconds in sequence and about one second when they overlap.",
+    "example": "A logistics customer asks you to look up delivery status for 1,200 parcels through a carrier API that answers in about 0.4 seconds. Sequentially that is 1,200 x 0.4 = 480 seconds, eight minutes of mostly waiting. With 20 calls in flight at a time, it takes about 1,200 / 20 x 0.4 = 24 seconds.",
+    "code": "import asyncio, time\n\ndef slow_call_sync(i):\n    time.sleep(1)                 # blocks the whole program\n    return i\n\nasync def slow_call_async(i):\n    await asyncio.sleep(1)        # pauses only this task\n    return i\n\nstart = time.perf_counter()\n[slow_call_sync(i) for i in range(10)]\nprint(f\"sync:  {time.perf_counter() - start:.1f}s\")   # about 10.0s\n\nasync def main():\n    return await asyncio.gather(*(slow_call_async(i) for i in range(10)))\n\nstart = time.perf_counter()\nasyncio.run(main())\nprint(f\"async: {time.perf_counter() - start:.1f}s\")   # about 1.0s",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Kind of work",
+      "Where time goes",
+      "Best tool"
+     ],
+     "rows": [
+      [
+       "API calls, DB queries",
+       "Waiting on network",
+       "asyncio or threads"
+      ],
+      [
+       "Reading many files",
+       "Waiting on disk",
+       "threads or asyncio"
+      ],
+      [
+       "Parsing, maths, image work",
+       "CPU calculating",
+       "processes"
+      ],
+      [
+       "One call, then done",
+       "Hardly matters",
+       "plain sync code"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "async, await and coroutines",
+    "body": "async def defines a coroutine function. Calling it does not run it; it returns a coroutine object, a paused piece of work waiting to be scheduled. You run it by awaiting it from another coroutine, by wrapping it in a task, or at the very top with asyncio.run().\n\nawait means 'pause me here until this finishes, and let other tasks run in the meantime'. You can only use await inside an async def. Anything you await must itself be awaitable, such as another coroutine, a task or asyncio.sleep.\n\nThe rule that trips beginners up: async is contagious. If a function awaits something, it must be async, and whoever calls it must await it. The chain ends at asyncio.run(main()), which you call once from ordinary code.",
+    "example": "You write get_parcel_status(parcel_id) as an async function. Calling get_parcel_status('PX-4411') alone prints a warning that the coroutine was never awaited and returns nothing useful. Writing status = await get_parcel_status('PX-4411') inside main, and then asyncio.run(main()), actually performs the call.",
+    "code": "import asyncio\n\nasync def get_parcel_status(parcel_id: str) -> dict:\n    await asyncio.sleep(0.4)            # stands in for a network call\n    return {\"id\": parcel_id, \"status\": \"in_transit\"}\n\nasync def main():\n    coro = get_parcel_status(\"PX-4411\")  # nothing has run yet\n    print(type(coro))                   # <class 'coroutine'>\n    status = await coro                 # now it runs, main pauses 0.4s\n    print(status)\n\n    # A task starts running as soon as the loop gets a chance\n    task = asyncio.create_task(get_parcel_status(\"PX-4412\"))\n    print(await task)\n\nasyncio.run(main())                     # the one sync-to-async bridge",
+    "lang": "Python"
+   },
+   {
+    "title": "Inside the event loop",
+    "body": "The event loop is a single loop, on a single thread, that repeats three things: run a ready task until it hits an await, note what that task is waiting for, and check with the operating system which waits have finished. Tasks whose data has arrived become ready again.\n\nBecause only one task runs Python code at a time, you do not get two tasks changing the same variable at the same instant, which makes async code simpler than threads in that respect. The price is that a task must reach an await to give others a turn.\n\nThat is why one blocking call ruins everything. time.sleep(5), requests.get or a long CPU calculation inside a coroutine never reaches an await, so the loop is stuck and every other task waits too. If you must call blocking code, move it off the loop with asyncio.to_thread.",
+    "example": "An FDE adds a call to an old, synchronous PDF library inside an async document pipeline. Throughput drops from 40 documents a second to 3, because each 300 ms parse freezes the loop. Wrapping the parse in await asyncio.to_thread(parse_pdf, data) lets downloads continue while a worker thread parses.",
+    "code": "import asyncio, time\n\ndef parse_pdf(data: bytes) -> str:\n    time.sleep(0.3)          # stands in for a blocking library call\n    return \"text...\"\n\nasync def handle(doc_id: int) -> str:\n    await asyncio.sleep(0.2)                      # async download\n    # BAD:  text = parse_pdf(b\"...\")   freezes the loop for 0.3s\n    text = await asyncio.to_thread(parse_pdf, b\"...\")  # runs in a thread\n    return f\"doc {doc_id}: {len(text)} chars\"\n\nasync def main():\n    results = await asyncio.gather(*(handle(i) for i in range(20)))\n    print(len(results), \"documents\")\n\nasyncio.run(main())",
+    "lang": "Python",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "ready",
+       90,
+       70,
+       "Ready queue",
+       "tasks able to run"
+      ],
+      [
+       "run",
+       265,
+       70,
+       "Run one task",
+       "until next await"
+      ],
+      [
+       "wait",
+       440,
+       70,
+       "Waiting set",
+       "sockets, timers"
+      ],
+      [
+       "os",
+       615,
+       70,
+       "OS check",
+       "which I/O is done?",
+       1
+      ],
+      [
+       "wake",
+       440,
+       220,
+       "Wake tasks",
+       "data has arrived"
+      ]
+     ],
+     "edges": [
+      [
+       "ready",
+       "run"
+      ],
+      [
+       "run",
+       "wait",
+       0,
+       "hits await"
+      ],
+      [
+       "wait",
+       "os"
+      ],
+      [
+       "os",
+       "wake",
+       0,
+       "done"
+      ],
+      [
+       "wake",
+       "ready",
+       0,
+       "back in queue"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "gather and httpx.AsyncClient for parallel API calls",
+    "body": "asyncio.gather(*coroutines) schedules every coroutine as a task and waits for all of them. The results come back as a list in the same order you passed them in, whatever order they actually finished in.\n\nBy default, the first exception raised by any task is passed to whoever awaits gather, and you lose the easy view of the other results. Passing return_exceptions=True puts exceptions into the result list instead, so you can count successes and failures.\n\nhttpx is a popular HTTP library with both sync and async clients. Create one httpx.AsyncClient and share it across all requests. It keeps a pool of open connections, which is much faster than opening a new connection per call. Always set a timeout so one stuck request cannot hang the job forever.",
+    "example": "A property insurer wants 3,000 addresses geocoded through an internal API before a flood-risk analysis. You load the addresses, build one coroutine per address, and gather them through a shared AsyncClient. At the end you write 2,987 coordinates to a CSV and 13 failures (bad addresses returning 404) to a separate file for a human to fix.",
+    "code": "import asyncio, csv\nimport httpx\n\nAPI = \"https://geo.internal.example/v1/geocode\"\n\nasync def geocode(client: httpx.AsyncClient, addr: str) -> dict:\n    r = await client.get(API, params={\"q\": addr})\n    r.raise_for_status()                  # 4xx/5xx become exceptions\n    return r.json()\n\nasync def main(addresses: list[str]):\n    async with httpx.AsyncClient(timeout=10.0) as client:  # one shared client\n        results = await asyncio.gather(\n            *(geocode(client, a) for a in addresses),\n            return_exceptions=True)       # keep going on failures\n    ok = [(a, r) for a, r in zip(addresses, results) if not isinstance(r, Exception)]\n    bad = [(a, repr(r)) for a, r in zip(addresses, results) if isinstance(r, Exception)]\n    with open(\"failed.csv\", \"w\", newline=\"\") as f:\n        csv.writer(f).writerows(bad)\n    print(f\"{len(ok)} ok, {len(bad)} failed\")\n\n# asyncio.run(main(addresses))  # add a limit before running on 3,000 rows",
+    "lang": "Python"
+   },
+   {
+    "title": "Rate limiting with a semaphore, plus retries",
+    "body": "Gathering 3,000 requests with no limit opens thousands of connections at once. The customer's API will throttle you with HTTP 429 Too Many Requests, or worse, slow down for everyone else. You need to cap your concurrency.\n\nasyncio.Semaphore(n) is a counter with n slots. A task does async with sem: before its request. If a slot is free, it takes it and continues; if not, it waits. Leaving the block frees the slot. This limits how many requests are in flight at once.\n\nA semaphore limits concurrency, which differs from a rate in requests per second. If the API documents a per-second limit, also space out request starts, for example with a small limiter that sleeps between starts. Retry 429 and 5xx errors with exponential backoff (waiting 1, 2, 4 seconds and so on) and respect the Retry-After header when it is present.",
+    "example": "The geocoding API allows 20 requests per second and at most 10 concurrent connections per client. You set Semaphore(10), space starts 0.05 seconds apart, and retry up to 4 times on 429 or 5xx. The 3,000 addresses finish in about 2.5 minutes with zero throttling alerts on the customer's side.",
+    "code": "import asyncio, random\nimport httpx\n\nclass RateLimiter:\n    \"\"\"Allow at most `per_second` request starts per second.\"\"\"\n    def __init__(self, per_second: float):\n        self.interval, self.next_at = 1 / per_second, 0.0\n        self.lock = asyncio.Lock()\n    async def wait(self):\n        async with self.lock:\n            now = asyncio.get_running_loop().time()\n            delay = max(0.0, self.next_at - now)\n            self.next_at = max(now, self.next_at) + self.interval\n        await asyncio.sleep(delay)\n\nasync def get_with_retry(client, sem, limiter, url, tries=4):\n    for attempt in range(tries):\n        async with sem:                      # cap in-flight requests\n            await limiter.wait()             # cap requests per second\n            r = await client.get(url)\n        if r.status_code not in (429, 500, 502, 503, 504):\n            r.raise_for_status()\n            return r.json()\n        wait = float(r.headers.get(\"Retry-After\", 2 ** attempt))\n        await asyncio.sleep(wait + random.random())   # backoff with jitter\n    r.raise_for_status()",
+    "lang": "Python",
+    "checklist": [
+     "Read the API docs for rate limits and concurrency limits",
+     "One shared AsyncClient with a timeout",
+     "Semaphore sized at or below the concurrency limit",
+     "Request starts spaced to the per-second limit",
+     "Retries on 429 and 5xx with backoff and jitter; honor Retry-After",
+     "Failures written to a file for a rerun",
+     "Try 50 rows first, then the full set"
+    ]
+   },
+   {
+    "title": "When threads or processes are better",
+    "body": "Async is not the only way to overlap work. A thread is a second line of execution inside the same program. Python's global interpreter lock (GIL) lets only one thread run Python bytecode at a time in the standard build, but it is released while a thread waits on I/O, so threads overlap waiting just as async does. They are the easy choice when you must use a blocking library such as requests or an older vendor SDK.\n\nA process is a separate running copy of Python with its own memory. Processes run truly in parallel on several CPU cores, so they suit CPU-bound work such as parsing thousands of large files or computing features. They cost more to start, and data sent between them must be copied.\n\nconcurrent.futures gives the same simple interface for both: ThreadPoolExecutor and ProcessPoolExecutor. Pick based on where the time goes, and measure before and after.",
+    "example": "A retailer's job downloads 800 supplier spreadsheets and then computes price statistics over 40 million rows. The download step uses a blocking SDK, so you use a ThreadPoolExecutor with 16 workers. The statistics step is pure calculation, so you use a ProcessPoolExecutor with one worker per core. Total runtime drops from 70 minutes to 12.",
+    "code": "from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor\nimport requests\n\ndef download(url: str) -> bytes:           # blocking I/O: threads are fine\n    return requests.get(url, timeout=30).content\n\ndef heavy_stats(rows: list[float]) -> float:  # CPU-bound: use processes\n    return sum(x * x for x in rows) / len(rows)\n\nif __name__ == \"__main__\":                 # required for process pools\n    urls = [f\"https://files.example.com/s{i}.csv\" for i in range(800)]\n    with ThreadPoolExecutor(max_workers=16) as pool:\n        files = list(pool.map(download, urls))\n\n    chunks = [[float(i) for i in range(1_000_000)] for _ in range(8)]\n    with ProcessPoolExecutor() as pool:     # defaults to CPU count\n        print(list(pool.map(heavy_stats, chunks)))",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "I/O-bound",
+    "Work whose time is mostly spent waiting on networks, disks or databases."
+   ],
+   [
+    "CPU-bound",
+    "Work whose time is mostly spent calculating on the processor."
+   ],
+   [
+    "Coroutine",
+    "A function defined with async def that can pause at await and resume later."
+   ],
+   [
+    "await",
+    "The keyword that pauses a coroutine until an awaitable finishes, letting other tasks run."
+   ],
+   [
+    "Event loop",
+    "The asyncio scheduler that runs ready tasks and resumes paused ones when their I/O completes."
+   ],
+   [
+    "Task",
+    "A coroutine scheduled on the event loop so it runs concurrently with others."
+   ],
+   [
+    "asyncio.gather",
+    "Runs several awaitables concurrently and returns their results in input order."
+   ],
+   [
+    "Semaphore",
+    "A counter that allows at most n tasks into a block at once."
+   ],
+   [
+    "HTTP 429",
+    "The status code an API returns when you send too many requests."
+   ],
+   [
+    "GIL",
+    "The global interpreter lock, which lets one thread run Python bytecode at a time in standard CPython."
+   ]
+  ],
+  "practice": [
+   "Run the sleep comparison from the first subtopic, then change it to 100 calls and to 1,000 calls. Record the sync and async times in a small table and explain the pattern in two sentences.",
+   "Using httpx.AsyncClient and a free public test API (or a local FastAPI app you start yourself), fetch 200 URLs with Semaphore(5), Semaphore(20) and no semaphore. Print total time and the number of errors for each run.",
+   "Stretch: build a command-line script that reads IDs from a CSV, calls an API for each with a semaphore, a per-second rate limiter and retries with backoff, and writes results.csv and failed.csv. Add a --dry-run flag that processes only the first 20 rows."
+  ]
+ },
+ "stats": {
+  "plain": "Statistics is the toolkit for drawing conclusions from data that is incomplete and noisy. A sample is the part of the data you actually observed, such as this month's visitors, and the population is everything you care about, such as all future visitors. Variance and standard deviation measure how spread out values are. A confidence interval is a range that expresses how uncertain an estimate from a sample is. An A/B test is an experiment where users are randomly split between the current version (A) and a new one (B), and statistical significance is the check for whether the difference between them is bigger than chance alone would usually produce.",
+  "analogy": "Tasting one spoonful of soup tells you about the whole pot only if you stirred it first. Random sampling is the stirring. A confidence interval is saying 'it is somewhere between a bit salty and quite salty' instead of pretending one spoonful gives an exact number.",
+  "why": "Customers constantly ask FDEs 'did it work?': did the new triage model cut handle time, did the recommendation widget raise basket size. Without statistics, you will either claim wins that are just noise or miss real ones. An FDE who can design a fair test and say 'we are 95% confident the lift is between 2 and 6 percent' earns trust with both the data team and the executives.",
+  "subtopics": [
+   {
+    "title": "Center and spread: mean, median, variance, SD",
+    "body": "The math basics concept introduced mean, median and percentiles. Here is the quick recap: the mean is the sum divided by the count, and a few huge values pull it up. The median is the middle value when sorted. Percentiles such as p90 say that 90% of values are at or below this number.\n\nThose tell you where the data sits. Spread tells you how much it varies. The variance is the average of the squared distances from the mean. Squaring makes all distances positive and weighs big deviations more. Its units are squared, which is awkward, so we usually take its square root, the standard deviation (SD). The SD is in the original units and roughly means 'a typical distance from the mean'.\n\nWhen you compute these from a sample, divide by n - 1 instead of n. This small correction, called Bessel's correction, stops the sample variance from underestimating the population variance. In numpy, pass ddof=1.",
+    "example": "A regional clinic group measures patient wait times at two sites. Both have a mean of 18 minutes. At Site North the SD is about 2 minutes, so most patients wait 16 to 20 minutes. At Site South the SD is about 12 minutes, so some wait 6 minutes and some wait 40. The means are identical but the patient experience is very different, and the SD shows it.",
+    "code": "import numpy as np\n\nnorth = np.array([16, 18, 21, 15, 19, 17, 22, 16, 18, 18])\nsouth = np.array([6, 35, 9, 12, 40, 14, 8, 25, 11, 20])\n\nfor name, w in [(\"North\", north), (\"South\", south)]:\n    print(name,\n          \"mean\", w.mean(),\n          \"median\", np.median(w),\n          \"p90\", np.percentile(w, 90),\n          \"var\", round(w.var(ddof=1), 1),   # sample variance (n - 1)\n          \"sd\", round(w.std(ddof=1), 1))    # same units as the data\n# North mean 18.0 median 18.0 ... sd 2.2\n# South mean 18.0 median 13.0 ... sd 11.8",
+    "lang": "Python"
+   },
+   {
+    "title": "Distributions: the shape of the data",
+    "body": "A distribution describes how often each value occurs. Plotting a histogram, a bar chart of counts per range of values, is the fastest way to see it.\n\nThe normal distribution is the symmetric bell curve. For normal data, about 68% of values fall within 1 SD of the mean and about 95% within 2 SD. Heights and measurement errors are often close to normal. Many business quantities are not: order values, response times and claim amounts are usually right-skewed, with a long tail of large values. For skewed data, the median and percentiles describe it better than the mean and SD.\n\nTwo other shapes come up often. The binomial distribution counts successes out of n yes-or-no trials, such as conversions out of visitors. The Poisson distribution counts events in a time window, such as support tickets per hour. Knowing the shape tells you which summary and which test to use.",
+    "example": "An online furniture retailer's average order value is 310 euros, but the median is 145. A handful of orders for full kitchens at 4,000 to 9,000 euros drag the mean up. If the marketing team targets 'the average customer' at 310 euros, they are describing almost nobody. You report the median and p90 instead and show the histogram.",
+    "code": "import numpy as np\nrng = np.random.default_rng(seed=7)\n\nheights = rng.normal(loc=170, scale=8, size=10_000)       # symmetric\norders = rng.lognormal(mean=5.0, sigma=0.9, size=10_000)  # right-skewed\nconversions = rng.binomial(n=1_000, p=0.05, size=10_000)  # buyers per 1,000\ntickets = rng.poisson(lam=12, size=10_000)                # tickets per hour\n\nfor name, x in [(\"heights\", heights), (\"orders\", orders)]:\n    print(f\"{name}: mean {x.mean():.0f}, median {np.median(x):.0f}\")\n# heights: mean and median almost equal\n# orders:  mean well above the median, a sign of skew\n\nwithin_2sd = np.mean(np.abs(heights - heights.mean()) < 2 * heights.std())\nprint(f\"share within 2 SD: {within_2sd:.1%}\")   # about 95%\nprint(conversions.mean(), tickets.mean())       # about 50 and 12",
+    "lang": "Python"
+   },
+   {
+    "title": "Sampling and confidence intervals",
+    "body": "You rarely see the whole population, so you estimate from a sample. The sample must be random, or at least representative: surveying only customers who answered an email is a biased sample, because happy or angry people are more likely to reply.\n\nIf you repeated the sampling many times, each sample would give a slightly different mean. The standard error (SE) measures how much those means would vary. For a mean it is SD divided by the square root of n, so four times more data halves the uncertainty. A 95% confidence interval is roughly the estimate plus or minus 1.96 standard errors.\n\nThe correct reading of a 95% interval is about the method: if you repeated the whole process many times, about 95% of the intervals built this way would contain the true value. When the data is skewed or the formula is unclear, the bootstrap is a practical alternative: resample your data with replacement thousands of times, compute the statistic each time, and take the 2.5th and 97.5th percentiles.",
+    "example": "A contact center samples 400 of last month's 30,000 calls and finds a mean handle time of 7.4 minutes with an SD of 3.2. The SE is 3.2 / sqrt(400) = 0.16, so the 95% interval is about 7.1 to 7.7 minutes. That is precise enough to set a baseline before an AI assist tool goes live.",
+    "code": "import numpy as np\nfrom scipy import stats\nrng = np.random.default_rng(1)\n\ncalls = rng.gamma(shape=5.3, scale=1.4, size=400)   # sample of handle times\nmean, sd, n = calls.mean(), calls.std(ddof=1), len(calls)\nse = sd / np.sqrt(n)                                 # standard error\n\n# t-based 95% CI for the mean\nlow, high = stats.t.interval(0.95, df=n - 1, loc=mean, scale=se)\nprint(f\"mean {mean:.2f} min, 95% CI [{low:.2f}, {high:.2f}]\")\n\n# Bootstrap CI for the median (no formula needed)\nboot = [np.median(rng.choice(calls, size=n, replace=True)) for _ in range(5_000)]\nprint(\"median CI\", np.percentile(boot, [2.5, 97.5]).round(2))",
+    "lang": "Python"
+   },
+   {
+    "title": "A/B tests and statistical significance",
+    "body": "In an A/B test, each user is randomly assigned to A or B. Random assignment is the key idea: it makes the two groups alike in every way except the change you made, so a difference in results can be credited to that change.\n\nThe null hypothesis says the change has no effect. The p-value is the probability of seeing a difference at least as large as yours if the null hypothesis were true. A small p-value, conventionally below 0.05, means your result would be unusual under 'no effect', so you call it statistically significant. The 0.05 cut-off is a convention, so treat it as a guide.\n\nAlways report three things together: the observed difference, its confidence interval and the p-value. For conversion rates, a two-proportion z-test or a chi-square test is standard. For averages such as order value, use Welch's t-test, which does not assume both groups have equal variance.",
+    "example": "A grocery delivery app tests a new checkout page. Control: 520 orders from 10,000 visitors (5.20%). Variant: 585 from 10,000 (5.85%). The lift is 0.65 points, p is about 0.044, and the 95% interval runs from roughly 0.02 to 1.28 points. The effect is probably real, but it might be tiny. Then you check average basket size with Welch's t-test to make sure the new page did not trade conversions for smaller orders.",
+    "code": "import numpy as np\nfrom scipy import stats\n\n# Conversion: chi-square test on a 2x2 table [converted, not converted]\ntable = np.array([[520, 10_000 - 520],\n                  [585, 10_000 - 585]])\nchi2, p_conv, dof, _ = stats.chi2_contingency(table, correction=False)\nprint(f\"conversion p = {p_conv:.3f}\")   # about 0.044, same as the z-test\n\n# Basket size: Welch's t-test (unequal variances)\nrng = np.random.default_rng(3)\nbasket_a = rng.gamma(4, 12.0, size=520)     # euros per order, group A\nbasket_b = rng.gamma(4, 11.8, size=585)     # group B\nt, p_basket = stats.ttest_ind(basket_b, basket_a, equal_var=False)\nprint(f\"basket A {basket_a.mean():.2f}, B {basket_b.mean():.2f}, p = {p_basket:.2f}\")",
+    "lang": "Python",
+    "checklist": [
+     "Hypothesis and one primary metric written down before launch",
+     "Users (not page views) randomly assigned, and they stay in their group",
+     "Sample size and run length fixed in advance, covering full weeks",
+     "Group sizes checked for the expected split (sample ratio check)",
+     "Guardrail metrics watched, such as refunds or page errors",
+     "Result reported as lift, 95% CI and p-value",
+     "Decision recorded, including inconclusive results"
+    ]
+   },
+   {
+    "title": "Sample size, power and peeking",
+    "body": "Before a test starts, decide how many users you need. The inputs are the baseline rate, the minimum detectable effect (MDE, the smallest lift worth acting on), the significance level (usually 0.05) and the power, the chance of detecting the effect if it really exists (usually 0.8). Small effects on small rates need large samples.\n\nPeeking means checking the p-value repeatedly and stopping as soon as it dips below 0.05. Because the p-value wanders up and down by chance, checking daily gives many chances to cross the line, and the real false positive rate can climb well above 5%. Fix the sample size and look once, or use a method designed for continuous monitoring, such as a sequential test.\n\nTesting many metrics or many segments has the same problem. With 20 independent comparisons at 0.05, you expect about one false win by chance alone. Name one primary metric in advance and treat the rest as exploratory, or correct for multiple comparisons.",
+    "example": "A subscription meal-kit company converts 4% of trial users to paid. They want to detect an increase to 4.4% (a 10% relative lift). The formula below says they need roughly 39,500 trial users per group. With 6,000 new trials a week split in two, the test must run about 13 weeks, so you suggest testing a bolder change with a larger expected effect instead.",
+    "code": "import numpy as np\nfrom scipy import stats\n\ndef sample_size_per_group(p1, p2, alpha=0.05, power=0.8):\n    \"\"\"Users per group for a two-sided test of two proportions.\"\"\"\n    z_a = stats.norm.ppf(1 - alpha / 2)     # 1.96 for alpha 0.05\n    z_b = stats.norm.ppf(power)             # 0.84 for power 0.8\n    p_bar = (p1 + p2) / 2\n    num = (z_a * np.sqrt(2 * p_bar * (1 - p_bar))\n           + z_b * np.sqrt(p1 * (1 - p1) + p2 * (1 - p2))) ** 2\n    return int(np.ceil(num / (p2 - p1) ** 2))\n\nn = sample_size_per_group(0.04, 0.044)\nprint(n)                                  # about 39,500 per group\nprint(f\"weeks at 3,000 per group per week: {n / 3_000:.1f}\")\nprint(sample_size_per_group(0.04, 0.05))  # a bigger lift needs far fewer",
+    "lang": "Python"
+   },
+   {
+    "title": "Correlation versus causation",
+    "body": "Correlation measures how strongly two variables move together. Pearson's r runs from -1 (perfectly opposite) through 0 (no straight-line relationship) to +1 (perfectly together). Spearman's rho does the same on ranks and handles curved or outlier-heavy data better.\n\nCorrelation does not tell you which way the influence runs, or whether a third factor drives both. That third factor is called a confounder. Customers who use a new chatbot may spend more because they are your most engaged customers, and engagement drives both chatbot use and spending.\n\nThe cleanest way to show causation is a randomized experiment such as an A/B test. When you cannot randomize, compare before and after against a similar untouched group (difference-in-differences), control for known confounders, and be honest in the write-up about what the analysis can and cannot prove.",
+    "example": "A bank sees that branches with more ATMs have more fraud. Removing ATMs would not reduce fraud: busy city branches have both more ATMs and more transactions, and more transactions produce more fraud cases. When you divide fraud cases by transactions, the correlation with ATM count almost disappears.",
+    "code": "import numpy as np\nfrom scipy import stats\nrng = np.random.default_rng(0)\n\ntraffic = rng.uniform(1_000, 20_000, size=200)        # confounder\natms = np.round(traffic / 4_000 + rng.normal(0, 0.5, 200))\nfraud = 0.002 * traffic + rng.normal(0, 4, 200)       # driven by traffic only\n\nr, p = stats.pearsonr(atms, fraud)\nprint(f\"ATMs vs fraud: r = {r:.2f}\")                  # strong, but misleading\n\nrate = fraud / traffic * 10_000                       # fraud per 10k transactions\nr2, _ = stats.pearsonr(atms, rate)\nprint(f\"ATMs vs fraud rate: r = {r2:.2f}\")            # much weaker\nrho, _ = stats.spearmanr(atms, fraud)\nprint(f\"Spearman rho = {rho:.2f}\")",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Situation",
+      "What it can show",
+      "Typical method"
+     ],
+     "rows": [
+      [
+       "Randomized A/B test",
+       "Causation",
+       "z-test, t-test, CI"
+      ],
+      [
+       "Before/after with a control group",
+       "Likely causation",
+       "Difference-in-differences"
+      ],
+      [
+       "Before/after, no control",
+       "Weak evidence",
+       "Compare with seasonality"
+      ],
+      [
+       "Historical correlation",
+       "Association only",
+       "Pearson or Spearman"
+      ],
+      [
+       "Single anecdote",
+       "A hypothesis to test",
+       "Plan an experiment"
+      ]
+     ]
+    }
+   }
+  ],
+  "glossary": [
+   [
+    "Sample",
+    "The subset of data you actually observed, used to learn about a larger population."
+   ],
+   [
+    "Variance",
+    "The average squared distance of values from their mean."
+   ],
+   [
+    "Standard deviation",
+    "The square root of the variance; a typical distance from the mean, in the data's own units."
+   ],
+   [
+    "Standard error",
+    "How much an estimate such as a mean would vary between repeated samples; SD divided by the square root of n for a mean."
+   ],
+   [
+    "Confidence interval",
+    "A range built from a sample by a method that captures the true value in a stated share (for example 95%) of repeated samples."
+   ],
+   [
+    "Null hypothesis",
+    "The default assumption that there is no effect or no difference."
+   ],
+   [
+    "p-value",
+    "The probability of a result at least this extreme if the null hypothesis were true."
+   ],
+   [
+    "Statistical power",
+    "The probability that a test detects an effect of a given size when it really exists."
+   ],
+   [
+    "Minimum detectable effect",
+    "The smallest true effect a test is designed to reliably detect."
+   ],
+   [
+    "Confounder",
+    "A third variable that influences both things you are comparing and creates a misleading correlation."
+   ]
+  ],
+  "practice": [
+   "Generate 1,000 order values with numpy's lognormal function. Report mean, median, p90 and SD, draw a histogram with matplotlib, and write two sentences on which number you would show an executive and why.",
+   "Take the checkout numbers from this lesson (520 of 10,000 versus 585 of 10,000). Compute the lift, 95% CI and p-value by hand with numpy and confirm the p-value with scipy's chi2_contingency. Then halve both groups (260 of 5,000 versus 292 of 5,000) and explain what changes.",
+   "Stretch: simulate 2,000 A/A tests (both groups have the same true 5% rate, 10,000 users each). First check the p-value only at the end and count how often p < 0.05. Then check it after every 1,000 users and stop at the first p < 0.05. Compare the two false positive rates and write one paragraph for a customer explaining why peeking is risky."
+  ]
+ },
+ "mlmetrics": {
+  "plain": "Once a machine learning model makes predictions, you need numbers that say how good they are. For a classifier, a model that picks a category such as fraud or not fraud, the starting point is the confusion matrix: a small table counting correct and incorrect predictions of each kind. Precision, recall and F1 are ratios built from that table, and ROC/AUC summarizes how well the model ranks cases across every possible cut-off. For a regressor, a model that predicts a number such as delivery time, you use error measures like MAE and RMSE. The metric you choose should reflect what mistakes cost the customer.",
+  "analogy": "Think of an airport security scanner. Precision is how often a bag it flags really contains something dangerous. Recall is how many of the dangerous bags it catches. Turning up the sensitivity catches more (higher recall) but also stops more innocent travelers (lower precision).",
+  "why": "Customers and vendors often quote one flattering number, such as '97% accurate'. An FDE has to know whether that number means anything for this customer's problem, choose metrics that match the business cost of each mistake, and pick a threshold the operations team can live with. This applies equally to classic models and to LLM classifiers you build with prompts, which the evals concept covers from the testing side.",
+  "subtopics": [
+   {
+    "title": "The confusion matrix",
+    "body": "For a yes-or-no problem, call the class you care about the positive class, for example 'fraud'. Every prediction lands in one of four cells. A true positive (TP) is a fraud the model flagged. A false positive (FP) is a legitimate case it flagged by mistake, a false alarm. A false negative (FN) is a fraud it missed. A true negative (TN) is a legitimate case it correctly left alone.\n\nThe matrix is the most honest view of a classifier because nothing is hidden inside an average. Always look at it before any single-number metric.\n\nIn scikit-learn, confusion_matrix(y_true, y_pred) returns rows for the true class and columns for the predicted class, sorted by label. For 0 and 1 that gives [[TN, FP], [FN, TP]], an order that surprises many people, so print it with labels.",
+    "example": "A regional insurer's claims-fraud model scores 10,000 claims, of which 150 are truly fraudulent. It flags 400 claims. Of those, 105 are real fraud (TP) and 295 are false alarms (FP). It misses 45 frauds (FN), and 9,555 legitimate claims pass correctly (TN).",
+    "code": "import numpy as np\nfrom sklearn.metrics import confusion_matrix\n\n# Build labels matching the insurer example\ny_true = np.array([1]*105 + [0]*295 + [1]*45 + [0]*9_555)\ny_pred = np.array([1]*105 + [1]*295 + [0]*45 + [0]*9_555)\n\ntn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()   # order for labels 0,1\nprint(f\"TP={tp} FP={fp} FN={fn} TN={tn}\")\n# TP=105 FP=295 FN=45 TN=9555\n\nprint(confusion_matrix(y_true, y_pred))\n# [[9555  295]    row 0: truly legit  -> predicted legit, predicted fraud\n#  [  45  105]]   row 1: truly fraud  -> predicted legit, predicted fraud",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "",
+      "Predicted fraud",
+      "Predicted legit"
+     ],
+     "rows": [
+      [
+       "Truly fraud",
+       "TP = 105 (caught)",
+       "FN = 45 (missed)"
+      ],
+      [
+       "Truly legit",
+       "FP = 295 (false alarm)",
+       "TN = 9,555 (correct pass)"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Accuracy, precision, recall and F1",
+    "body": "Accuracy is (TP + TN) divided by everything: the share of predictions that are right. It is easy to explain and fine when classes are roughly balanced.\n\nPrecision is TP / (TP + FP): of the cases the model flagged, how many were real. Low precision means reviewers waste time on false alarms. Recall, also called sensitivity or true positive rate, is TP / (TP + FN): of the real cases, how many the model found. Low recall means real problems slip through.\n\nF1 is the harmonic mean of precision and recall, 2PR / (P + R). The harmonic mean is dragged down by whichever of the two is lower, so F1 is only high when both are. Use it when you need one number and care about both kinds of error roughly equally. When one error is much more costly, look at precision and recall separately instead.",
+    "example": "For the insurer: accuracy is (105 + 9,555) / 10,000 = 96.6%, which sounds great. Precision is 105 / 400 = 26%, so three in four flagged claims are false alarms. Recall is 105 / 150 = 70%, so 30% of fraud is missed. F1 is 2 x 0.26 x 0.70 / (0.26 + 0.70) = 0.38. The three numbers tell a far more useful story than accuracy alone.",
+    "code": "from sklearn.metrics import (accuracy_score, precision_score,\n                             recall_score, f1_score, classification_report)\n\n# y_true, y_pred from the previous example\nprint(f\"accuracy  {accuracy_score(y_true, y_pred):.3f}\")    # 0.966\nprint(f\"precision {precision_score(y_true, y_pred):.3f}\")   # 0.263\nprint(f\"recall    {recall_score(y_true, y_pred):.3f}\")      # 0.700\nprint(f\"F1        {f1_score(y_true, y_pred):.3f}\")          # 0.382\n\n# One table per class, plus macro and weighted averages\nprint(classification_report(y_true, y_pred,\n                            target_names=[\"legit\", \"fraud\"], digits=3))",
+    "lang": "Python"
+   },
+   {
+    "title": "Thresholds, ROC curves and AUC",
+    "body": "Most classifiers output a score or probability, for example 0.83 chance of fraud. The threshold is the cut-off that turns scores into labels. The default of 0.5 is arbitrary. Lower the threshold and you flag more cases: recall goes up and precision usually goes down. Raise it and the opposite happens.\n\nThe ROC curve plots the true positive rate (recall) against the false positive rate (FP / (FP + TN)) at every threshold. AUC, the area under that curve, runs from 0.5 (random guessing) to 1.0 (perfect). It equals the probability that a random positive case gets a higher score than a random negative one, so it measures ranking quality independent of any threshold.\n\nOn heavily imbalanced data, ROC-AUC can look high even when precision is poor, because the huge number of true negatives keeps the false positive rate small. The precision-recall curve and its summary, average precision (PR-AUC), are more informative there. Use AUC to compare models, then choose a threshold for the one you deploy.",
+    "example": "A telecom company's churn model has ROC-AUC 0.86 and PR-AUC 0.41, with 5% of customers churning each month. At threshold 0.5 it flags 900 customers with 38% precision. The retention team can only call 400 a week, so you raise the threshold until about 400 are flagged, and precision climbs to around 50%.",
+    "code": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve\n\nX, y = make_classification(n_samples=20_000, weights=[0.95], random_state=0)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, stratify=y, random_state=0)\nscores = LogisticRegression(max_iter=1000).fit(X_tr, y_tr).predict_proba(X_te)[:, 1]\n\nprint(f\"ROC-AUC {roc_auc_score(y_te, scores):.3f}\")           # threshold-free\nprint(f\"PR-AUC  {average_precision_score(y_te, scores):.3f}\")  # better for rare classes\n\nprec, rec, thr = precision_recall_curve(y_te, scores)\nfor t in [0.2, 0.5, 0.8]:\n    i = np.searchsorted(thr, t)            # first threshold at or above t\n    print(f\"threshold {t}: precision {prec[i]:.2f}, recall {rec[i]:.2f}\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Class imbalance",
+    "body": "Class imbalance means one class is much rarer than the other: fraud, machine failures, rare diseases, churn. Two problems follow. Accuracy becomes meaningless, since always predicting the common class scores highly. And many models learn to mostly ignore the rare class, because it barely affects their training loss.\n\nFor evaluation, compare against a baseline that always predicts the majority class, and report precision, recall and PR-AUC for the rare class. Split data with stratification so each split keeps the same class ratio, or your test set may contain only a handful of positives.\n\nFor training, the simplest fix is class weights (class_weight='balanced' in scikit-learn), which make each rare example count more. Resampling (oversampling the rare class or undersampling the common one) is another option; apply it only to the training data, never to the test set. Often, tuning the threshold does more good than any resampling.",
+    "example": "A factory's sensor data has 60 failure windows among 50,000. A first model scores 99.9% accuracy by never predicting failure, which the DummyClassifier baseline matches exactly. With class_weight='balanced' and a tuned threshold, recall on failures rises to about 70% at a precision the maintenance crew accepts.",
+    "code": "from sklearn.dummy import DummyClassifier\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, recall_score, average_precision_score\n\n# X_tr, X_te, y_tr, y_te: stratified split of imbalanced data (see previous example)\nbase = DummyClassifier(strategy=\"most_frequent\").fit(X_tr, y_tr)\nprint(\"baseline accuracy\", accuracy_score(y_te, base.predict(X_te)))  # high!\nprint(\"baseline recall  \", recall_score(y_te, base.predict(X_te)))    # 0.0\n\nfor cw in [None, \"balanced\"]:\n    m = LogisticRegression(max_iter=1000, class_weight=cw).fit(X_tr, y_tr)\n    pred = m.predict(X_te)\n    print(cw, \"recall\", round(recall_score(y_te, pred), 3),\n          \"PR-AUC\", round(average_precision_score(y_te, m.predict_proba(X_te)[:, 1]), 3))",
+    "lang": "Python",
+    "checklist": [
+     "Report the class ratio in train, validation and test sets",
+     "Use a stratified split so each set keeps that ratio",
+     "Compare against a majority-class baseline",
+     "Report precision, recall and PR-AUC for the rare class",
+     "Try class_weight='balanced' before complex resampling",
+     "Resample only the training data, never the test data",
+     "Tune the threshold on validation data, confirm once on test"
+    ]
+   },
+   {
+    "title": "Regression metrics: MAE, RMSE and friends",
+    "body": "For models that predict a number, the error on one row is the prediction minus the true value. MAE (mean absolute error) averages the absolute errors. It is in the target's units and easy to explain: 'on average we are 11 minutes off'.\n\nRMSE (root mean squared error) squares the errors, averages them and takes the square root. Squaring makes big misses count much more, so RMSE is always at least as large as MAE, and a big gap between them means a few large errors. Use RMSE when large misses are disproportionately bad.\n\nMAPE (mean absolute percentage error) expresses error relative to the true value, which helps compare across products of different sizes. It breaks when true values are zero or tiny. R squared tells you what share of the variance the model explains compared with always predicting the mean. Always compare against a naive baseline such as last week's value or the historical average.",
+    "example": "A food delivery platform predicts delivery time. The model's MAE is 6.2 minutes and RMSE 9.8. The naive baseline (always predict the city average of 34 minutes) has MAE 11.5. The gap between MAE and RMSE points to occasional very late deliveries, which turn out to be rain days, so you add a weather feature.",
+    "code": "import numpy as np\nfrom sklearn.metrics import (mean_absolute_error, mean_squared_error,\n                             mean_absolute_percentage_error, r2_score)\n\ny_true = np.array([28, 35, 41, 22, 30, 55, 33, 26])   # actual minutes\ny_pred = np.array([30, 33, 38, 25, 31, 39, 35, 27])   # model predictions\nbaseline = np.full_like(y_true, 34)                   # always the city average\n\nmae = mean_absolute_error(y_true, y_pred)\nrmse = np.sqrt(mean_squared_error(y_true, y_pred))    # root of MSE\nprint(f\"MAE {mae:.1f}  RMSE {rmse:.1f}\")               # RMSE > MAE: one big miss\nprint(f\"MAPE {mean_absolute_percentage_error(y_true, y_pred):.1%}\")\nprint(f\"R2 {r2_score(y_true, y_pred):.2f}\")\nprint(f\"baseline MAE {mean_absolute_error(y_true, baseline):.1f}\")",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Metric",
+      "Reads as",
+      "Use when"
+     ],
+     "rows": [
+      [
+       "MAE",
+       "Average miss, in units",
+       "Explaining to business users"
+      ],
+      [
+       "RMSE",
+       "Miss with big errors weighted up",
+       "Large misses are costly"
+      ],
+      [
+       "MAPE",
+       "Average miss in percent",
+       "Comparing items of different size"
+      ],
+      [
+       "R squared",
+       "Share of variance explained",
+       "Comparing with the mean baseline"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Pick metrics that match business cost",
+    "body": "Every mistake has a price, and the two kinds of mistake rarely cost the same. In fraud review, a false positive might cost 15 euros of an investigator's time, while a false negative might cost the full 2,000 euro claim. In medical triage, a missed case is far worse than an extra check.\n\nWrite the costs down with the customer, even rough ones, and compute the expected cost at each threshold: FP x cost_fp + FN x cost_fn. Add operational limits, such as a team that can review only 250 cases a day. Then pick the threshold that minimizes cost within those limits. This turns a vague argument about 'better models' into a decision the business owner can sign off.\n\nDo this on a validation set, confirm on the untouched test set, and write the chosen metric, threshold and reasoning into the project documentation. In production, monitor precision and recall over time, because the share of positives often drifts.",
+    "example": "For the insurer, a false alarm costs about 15 euros of review time and a missed fraud about 1,800 euros. At threshold 0.5 the model misses 45 frauds and raises 295 false alarms: 45 x 1,800 + 295 x 15 = 85,425 euros per 10,000 claims. At threshold 0.3 it misses 25 and raises 620 false alarms: 45,000 + 9,300 = 54,300 euros, and the 745 flags fit within the team's review capacity. You recommend 0.3.",
+    "code": "import numpy as np\n\ndef expected_cost(y_true, scores, threshold, cost_fp, cost_fn):\n    pred = scores >= threshold\n    fp = np.sum(pred & (y_true == 0))\n    fn = np.sum(~pred & (y_true == 1))\n    return fp * cost_fp + fn * cost_fn, int(pred.sum())\n\ndef best_threshold(y_true, scores, cost_fp, cost_fn, max_flags=None):\n    best = None\n    for t in np.arange(0.05, 0.96, 0.05):\n        cost, flags = expected_cost(y_true, scores, t, cost_fp, cost_fn)\n        if max_flags is not None and flags > max_flags:\n            continue                           # team cannot review this many\n        if best is None or cost < best[1]:\n            best = (round(t, 2), cost, flags)\n    return best\n\n# y_val, val_scores come from a validation set, never the test set\n# print(best_threshold(y_val, val_scores, cost_fp=15, cost_fn=1_800, max_flags=800))",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Positive class",
+    "The class you are trying to detect, such as fraud or churn."
+   ],
+   [
+    "Confusion matrix",
+    "A table counting true positives, false positives, false negatives and true negatives."
+   ],
+   [
+    "Precision",
+    "TP / (TP + FP): the share of flagged cases that are truly positive."
+   ],
+   [
+    "Recall",
+    "TP / (TP + FN): the share of truly positive cases the model flagged."
+   ],
+   [
+    "F1 score",
+    "The harmonic mean of precision and recall; high only when both are high."
+   ],
+   [
+    "Threshold",
+    "The score cut-off above which a case is labeled positive."
+   ],
+   [
+    "ROC-AUC",
+    "Area under the curve of true positive rate versus false positive rate; measures ranking quality across thresholds."
+   ],
+   [
+    "PR-AUC",
+    "Area under the precision-recall curve, often reported as average precision; more informative for rare classes."
+   ],
+   [
+    "MAE",
+    "Mean absolute error: the average size of prediction errors in the target's units."
+   ],
+   [
+    "RMSE",
+    "Root mean squared error: like MAE but weighs large errors more heavily."
+   ]
+  ],
+  "practice": [
+   "Given TP=80, FP=40, FN=20, TN=860, compute accuracy, precision, recall and F1 by hand. Then check your answers with scikit-learn by building y_true and y_pred arrays that produce those counts.",
+   "Train a LogisticRegression on scikit-learn's breast cancer dataset (load_breast_cancer) with a stratified split. Plot the precision-recall curve, report ROC-AUC and PR-AUC, and print precision and recall at thresholds 0.3, 0.5 and 0.7.",
+   "Stretch: using make_classification with 2% positives, write a function that picks the threshold with the lowest expected cost for a false positive cost of 10 and a false negative cost of 500, with a cap of 300 flags. Show the cost at 0.5 versus the chosen threshold and write a three-sentence recommendation a business owner could approve."
+  ]
+ }
+}

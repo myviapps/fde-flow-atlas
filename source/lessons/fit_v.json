@@ -1,0 +1,30 @@
+{
+ "dimred": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Rotating a point cloud and watching variance captured builds PCA intuition that formulas alone do not."
+ },
+ "anomaly": {
+  "best": [
+   "interactive",
+   "practice"
+  ],
+  "why": "Moving a threshold and seeing precision and recall trade off teaches alert tuning better than any definition."
+ },
+ "timeseries": {
+  "best": [
+   "interactive",
+   "practice"
+  ],
+  "why": "Trying baselines and alpha on a live series, then backtesting real data yourself, makes forecasting stick."
+ },
+ "recsys": {
+  "best": [
+   "reading",
+   "practice"
+  ],
+  "why": "The ideas stack from baseline to hybrid; building each method and scoring it offline is how they sink in."
+ }
+}

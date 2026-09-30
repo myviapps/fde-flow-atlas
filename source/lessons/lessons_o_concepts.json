@@ -1,0 +1,1198 @@
+[
+ {
+  "id": "docai",
+  "mod": 3,
+  "sec": "3.2",
+  "name": "Document AI and parsing",
+  "title": "Document AI: from PDFs and scans to clean data",
+  "thesis": "Most enterprise knowledge sits in PDFs, scans and forms. A document pipeline turns them into trusted structured data: get the text (directly or by OCR), keep the layout and tables, extract fields into a fixed schema, check them with rules, and send doubtful cases to a person.",
+  "format": "animation",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "A minimal invoice pipeline",
+  "code": "import pdfplumber, pytesseract\nfrom pdf2image import convert_from_path\nfrom pydantic import BaseModel, ValidationError\n\nclass Invoice(BaseModel):\n    invoice_number: str\n    invoice_date: str            # ISO date, e.g. 2026-03-14\n    supplier_name: str\n    total: float\n    line_totals: list[float]\n\ndef get_text(path: str) -> str:\n    with pdfplumber.open(path) as pdf:\n        text = \"\\n\".join(p.extract_text() or \"\" for p in pdf.pages)\n    if len(text.strip()) > 50:                 # real text layer found\n        return text\n    pages = convert_from_path(path, dpi=300)   # scanned: render to images\n    return \"\\n\".join(pytesseract.image_to_string(im) for im in pages)\n\ndef extract(text: str) -> Invoice | None:\n    raw = call_llm(PROMPT + text)              # vision or text LLM, returns JSON\n    try:\n        return Invoice.model_validate_json(raw)   # schema check\n    except ValidationError:\n        return None                            # send to human review\n\ndef business_checks(inv: Invoice) -> list[str]:\n    problems = []\n    if abs(sum(inv.line_totals) - inv.total) > 0.01:\n        problems.append(\"line totals do not add up to total\")\n    return problems                            # non-empty: human review",
+  "nodes": [
+   [
+    "upload",
+    90,
+    70,
+    "Upload file",
+    "PDF, scan, photo"
+   ],
+   [
+    "detect",
+    265,
+    70,
+    "Detect type",
+    "text layer or not"
+   ],
+   [
+    "ocr",
+    440,
+    70,
+    "OCR if needed",
+    "image to text"
+   ],
+   [
+    "layout",
+    615,
+    70,
+    "Layout + tables",
+    "blocks, rows, cells"
+   ],
+   [
+    "extract",
+    615,
+    210,
+    "Field extraction",
+    "LLM fills schema"
+   ],
+   [
+    "validate",
+    440,
+    210,
+    "Validate",
+    "schema and rules"
+   ],
+   [
+    "store",
+    265,
+    210,
+    "Store",
+    "clean record"
+   ],
+   [
+    "erp",
+    90,
+    210,
+    "Downstream app",
+    "ERP, claims system",
+    1
+   ],
+   [
+    "review",
+    440,
+    350,
+    "Human review",
+    "flagged documents"
+   ]
+  ],
+  "edges": [
+   [
+    "upload",
+    "detect"
+   ],
+   [
+    "detect",
+    "ocr",
+    0,
+    "scans only"
+   ],
+   [
+    "ocr",
+    "layout"
+   ],
+   [
+    "layout",
+    "extract"
+   ],
+   [
+    "extract",
+    "validate"
+   ],
+   [
+    "validate",
+    "store",
+    0,
+    "passes"
+   ],
+   [
+    "validate",
+    "review",
+    0,
+    "flagged"
+   ],
+   [
+    "review",
+    "store",
+    0,
+    "corrected"
+   ],
+   [
+    "store",
+    "erp"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A document arrives",
+    "n": [
+     "upload"
+    ],
+    "d": "Invoices, claim forms and contracts arrive by email, upload or scanner. Some are born-digital PDFs, some are photos of paper."
+   },
+   {
+    "t": "Check for a text layer",
+    "n": [
+     "detect"
+    ],
+    "e": [
+     "upload>detect"
+    ],
+    "d": "A PDF made by software usually contains real text you can read directly. A scanned PDF is just pictures of pages, so reading it returns almost nothing.",
+    "l": [
+     11,
+     12,
+     13,
+     14,
+     15
+    ]
+   },
+   {
+    "t": "OCR the scanned pages",
+    "n": [
+     "ocr"
+    ],
+    "e": [
+     "detect>ocr"
+    ],
+    "d": "Optical character recognition (OCR) looks at page images and guesses the characters. Rendering at around 300 DPI gives the OCR engine enough detail.",
+    "l": [
+     16,
+     17
+    ]
+   },
+   {
+    "t": "Keep layout and tables",
+    "n": [
+     "layout"
+    ],
+    "e": [
+     "ocr>layout"
+    ],
+    "d": "Reading order, headings and table cells carry meaning. A total next to the word Total is only useful if you keep them together, so layout tools return blocks and table rows instead of one long string."
+   },
+   {
+    "t": "Extract fields into a schema",
+    "n": [
+     "extract"
+    ],
+    "e": [
+     "layout>extract"
+    ],
+    "d": "An LLM, often a vision-capable one that sees the page image, fills a fixed schema: invoice number, date, supplier, totals. The schema is written in code first.",
+    "l": [
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     19,
+     20
+    ]
+   },
+   {
+    "t": "Validate every record",
+    "n": [
+     "validate"
+    ],
+    "e": [
+     "extract>validate"
+    ],
+    "d": "Schema validation catches missing or wrongly typed fields. Business rules catch values that parse but are wrong, such as line items that do not add up to the total.",
+    "l": [
+     22,
+     23,
+     26,
+     27,
+     28,
+     29
+    ]
+   },
+   {
+    "t": "Route doubtful cases to a person",
+    "n": [
+     "review"
+    ],
+    "e": [
+     "validate>review"
+    ],
+    "d": "Records that fail a check go to a review queue where a person sees the page and the extracted fields side by side, fixes them and approves.",
+    "l": [
+     24,
+     30
+    ]
+   },
+   {
+    "t": "Store and hand off",
+    "n": [
+     "store",
+     "erp"
+    ],
+    "e": [
+     "validate>store",
+     "review>store",
+     "store>erp"
+    ],
+    "d": "Clean records are saved with a link to the source page and passed to the customer's system. Reviewer corrections are kept as test data for the next version."
+   }
+  ],
+  "ideas": [
+   "First ask whether a PDF has a text layer. If it does, skip OCR: it is faster, cheaper and more accurate.",
+   "Layout matters: tables, columns and reading order decide whether a number lands in the right field.",
+   "Define the output schema in code before prompting, and validate every result against it.",
+   "Business rules (totals add up, dates are real, IDs exist) catch errors a schema cannot.",
+   "Plan for a human review queue from day one and measure accuracy per field on a labelled test set."
+  ],
+  "traps": [
+   "Sending every page to OCR or a vision model when most files already contain clean text.",
+   "Flattening tables into plain text and then asking the model to guess which number is which.",
+   "Trusting LLM output because it looks tidy, with no schema check, no rules and no review path."
+  ],
+  "qa": [
+   [
+    "A customer has 200,000 mixed PDFs, some scanned. How would you start?",
+    "Sample a few hundred, sort them by type and by whether they have a text layer, and label 50 to 100 with the correct fields. Then build the simplest pipeline per type, measure field accuracy on the labelled set, and add OCR, layout tools or vision models only where the numbers show a need."
+   ],
+   [
+    "How do you decide which extracted records a human must check?",
+    "Anything that fails the schema or a business rule, anything below a confidence threshold, and a small random sample of passing records for ongoing quality checks. Tune the thresholds so the review queue is a size the team can actually handle."
+   ],
+   [
+    "Why not just ask an LLM to read the whole PDF and return JSON?",
+    "It can work for a demo, but in production you need a fixed schema, validation, source page links for audit, cost control on large volumes and a way to catch silent mistakes. The LLM is one step inside that pipeline."
+   ]
+  ]
+ },
+ {
+  "id": "serving",
+  "mod": 3,
+  "sec": "3.4",
+  "name": "Serving open models",
+  "title": "Serving open-weight models on your own GPUs",
+  "thesis": "Running an open model yourself means fitting its weights and working memory into GPU VRAM, choosing a precision, and putting an inference server in front that batches many requests. You trade the simplicity of a hosted API for control over data, cost at scale and customisation.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "vLLM server plus an OpenAI-style client",
+  "code": "# 1. Start an OpenAI-compatible server on one GPU (shell)\n# vllm serve MODEL --max-model-len 8192 \\\n#     --gpu-memory-utilization 0.90 --api-key local-key\n\n# 2. Call it from the customer's app (Python)\nimport time\nfrom openai import OpenAI\n\nclient = OpenAI(base_url=\"http://gpu-host:8000/v1\", api_key=\"local-key\")\n\nstart = time.perf_counter()\nstream = client.chat.completions.create(\n    model=\"MODEL\",\n    messages=[{\"role\": \"user\", \"content\": \"Summarise this ticket: ...\"}],\n    max_tokens=200,\n    stream=True,                        # send tokens as they are made\n)\nfirst = None\nfor chunk in stream:\n    if first is None:\n        first = time.perf_counter() - start   # time to first token\n    print(chunk.choices[0].delta.content or \"\", end=\"\")\nprint(f\"\\nTTFT: {first:.2f}s  total: {time.perf_counter() - start:.2f}s\")",
+  "nodes": [
+   [
+    "app",
+    90,
+    70,
+    "Client app",
+    "OpenAI-style call"
+   ],
+   [
+    "gateway",
+    265,
+    70,
+    "Gateway",
+    "auth, rate limits"
+   ],
+   [
+    "server",
+    440,
+    70,
+    "Inference server",
+    "vLLM, TGI, Ollama"
+   ],
+   [
+    "sched",
+    615,
+    70,
+    "Scheduler",
+    "continuous batching"
+   ],
+   [
+    "gpu",
+    615,
+    220,
+    "GPU VRAM",
+    "weights + KV cache"
+   ],
+   [
+    "decode",
+    440,
+    220,
+    "Token loop",
+    "prefill, then decode"
+   ],
+   [
+    "stream",
+    265,
+    220,
+    "Stream tokens",
+    "back to the client"
+   ],
+   [
+    "metrics",
+    90,
+    220,
+    "Metrics",
+    "TTFT, tokens/s"
+   ]
+  ],
+  "edges": [
+   [
+    "app",
+    "gateway"
+   ],
+   [
+    "gateway",
+    "server"
+   ],
+   [
+    "server",
+    "sched"
+   ],
+   [
+    "sched",
+    "gpu"
+   ],
+   [
+    "gpu",
+    "decode"
+   ],
+   [
+    "decode",
+    "stream"
+   ],
+   [
+    "stream",
+    "app",
+    0,
+    "tokens"
+   ],
+   [
+    "stream",
+    "metrics"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "The app sends a request",
+    "n": [
+     "app"
+    ],
+    "d": "The customer's app calls the model with the same chat API shape it would use for a hosted provider. Most open-model servers expose an OpenAI-compatible endpoint, so client code barely changes.",
+    "l": [
+     6,
+     8,
+     11,
+     12,
+     13,
+     14
+    ]
+   },
+   {
+    "t": "The gateway checks it",
+    "n": [
+     "gateway"
+    ],
+    "e": [
+     "app>gateway"
+    ],
+    "d": "A gateway or reverse proxy checks the API key, applies rate limits and logs the call. The model server itself usually has only basic security."
+   },
+   {
+    "t": "The server loads the model once",
+    "n": [
+     "server"
+    ],
+    "e": [
+     "gateway>server"
+    ],
+    "d": "An inference server such as vLLM loads the weights into GPU memory at startup and keeps them there. Loading a large model can take minutes, so it is done once, not per request.",
+    "l": [
+     1,
+     2
+    ]
+   },
+   {
+    "t": "Requests are batched",
+    "n": [
+     "sched"
+    ],
+    "e": [
+     "server>sched"
+    ],
+    "d": "The scheduler runs many requests on the GPU together. With continuous batching, a finished request leaves the batch and a waiting one joins at the next step, which keeps the GPU busy."
+   },
+   {
+    "t": "VRAM holds weights and KV cache",
+    "n": [
+     "gpu"
+    ],
+    "e": [
+     "sched>gpu"
+    ],
+    "d": "GPU memory must fit the model weights plus the KV cache, the saved attention data for every token of every active request. Longer prompts and more users mean a bigger KV cache.",
+    "l": [
+     1
+    ]
+   },
+   {
+    "t": "Prefill, then decode",
+    "n": [
+     "decode"
+    ],
+    "e": [
+     "gpu>decode"
+    ],
+    "d": "Prefill reads the whole prompt in one pass and produces the first token. Decode then generates one token at a time, reusing the KV cache, until it hits a stop token or the max_tokens limit."
+   },
+   {
+    "t": "Tokens stream back",
+    "n": [
+     "stream",
+     "app"
+    ],
+    "e": [
+     "decode>stream",
+     "stream>app"
+    ],
+    "d": "Streaming sends each token as it is generated, so the user sees text within a second even if the full answer takes several seconds.",
+    "l": [
+     15,
+     18,
+     21
+    ]
+   },
+   {
+    "t": "Measure latency and throughput",
+    "n": [
+     "metrics"
+    ],
+    "e": [
+     "stream>metrics"
+    ],
+    "d": "Track time to first token (TTFT), tokens per second per user, total tokens per second for the GPU and queue length. These numbers decide how many GPUs you need.",
+    "l": [
+     10,
+     20,
+     22
+    ]
+   }
+  ],
+  "ideas": [
+   "Weights memory is roughly parameters times bytes per parameter: a 7B model needs about 14 GB in 16-bit and about 4 GB in 4-bit.",
+   "The KV cache grows with context length and the number of concurrent requests, and often limits how many users one GPU can serve.",
+   "Quantization stores weights with fewer bits, trading a little quality for large memory savings.",
+   "Inference servers add batching, streaming and an OpenAI-compatible API. vLLM targets high-throughput serving, Ollama targets easy local use.",
+   "Throughput (total tokens per second) and latency (speed for one user) pull against each other. Batch size is the dial."
+  ],
+  "traps": [
+   "Sizing the GPU for the weights only and running out of memory once real users send long prompts.",
+   "Comparing self-hosting to an API on GPU price alone, ignoring engineers' time, idle capacity and upgrades.",
+   "Benchmarking with one request at a time, which hides how the system behaves under real concurrency."
+  ],
+  "qa": [
+   [
+    "Will a 70B model fit on a single 80 GB GPU?",
+    "Not in 16-bit: the weights alone are about 140 GB, so you need at least two such GPUs with tensor parallelism. With 4-bit quantization the weights drop to roughly 35 to 40 GB, which fits on one 80 GB card and leaves room for KV cache, after checking that quality is still good enough on the customer's evals."
+   ],
+   [
+    "When would you recommend self-hosting over a hosted API?",
+    "When data cannot leave the customer's network, when steady high volume makes owned GPUs cheaper, or when they need a fine-tuned open model. If volume is low or spiky, or they need the strongest models, a hosted API or a cloud provider's private endpoint is usually simpler and cheaper."
+   ],
+   [
+    "Users complain responses feel slow. What do you check?",
+    "Separate time to first token from generation speed. High TTFT usually means queueing or long prompts, so look at queue depth, batch settings and prompt length. Slow tokens per second points to an overloaded GPU, a model too large for the hardware or a bad quantization choice."
+   ]
+  ]
+ },
+ {
+  "id": "frameworks",
+  "mod": 3,
+  "sec": "3.3",
+  "name": "Agent frameworks compared",
+  "title": "Agent frameworks: when a library helps and when it hurts",
+  "thesis": "An agent is a loop: call the model, run the tools it asks for, feed results back, repeat. Frameworks such as LangChain, LlamaIndex, LangGraph and the Claude Agent SDK package parts of that loop. Pick one only when it removes real work you would otherwise write and maintain yourself.",
+  "format": "flowchart",
+  "note": "Start top left and answer each question in the middle column from top to bottom. A yes sends you right to a suggested approach, a no sends you down to the next question. The dashed box is optional: add a library only when it saves work.",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "task",
+    90,
+    70,
+    "Your use case",
+    "what must it do"
+   ],
+   [
+    "fixed",
+    265,
+    70,
+    "Steps fixed?",
+    "same order always"
+   ],
+   [
+    "workflow",
+    440,
+    70,
+    "Plain workflow",
+    "SDK calls in code"
+   ],
+   [
+    "lib",
+    615,
+    70,
+    "Add a library?",
+    "if it saves work",
+    1
+   ],
+   [
+    "stateq",
+    265,
+    210,
+    "Long-running?",
+    "pauses, approvals"
+   ],
+   [
+    "langgraph",
+    440,
+    210,
+    "LangGraph",
+    "graph + checkpoints"
+   ],
+   [
+    "filesq",
+    265,
+    350,
+    "Files and shell?",
+    "code, ops, research"
+   ],
+   [
+    "agentsdk",
+    440,
+    350,
+    "Agent SDK",
+    "Claude · tools, MCP"
+   ],
+   [
+    "loop",
+    90,
+    350,
+    "Plain tool loop",
+    "SDK + your tools"
+   ]
+  ],
+  "edges": [
+   [
+    "task",
+    "fixed"
+   ],
+   [
+    "fixed",
+    "workflow",
+    0,
+    "yes"
+   ],
+   [
+    "workflow",
+    "lib"
+   ],
+   [
+    "fixed",
+    "stateq",
+    0,
+    "no"
+   ],
+   [
+    "stateq",
+    "langgraph",
+    0,
+    "yes"
+   ],
+   [
+    "stateq",
+    "filesq",
+    0,
+    "no"
+   ],
+   [
+    "filesq",
+    "agentsdk",
+    0,
+    "yes"
+   ],
+   [
+    "filesq",
+    "loop",
+    0,
+    "no"
+   ]
+  ],
+  "ideas": [
+   "Every agent framework wraps the same core loop: model call, tool calls, results back, repeat until done.",
+   "If the steps are known in advance, write a workflow in plain code. You do not need an agent at all.",
+   "LangChain and LlamaIndex are best known for integrations: loaders, vector stores and retrievers. LlamaIndex is centred on data and RAG.",
+   "LangGraph models an agent as a graph with shared state and checkpoints, which suits long-running flows with human approval steps.",
+   "The Claude Agent SDK gives you the agent harness behind Claude Code, with built-in file, shell and web tools, MCP support and permission controls."
+  ],
+  "traps": [
+   "Adopting a large framework for a three-step task, then debugging layers of abstraction instead of your prompt.",
+   "Hiding the actual prompt and tool schemas behind a framework so nobody can see what the model receives.",
+   "Choosing by popularity rather than by the customer's constraints: language, hosting, security review and who will maintain it."
+  ],
+  "qa": [
+   [
+    "A customer's team built their agent on a big framework and cannot debug it. What would you suggest?",
+    "First add tracing so we can see every prompt, tool call and result. Then check which framework features they actually use. If it is only the model call and two tools, rewriting that part as a plain SDK loop of about 50 lines often makes behaviour easier to see and test, while keeping any integrations that save real work."
+   ],
+   [
+    "When is LangGraph worth it over a simple loop?",
+    "When the flow is long-running or branching and needs saved state: pausing for a human approval, resuming after a crash, retrying one step, or coordinating several specialised agents. For a single request with a few tool calls, a plain loop is easier."
+   ],
+   [
+    "How would you compare frameworks for a customer in a design review?",
+    "Write down their constraints first: language, deployment target, data sources, need for human-in-the-loop, observability and who maintains it. Then build the same small task in the two best candidates and compare code size, debuggability and eval results, instead of relying on feature lists."
+   ]
+  ]
+ },
+ {
+  "id": "graphrag",
+  "mod": 3,
+  "sec": "3.2",
+  "name": "Knowledge graphs, GraphRAG",
+  "title": "Knowledge graphs and GraphRAG",
+  "thesis": "A knowledge graph stores facts as entities joined by named relationships. Building one from documents with an LLM lets you answer questions that need several connected facts, which plain chunk retrieval often misses. For most single-fact questions, plain RAG is still enough.",
+  "format": "animation",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "Load triples into Neo4j and ask a multi-hop question",
+  "code": "from neo4j import GraphDatabase\n\ndriver = GraphDatabase.driver(\"neo4j://localhost:7687\", auth=(\"neo4j\", PASSWORD))\nALLOWED = {\"SUPPLIES\", \"PART_OF\", \"LOCATED_IN\"}   # fixed relationship types\n\n# (subject, relation, object) triples returned by the LLM extraction step\ntriples = [(\"Hollin Castings\", \"SUPPLIES\", \"Brake caliper B7\"),\n           (\"Brake caliper B7\", \"PART_OF\", \"Model R hatchback\"),\n           (\"Hollin Castings\", \"LOCATED_IN\", \"Kumamoto\")]\n\nfor s, rel, o in triples:\n    if rel not in ALLOWED:\n        continue                                   # never trust free-form labels\n    driver.execute_query(\n        f\"MERGE (a:Entity {{name: $s}}) MERGE (b:Entity {{name: $o}}) \"\n        f\"MERGE (a)-[:{rel}]->(b)\", s=s, o=o)      # MERGE avoids duplicates\n\n# Multi-hop question: which products depend on suppliers in Kumamoto?\nrecords, summary, keys = driver.execute_query(\"\"\"\n    MATCH (s:Entity)-[:LOCATED_IN]->(:Entity {name: $place}),\n          (s)-[:SUPPLIES]->(part)-[:PART_OF]->(product)\n    RETURN s.name AS supplier, part.name AS part, product.name AS product\n\"\"\", place=\"Kumamoto\")\nfacts = [r.data() for r in records]                # goes into the LLM prompt",
+  "nodes": [
+   [
+    "docs",
+    90,
+    70,
+    "Documents",
+    "contracts, reports"
+   ],
+   [
+    "chunk",
+    265,
+    70,
+    "Chunk text",
+    "paragraph sized"
+   ],
+   [
+    "extract",
+    440,
+    70,
+    "LLM extraction",
+    "entities, relations"
+   ],
+   [
+    "resolve",
+    615,
+    70,
+    "Resolve entities",
+    "merge duplicates"
+   ],
+   [
+    "graph",
+    615,
+    210,
+    "Graph database",
+    "nodes and edges"
+   ],
+   [
+    "query",
+    440,
+    210,
+    "Graph query",
+    "multi-hop traversal"
+   ],
+   [
+    "context",
+    265,
+    210,
+    "Build context",
+    "facts + source text"
+   ],
+   [
+    "answer",
+    90,
+    210,
+    "LLM answer",
+    "with citations"
+   ],
+   [
+    "question",
+    440,
+    350,
+    "User question",
+    "which, who, how"
+   ]
+  ],
+  "edges": [
+   [
+    "docs",
+    "chunk"
+   ],
+   [
+    "chunk",
+    "extract"
+   ],
+   [
+    "extract",
+    "resolve"
+   ],
+   [
+    "resolve",
+    "graph"
+   ],
+   [
+    "question",
+    "query"
+   ],
+   [
+    "graph",
+    "query"
+   ],
+   [
+    "query",
+    "context"
+   ],
+   [
+    "context",
+    "answer"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start from documents",
+    "n": [
+     "docs"
+    ],
+    "d": "Contracts, supplier reports and org charts mention the same companies, parts and people again and again. Those links are the valuable part."
+   },
+   {
+    "t": "Split into chunks",
+    "n": [
+     "chunk"
+    ],
+    "e": [
+     "docs>chunk"
+    ],
+    "d": "Text is split into paragraph-sized chunks so the extraction model can read each piece carefully and every fact can point back to its source."
+   },
+   {
+    "t": "Extract entities and relations",
+    "n": [
+     "extract"
+    ],
+    "e": [
+     "chunk>extract"
+    ],
+    "d": "An LLM reads each chunk and returns triples such as (Hollin Castings, SUPPLIES, Brake caliper B7). A fixed list of entity and relationship types keeps the output consistent.",
+    "l": [
+     3,
+     5,
+     6,
+     7,
+     8
+    ]
+   },
+   {
+    "t": "Resolve duplicates",
+    "n": [
+     "resolve"
+    ],
+    "e": [
+     "extract>resolve"
+    ],
+    "d": "Hollin Castings, Hollin Castings Ltd and HCL are the same company. Entity resolution merges them into one node, otherwise the graph breaks into disconnected pieces."
+   },
+   {
+    "t": "Load the graph",
+    "n": [
+     "graph"
+    ],
+    "e": [
+     "resolve>graph"
+    ],
+    "d": "Entities become nodes and relations become edges in a graph database such as Neo4j. MERGE creates a node or edge only if it does not already exist.",
+    "l": [
+     2,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15
+    ]
+   },
+   {
+    "t": "A multi-hop question arrives",
+    "n": [
+     "question",
+     "query"
+    ],
+    "e": [
+     "question>query",
+     "graph>query"
+    ],
+    "d": "Which of our products depend on suppliers in Kumamoto? No single paragraph answers that. The graph query walks supplier to part to product in one pattern.",
+    "l": [
+     17,
+     18,
+     19,
+     20,
+     21,
+     22
+    ]
+   },
+   {
+    "t": "Build the context",
+    "n": [
+     "context"
+    ],
+    "e": [
+     "query>context"
+    ],
+    "d": "The matching paths, plus the source text they came from, go into the prompt. The model now sees the connected facts instead of guessing them.",
+    "l": [
+     23
+    ]
+   },
+   {
+    "t": "Answer with citations",
+    "n": [
+     "answer"
+    ],
+    "e": [
+     "context>answer"
+    ],
+    "d": "The LLM writes the answer and cites the documents behind each relationship, so a user can check where every link came from."
+   }
+  ],
+  "ideas": [
+   "A knowledge graph stores facts as (entity, relationship, entity), for example (Supplier A, SUPPLIES, Part B).",
+   "Multi-hop questions chain several facts together. Graphs answer them by following edges instead of hoping the right chunks are retrieved.",
+   "LLMs can extract entities and relations from text, but you need a fixed schema and entity resolution to get a usable graph.",
+   "GraphRAG approaches also group the graph into communities and summarise them, which helps with broad questions about a whole collection.",
+   "Plain vector RAG is cheaper and simpler. Use a graph when questions depend on relationships across many documents."
+  ],
+  "traps": [
+   "Letting the LLM invent any relationship label it likes, which produces thousands of near-duplicate edge types.",
+   "Skipping entity resolution, so the same company appears as five unconnected nodes.",
+   "Building a graph for a use case where users ask simple lookup questions that vector search already answers well."
+  ],
+  "qa": [
+   [
+    "When would you use GraphRAG instead of plain RAG?",
+    "When important questions require connecting facts spread across documents, such as ownership chains, supplier dependencies or who approved what, or when users ask about themes across the whole corpus. If most questions are answered by one or two passages, I would stay with vector or hybrid RAG and measure first."
+   ],
+   [
+    "What are the main costs of building a knowledge graph with an LLM?",
+    "Extraction runs an LLM over every chunk, so indexing costs far more than embedding. You also need schema design, entity resolution, a graph database to run and a way to update the graph when documents change. Extraction errors must be sampled and measured like any other model output."
+   ],
+   [
+    "How do you stop the graph from filling with wrong facts?",
+    "Restrict entity and relation types, keep the source chunk for every edge, validate against reference data where it exists (for example a supplier master list), sample edges for human review and measure extraction precision on a labelled set."
+   ]
+  ]
+ },
+ {
+  "id": "multimodal",
+  "mod": 3,
+  "sec": "3.1",
+  "name": "Vision and voice AI",
+  "title": "Vision and voice: images, speech and voice agents",
+  "thesis": "Modern models can take images as input, and speech can be turned into text and back. A voice agent chains voice detection, speech-to-text, an LLM with tools and text-to-speech, and it only feels natural if the whole round trip stays near one second.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "One voice turn, streamed end to end",
+  "code": "import time\n\nBUDGET_MS = {\"end_of_turn\": 250, \"stt_final\": 150,\n             \"llm_first_sentence\": 450, \"tts_first_audio\": 150}   # about 1 s total\n\nasync def handle_turn(mic, vad, stt, llm, tts, speaker, history):\n    audio = await vad.wait_for_end_of_turn(mic)       # caller stopped talking\n    t0 = time.perf_counter()\n    text = await stt.final_transcript(audio)          # speech to text\n    history.append({\"role\": \"user\", \"content\": text})\n\n    reply, sentence = \"\", \"\"\n    async for token in llm.stream(history):           # may call tools inside\n        sentence += token\n        if sentence.rstrip().endswith((\".\", \"?\", \"!\")):\n            async for chunk in tts.stream(sentence):  # speak sentence by sentence\n                if vad.caller_is_speaking():          # barge-in: stop talking\n                    await speaker.stop()\n                    return\n                await speaker.play(chunk)\n            reply, sentence = reply + sentence, \"\"\n    history.append({\"role\": \"assistant\", \"content\": reply + sentence})\n    log_latency(time.perf_counter() - t0)",
+  "nodes": [
+   [
+    "mic",
+    90,
+    70,
+    "Caller audio",
+    "phone or browser"
+   ],
+   [
+    "vad",
+    265,
+    70,
+    "Voice detection",
+    "end of turn"
+   ],
+   [
+    "stt",
+    440,
+    70,
+    "Speech to text",
+    "streaming STT"
+   ],
+   [
+    "llm",
+    615,
+    70,
+    "LLM turn",
+    "history + prompt"
+   ],
+   [
+    "tools",
+    615,
+    220,
+    "Tools",
+    "account lookup"
+   ],
+   [
+    "tts",
+    440,
+    220,
+    "Text to speech",
+    "streamed audio"
+   ],
+   [
+    "play",
+    265,
+    220,
+    "Play to caller",
+    "stops on barge-in"
+   ],
+   [
+    "log",
+    90,
+    220,
+    "Log and handoff",
+    "transcript, human"
+   ]
+  ],
+  "edges": [
+   [
+    "mic",
+    "vad"
+   ],
+   [
+    "vad",
+    "stt"
+   ],
+   [
+    "stt",
+    "llm"
+   ],
+   [
+    "llm",
+    "tools",
+    48,
+    "call"
+   ],
+   [
+    "tools",
+    "llm",
+    48,
+    "result"
+   ],
+   [
+    "llm",
+    "tts"
+   ],
+   [
+    "tts",
+    "play"
+   ],
+   [
+    "play",
+    "vad",
+    0,
+    "barge-in"
+   ],
+   [
+    "play",
+    "log"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "The caller speaks",
+    "n": [
+     "mic"
+    ],
+    "d": "Audio arrives in small chunks from a phone line or browser, often 20 milliseconds at a time."
+   },
+   {
+    "t": "Detect the end of the turn",
+    "n": [
+     "vad"
+    ],
+    "e": [
+     "mic>vad"
+    ],
+    "d": "Voice activity detection (VAD) tells speech from silence. The system waits for a short pause before answering. Too short and it interrupts people, too long and it feels slow.",
+    "l": [
+     2,
+     6
+    ]
+   },
+   {
+    "t": "Turn speech into text",
+    "n": [
+     "stt"
+    ],
+    "e": [
+     "vad>stt"
+    ],
+    "d": "Streaming speech-to-text (STT) transcribes while the person talks, so the final text is ready moments after they stop.",
+    "l": [
+     8,
+     9
+    ]
+   },
+   {
+    "t": "The LLM decides what to say",
+    "n": [
+     "llm"
+    ],
+    "e": [
+     "stt>llm"
+    ],
+    "d": "The transcript and conversation history go to the LLM. Voice replies should be short and spoken-style, with no tables or bullet points.",
+    "l": [
+     12
+    ]
+   },
+   {
+    "t": "Call tools when needed",
+    "n": [
+     "tools"
+    ],
+    "e": [
+     "llm>tools",
+     "tools>llm"
+    ],
+    "d": "To answer 'when is my delivery?' the model calls an order lookup tool. Slow tools are the most common cause of dead air, so some agents say a short filler line first."
+   },
+   {
+    "t": "Speak while still thinking",
+    "n": [
+     "tts"
+    ],
+    "e": [
+     "llm>tts"
+    ],
+    "d": "Text-to-speech (TTS) starts on the first complete sentence instead of waiting for the full reply. This is the biggest single latency win.",
+    "l": [
+     13,
+     14,
+     15
+    ]
+   },
+   {
+    "t": "Play audio, listen for interruptions",
+    "n": [
+     "play",
+     "vad"
+    ],
+    "e": [
+     "tts>play",
+     "play>vad"
+    ],
+    "d": "If the caller starts talking while the agent speaks (barge-in), playback stops and the new speech is handled as the next turn.",
+    "l": [
+     16,
+     17,
+     18,
+     19
+    ]
+   },
+   {
+    "t": "Log and hand off",
+    "n": [
+     "log"
+    ],
+    "e": [
+     "play>log"
+    ],
+    "d": "The transcript and per-stage timings are logged. When the agent cannot help or the caller asks, it transfers to a human with a summary so nobody repeats themselves.",
+    "l": [
+     21,
+     22
+    ]
+   }
+  ],
+  "ideas": [
+   "Vision-capable LLMs accept images alongside text, which helps with screenshots, photos, charts and scanned forms.",
+   "A cascaded voice agent is VAD, then STT, then LLM, then TTS. Speech-to-speech models merge some of these steps.",
+   "Streaming at every stage and starting TTS on the first sentence keeps the round trip near one second.",
+   "Write a latency budget per stage and measure each stage separately, not only the total.",
+   "Plan for barge-in, background noise, accents, spelling of names and numbers, and a clean handoff to a human."
+  ],
+  "traps": [
+   "Waiting for the complete LLM reply before starting speech, which adds seconds of silence.",
+   "Reusing a chat prompt that produces long, formatted answers that sound awful when read aloud.",
+   "Testing only with clean studio audio when real callers use speakerphones in cars and warehouses."
+  ],
+  "qa": [
+   [
+    "Your voice agent takes 3 seconds to respond. How do you bring it down?",
+    "Measure each stage: end-of-turn wait, STT finalisation, LLM time to first token, tool calls and TTS time to first audio. Then stream everything, start TTS on the first sentence, shorten the system prompt and replies, use a faster model for simple turns and speed up or pre-fetch slow tool calls."
+   ],
+   [
+    "What enterprise uses of vision models would you suggest first?",
+    "Tasks where people already look at images and type what they see: reading forms and receipts, checking photos for damage in claims, reading equipment labels or gauges in field service, and understanding screenshots in support tickets. Each still needs validation and a human review path."
+   ],
+   [
+    "What must a voice agent do that a chat agent does not?",
+    "Detect when the person has finished speaking, handle interruptions, keep answers short, confirm numbers and names out loud, work with noisy audio, meet a strict latency budget and disclose that the caller is talking to an AI where rules or policy require it."
+   ]
+  ]
+ },
+ {
+  "id": "responsibleai",
+  "mod": 3,
+  "sec": "3.5",
+  "name": "Responsible AI, governance",
+  "title": "Responsible AI and governance in practice",
+  "thesis": "Responsible AI means knowing where a system can cause harm and putting controls around it: fairness testing, transparency to users, meaningful human oversight and documentation. Frameworks such as the NIST AI RMF and laws such as the EU AI Act turn those ideas into concrete duties that customers must meet.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Start with the use case: who is affected, what decision the AI influences and what happens if it is wrong.",
+   "Bias can come from data, labels or how the system is used. Measure outcomes per group instead of assuming the model is neutral.",
+   "Transparency means people know they are dealing with AI and can get a meaningful explanation of decisions that affect them.",
+   "Human oversight must be real: the reviewer needs time, information and authority to overrule the system.",
+   "The NIST AI RMF organises work into Govern, Map, Measure and Manage. The EU AI Act sorts systems by risk level, with the strictest duties for high-risk uses such as hiring and credit."
+  ],
+  "traps": [
+   "Treating governance as paperwork at the end instead of design input at the start.",
+   "A human in the loop who approves hundreds of AI decisions an hour and never disagrees.",
+   "Stating legal conclusions to a customer. Explain the frameworks and point them to their legal and compliance team for the final call."
+  ],
+  "qa": [
+   [
+    "A customer wants to use an LLM to rank job applicants. What do you raise?",
+    "That this is a high-stakes use: in the EU, AI used for recruitment is listed as high-risk under the AI Act, and anti-discrimination law applies in most countries. I would ask for their legal team's view, propose fairness testing on historical data, keep a human making the final decision, document the system and tell candidates how AI is used. I would also question whether ranking is needed, or whether AI could help with lower-risk tasks like summarising CVs for a recruiter."
+   ],
+   [
+    "What goes into a model card?",
+    "What the model or system is for and not for, how it was built and on what data, how it was evaluated, including results broken down by relevant groups, known limitations and risks, and who to contact. For an LLM application I would also cover prompts and guardrails, the human oversight in place and how it is monitored."
+   ],
+   [
+    "How would you explain the NIST AI RMF to a customer in two minutes?",
+    "It is a voluntary US framework for managing AI risk. Govern sets up policies, roles and accountability. Map describes each system's context and possible harms. Measure tests and tracks those risks. Manage decides what to do about them and monitors over time. It is a checklist for a process, not a certification."
+   ]
+  ]
+ }
+]

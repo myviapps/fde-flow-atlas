@@ -1,0 +1,754 @@
+{
+ "dataformats": {
+  "plain": "Every file a customer sends you is a sequence of bytes, and several small decisions turn those bytes into trustworthy data. An encoding is the rule that maps bytes to characters; UTF-8 is the modern standard, but many business systems still export Windows-1252. A timestamp is only meaningful with a time zone, and the safest habit is to store everything in UTC (Coordinated Universal Time) and convert for display. A regular expression (regex) is a small pattern language for finding things like invoice numbers in messy text. Finally, a schema is a written description of what a valid record looks like, which you check every row against before using it.",
+  "analogy": "It is like a post room receiving parcels from many countries. Someone has to read each label in the right alphabet, convert the local postmark time to one standard clock, find the order number scribbled on the side, and set aside damaged parcels with a note saying why.",
+  "why": "Forward deployed work is full of files from old systems: an ERP export in Windows-1252, a scheduling system that logs local time, a finance sheet with 1.234,56 amounts. If you get these basics wrong, your AI feature reads garbled names, double counts an hour every October and matches the wrong invoices. Customers judge you by these details, because they are what their staff see first.",
+  "subtopics": [
+   {
+    "title": "Text encodings and UTF-8 bugs",
+    "body": "Computers store text as bytes, numbers from 0 to 255. An encoding is the rule that says which bytes mean which characters. ASCII covers only 128 basic English characters. UTF-8 covers every language by using one to four bytes per character, and it is the standard on the web and in most modern tools. Windows-1252 (often called cp1252) and Latin-1 are older one-byte encodings for Western European languages that are still common in exports from Excel and older business systems.\n\nWhen bytes are decoded with the wrong rule you get mojibake, garbled text such as 'CafÃ©' instead of 'Café'. That exact pattern, a capital A with a mark followed by another symbol, almost always means UTF-8 bytes were read as Windows-1252.\n\nTwo more traps. Excel's 'CSV UTF-8' option adds a byte order mark (BOM), three invisible bytes at the start, so your first column name becomes '\\ufeffid' and a lookup for 'id' fails. Decode with 'utf-8-sig' to remove it. And Latin-1 never raises an error, because every byte maps to some character, so a wrong guess passes silently. Always pass encoding= explicitly and prefer errors that fail loudly over errors='replace'.",
+    "example": "Brindlecombe Clinics sends a patient-contact export. The FDE's script opens it with the default encoding and the reminder letters print 'Zoë' as 'ZoÃ«'. Looking at the raw bytes shows 0xC3 0xAB for 'ë', which is UTF-8. The source was right; a spreadsheet step in between had re-saved it as Windows-1252 and then the pipeline read it as UTF-8 again. The fix is to read the original file once, explicitly as UTF-8, and to drop the manual spreadsheet step.",
+    "code": "text = \"Café Müller, 12 €\"\ndata = text.encode(\"utf-8\")          # characters -> bytes\nprint(data)\n# b'Caf\\xc3\\xa9 M\\xc3\\xbcller, 12 \\xe2\\x82\\xac'\n\nprint(data.decode(\"cp1252\"))         # wrong guess: classic mojibake\n# CafÃ© MÃ¼ller, 12 â‚¬\n\n# Excel's \"CSV UTF-8\" adds a byte order mark (BOM) at the start\nbom_file = \"\\ufeffid;name\\n7;Zoë\\n\".encode(\"utf-8\")\nprint(repr(bom_file.decode(\"utf-8\").splitlines()[0]))      # '\\ufeffid;name'\nprint(repr(bom_file.decode(\"utf-8-sig\").splitlines()[0]))  # 'id;name'\n\n# Always name the encoding when you open a file\nwith open(\"export.csv\", \"w\", encoding=\"cp1252\") as f:\n    f.write(\"name\\nZoë\\n\")\nwith open(\"export.csv\", encoding=\"utf-8\", errors=\"strict\") as f:\n    try:\n        f.read()\n    except UnicodeDecodeError as e:\n        print(\"Not UTF-8:\", e.reason)                         # Not UTF-8: invalid continuation byte",
+    "lang": "Python"
+   },
+   {
+    "title": "Dates, times, time zones and UTC",
+    "body": "A timestamp without a time zone is ambiguous. Python calls it a naive datetime; one with a zone attached is aware. Store aware timestamps in UTC and convert to local time only when showing them to a person. Use IANA zone names such as Europe/London or America/New_York, because abbreviations like CST can mean several different zones.\n\nDaylight saving time (DST) creates two awkward cases. When clocks go forward, a local time such as 01:30 does not exist that night. When clocks go back, 01:30 happens twice. Python's zoneinfo module handles this with a fold attribute that says whether you mean the first or the second occurrence. The honest answer is often to ask the source system for UTC or an offset.\n\nYou will also meet numbers that are really dates. Unix time counts seconds since 1 January 1970 UTC; a 13-digit value is usually milliseconds. Excel stores dates as a serial number of days, so 46115 is 3 April 2026 in the default 1900 date system. The table below lists the formats you will see most often.",
+    "example": "Pembury Parcel Lockers logs pickups in each site's local time with no offset. On 1 November 2026 its New York sites record two different pickups at 01:30, an hour apart. A report that treats the column as naive sorts them as simultaneous and shows the night's pickups an hour short. Converting at ingestion with the site's IANA zone, and flagging repeated local hours for review, gives the right order and totals.",
+    "code": "from datetime import datetime, timedelta\nfrom zoneinfo import ZoneInfo\n\nUTC = ZoneInfo(\"UTC\")\nNY = ZoneInfo(\"America/New_York\")\n\n# A store system logs local time with no offset. US clocks go back at 2:00\n# on 1 November 2026, so 1:30 happens twice that night.\nfirst = datetime(2026, 11, 1, 1, 30, tzinfo=NY)          # fold=0: first 1:30\nsecond = first.replace(fold=1)                            # fold=1: second 1:30\nprint(first.astimezone(UTC))    # 2026-11-01 05:30:00+00:00\nprint(second.astimezone(UTC))   # 2026-11-01 06:30:00+00:00\n\n# Unix time: 10 digits usually means seconds, 13 digits milliseconds\nprint(datetime.fromtimestamp(1775174400, UTC))         # 2026-04-03 00:00:00+00:00\nprint(datetime.fromtimestamp(1775174400000 / 1000, UTC))  # same moment\n\n# Excel serial date (1900 system): count days from 1899-12-30\nprint((datetime(1899, 12, 30) + timedelta(days=46115)).date())   # 2026-04-03\n\n# Parse an ISO 8601 string that carries its own offset\nprint(datetime.fromisoformat(\"2026-04-03T09:15:00+02:00\").astimezone(UTC))\n# 2026-04-03 07:15:00+00:00",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Format",
+      "Example",
+      "Watch out for"
+     ],
+     "rows": [
+      [
+       "ISO 8601 with offset",
+       "2026-04-03T09:15:00+02:00",
+       "Best choice; offset is not the same as a zone"
+      ],
+      [
+       "Day first (UK, EU)",
+       "03/04/2026",
+       "3 April; the US reads it as 4 March"
+      ],
+      [
+       "Month first (US)",
+       "04/03/2026",
+       "3 April in the US; the UK reads it as 4 March"
+      ],
+      [
+       "Unix seconds",
+       "1775174400",
+       "Always UTC; 13 digits means milliseconds"
+      ],
+      [
+       "Excel serial",
+       "46115",
+       "Days since 1899-12-30; 1904 system on some old Macs"
+      ],
+      [
+       "Local, no zone",
+       "2026-11-01 01:30",
+       "Ambiguous during DST changes"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Regular expressions for messy fields",
+    "body": "A regular expression is a pattern that describes text. \\d means any digit, {4} means exactly four of the previous item, + means one or more, \\b marks a word boundary, and parentheses capture a part you want to keep. Named groups, written (?P<year>...), make the code easier to read.\n\nUse regexes to find or extract short patterns: an invoice number inside a free-text reference, a date inside a sentence, a postcode in an address line. Always write patterns as raw strings (r\"...\") in Python so backslashes are passed through untouched.\n\nThree habits keep regexes safe. First, collect twenty real examples, including ugly ones, and test the pattern against all of them before trusting it. Second, decide whether you need search (anywhere in the text) or fullmatch (the whole field must match). Third, do not use a regex to parse nested or quoted formats like JSON, XML, HTML or CSV; a proper parser handles escaping and nesting that a pattern will miss. For emails, use a simple pattern to find them and send a confirmation to verify them; a perfect email regex does not exist.",
+    "example": "Thornquist Facilities receives supplier payments whose reference field is typed by hand: 'Invoice INV-2026-00042 due 14/05/2026', 'inv-2026-417 (paid)', 'INV 2026 00043'. A pattern with IGNORECASE finds the first and third forms once the separator is made flexible, and the remaining misses go to a review queue. Automatic matching rises from 71 percent to 93 percent of payments, and the finance team reviews the rest.",
+    "code": "import re\n\nlines = [\n    \"Invoice INV-2026-00042 due 14/05/2026\",\n    \"inv-2026-417 (paid)\",                      # too few digits\n    \"Ref: INV-2025-10077, contact ap@brindle-clinics.co.uk\",\n]\n\n# \\b word boundary, \\d digit, {4} exactly four, (?P<name>...) a named group\nINVOICE = re.compile(r\"\\bINV-(?P<year>\\d{4})-(?P<num>\\d{5})\\b\", re.IGNORECASE)\nDATE_DMY = re.compile(r\"\\b(\\d{2})/(\\d{2})/(\\d{4})\\b\")\nEMAIL = re.compile(r\"[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+\")      # good enough to FIND emails\n\nfor line in lines:\n    m = INVOICE.search(line)\n    print(m.group(\"year\"), m.group(\"num\")) if m else print(\"no invoice id:\", line)\n    if d := DATE_DMY.search(line):\n        day, month, year = d.groups()\n        print(\"  date\", f\"{year}-{month}-{day}\")        # rewrite as ISO 8601\n    if e := EMAIL.search(line):\n        print(\"  email\", e.group())\n# 2026 00042\n#   date 2026-05-14\n# no invoice id: inv-2026-417 (paid)\n# 2025 10077\n#   email ap@brindle-clinics.co.uk",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Token",
+      "Meaning",
+      "Example match"
+     ],
+     "rows": [
+      [
+       "\\d",
+       "one digit",
+       "7"
+      ],
+      [
+       "\\w",
+       "letter, digit or underscore",
+       "a, 9, _"
+      ],
+      [
+       "{4} / {2,5}",
+       "exactly 4 / between 2 and 5",
+       "2026"
+      ],
+      [
+       "+ / * / ?",
+       "1 or more / 0 or more / optional",
+       "INV-?\\d+"
+      ],
+      [
+       "^ and $",
+       "start and end of the text",
+       "^CLM-\\d{7}$"
+      ],
+      [
+       "\\b",
+       "word boundary",
+       "\\bINV\\b"
+      ],
+      [
+       "(?P<name>...)",
+       "named capture group",
+       "(?P<year>\\d{4})"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "CSV, JSON and XML quirks, and Parquet",
+    "body": "CSV looks simple and is not. Fields containing commas or line breaks must be quoted. Many European systems use a semicolon as the delimiter because the comma is the decimal mark. Opening a CSV in Excel and saving it again can drop leading zeros (000417 becomes 417), turn long IDs into scientific notation, and reformat dates. Read CSVs with a parser and tell it to keep columns as text until you decide their types.\n\nJSON has strings, numbers, true, false, null, arrays and objects. It has no date type and no comments. Very large integers can lose precision in JavaScript tools, so IDs are safer as strings. JSON Lines puts one JSON object per line, which suits logs and large exports.\n\nXML is still common in banking, insurance and government systems. It uses namespaces, prefixes like inv: that stand for long URIs, and values can live in attributes or elements. Use a parser such as ElementTree, and defusedxml for files from outside your organisation, since crafted XML can attack a naive parser.\n\nParquet is a columnar file format: it stores each column together, with its type, compressed. It is much smaller and faster for analytics than CSV, and it removes type guessing for the next reader.",
+    "example": "Harlow Vale Pharmacy exports stock levels as a semicolon CSV. Account numbers such as 000417 and product codes such as 0042 lose their zeros when a colleague opens the file in Excel before sending it on. The FDE asks for the untouched export over SFTP, reads it with dtype=str, converts only the quantity column to integers, and writes Parquet for the dashboard. Mismatched stock lines drop from about 300 a week to under 10.",
+    "code": "import io\nimport pandas as pd\nimport xml.etree.ElementTree as ET   # use defusedxml for files from outside\n\ncsv_text = \"account;postcode;amount\\n000417;01234;1250,50\\n\"\ndf = pd.read_csv(io.StringIO(csv_text), sep=\";\", dtype=str)   # keep text as text\nprint(df.loc[0, \"account\"])          # 000417  (leading zeros kept)\n\nxml_text = \"\"\"<inv:Invoice xmlns:inv=\"urn:example:invoice\">\n  <inv:Line sku=\"KB-7\" qty=\"3\"><inv:Price>19.99</inv:Price></inv:Line>\n</inv:Invoice>\"\"\"\nns = {\"inv\": \"urn:example:invoice\"}  # prefixes must be mapped to namespace URIs\nroot = ET.fromstring(xml_text)\nfor line in root.findall(\"inv:Line\", ns):\n    print(line.get(\"sku\"), line.get(\"qty\"), line.find(\"inv:Price\", ns).text)\n# KB-7 3 19.99\n\n# Parquet keeps column types; needs the pyarrow package\ntyped = pd.DataFrame({\"sku\": [\"KB-7\"], \"qty\": [3], \"price\": [19.99]})\ntyped.to_parquet(\"lines.parquet\")\nback = pd.read_parquet(\"lines.parquet\")\nprint(back[\"qty\"].dtype, back[\"price\"].dtype)   # int64 float64",
+    "lang": "Python"
+   },
+   {
+    "title": "Numbers, money and locale formats",
+    "body": "The same amount is written differently around the world. In the US and UK, 1,234.56 uses a comma for thousands and a dot for decimals. In Germany, France and many other countries it is 1.234,56 or 1 234,56, sometimes with a non-breaking space. Accounting exports may show negative numbers in brackets, like (1,200.00), and add currency codes or symbols.\n\nComputers store most decimal numbers as binary floating point, which cannot represent 0.1 exactly. That is why 0.1 + 0.2 prints 0.30000000000000004. For analysis this is harmless, but for money it causes totals that are off by a cent and reconciliation failures. Use Python's Decimal type, or store whole numbers of the smallest unit such as cents, and always keep the currency code in its own column.\n\nWrite one small, tested parsing function for each source's number style, and make it raise an error on anything it does not understand. A silent guess on a thousands separator can turn 1.234 (one thousand two hundred thirty-four) into 1.234 (just over one).",
+    "example": "Kestrelmoor Hotels consolidates invoices from properties in Spain and the UK. The Spanish system writes 1.234,56 EUR and the UK one writes 1,234.56. A naive float parse reads the Spanish value as 1.23456, understating spend by a factor of a thousand for 1,800 invoices. A per-source parse function with Decimal and a separate currency column fixes the report and makes the month's totals reconcile to the cent with the ledger.",
+    "code": "from decimal import Decimal, InvalidOperation\n\nprint(0.1 + 0.2)                     # 0.30000000000000004  (binary float)\nprint(Decimal(\"0.1\") + Decimal(\"0.2\"))   # 0.3\n\ndef parse_amount(raw: str, decimal_sep: str = \",\") -> Decimal:\n    \"\"\"Parse '1.234,56', '(1,200.00)' or '1 250,00 EUR' into a Decimal.\"\"\"\n    s = raw.strip().replace(\"EUR\", \"\").replace(\"\\u00a0\", \"\").replace(\" \", \"\")\n    negative = s.startswith(\"(\") and s.endswith(\")\")   # accounting style\n    s = s.strip(\"()\")\n    thousands = \".\" if decimal_sep == \",\" else \",\"\n    s = s.replace(thousands, \"\").replace(decimal_sep, \".\")\n    try:\n        value = Decimal(s)\n    except InvalidOperation:\n        raise ValueError(f\"not a number: {raw!r}\")\n    return -value if negative else value\n\nprint(parse_amount(\"1.234,56\"))                      # 1234.56\nprint(parse_amount(\"(1,200.00)\", decimal_sep=\".\"))   # -1200.00\nprint(parse_amount(\"1 250,00 EUR\"))                  # 1250.00",
+    "lang": "Python"
+   },
+   {
+    "title": "Validating with JSON Schema and Pydantic",
+    "body": "Validation means checking every record against written rules before you use it. A schema is that set of rules: which fields must exist, their types, allowed formats and ranges.\n\nJSON Schema is a language-neutral standard for describing JSON data. It is useful as a contract you share with the customer's developers, because any language can check it. Pydantic is a Python library where you describe a record as a class with type hints, and it parses and checks input for you. FastAPI uses Pydantic for request bodies, and a Pydantic model can publish its own JSON Schema, so one definition serves both needs.\n\nValidate at the boundary, the moment data enters your system. Keep good rows and rejected rows apart, record the reason for each rejection, and report the counts back to the data owner. A rising reject rate is often the first sign that the source system changed. The checklist below is a good intake routine for any new file feed.",
+    "example": "Oakhollow Health Plan sends a nightly claims file of about 40,000 rows. With a Pydantic model, the pipeline accepts 39,870 and rejects 130, mostly claim IDs missing a digit and dates written 03/04/2026. The reject file goes back to the claims team every morning with row numbers and reasons. After two weeks the source team fixes their export and rejects fall to about 5 a night.",
+    "code": "from datetime import date\nfrom decimal import Decimal\nfrom pydantic import BaseModel, Field, ValidationError\n\nclass Claim(BaseModel):\n    claim_id: str = Field(pattern=r\"^CLM-\\d{7}$\")\n    member_postcode: str = Field(min_length=5, max_length=8)\n    amount: Decimal = Field(gt=0, max_digits=10, decimal_places=2)\n    service_date: date                       # \"2026-04-03\" parses into a date\n\nrows = [\n    {\"claim_id\": \"CLM-0048812\", \"member_postcode\": \"LS6 2QT\",\n     \"amount\": \"84.20\", \"service_date\": \"2026-04-03\"},\n    {\"claim_id\": \"CLM-48812\", \"member_postcode\": \"LS6 2QT\",\n     \"amount\": \"-5\", \"service_date\": \"03/04/2026\"},\n]\nfor row in rows:\n    try:\n        print(\"ok\", Claim(**row).amount)\n    except ValidationError as e:\n        print(\"rejected:\", [err[\"loc\"][0] for err in e.errors()])\n# ok 84.20\n# rejected: ['claim_id', 'amount', 'service_date']\n\n# The same model can publish a JSON Schema to share with the customer's team\nprint(list(Claim.model_json_schema()[\"properties\"]))\n# ['claim_id', 'member_postcode', 'amount', 'service_date']",
+    "lang": "Python",
+    "checklist": [
+     "Get a sample of the untouched file, straight from the source system",
+     "Confirm the encoding, delimiter, quote character and header row",
+     "Write down the date format and the time zone of every time column",
+     "Read everything as text first, then convert each column on purpose",
+     "Define a schema with required fields, types, formats and ranges",
+     "Split output into accepted rows and rejected rows with reasons",
+     "Log row counts in, accepted and rejected on every run",
+     "Agree who receives the reject file and how fast they fix it"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Encoding",
+    "The rule that maps bytes to characters, such as UTF-8 or Windows-1252."
+   ],
+   [
+    "UTF-8",
+    "The standard encoding that can represent every language using one to four bytes per character."
+   ],
+   [
+    "Mojibake",
+    "Garbled text caused by decoding bytes with the wrong encoding, such as 'CafÃ©'."
+   ],
+   [
+    "BOM",
+    "Byte order mark: invisible bytes at the start of some UTF-8 files, removed by decoding with utf-8-sig."
+   ],
+   [
+    "UTC",
+    "Coordinated Universal Time, the single reference clock you store timestamps in."
+   ],
+   [
+    "IANA time zone",
+    "A named zone such as Europe/London that includes its full daylight saving history."
+   ],
+   [
+    "Naive datetime",
+    "A date and time with no time zone attached, which cannot be placed on the UTC timeline."
+   ],
+   [
+    "ISO 8601",
+    "The international date format YYYY-MM-DD, optionally with a time and an offset."
+   ],
+   [
+    "Regular expression",
+    "A pattern language for finding and extracting text, such as \\d{4} for four digits."
+   ],
+   [
+    "Parquet",
+    "A compressed, columnar file format that stores the type of each column."
+   ],
+   [
+    "Schema validation",
+    "Checking each record against written rules for fields, types and formats."
+   ]
+  ],
+  "practice": [
+   "Save the same short text containing 'Zoë Müller 12 €' in UTF-8, UTF-8 with BOM and Windows-1252. Write a Python function that reads raw bytes, tries utf-8-sig then cp1252, and reports which one worked for each file.",
+   "Write a regex for invoice numbers of the form INV-YYYY-NNNNN and test it against 15 strings you make up, including lowercase, missing digits, extra spaces and IDs inside sentences. List which ones it matches and decide which misses are acceptable.",
+   "Stretch: build a small intake script for a semicolon CSV with day-first local times in Europe/Berlin and amounts like 1.234,56. Output accepted rows to Parquet with UTC timestamps and Decimal amounts, and rejected rows to a CSV with a reason column. Include one row at 01:30 on the night the clocks change and explain how you handled it."
+  ]
+ },
+ "pytooling": {
+  "plain": "Python tooling is the set of files and programs around your code that make a project easy to install, check and hand over. pyproject.toml is the standard file that describes a project: its name, its Python version, the libraries it depends on, and settings for other tools. A virtual environment is a private folder of libraries for one project, and a lock file records the exact versions installed so everyone gets the same thing. uv is a fast tool that manages all of this; pip and venv are the built-in alternatives. ruff checks and formats code, mypy checks type hints, and a task runner such as make lets you run all the checks with one short command.",
+  "analogy": "It is like a professional kitchen's prep station. The recipe card (pyproject) lists ingredients and quantities, a sealed box of exactly those ingredients (the lock file and environment) goes to every cook, and the same hygiene checks run before every dish leaves the pass, whoever cooked it.",
+  "why": "FDEs hand code to customer teams who must run it without you. A repo that installs with one command, passes the same checks everywhere and reads its settings from the environment gets accepted by the customer's platform team quickly. The same habits help you pass take-home assignments, where reviewers look at structure and tooling before they read your logic.",
+  "subtopics": [
+   {
+    "title": "pyproject.toml and a clean layout",
+    "body": "pyproject.toml is written in TOML, a simple settings format with [sections] and key = value lines. The [project] section holds the name, version, required Python version and the list of runtime dependencies. Development-only tools such as pytest go in a separate group, so production installs stay small. Each tool reads its own [tool.name] section, which means one file configures ruff, mypy and pytest.\n\nThe [build-system] section names the backend that turns your code into an installable package. You rarely touch it; the tool that creates the project fills it in.\n\nA common layout puts your package in src/<name>/ and tests in tests/. The src folder forces you to install the package before importing it, which catches mistakes where code only works from the repo root. Add a README with the install, run and test commands, and a .env.example listing the settings the program needs, with fake values. That small set of files answers most questions a new colleague has.",
+    "example": "An FDE at Pennyrigg Insurance receives a folder of claim scripts copied from a shared drive, with imports that only work from one person's desktop. She creates the layout below with uv init --package, moves the scripts into src/claimsync, and lists the four libraries they really use. The customer's platform engineer installs and runs it on a fresh server on the first try.",
+    "code": "claimsync/\n  pyproject.toml          # project, dependencies, tool settings\n  uv.lock                 # exact versions (commit it)\n  README.md               # what it does, how to install, run and test\n  Makefile                # make check, make test\n  .env.example            # the settings it needs, with fake values\n  src/\n    claimsync/\n      __init__.py\n      cli.py              # entry point: main()\n      settings.py\n  tests/\n    test_cli.py\n\n# Create this skeleton with uv:\n#   uv init claimsync --package\n#   cd claimsync\n#   uv add httpx pydantic\n#   uv add --dev pytest ruff mypy",
+    "lang": "Text"
+   },
+   {
+    "title": "Virtual environments with uv or pip",
+    "body": "Every project should have its own virtual environment, a folder (by convention .venv) holding a Python interpreter link and that project's libraries. Without one, projects share the system Python and one upgrade can break another project.\n\npyproject.toml usually lists version ranges, such as httpx>=0.27. A lock file records the exact version of every library installed, including the libraries they depend on. Commit the lock file for applications, so every install matches what you tested; upgrade on purpose, one package at a time, and run the tests.\n\nuv creates the environment, installs Python versions, resolves and locks dependencies, and runs commands, and it is very fast. If the customer only allows standard tools, plain venv and pip work everywhere, and pip-tools or a pip freeze file gives you a lock. Poetry is another popular all-in-one tool you may find in existing repos. The table compares them. Whichever you use, a quick check of sys.executable tells you which Python is really running, which solves many 'module not found' mysteries.",
+    "example": "At Pennyrigg the nightly job fails with 'No module named pydantic' although the developer installed it. sys.executable shows the scheduler runs /usr/bin/python3, while the library went into a conda environment on his account. The fix is to run the job with uv run from the project folder, so it always uses the project's own .venv.",
+    "code": "# Option A: uv (one fast tool for Python versions, venvs and locking)\nuv sync                          # create .venv and install from uv.lock\nuv run pytest                    # run a command inside the environment\nuv add \"pydantic>=2.7\"           # add a dependency and update uv.lock\nuv lock --upgrade-package httpx  # upgrade one library on purpose\n\n# Option B: plain pip and venv (always available)\npython -m venv .venv\nsource .venv/bin/activate        # Windows: .venv\\Scripts\\activate\npip install -e .                 # your package, editable\npip install pytest ruff mypy\npip freeze > requirements-lock.txt   # record exact versions\n\n# Which Python is running? Check before blaming the code.\npython -c \"import sys; print(sys.executable)\"",
+    "lang": "bash",
+    "table": {
+     "headers": [
+      "Tool",
+      "What it does",
+      "Good for"
+     ],
+     "rows": [
+      [
+       "venv + pip",
+       "Built-in environment and installer",
+       "Locked-down machines, simple scripts"
+      ],
+      [
+       "pip-tools",
+       "Compiles a pinned requirements file",
+       "pip users who need a lock file"
+      ],
+      [
+       "uv",
+       "Python versions, venv, lock, run; very fast",
+       "New projects and fast CI"
+      ],
+      [
+       "Poetry",
+       "Dependency management and packaging",
+       "Existing repos that already use it"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Linting and formatting with ruff",
+    "body": "A linter reads your code without running it and reports likely problems: unused imports, variables assigned but never used, comparisons that are always true, old syntax. A formatter rewrites spacing, quotes and line breaks into one consistent style, so code reviews focus on logic instead of layout.\n\nruff does both jobs, is written in Rust, and checks a large codebase in well under a second. You choose rule families in pyproject. E and F cover basic errors, I sorts imports, B (bugbear) finds common bug patterns, and UP suggests modern syntax. Each finding has a code, such as F401, that you can look up or silence for one line with a # noqa: F401 comment when you really mean it.\n\nruff check --fix applies safe automatic fixes. Some findings, like an unused variable, are left for a human, because deleting the line might hide a real bug. Run ruff format once on a whole repo in its own commit, so later diffs show only real changes.",
+    "example": "In the Pennyrigg repo, ruff finds 214 issues. 180 are fixed automatically with --fix. Of the rest, one F841 unused variable turns out to be a real bug: the code computed a discounted premium and then returned the undiscounted one. The FDE fixes it and adds a test.",
+    "code": "# src/claimsync/loader.py before\nimport os, json\nfrom typing import List\n\ndef load_claims(path):\n    with open(path) as f:\n        return json.load(f)\n\ndef total(amounts: List[float]) -> float:\n    unused = 1\n    return sum(amounts)\n\n# $ ruff check --output-format=concise src\n# loader.py:1:1: E401 [*] Multiple imports on one line\n# loader.py:1:1: I001 [*] Import block is un-sorted or un-formatted\n# loader.py:1:8: F401 [*] `os` imported but unused\n# loader.py:2:1: UP035 `typing.List` is deprecated, use `list` instead\n# loader.py:8:20: UP006 [*] Use `list` instead of `List` for type annotation\n# loader.py:9:5: F841 Local variable `unused` is assigned to but never used\n#\n# $ ruff check --fix src   -> fixes 5, leaves F841 for a human to decide\n# $ ruff format src        -> blank lines and spacing made consistent",
+    "lang": "Python"
+   },
+   {
+    "title": "Type checking with mypy",
+    "body": "Type hints describe what a function expects and returns, such as def premium(rates: dict[str, float], region: str, months: int) -> float. Python ignores them at runtime. A type checker like mypy reads them and reports mismatches before the code runs.\n\nThe most valuable catches are the boring ones: a value that might be None, text passed where a number is expected, a function that sometimes returns nothing. In the example, dict.get can return None, so mypy refuses to multiply it until you handle the missing case. After an if rate is None check, mypy knows rate is a float. This is called narrowing.\n\nStart gently on existing code. Run mypy with default settings, fix the real problems, then switch on strict = true for new modules, or per module with [[tool.mypy.overrides]]. Libraries without type information can be ignored per module. Pydantic models and dataclasses work well with mypy, so typed data flows through the program. Pyright is another widely used checker, built into many editors; the ideas are the same.",
+    "example": "A Pennyrigg job occasionally crashes with TypeError: unsupported operand type(s) for *: 'NoneType' and 'int' when a new region appears. mypy on the module reports the same line immediately. The fix raises a clear error naming the missing region, and the team adds the region to the rate table.",
+    "code": "def premium(rates: dict[str, float], region: str, months: int) -> float:\n    rate = rates.get(region)          # float | None: the region may be missing\n    return rate * months              # fails at runtime when rate is None\n\npremium({\"north\": 41.5}, \"north\", \"12\")   # months passed as text by mistake\n\n# $ mypy rates.py\n# rates.py:3: error: Unsupported operand types for * (\"None\" and \"int\")  [operator]\n# rates.py:3: note: Left operand is of type \"float | None\"\n# rates.py:5: error: Argument 3 to \"premium\" has incompatible type \"str\"; expected \"int\"  [arg-type]\n# Found 2 errors in 1 file (checked 1 source file)\n\n# Fixed version: handle the missing case, and mypy then knows rate is a float\ndef premium_fixed(rates: dict[str, float], region: str, months: int) -> float:\n    rate = rates.get(region)\n    if rate is None:\n        raise KeyError(f\"no rate for region {region!r}\")\n    return rate * months",
+    "lang": "Python"
+   },
+   {
+    "title": "Settings and logging configuration",
+    "body": "Settings are the values that change between environments: API URLs, tokens, batch sizes, log levels. Keep them out of the code. Read them from environment variables, check at start-up that the required ones exist, and exit with a clear message naming what is missing. Put fake examples in .env.example and keep the real .env out of git.\n\nA small typed Settings object, a dataclass or a pydantic-settings class, gives the rest of the program one clear place to read configuration from, with types and defaults.\n\nConfigure logging once, at the program's entry point, and take the level from settings, so the customer can switch to DEBUG without editing code. Library modules only call logging.getLogger(__name__). The observability lesson shows the logging module in depth, including dictConfig and JSON output. Two rules matter most here: never log secrets such as tokens, and log the settings that matter for debugging, such as the target URL and batch size, at start-up.",
+    "example": "Pennyrigg's first deployment fails silently on the customer's server because CLAIMS_API_URL was never set and the code quietly defaulted to a test URL. With load_settings, the job now stops immediately with 'Missing settings: CLAIMS_API_URL', and the platform engineer fixes the deployment config in five minutes.",
+    "code": "# src/claimsync/settings.py\nimport logging\nimport os\nfrom dataclasses import dataclass\n\n@dataclass(frozen=True)\nclass Settings:\n    api_url: str\n    api_token: str\n    log_level: str = \"INFO\"\n    batch_size: int = 500\n\ndef load_settings() -> Settings:\n    missing = [k for k in (\"CLAIMS_API_URL\", \"CLAIMS_API_TOKEN\") if not os.environ.get(k)]\n    if missing:                                  # fail fast and name what is missing\n        raise SystemExit(f\"Missing settings: {', '.join(missing)}\")\n    return Settings(\n        api_url=os.environ[\"CLAIMS_API_URL\"],\n        api_token=os.environ[\"CLAIMS_API_TOKEN\"],\n        log_level=os.environ.get(\"LOG_LEVEL\", \"INFO\").upper(),\n        batch_size=int(os.environ.get(\"BATCH_SIZE\", \"500\")),\n    )\n\ndef main() -> None:\n    settings = load_settings()\n    logging.basicConfig(level=settings.log_level,   # configured once, at the entry point\n                        format=\"%(asctime)s %(levelname)s %(name)s %(message)s\")\n    log = logging.getLogger(\"claimsync\")\n    log.info(\"start batch_size=%d url=%s\", settings.batch_size, settings.api_url)\n    # never log settings.api_token",
+    "lang": "Python"
+   },
+   {
+    "title": "Makefiles, pre-commit and CI",
+    "body": "A task runner gives long commands short names. make is available on most Linux and macOS machines, and a Makefile with install, lint, type, test and check targets means nobody has to remember flags. Alternatives such as just, or scripts in a tasks folder, do the same job. A classic mistake: Makefile recipe lines must start with a tab character.\n\npre-commit is a tool that runs checks automatically when you run git commit, using hooks listed in .pre-commit-config.yaml. Keep hooks fast, such as ruff and ruff-format, so people do not bypass them. Heavier checks, such as the full test suite, belong in CI.\n\nCI should run the same make check you run locally. When local, hook and CI checks agree, a green build means the same thing everywhere. The checklist below is what a customer's platform team, or a take-home reviewer, usually looks for before accepting a repo.",
+    "example": "Before handing claimsync to Pennyrigg's platform team, the FDE adds the Makefile and pre-commit config below and a CI job that runs make install and make check. Their reviewer clones the repo, runs two commands, sees everything pass and approves the handover the same day.",
+    "code": "# Makefile  (recipe lines must start with a TAB, not spaces)\n.PHONY: install fmt lint type test check\n\ninstall:\n\tuv sync\n\nfmt:\n\tuv run ruff format .\n\tuv run ruff check --fix .\n\nlint:\n\tuv run ruff check .\n\tuv run ruff format --check .\n\ntype:\n\tuv run mypy src\n\ntest:\n\tuv run pytest -q\n\ncheck: lint type test\n\n# .pre-commit-config.yaml  (install once with: pre-commit install)\n# repos:\n#   - repo: https://github.com/astral-sh/ruff-pre-commit\n#     rev: v0.6.9            # pin a release; update with pre-commit autoupdate\n#     hooks:\n#       - id: ruff\n#         args: [--fix]\n#       - id: ruff-format",
+    "lang": "Makefile",
+    "checklist": [
+     "pyproject.toml lists real dependencies and a dev group",
+     "Lock file committed and installs cleanly on a fresh machine",
+     "README gives install, run and test commands that work as written",
+     ".env.example lists every setting; no secrets in the repo",
+     "ruff check and ruff format --check pass",
+     "mypy passes on at least the core modules",
+     "make check runs every check with one command",
+     "CI runs the same make check on every pull request"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "pyproject.toml",
+    "The standard file describing a Python project, its dependencies and tool settings."
+   ],
+   [
+    "Virtual environment",
+    "A per-project folder of installed libraries, kept separate from other projects."
+   ],
+   [
+    "Lock file",
+    "A file recording the exact version of every installed library, so installs are repeatable."
+   ],
+   [
+    "uv",
+    "A fast tool that manages Python versions, virtual environments, dependencies and lock files."
+   ],
+   [
+    "Linter",
+    "A tool that reads code without running it and reports likely mistakes and style problems."
+   ],
+   [
+    "Formatter",
+    "A tool that rewrites code into one consistent style automatically."
+   ],
+   [
+    "ruff",
+    "A fast Python linter and formatter configured in pyproject.toml."
+   ],
+   [
+    "mypy",
+    "A type checker that uses type hints to find mismatches before the code runs."
+   ],
+   [
+    "pre-commit",
+    "A tool that runs configured checks automatically each time you make a git commit."
+   ],
+   [
+    "Task runner",
+    "A tool such as make that gives short names to common project commands."
+   ]
+  ],
+  "practice": [
+   "Create a new project with uv init --package, add one runtime dependency and pytest as a dev dependency, write one function and one test, and confirm uv run pytest passes on a fresh clone of your repo.",
+   "Take any old Python script of yours, run ruff check and mypy on it, and write down each finding and whether it was a real bug, a style issue or a false alarm. Fix the real ones.",
+   "Stretch: turn a small script into a handover-ready repo with a src layout, settings read from environment variables, a Makefile with a check target, a pre-commit config and a CI workflow that runs make check. Ask a friend to clone it and run it using only your README."
+  ]
+ },
+ "entnetwork": {
+  "plain": "An enterprise network is the private network inside a company, and it controls how traffic gets out to the internet and in to internal systems. A proxy is a server that makes web requests on your behalf and can require a login or block certain sites. TLS inspection is when that proxy opens encrypted traffic to scan it and re-encrypts it with a certificate signed by the company's own certificate authority (CA), the body that vouches for certificates. A firewall allows or blocks connections by address and port, usually with an allowlist, a list of approved destinations. A VPN (virtual private network) or a bastion host is how people and tools from outside reach private systems, and a private endpoint lets a cloud service be reached through a private address.",
+  "analogy": "It is like sending post from inside a secure government building. Every letter goes through the mail room (the proxy), which may open and reseal it with its own stamp (TLS inspection), only delivers to approved addresses (the firewall allowlist), and visitors can only reach certain offices with an escort (the bastion or VPN).",
+  "why": "On day one at a bank, insurer or hospital, your code will fail with errors that have nothing to do with your code: CERTIFICATE_VERIFY_FAILED, 407 Proxy Authentication Required, timeouts to the model API. Customers' network changes can take weeks, so knowing the likely cause and asking for the exact change in the first meeting can save a whole sprint.",
+  "subtopics": [
+   {
+    "title": "How traffic leaves a corporate network",
+    "body": "On a home network, your laptop asks DNS for an address and connects straight to it. Inside most large organisations the path is longer. Programs are told to use a proxy, through environment variables or a PAC file (proxy auto-config, a small script that picks the proxy for each URL). For HTTPS the program sends CONNECT host:443 to the proxy, which checks its policy and opens a tunnel.\n\nMany proxies also do TLS inspection. They decrypt the traffic to scan it for malware or data leaks, then re-encrypt it with a certificate issued by the company's own CA. Staff laptops trust that CA because IT installed it, but your containers and libraries often do not.\n\nFinally, a firewall at the edge allows outbound traffic only to approved destinations, and often only from the proxy itself. The vendor's API sees the proxy's public IP, not your server's. The diagram shows this path; each box is a place where a request can fail, with a different error.",
+    "example": "An FDE at Garnetvale Bank runs curl -v on the AI server and sees the request go to proxy.garnetvale.internal:8080, a CONNECT tunnel open, and a certificate issued by 'Garnetvale Inspection CA'. That single output tells her three facts: there is a proxy, it does not need a login from this server, and TLS inspection is on.",
+    "code": "# A request from a server inside a corporate network, as curl -v shows it\n$ curl -v https://api.vendor.example/v1/health\n* Uses proxy env variable https_proxy == 'http://proxy.garnetvale.internal:8080'\n*   Trying 10.40.0.15:8080...\n* Connected to proxy.garnetvale.internal (10.40.0.15) port 8080\n* CONNECT tunnel: HTTP/1.1 negotiated\n> CONNECT api.vendor.example:443 HTTP/1.1          # ask the proxy for a tunnel\n< HTTP/1.1 200 Connection established             # proxy allowed it\n* Server certificate:\n*  subject: CN=api.vendor.example\n*  issuer: CN=Garnetvale Inspection CA            # re-signed by their proxy\n< HTTP/2 200\n# (output shortened; exact wording varies by curl version)",
+    "lang": "bash",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "laptop",
+       90,
+       70,
+       "Your program",
+       "on their network"
+      ],
+      [
+       "pac",
+       265,
+       70,
+       "Proxy settings",
+       "env vars or PAC"
+      ],
+      [
+       "proxy",
+       440,
+       70,
+       "Proxy",
+       "login, URL policy"
+      ],
+      [
+       "tls",
+       615,
+       70,
+       "TLS inspection",
+       "re-signs certs"
+      ],
+      [
+       "fw",
+       615,
+       220,
+       "Firewall",
+       "egress allowlist"
+      ],
+      [
+       "net",
+       440,
+       220,
+       "Internet",
+       "public DNS"
+      ],
+      [
+       "api",
+       265,
+       220,
+       "Vendor API",
+       "sees proxy IP",
+       1
+      ]
+     ],
+     "edges": [
+      [
+       "laptop",
+       "pac"
+      ],
+      [
+       "pac",
+       "proxy"
+      ],
+      [
+       "proxy",
+       "tls"
+      ],
+      [
+       "tls",
+       "fw"
+      ],
+      [
+       "fw",
+       "net"
+      ],
+      [
+       "net",
+       "api"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Corporate proxies and HTTPS_PROXY",
+    "body": "Most command-line tools and libraries look for proxy settings in environment variables. HTTPS_PROXY is the proxy for https URLs, HTTP_PROXY for http URLs, and NO_PROXY lists hosts that must be reached directly. Tools differ on case: curl only reads lowercase http_proxy for http URLs, so set both cases to be safe. The proxy URL itself usually starts with http://, even for HTTPS traffic, because the request to the proxy is a plain CONNECT.\n\nNO_PROXY matters as much as the proxy. Internal services, the metadata service on cloud machines and localhost should bypass the proxy, or requests to them fail. Support for wildcards and IP ranges in NO_PROXY varies by tool, so test each one.\n\nA 407 Proxy Authentication Required status means the proxy wants credentials. Service accounts can often put a user and password in the proxy URL (URL-encode special characters). Some proxies use Windows login protocols such as NTLM or Kerberos, which many tools do not support; a local helper proxy or an allowlist exception for your server is the usual fix. Some tools, such as git, npm, pip and the Docker daemon, also keep their own proxy settings.",
+    "example": "At Garnetvale, pip install works but the app's calls to an internal document service time out. env shows HTTPS_PROXY is set and NO_PROXY is empty, so internal calls go to the proxy, which cannot route back inside. Adding .garnetvale.internal and 10.0.0.0/8 to NO_PROXY fixes it in a minute.",
+    "code": "# Most tools read these variables (curl reads lowercase http_proxy only)\nexport HTTPS_PROXY=http://proxy.garnetvale.internal:8080\nexport HTTP_PROXY=http://proxy.garnetvale.internal:8080\nexport NO_PROXY=localhost,127.0.0.1,.garnetvale.internal,10.0.0.0/8\nexport https_proxy=$HTTPS_PROXY http_proxy=$HTTP_PROXY no_proxy=$NO_PROXY\n\n# Proxy that needs a login: URL-encode special characters in the password\nexport HTTPS_PROXY=\"http://svc-ai:P%40ss%21word@proxy.garnetvale.internal:8080\"\n\n# Some tools keep their own settings\ngit config --global http.proxy http://proxy.garnetvale.internal:8080\nnpm config set https-proxy http://proxy.garnetvale.internal:8080\npip config set global.proxy http://proxy.garnetvale.internal:8080\n\n# Quick checks\nenv | grep -i proxy                       # what does this shell actually have?\ncurl -sS -o /dev/null -w \"%{http_code}\\n\" https://api.vendor.example/v1/health",
+    "lang": "bash",
+    "table": {
+     "headers": [
+      "Tool",
+      "Proxy setting",
+      "CA setting"
+     ],
+     "rows": [
+      [
+       "curl",
+       "https_proxy / HTTPS_PROXY",
+       "--cacert or SSL_CERT_FILE"
+      ],
+      [
+       "Python requests",
+       "HTTPS_PROXY, NO_PROXY",
+       "REQUESTS_CA_BUNDLE"
+      ],
+      [
+       "pip",
+       "pip config global.proxy",
+       "pip config global.cert"
+      ],
+      [
+       "git",
+       "http.proxy",
+       "http.sslCAInfo"
+      ],
+      [
+       "Node.js",
+       "varies; check your version",
+       "NODE_EXTRA_CA_CERTS"
+      ],
+      [
+       "Docker containers",
+       "pass the env vars in",
+       "copy the CA into the image"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "TLS inspection and custom CA bundles",
+    "body": "TLS certificates are trusted because a certificate authority signed them and your software has a list of trusted CAs, called a trust store or CA bundle. Under TLS inspection, the certificate you receive is signed by the company's inspection CA. If your program does not trust that CA, you see errors such as CERTIFICATE_VERIFY_FAILED or 'self-signed certificate in certificate chain'.\n\nDifferent runtimes use different trust stores. Browsers and curl usually use the operating system's store, which IT already updated. Python's requests uses the certifi bundle shipped with the library. Java has its own cacerts keystore. Node.js has a built-in list. So the browser working proves little.\n\nThe fix is to get the corporate root CA as a PEM file, build a bundle containing the public CAs plus that root, and point each runtime at it. Some variables replace the default list (REQUESTS_CA_BUNDLE), while NODE_EXTRA_CA_CERTS adds to it, which is why you combine files first. For Python 3.10 and later, the truststore package makes Python use the operating system's store instead. Never turn verification off; it removes protection and will fail a security review.",
+    "example": "Garnetvale's AI service fails with CERTIFICATE_VERIFY_FAILED when calling the model provider, while the browser on the same server works. openssl shows the issuer is Garnetvale Inspection CA. The FDE gets the root CA from the security team, bakes a combined bundle into the container image and sets REQUESTS_CA_BUNDLE and SSL_CERT_FILE. The calls succeed with verification fully on.",
+    "code": "# 1. See who signed the certificate you actually receive\nopenssl s_client -connect api.vendor.example:443 -servername api.vendor.example \\\n    -proxy proxy.garnetvale.internal:8080 </dev/null 2>/dev/null \\\n  | openssl x509 -noout -issuer -subject\n# issuer=CN = Garnetvale Inspection CA   <- their proxy, not a public CA\n\n# 2. Get the corporate root CA as a PEM file from IT (or export it from the OS store)\n# 3. Build one bundle = public CAs + corporate root, and point each runtime at it\ncat \"$(python -m certifi)\" garnetvale-root-ca.pem > ca-bundle.pem\nexport REQUESTS_CA_BUNDLE=$PWD/ca-bundle.pem          # Python requests\nexport SSL_CERT_FILE=$PWD/ca-bundle.pem               # OpenSSL-based tools, many others\nexport NODE_EXTRA_CA_CERTS=$PWD/garnetvale-root-ca.pem  # Node adds this to its list\nexport AWS_CA_BUNDLE=$PWD/ca-bundle.pem               # AWS CLI and boto3\ngit config --global http.sslCAInfo $PWD/ca-bundle.pem\npip config set global.cert $PWD/ca-bundle.pem\n\n# Alternative for Python 3.10+: use the operating system's trust store\n#   pip install truststore\n#   import truststore; truststore.inject_into_ssl()",
+    "lang": "bash"
+   },
+   {
+    "title": "Firewalls, allowlists and egress rules",
+    "body": "Egress means outbound traffic, from the customer's network out; ingress means inbound. Security teams in regulated industries usually deny all egress by default and allow only listed destinations, often only through the proxy. Getting on that allowlist is a change request that may need approval from a change board, so ask early.\n\nA good request is specific. List source machines or subnets, destination hostnames, ports, protocol, direction, whether traffic goes through the proxy, what data is sent, expected volume and a named owner. Prefer fully qualified hostnames over IP addresses, because cloud APIs sit behind content delivery networks whose IPs change. If the vendor publishes IP ranges, include the link.\n\nIngress is harder than egress. If a vendor needs to call the customer, for example with webhooks, that needs an inbound rule, a public endpoint and usually a security review. Where possible, design so the customer's side calls out and pulls data, which only needs egress.\n\nAlso ask whether some domains are exempt from TLS inspection. Tools that pin certificates break under inspection and need an exception.",
+    "example": "For Garnetvale's AI pilot the FDE sends the request below in week one, listing three vendor hostnames on port 443 via the proxy, from two servers. It is approved at the next weekly change board. A second team that asked for 'internet access for the AI server' waited five weeks and got a question back.",
+    "code": "FIREWALL / PROXY ACCESS REQUEST\nRequested by: FDE team (vendor), sponsor: Head of Claims Operations\nChange ticket: NET-(to be assigned)\n\nSource:       claims-ai-01, claims-ai-02 (subnet 10.40.12.0/24)\nDestination:  api.vendor.example        port 443  HTTPS  outbound via proxy\n              auth.vendor.example       port 443  HTTPS  outbound via proxy\n              files.vendor.example      port 443  HTTPS  outbound via proxy\nNot needed:   any inbound access, any other ports\nPurpose:      send claim summaries for AI drafting (no card data, see DPIA-114)\nData volume:  about 20,000 requests a day, peak 30 per second\nTLS:          inspection may stay on; client trusts the corporate root CA\nIP ranges:    vendor publishes hostnames only; please allow by hostname (FQDN)\nTest plan:    curl -v to each host from both servers, results attached to ticket\nOwner:        platform team, review in 12 months",
+    "lang": "Text"
+   },
+   {
+    "title": "VPNs, bastions and private endpoints",
+    "body": "To reach private systems from outside, you will meet three patterns. A VPN connects your laptop to the customer's network; with split tunnelling only internal traffic goes through it, while full tunnelling sends everything, including your internet traffic, through their proxy. The VPN also changes which DNS server answers you, which is why internal names only resolve while connected.\n\nA bastion, or jump host, is one hardened server you log into to reach others. The Linux lesson shows ssh -J; for databases you often use an SSH port forward, which makes a remote port appear on your laptop. Cloud providers offer managed alternatives such as AWS Systems Manager Session Manager, which needs no open SSH port.\n\nA private endpoint (AWS PrivateLink, Azure Private Endpoint, Google Private Service Connect) gives a cloud service, such as a storage account or a managed AI service, a private IP address inside the customer's network. Traffic never crosses the public internet. It only works if DNS for that service's name resolves to the private IP, which usually needs a private DNS zone linked to the network.",
+    "example": "Garnetvale reaches its managed AI service through a private endpoint. From the app servers the name resolves to 10.40.20.7 and works; from the analysts' VPN it resolves to a public address and is refused, because the private DNS zone is not linked to the VPN's DNS. The network team adds a conditional forwarder and analysts can test from their laptops.",
+    "code": "# Reach a database that only a bastion can see (port forward over SSH)\nssh -N -L 15432:claims-db.garnetvale.internal:5432 bastion\npsql \"host=localhost port=15432 dbname=claims user=readonly\"\n\n# Same idea on AWS without opening SSH: Session Manager port forwarding\naws ssm start-session --target i-0a1b2c3d4e5f67890 \\\n  --document-name AWS-StartPortForwardingSessionToRemoteHost \\\n  --parameters '{\"host\":[\"claims-db.garnetvale.internal\"],\"portNumber\":[\"5432\"],\"localPortNumber\":[\"15432\"]}'\n\n# Private endpoint check: the name should resolve to a PRIVATE address\nnslookup garnetvale-ai.openai.azure.com\n# Address: 10.40.20.7      <- private endpoint in use\n# Address: 20.x.x.x        <- public address: private DNS zone is not linked",
+    "lang": "bash"
+   },
+   {
+    "title": "Diagnosing 'works on my laptop, not in their network'",
+    "body": "The internet lesson taught checking layers in order: DNS, TCP, TLS, HTTP. In a corporate network add three rules.\n\nFirst, test from the machine that fails, and inside the container if the app runs in one. Your laptop, the server and a container can each have different proxy variables, DNS servers and trust stores.\n\nSecond, compare two clients on the same machine. If curl works and Python fails, the network is fine and the difference is in settings: a proxy variable the program does not read, or a CA bundle it does not use. If both fail the same way, take the evidence to the network team.\n\nThird, read the error precisely. A timeout usually means a firewall dropping packets or a missing proxy. 'Connection refused' means something answered and said no. 407 is the proxy asking for a login. A 403 with an HTML block page from a security product is a URL policy, not the API. A certificate error that names the company's CA is TLS inspection. The widget above walks through this as a decision tree, and the checklist below is what to gather before you ask for help.",
+    "example": "Garnetvale's batch job times out, but curl from the same server works. The script prints nothing for proxy variables, because the scheduler starts jobs with a clean environment. Adding HTTPS_PROXY and NO_PROXY to the job definition fixes it. The whole diagnosis takes 20 minutes because the FDE ran the checks below from the scheduler itself.",
+    "code": "#!/bin/bash\n# netcheck.sh HOST  -- run it FROM the machine or container that fails\nHOST=$1\necho \"== proxy settings\";  env | grep -i -E '^(https?|no)_proxy=' || echo \"none set\"\necho \"== DNS\";             nslookup \"$HOST\" | tail -n 3\necho \"== direct TCP 443\";  nc -vz -w 5 \"$HOST\" 443 2>&1 | tail -n 1\necho \"== via curl (uses proxy vars)\"\ncurl -sS -o /dev/null -w \"status=%{http_code} proxy_connect=%{http_connect}\\n\" \\\n     --max-time 15 \"https://$HOST/\" || echo \"curl failed: see error above\"\necho \"== certificate issuer seen by this machine\"\ncurl -sv --max-time 15 \"https://$HOST/\" -o /dev/null 2>&1 | grep -i \"issuer\" | head -n 1\necho \"== which CA bundle Python uses\"\npython3 -c \"import ssl, certifi; print(ssl.get_default_verify_paths().cafile, certifi.where())\"",
+    "lang": "bash",
+    "checklist": [
+     "Run the checks on the failing machine, and inside the container if there is one",
+     "Record the exact error text and the time it happened",
+     "Note proxy variables and NO_PROXY as the program sees them",
+     "Check DNS: does the name resolve, to a public or private address?",
+     "Check TCP to port 443 directly and through the proxy",
+     "Record the certificate issuer the machine actually receives",
+     "Compare curl with your program on the same machine",
+     "Send the network team source, destination, port, time and output"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Proxy",
+    "A server that makes web requests on behalf of clients, often enforcing login and URL policies."
+   ],
+   [
+    "HTTPS_PROXY",
+    "An environment variable telling programs which proxy to use for HTTPS requests."
+   ],
+   [
+    "NO_PROXY",
+    "An environment variable listing hosts and domains that should be reached without the proxy."
+   ],
+   [
+    "PAC file",
+    "Proxy auto-config: a small script that tells browsers which proxy to use for each URL."
+   ],
+   [
+    "TLS inspection",
+    "A proxy decrypting and re-encrypting HTTPS traffic with the company's own certificate authority."
+   ],
+   [
+    "CA bundle",
+    "A file of trusted certificate authority certificates that a program uses to verify servers."
+   ],
+   [
+    "Egress",
+    "Outbound network traffic from a network to the outside; ingress is inbound."
+   ],
+   [
+    "Allowlist",
+    "A list of approved destinations or sources; everything else is blocked."
+   ],
+   [
+    "Bastion host",
+    "A hardened server that is the only way to log in to other private machines."
+   ],
+   [
+    "Private endpoint",
+    "A private IP address inside a customer's network that connects to a cloud service without the public internet."
+   ]
+  ],
+  "practice": [
+   "On your own machine, run curl -v against three HTTPS sites and write down, for each, the certificate issuer and whether a proxy was used. Then set HTTPS_PROXY to a made-up address and record the exact error curl gives.",
+   "Write a firewall access request, using the template in this lesson, for a service that must call two external APIs and one internal database. Include what data is sent and a test plan.",
+   "Stretch: run a local TLS-intercepting proxy such as mitmproxy, point curl and a Python requests script at it, and reproduce CERTIFICATE_VERIFY_FAILED. Then fix it properly by trusting the proxy's CA through REQUESTS_CA_BUNDLE, without disabling verification."
+  ]
+ },
+ "poc": {
+  "plain": "Before many enterprise customers sign a contract, they want proof that a product will work for them. A proof of concept (POC) is a short, focused experiment, usually two to six weeks, that tests one question on the customer's own data. It is part of pre-sales, the work done before a deal is signed, and FDEs often lead the technical side. Scoping means deciding exactly what the POC will and will not cover and what each side must provide. An RFP (request for proposal) is a formal document in which a customer asks several vendors the same detailed questions, including technical and security ones, so they can compare answers.",
+  "analogy": "It is like a test drive before buying a company fleet of vans. You agree which route to drive, what the vans must carry, how fuel use will be measured and who decides, and you agree in advance that a good result leads to a purchase order, not another test drive.",
+  "why": "A POC is often the first time the customer sees you work, and it decides whether the deal happens. FDEs who set clear criteria, size the work honestly and turn results into a decision help win deals that stick. FDEs who say yes to everything end up in endless free POCs, or in contracts that promise things the product cannot do.",
+  "subtopics": [
+   {
+    "title": "POC versus pilot versus production",
+    "body": "The three words are often mixed up, and the mix-up causes disappointment. A POC answers a feasibility question: can this approach work on their data at all, at a sensible cost? It usually uses historical or sample data, a small team and no connection to live systems. It ends with a readout and a go or no-go decision.\n\nA pilot answers a value question: does it help real people in their daily work? It runs with a limited group of real users, real data and at least basic security and support, for weeks or months. It is usually paid. The arc lesson describes running a pilot well.\n\nProduction is the full, supported service under a contract, with service levels, monitoring and change control.\n\nSay out loud which one you are running, and write it down. Many customers expect a POC to become the production system by adding users. It rarely can, because a POC skips security hardening, integration and support on purpose so it can move fast.",
+    "example": "A regional water company, Quarrymoor Water, asks for a 'pilot' of AI fault triage. On the first call the FDE learns they have no labelled data, no API access to the job system yet and no users identified. She proposes a four-week POC on historical reports first, with a paid pilot as the agreed next step if criteria are met.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "",
+      "POC",
+      "Pilot",
+      "Production"
+     ],
+     "rows": [
+      [
+       "Question",
+       "Can it work?",
+       "Does it help users?",
+       "Run it for everyone"
+      ],
+      [
+       "Data",
+       "Historical or sample",
+       "Live, limited scope",
+       "Live, full scope"
+      ],
+      [
+       "Users",
+       "Few, testers",
+       "A real group",
+       "All intended users"
+      ],
+      [
+       "Length",
+       "2 to 6 weeks",
+       "1 to 3 months",
+       "Ongoing"
+      ],
+      [
+       "Commercials",
+       "Often free or low fee",
+       "Usually paid",
+       "Full contract"
+      ],
+      [
+       "Ends with",
+       "Go or no-go decision",
+       "Rollout decision",
+       "Renewal"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Written success criteria before you start",
+    "body": "The single most important POC document is one page of success criteria, agreed and signed before work starts. It turns 'let's see how it goes' into a test with a clear result.\n\nGood criteria are measurable and tied to the customer's question. Each one names a metric, a baseline if one exists, a target, and how and by whom it is measured. The SMART criteria in the arc lesson apply here too. For AI POCs, agree the evaluation set early: who labels it, how many examples, and whether reviewers see the AI's answers blind.\n\nTwo lines are often forgotten. The first is the decision rule: what happens if the criteria are met, and what if they are not. Writing 'if met, a paid pilot starts in May' makes the commercial next step part of the agreement. The second is the list of non-goals, such as 'no integration with the live job system in the POC'.\n\nKeep it to three to five criteria. More than that and the POC becomes a feature checklist instead of a test of the main question.",
+    "example": "Quarrymoor's sponsor first says success means 'the AI understands our faults'. The FDE turns this into four measurable criteria, with a 300-report labelled test set chosen by the maintenance planning lead. The sponsor also agrees in writing that meeting three of them leads to a paid pilot in the North region.",
+    "code": "POC SUCCESS CRITERIA  (signed before work starts)\nCustomer: Quarrymoor Water      Sponsor: Head of Network Maintenance\nQuestion the POC answers:\n  Can AI triage of field fault reports cut time-to-assign for crews?\n\nScope: 1 region (North), 3 months of historical reports (about 9,000)\nTime box: 4 weeks, 2 FDEs, 1 customer analyst at 20 percent\n\n#  Criterion                         Baseline   Target    Measured by\n1  Correct fault category            n/a        >= 85%    300 labelled reports\n2  Correct priority (P1-P4)          n/a        >= 90%    same set, P1 recall 100%\n3  Time to assign (simulated)        47 min     <= 15 min replay of 2 weeks\n4  Cost per report                   n/a        <= 0.05 GBP  token logs\n\nJudged by: maintenance planning lead + 2 supervisors (blind review)\nIf criteria 1, 2 and 4 are met: 3-month paid pilot in North region\nIf not met: written findings, no further commitment on either side\nSigned: ______ (Quarrymoor)   ______ (vendor)   Date: ______",
+    "lang": "Text"
+   },
+   {
+    "title": "Scoping: in, out and customer commitments",
+    "body": "Scope is what the POC will cover. Keep it narrow: one workflow, one team or region, one data source if possible. Every extra system you connect adds access requests and security reviews that can eat the whole time box.\n\nUse fixed time, variable scope. The end date does not move; if something takes longer than expected, you drop lower-priority scope instead of extending. Rank scope items in advance so that choice is quick.\n\nA POC also depends on the customer. Write down what they must provide and by when: sample data, system access, a named analyst's time, subject-matter experts to label examples, and a meeting slot for the readout. When a commitment slips, say so the same day and show what it costs in scope.\n\nWatch for scope creep dressed as enthusiasm. 'Could it also do the invoices?' is a good sign for the future and belongs on a list for the pilot. Free POCs are the most likely to drift, which is one reason some vendors charge a small fee: it makes both sides take the dates seriously.",
+    "example": "In week two, Quarrymoor's operations team asks whether the POC could also draft replies to customer complaints. The FDE thanks them, adds it to the 'pilot candidates' list in the shared document, and keeps the POC on fault triage. The readout later lists it as the second use case, which strengthens the case for the pilot.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "One workflow and one team or region named in writing",
+     "Non-goals listed, including systems you will not connect",
+     "Data samples: which, how many, format and delivery date",
+     "Access: accounts, network, tools, with named owners and dates",
+     "Customer people: analyst and expert hours per week",
+     "Scope items ranked, so you know what to drop first",
+     "Readout date booked with the decision maker attending",
+     "What happens next if the criteria are met"
+    ]
+   },
+   {
+    "title": "Estimating effort and sizing a POC",
+    "body": "The project management lesson covers T-shirt sizes and three-point estimates. POCs add two twists.\n\nFirst, you size the scope to fit a fixed box instead of sizing the box to fit the scope. Start from capacity: people times days. Then list the phases with low and high estimates in engineer-days, and check that the high end fits inside capacity after allowing for waiting.\n\nSecond, waiting is the biggest risk. Access to data, accounts, VPNs and security approvals often takes longer than the build. A common rule of thumb in customer work is to plan a quarter or more of the time as lost to waiting on the first engagement with a customer, and less once you know their processes. Reduce it by sending access requests on day one, or before the POC formally starts.\n\nState assumptions next to the estimate, such as 'sample data by day 3', and agree that if an assumption fails, scope shrinks. Estimate the customer's effort too: their analyst's and experts' hours are a real cost to them, and sponsors appreciate seeing it.",
+    "example": "Quarrymoor's POC has two FDEs for four weeks, so 40 engineer-days. The phases add up to 11 to 21 days. With a quarter of capacity set aside for waiting, 30 days are usable, so even the high end fits, leaving room for one extra criterion if the sponsor wants it. The FDE still keeps the extra criterion out and puts it on the pilot list.",
+    "code": "# Size a 4-week POC: phases with (low, high) engineer-days, plus waiting risk\nphases = {\n    \"Kick-off, criteria, access requests\": (1, 2),\n    \"Data extract and cleaning\":           (3, 6),\n    \"Prompt/pipeline build\":               (4, 7),\n    \"Evaluation set and scoring\":          (2, 4),\n    \"Readout and write-up\":                (1, 2),\n}\nlow = sum(lo for lo, hi in phases.values())\nhigh = sum(hi for lo, hi in phases.values())\ncapacity = 2 * 5 * 4          # 2 FDEs x 5 days x 4 weeks = 40 engineer-days\nwaiting_buffer = 0.25         # share of capacity lost to access and reviews\n\nusable = capacity * (1 - waiting_buffer)\nprint(f\"work: {low}-{high} days, usable capacity: {usable:.0f} days\")\nif high > usable:\n    print(\"Over capacity at the high end: cut scope, not the time box\")\nelse:\n    print(f\"Fits with {usable - high:.0f} days spare at the high end\")\n# work: 11-21 days, usable capacity: 30 days\n# Fits with 9 days spare at the high end",
+    "lang": "Python"
+   },
+   {
+    "title": "Answering RFP technical sections",
+    "body": "Large organisations and public bodies often buy through an RFP. The customer sends a long document of requirements and questions, and each vendor answers in a fixed format by a deadline. An RFI (request for information) is a lighter, earlier version. Security questionnaires, often hundreds of questions, frequently come alongside.\n\nFDEs are asked to answer the technical parts: architecture, integration, deployment, security, data handling and support. Answer each requirement with a clear compliance level first, then a short explanation and evidence. The table shows common levels.\n\nBe precise and honest. RFP answers are often attached to the contract, so an optimistic 'yes' becomes a promise. If the product does not do something, say so and describe the nearest alternative and whether it meets the need behind the question. Reuse approved answers from a library, but reread each one for this customer; products change and a stale answer is a risk.\n\nFinally, read the questions for what they reveal. A block of questions about on-premises deployment and data residency tells you what the security team worries about, which is useful for the POC and the pilot too.",
+    "example": "Quarrymoor's procurement team sends a 140-question RFP with the POC invitation. The FDE marks 118 answers as standard, 14 as configurable, 5 as roadmap without dates, and 3 as not supported, each with the nearest alternative. The evaluation panel later says the honest 'not supported' answers made the rest more credible.",
+    "code": "RFP 4.3.7  \"Describe how customer data is protected in transit and at rest.\"\n\nAnswer: Compliant (standard)\n- In transit: TLS 1.2 or higher on all external endpoints.\n- At rest: AES-256 encryption for stored data; keys managed in the\n  cloud provider's key management service.\n- Customer-managed keys: Partially compliant. Available for stored\n  documents; not yet for search indexes (planned, no committed date).\n- Evidence: SOC 2 Type II report available under NDA (Appendix C).\n\nRFP 4.3.8  \"The solution must run fully on-premises.\"\nAnswer: Not compliant. Offered alternative: single-tenant deployment in the\ncustomer's own cloud account, in-region. See section 5.2 for how this meets\nthe underlying data residency requirement.",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Answer level",
+      "Meaning",
+      "Say also"
+     ],
+     "rows": [
+      [
+       "Compliant (standard)",
+       "Works out of the box today",
+       "Where it is documented"
+      ],
+      [
+       "Compliant (configuration)",
+       "Works with setup, no new code",
+       "Who configures it and effort"
+      ],
+      [
+       "Partially compliant",
+       "Some of the requirement is met",
+       "Exactly which part is not"
+      ],
+      [
+       "Roadmap",
+       "Planned, not available",
+       "Only dates that are committed"
+      ],
+      [
+       "Not compliant",
+       "Not supported",
+       "Nearest alternative, if any"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Turning a POC into a signed deal",
+    "body": "A successful POC does not sign itself. Between a good readout and a signed contract sit a business case, a security review, procurement and legal. Each has its own owner and calendar, and a POC that ends without a plan for them often stalls for months.\n\nThe demo lesson covers running the readout itself. Around it, three habits help. First, confirm the decision maker and the budget early, ideally before the POC starts, so the readout goes to someone who can say yes. Second, keep a mutual action plan: a shared, dated list of every step to signature and go-live, with owners on both sides. It makes delays visible without blame. Third, give your sponsor what they need to sell it internally: a one-page summary with results against criteria, costs, risks and the recommended next step, in words their own leadership uses.\n\nThe FDE's role is technical credibility, not sales pressure. You make sure the results are honest, the production path is realistic and the security team's questions are answered quickly. When those are in place, the commercial conversation is much easier for everyone.",
+    "example": "Quarrymoor's POC meets three of four criteria, missing the time-to-assign target at 19 minutes against 15, because assignments still waited for a supervisor's sign-off. The readout names the miss and the process fix. The mutual action plan below takes the pilot from readout to kick-off in four weeks, with the security review started before procurement instead of after it.",
+    "code": "MUTUAL ACTION PLAN: Quarrymoor Water, AI fault triage   (shared doc, updated weekly)\n\nDate        Step                                    Owner (who)         Status\n14 Apr      POC readout, criteria results           FDE lead            done\n16 Apr      Sponsor recommends pilot to COO         Head of Maintenance done\n23 Apr      Security review of pilot architecture   IT security         in progress\n25 Apr      Pilot SOW and pricing sent              Account executive   planned\n2 May       Procurement: supplier onboarding        Procurement         planned\n9 May       Legal: DPA and SOW signed               Legal both sides    planned\n12 May      Pilot kick-off, North region crews      FDE lead + planners planned\n\nRisks: security review needs a DPIA (owner: data protection officer, due 30 Apr)\nDecision maker: COO.  Budget: maintenance operations, FY26.",
+    "lang": "Text",
+    "checklist": [
+     "Decision maker and budget owner named before the readout",
+     "Results table against every criterion, including misses",
+     "One-page summary the sponsor can forward",
+     "Mutual action plan with dated steps and owners on both sides",
+     "Security review and data protection questions started early",
+     "Pilot scope, users, price and success criteria drafted",
+     "POC environment and data either handed over or deleted as agreed"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Proof of concept (POC)",
+    "A short, time-boxed test of whether a solution can work on the customer's data."
+   ],
+   [
+    "Pilot",
+    "A limited rollout to real users in daily work, to test value before full production."
+   ],
+   [
+    "Pre-sales",
+    "Work done before a contract is signed, such as demos, POCs and RFP answers."
+   ],
+   [
+    "Success criteria",
+    "Measurable targets, agreed in advance, that decide whether a POC or pilot succeeded."
+   ],
+   [
+    "Time box",
+    "A fixed period of work whose end date does not move; scope changes instead."
+   ],
+   [
+    "Scope creep",
+    "The gradual addition of work beyond what was agreed."
+   ],
+   [
+    "RFP",
+    "Request for proposal: a formal document asking vendors detailed questions so they can be compared."
+   ],
+   [
+    "Compliance matrix",
+    "A table answering each RFP requirement with a compliance level and explanation."
+   ],
+   [
+    "Mutual action plan",
+    "A shared, dated plan of steps and owners on both sides from POC to signature and go-live."
+   ],
+   [
+    "SOW",
+    "Statement of work: the contract document describing the work, deliverables, timeline and price."
+   ]
+  ],
+  "practice": [
+   "Pick an AI use case you know, such as support ticket triage. Write a one-page POC success criteria sheet with a question, scope, three to four measurable criteria, who judges them and the decision rule.",
+   "Write answers, with a compliance level and two to four lines each, to five RFP questions: data encryption, single sign-on, data residency, audit logging and on-premises deployment, for a product of your choice. Be honest where it falls short.",
+   "Stretch: build a small estimating sheet (Python or spreadsheet) for a POC with phases, low and high estimates, team size, weeks and a waiting buffer. Show what scope you would cut if the customer's data arrives a week late."
+  ]
+ }
+}

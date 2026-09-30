@@ -1,0 +1,876 @@
+{
+ "security": {
+  "plain": "Security in an app starts with two questions. Authentication (AuthN) asks who you are, and it is proven with a password, a code on your phone, or a login at another trusted system. Authorization (AuthZ) asks what you are allowed to do once we know who you are. In companies, logins usually go through an identity provider (IdP), a central service like Okta or Microsoft Entra ID that holds every employee's account, and apps trust it through single sign-on (SSO). Your app receives a signed token from the IdP, checks it, and then applies its own rules about who may see or change what.",
+  "analogy": "Think of a conference. At the front desk they check your passport and give you a badge (authentication). The badge color then decides which rooms you may enter (authorization). The badge expires at the end of the day, and guards look at it at every door, not just the front desk.",
+  "why": "Almost every enterprise customer will say in the first week: 'Our users must log in with Okta, and only the finance group may see payment data.' An FDE has to wire up SSO with the customer's IT team, map their groups to app roles, give pipelines their own locked-down credentials, and explain it all clearly in a security review.",
+  "subtopics": [
+   {
+    "title": "Authentication versus authorization",
+    "body": "Authentication proves identity. Common factors are something you know (a password), something you have (a phone app or hardware key) and something you are (a fingerprint). Using two or more is multi-factor authentication (MFA).\n\nAuthorization happens after authentication. It checks a rule: may this user do this action on this thing? The rule lives in your code or a policy engine, and it must run on the server for every request.\n\nHTTP gives each failure its own status code. 401 Unauthorized really means 'not authenticated, please log in'. 403 Forbidden means 'I know who you are, and you may not do this'.",
+    "example": "Priya, an analyst at Northwind Insurance, logs in with her password and an Okta Verify push. She is authenticated. She opens the claims dashboard and it loads, because analysts may read claims. She clicks 'Approve payout' and gets a 403, because only the adjuster role may approve. If her session had expired she would have received a 401 and been sent back to log in.",
+    "code": "from fastapi import FastAPI, Depends, HTTPException\n\napp = FastAPI()\n\ndef current_user(token: str = Depends(read_bearer_token)):\n    user = verify_token(token)           # AuthN: who is this?\n    if user is None:\n        raise HTTPException(401, \"Please log in\")\n    return user\n\n@app.post(\"/claims/{claim_id}/approve\")\ndef approve(claim_id: int, user=Depends(current_user)):\n    if \"adjuster\" not in user.roles:     # AuthZ: may they do it?\n        raise HTTPException(403, \"Adjusters only\")\n    return approve_claim(claim_id, approved_by=user.id)",
+    "lang": "Python"
+   },
+   {
+    "title": "Sessions versus tokens",
+    "body": "After login the server must remember you on the next request, because HTTP itself forgets everything between requests. There are two common ways.\n\nA session stores the login state on the server (in memory, Redis or a database) and gives the browser a random session id in a cookie. Every request sends the cookie and the server looks the id up. Logging someone out is easy: delete the row.\n\nA token puts the facts into the credential itself. The most common kind is a JWT (JSON Web Token): three base64 parts, a header, a payload of claims (user id, expiry, roles) and a signature. Any server holding the right key can verify it without a lookup, which suits APIs and many services. The cost is that a token stays valid until it expires, so access tokens are kept short (minutes to an hour) and refreshed with a separate refresh token.",
+    "example": "A retailer's web app uses a session cookie for store managers in the browser. Its mobile app and partner integrations call the same backend with JWT access tokens that expire after 15 minutes. When a manager leaves the company, IT disables them in Entra ID: the web session is deleted at once, and the mobile app fails at its next refresh because the IdP refuses to issue new tokens.",
+    "table": {
+     "headers": [
+      "Question",
+      "Server session",
+      "JWT token"
+     ],
+     "rows": [
+      [
+       "Where is state?",
+       "Server store",
+       "Inside the token"
+      ],
+      [
+       "How is it checked?",
+       "Look up session id",
+       "Verify signature"
+      ],
+      [
+       "Revoke instantly?",
+       "Yes, delete it",
+       "Hard, wait for expiry"
+      ],
+      [
+       "Good for",
+       "Browser apps",
+       "APIs, services, mobile"
+      ],
+      [
+       "Main risk",
+       "Cookie theft",
+       "Long-lived stolen token"
+      ]
+     ]
+    },
+    "code": "import jwt, time   # PyJWT\n\nSECRET = load_from_vault(\"jwt-signing-key\")   # never hard-code\n\ntoken = jwt.encode(\n    {\"sub\": \"user-812\", \"roles\": [\"analyst\"],\n     \"exp\": int(time.time()) + 900},          # expires in 15 min\n    SECRET, algorithm=\"HS256\")\n\nclaims = jwt.decode(token, SECRET, algorithms=[\"HS256\"])  # checks sig + exp\nprint(claims[\"sub\"], claims[\"roles\"])\n# The payload is only base64: anyone can read it. Never put secrets inside.",
+    "lang": "Python"
+   },
+   {
+    "title": "OAuth 2.0 and OpenID Connect",
+    "body": "OAuth 2.0 is a standard for delegated access: an app gets an access token that lets it call an API on a user's behalf without ever seeing their password. The part that issues tokens is the authorization server. Scopes limit what the token may do, such as read:calendar.\n\nOpenID Connect (OIDC) is a thin layer on top of OAuth 2.0 that adds identity. Along with the access token, you receive an ID token, a JWT that says who logged in (sub, email, name) and which IdP vouched for them (iss).\n\nThe authorization code flow is the one to use for web apps. The browser only ever carries a short one-time code, and your server swaps it for tokens over a direct back-channel call. PKCE (Proof Key for Code Exchange) adds a random secret created per login, so a stolen code cannot be redeemed by anyone else. The state parameter ties the callback to the login this browser started, which blocks forged callbacks.",
+    "example": "A logistics company wants its dispatchers to log in to your route-planning app with Okta. You register an OIDC app in their Okta tenant with redirect URI https://routes.example.com/callback and receive a client id and secret. Your app reads Okta's discovery document, redirects to the authorize endpoint, and on callback verifies the ID token's issuer, audience and expiry before creating a session.",
+    "code": "# The authorize redirect (one line, split for reading)\nGET https://acme.okta.com/oauth2/default/v1/authorize\n  ?response_type=code\n  &client_id=0oa1routes\n  &redirect_uri=https://routes.example.com/callback\n  &scope=openid%20email%20profile%20groups\n  &state=Xy7...random\n  &code_challenge=E9Mel...sha256-of-verifier\n  &code_challenge_method=S256\n\n# Okta sends the browser back to:\nhttps://routes.example.com/callback?code=Q1w2...&state=Xy7...random\n\n# Your server then POSTs code + client_secret + code_verifier\n# to the token endpoint and receives id_token and access_token.",
+    "lang": "Text"
+   },
+   {
+    "title": "SAML SSO with an enterprise IdP",
+    "body": "SAML (Security Assertion Markup Language) is an older XML-based SSO standard that many large enterprises still require. The roles are named differently: the IdP (Okta, Entra ID, ADFS) and the service provider (SP), which is your app.\n\nThe flow is similar in spirit. Your app redirects the user to the IdP, the user logs in there, and the IdP sends the browser back to your Assertion Consumer Service (ACS) URL with a signed XML assertion. Your app verifies the signature with the IdP's certificate and reads attributes like email and groups.\n\nSetting it up is mostly an exchange of metadata with the customer's IT team. You give them your entity id and ACS URL. They give you their SSO URL, entity id and signing certificate. Most teams use a library or an identity service instead of parsing SAML XML themselves, because the verification details are easy to get wrong.",
+    "example": "A bank's IT team says: 'We only support SAML with Entra ID.' You send them your SP metadata (entity id https://app.example.com/saml, ACS https://app.example.com/saml/acs). They create an Enterprise Application, assign the group 'FraudOps-Analysts', and send back their federation metadata XML. On the first test login you see the groups attribute contains group object ids, so you agree a mapping table with IT from those ids to your roles.",
+    "checklist": [
+     "Get the customer's IdP name and protocol (OIDC or SAML)",
+     "Send your redirect URI or ACS URL and entity id",
+     "Receive client id and secret, or IdP metadata and certificate",
+     "Agree which claims or attributes are sent: email, name, groups",
+     "Map IdP groups to app roles in a written table",
+     "Decide how users are created and removed (just-in-time or SCIM)",
+     "Test with one pilot user, then a user who should be denied",
+     "Put the certificate and secret expiry dates in a calendar"
+    ],
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "RBAC versus ABAC",
+    "body": "Role-based access control (RBAC) gives users roles, and roles carry permissions. An 'adjuster' may approve claims, a 'viewer' may only read. It is easy to explain and to audit, and it maps well to IdP groups.\n\nAttribute-based access control (ABAC) decides from attributes of the user, the resource and the context. For example: allow if user.department equals record.department and the request comes from the corporate network. It is more flexible, and it avoids creating a role for every combination.\n\nMost real systems mix them. Roles decide which actions exist for a person, and attributes filter which rows they see. Databases can enforce row filters too, for example Postgres row-level security.",
+    "example": "A hospital group has 40 wards. With RBAC alone you would need 'nurse-ward-1' through 'nurse-ward-40'. With ABAC you keep one 'nurse' role and a rule: nurses may read a patient record when the patient's current ward is in the nurse's assigned wards. When a nurse moves wards, only their attribute changes.",
+    "code": "-- Postgres row-level security: an ABAC-style filter in the database\nALTER TABLE patients ENABLE ROW LEVEL SECURITY;\n\nCREATE POLICY nurse_sees_own_ward ON patients\n  FOR SELECT\n  USING (ward_id = ANY (string_to_array(\n           current_setting('app.user_wards'), ',')::int[]));\n\n-- The app sets the user's attributes at the start of each request:\nSET app.user_wards = '12,14';\nSELECT id, name FROM patients;   -- returns only wards 12 and 14",
+    "lang": "SQL"
+   },
+   {
+    "title": "Service accounts and secrets",
+    "body": "Not every caller is a person. A nightly pipeline, a worker or a CI job needs its own identity, called a service account. Give each one only the permissions it needs (least privilege), and never reuse a human's login for it.\n\nThe credentials themselves (API keys, database passwords, client secrets, signing keys) are secrets. They belong in a secrets manager such as AWS Secrets Manager, Google Secret Manager, Azure Key Vault or HashiCorp Vault. The app reads them at runtime, access is logged, and they can be rotated without a code change.\n\nIn cloud environments, prefer identities with no long-lived secret at all: an IAM role attached to the compute, or workload identity federation, where the platform issues short-lived credentials automatically.",
+    "example": "Your ingestion job for a retailer needs to read one S3 bucket and write to one Postgres schema. You create a service role that can only s3:GetObject on that bucket, attach it to the ECS task, and store the Postgres password in Secrets Manager with 30-day rotation. A git scan later finds an old .env file with a key in history; you rotate that key immediately, because deleting the file does not remove it from history.",
+    "code": "import json, boto3\n\ndef get_db_password() -> str:\n    # The task's IAM role grants secretsmanager:GetSecretValue\n    # on this one secret only. No keys live in the code or image.\n    sm = boto3.client(\"secretsmanager\", region_name=\"eu-west-1\")\n    resp = sm.get_secret_value(SecretId=\"prod/ingest/postgres\")\n    return json.loads(resp[\"SecretString\"])[\"password\"]\n\n# .gitignore should list: .env, *.pem, credentials.json\n# Run a secret scanner (for example gitleaks) in CI before merge.",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Authentication",
+    "Proving who a user or service is."
+   ],
+   [
+    "Authorization",
+    "Deciding what an authenticated user or service may do."
+   ],
+   [
+    "Identity provider (IdP)",
+    "The central service, like Okta or Entra ID, that holds accounts and performs logins for many apps."
+   ],
+   [
+    "SSO",
+    "Single sign-on: one login at the IdP gives access to many apps."
+   ],
+   [
+    "OAuth 2.0",
+    "A standard for issuing access tokens that let an app call an API on someone's behalf."
+   ],
+   [
+    "OIDC",
+    "OpenID Connect: an identity layer on OAuth 2.0 that adds a signed ID token describing the user."
+   ],
+   [
+    "SAML",
+    "An XML-based SSO standard where the IdP sends a signed assertion to the app."
+   ],
+   [
+    "JWT",
+    "A signed, base64-encoded JSON token carrying claims such as user id and expiry."
+   ],
+   [
+    "PKCE",
+    "A per-login secret that makes a stolen authorization code useless to an attacker."
+   ],
+   [
+    "Service account",
+    "A non-human identity used by pipelines and services, with its own narrow permissions."
+   ]
+  ],
+  "practice": [
+   "Write a small FastAPI app with two endpoints, GET /claims and POST /claims/{id}/approve. Use a hard-coded dict of fake users with roles and return 401 and 403 correctly. Deliverable: the code plus four curl commands showing 200, 401, 403 and 200 for an adjuster.",
+   "Create a free developer account with an IdP that supports OIDC (for example Okta or Auth0), register an app, and complete a real authorization code flow with PKCE using a library such as Authlib. Deliverable: a screenshot of your decoded ID token claims and a note listing which claims you verified.",
+   "Stretch: design access control for a hospital app with nurses, doctors and billing staff across many wards. Deliverable: a one-page table of roles, attributes and rules, plus the SQL row-level security policy for one table."
+  ]
+ },
+ "compliance": {
+  "plain": "Compliance means following the laws, contracts and audit standards that govern how data is handled. Privacy is the part about data that describes people. Personally identifiable information (PII) is anything that can identify a person, like a name, email, phone number or national id. Protected health information (PHI) is health data linked to a person, and in the US it is regulated by a law called HIPAA. Companies prove they handle data well through laws they follow (GDPR, HIPAA), audits they pass (SOC 2) and contracts they sign (DPAs and BAAs).",
+  "analogy": "A bank vault is a good picture. Different items go in different safes depending on value (classification). The safes are locked (encryption). Only named staff hold keys to each safe (least privilege). A logbook records every opening (audit log). An outside inspector checks the whole setup every year and writes a report (SOC 2).",
+  "why": "FDEs touch real customer data every week, and a single careless copy can end a deal or cause a breach. Security and legal teams will send you questionnaires, ask where data is stored, and ask whether your LLM provider keeps their prompts. You need to answer accurately and design pipelines that pass review the first time.",
+  "subtopics": [
+   {
+    "title": "PII, PHI and data classification",
+    "body": "Start by knowing what kind of data you hold. Direct identifiers point to one person on their own: name, email, social security number, passport number. Indirect identifiers can identify someone in combination: date of birth plus zip code plus gender. Both count as PII in most frameworks.\n\nPHI is health information (diagnoses, lab results, appointment dates, insurance ids) held by a healthcare provider, health plan or their business partners and linked to a person. HIPAA lists 18 identifiers that must be removed for data to count as de-identified under its Safe Harbor method.\n\nA data classification scheme sorts data into levels, and each level gets rules. Most companies use four or so levels. Ask the customer for their scheme and use their names for the levels.",
+    "example": "An insurer sends you three files. products.csv lists policy types and prices: Internal. customers.csv has names, emails and addresses: Confidential PII. claims_medical.csv has diagnosis codes per claimant: Restricted PHI. You store the first in the shared bucket, the second in an encrypted bucket with a small access group, and the third only in the customer's own environment, because your contract does not cover PHI yet.",
+    "table": {
+     "headers": [
+      "Level",
+      "Examples",
+      "Typical rules"
+     ],
+     "rows": [
+      [
+       "Public",
+       "Marketing pages, price list",
+       "No restrictions"
+      ],
+      [
+       "Internal",
+       "Org charts, product specs",
+       "Staff only, no public sharing"
+      ],
+      [
+       "Confidential",
+       "Customer PII, contracts",
+       "Encrypted, need-to-know access, logged"
+      ],
+      [
+       "Restricted",
+       "PHI, card numbers, secrets",
+       "Strict access, approved systems only, extra review"
+      ]
+     ]
+    },
+    "code": "import re\n\nPATTERNS = {\n    \"email\": re.compile(r\"[\\w.+-]+@[\\w-]+\\.[\\w.]+\"),\n    \"us_ssn\": re.compile(r\"\\b\\d{3}-\\d{2}-\\d{4}\\b\"),\n    \"phone\": re.compile(r\"\\+?\\d[\\d\\s().-]{8,}\\d\"),\n}\n\ndef redact(text: str) -> str:\n    # A simple first pass. Real projects add a proper PII detector\n    # and human review, since regex misses names and addresses.\n    for label, pat in PATTERNS.items():\n        text = pat.sub(f\"[{label.upper()}]\", text)\n    return text\n\nprint(redact(\"Call Ann at +1 415 555 0100 or ann@example.com, SSN 123-45-6789\"))",
+    "lang": "Python"
+   },
+   {
+    "title": "Encryption and data residency",
+    "body": "Encryption in transit protects data moving over a network. In practice that means TLS everywhere: HTTPS for APIs, TLS for database connections, and no plain HTTP even inside a private network if the customer's policy says so.\n\nEncryption at rest protects stored data if a disk, backup or bucket is exposed. Cloud providers encrypt storage by default today, and customers often ask for keys held in a key management service (KMS), sometimes keys they control themselves, called customer-managed keys.\n\nData residency is about where data physically lives and is processed. Some customers require the EU, a specific country, or their own cloud account. Remember that data travels to more places than the main database: backups, logs, analytics tools, support tickets and third-party APIs, including LLM providers.",
+    "example": "A German manufacturer requires all data in the EU. Your app runs in eu-central-1, and the database is there. During review they ask about logs, and you realize your error tracker sends stack traces with request bodies to a US region. You switch it to the vendor's EU region, strip request bodies, and add both to the subprocessor list you send them.",
+    "code": "# Terraform: an S3 bucket encrypted with a customer-managed KMS key\nresource \"aws_kms_key\" \"claims\" {\n  description         = \"Key for claims data\"\n  enable_key_rotation = true\n}\n\nresource \"aws_s3_bucket\" \"claims\" {\n  bucket = \"acme-claims-eu\"          # created in the EU provider region\n}\n\nresource \"aws_s3_bucket_server_side_encryption_configuration\" \"claims\" {\n  bucket = aws_s3_bucket.claims.id\n  rule {\n    apply_server_side_encryption_by_default {\n      sse_algorithm     = \"aws:kms\"\n      kms_master_key_id = aws_kms_key.claims.arn\n    }\n  }\n}",
+    "lang": "Terraform"
+   },
+   {
+    "title": "GDPR, HIPAA and SOC 2",
+    "body": "GDPR (General Data Protection Regulation) is an EU law covering the personal data of people in the EU, wherever the company is based. Key ideas: you need a lawful basis to process data, collect only what you need (data minimization), honor rights such as access and erasure, and report certain breaches to the regulator within 72 hours. A controller decides why data is processed; a processor handles it on the controller's behalf. As a vendor you are usually a processor.\n\nHIPAA is a US law for health data. Covered entities (providers, health plans) and their business associates (vendors handling PHI for them) must protect PHI with administrative, physical and technical safeguards. A vendor must sign a Business Associate Agreement (BAA) before receiving PHI.\n\nSOC 2 is an audit report from an independent CPA firm, based on the AICPA's Trust Services Criteria: security, plus optionally availability, processing integrity, confidentiality and privacy. Type I checks that controls are designed well at one point in time. Type II checks they operated over a period, often six to twelve months.",
+    "example": "A US health startup with EU clinics evaluates your product. Their compliance lead asks for: a signed BAA (HIPAA, because you will process PHI), a DPA with Standard Contractual Clauses (GDPR, for the EU clinics' patient data), and your latest SOC 2 Type II report under NDA (proof your controls work). Three different documents for three different questions.",
+    "table": {
+     "headers": [
+      "",
+      "GDPR",
+      "HIPAA",
+      "SOC 2"
+     ],
+     "rows": [
+      [
+       "What it is",
+       "EU law",
+       "US law",
+       "Audit report"
+      ],
+      [
+       "Protects",
+       "Personal data of people in the EU",
+       "Health data (PHI)",
+       "Customer data in your systems"
+      ],
+      [
+       "Key document",
+       "DPA",
+       "BAA",
+       "Type I or Type II report"
+      ],
+      [
+       "Who checks",
+       "Data protection authorities",
+       "US HHS Office for Civil Rights",
+       "Independent CPA auditor"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Least privilege and audit logs",
+    "body": "Least privilege means every person and service gets the minimum access needed for their task, for the shortest time needed. It limits the damage of a mistake or a stolen credential.\n\nIn practice: separate roles for reading and writing, no shared admin accounts, production access granted temporarily with an approval, and service accounts scoped to exactly the tables or buckets they use. Review access on a schedule and remove what is no longer needed.\n\nAudit logs record who did what, to which resource, when, and from where. They must be append-only or tamper-evident, kept for the period the customer requires, and stored separately from the data they describe. Auditors and incident responders rely on them.",
+    "example": "At a retailer, an FDE needs to debug an order pipeline. Instead of a permanent admin login, she requests read-only access to the orders schema for four hours through the access tool. Her manager approves. Every query she runs lands in the audit log. When the window ends, the grant expires by itself. In the quarterly review, the auditor samples this grant and finds the approval and the log.",
+    "code": "-- A simple application audit table (append-only by convention and grants)\nCREATE TABLE audit_log (\n  id           BIGSERIAL PRIMARY KEY,\n  at           TIMESTAMPTZ NOT NULL DEFAULT now(),\n  actor        TEXT NOT NULL,          -- user id or service account\n  action       TEXT NOT NULL,          -- 'read', 'export', 'delete'\n  resource     TEXT NOT NULL,          -- 'patients/8812'\n  source_ip    INET,\n  request_id   TEXT                    -- ties to logs and traces\n);\n\n-- The app may insert, but nobody gets UPDATE or DELETE on it\nREVOKE UPDATE, DELETE ON audit_log FROM app_role;\nGRANT INSERT, SELECT ON audit_log TO app_role;",
+    "lang": "SQL"
+   },
+   {
+    "title": "DPAs, subprocessors and LLM vendors",
+    "body": "A Data Processing Agreement (DPA) is the contract between a controller and a processor. Under GDPR it must cover things like processing only on documented instructions, confidentiality, security measures, help with data subject requests, deletion at the end, and rules for subprocessors.\n\nA subprocessor is any third party your company uses to process the customer's data: your cloud host, email service, error tracker, and any LLM API. Customers usually get a list of them and notice before new ones are added.\n\nFor LLM features, customers ask specific questions. Does the model provider store prompts and outputs, and for how long? Are they used for training? Which region processes them? Is there a zero-retention or enterprise option? Answer from the provider's current contract and documentation, not from memory, and do not send data to a provider that is not on the approved list.",
+    "example": "You want to add a summarization step using a hosted LLM for a legal client. Before writing code you check: the provider is on your subprocessor list, your DPA with the client allows it, the provider's commercial terms state how long inputs are retained and whether they train on them, and the processing region matches the client's residency rule. One item fails (region), so you raise it with the client before building.",
+    "checklist": [
+     "Classify the data the feature will send (PII, PHI, confidential)",
+     "Confirm the vendor is on the approved subprocessor list",
+     "Check the customer's DPA or BAA allows this processing",
+     "Read the vendor's retention and training-use terms",
+     "Confirm the processing region meets residency rules",
+     "Send only the fields needed; mask the rest",
+     "Log each call with request id, never the raw PII",
+     "Record the decision and who approved it"
+    ],
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Answering a security questionnaire",
+    "body": "Before signing, most enterprises send a security questionnaire. It may be their own spreadsheet or a standard one such as the SIG from Shared Assessments or the CAIQ from the Cloud Security Alliance. It can have a hundred questions or more.\n\nThe questions fall into predictable groups: company and certifications, access control and SSO, encryption, network security, vulnerability management and penetration tests, incident response, business continuity and backups, data retention and deletion, subprocessors, employee security training, and more and more often AI use.\n\nMost companies keep a library of approved answers owned by the security team. As an FDE you help with the technical questions about your specific deployment. Be precise, point to evidence, and when the answer is 'no' or 'partially', say so and describe the compensating control or plan.",
+    "example": "Question 47 asks: 'Is customer data used to train AI models?' A weak answer is 'No.' A strong answer: 'Customer data is not used to train models. Our LLM provider processes requests under an enterprise agreement that excludes training on inputs and retains data for a limited period for abuse monitoring, as stated in section 4 of our AI data use policy (attached).' The details must match the actual contract.",
+    "code": "Q: Do you support SSO?\nA: Yes. SAML 2.0 and OIDC. Tested with Okta and Microsoft Entra ID.\n   SCIM 2.0 provisioning available. See Admin Guide section 3.\n\nQ: Is data encrypted at rest?\nA: Yes. AES-256 via cloud KMS. Customer-managed keys on request.\n\nQ: Do you have a SOC 2 report?\nA: Yes, SOC 2 Type II covering security and availability,\n   period Jan-Dec. Available under NDA.\n\nQ: How quickly do you notify customers of a breach?\nA: Within the time set in the DPA. [Answer from the signed contract.]\n\nQ: Do you perform penetration tests?\nA: Annually by a third party. Executive summary available under NDA.",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "PII",
+    "Personally identifiable information: any data that can identify a person directly or in combination."
+   ],
+   [
+    "PHI",
+    "Protected health information: health data linked to a person, regulated in the US by HIPAA."
+   ],
+   [
+    "Data classification",
+    "Sorting data into sensitivity levels, each with its own handling rules."
+   ],
+   [
+    "Encryption at rest",
+    "Encrypting stored data on disks, databases and backups."
+   ],
+   [
+    "Data residency",
+    "The requirement that data be stored and processed in a particular country or region."
+   ],
+   [
+    "GDPR",
+    "The EU law governing processing of personal data of people in the EU."
+   ],
+   [
+    "HIPAA",
+    "The US law setting privacy and security rules for protected health information."
+   ],
+   [
+    "SOC 2",
+    "An independent audit report on a company's controls, based on the AICPA Trust Services Criteria."
+   ],
+   [
+    "DPA",
+    "Data Processing Agreement: the contract setting how a processor may handle a controller's personal data."
+   ],
+   [
+    "Subprocessor",
+    "A third party that processes customer data on your behalf, such as a cloud host or LLM API."
+   ]
+  ],
+  "practice": [
+   "Take any public sample dataset with people in it (for example a fake customer CSV you generate) and classify every column as Public, Internal, Confidential or Restricted. Deliverable: a table with column, level and the handling rule.",
+   "Map the data flow of a small app you have built: every place data is stored, logged, backed up or sent. Deliverable: a list of locations with region, encryption status and whether each is a subprocessor.",
+   "Stretch: answer 15 questions of a real public questionnaire template (the CAIQ is freely available) for an imaginary LLM product. Deliverable: your answers, each marked Yes, No or Partial with the evidence you would attach."
+  ]
+ },
+ "observability": {
+  "plain": "Observability is the ability to understand what a running system is doing from the data it emits. There are three main kinds of data, often called signals. Logs are timestamped records of events, like 'order 9912 failed validation'. Metrics are numbers measured over time, like requests per second or error percentage. Traces follow one request as it passes through several services and show how long each step took. Together they let you notice problems, find their cause, and prove the system meets its targets.",
+  "analogy": "Think of a hospital patient. Metrics are the vital signs on the monitor: heart rate, blood pressure, sampled all the time. Logs are the nurse's notes: specific events with details. A trace is following the patient's path through the hospital that day, from admission to x-ray to surgery, with the time spent at each stop.",
+  "why": "When an FDE's pipeline or agent goes live at a customer, the first question after a complaint is 'what happened?' Without request ids, metrics and traces you are guessing. With them you can tell a customer's VP within the hour that the slowdown came from their own database during a batch job, and show the graph.",
+  "subtopics": [
+   {
+    "title": "Structured logging",
+    "body": "A log line written as free text, like 'Failed to process order', is hard to search and impossible to count. Structured logging writes each event as a set of named fields, usually JSON. Now you can filter for event=order_failed and customer=acme.\n\nEvery log line should carry a request id (or trace id) that is created at the edge and passed through every service. That single field lets you pull together everything that happened for one request.\n\nUse log levels with meaning: DEBUG for detail you only want while investigating, INFO for normal business events, WARNING for something odd but handled, ERROR for a failed operation. Never log passwords, tokens or raw PII.",
+    "example": "A claims API at an insurer processes 50,000 requests a day. A customer calls about claim 44718. Support searches the logs for claim_id=44718, finds request_id=r-8f3a, and then filters on that id to see all five lines from the API, the fraud check service and the database layer, including the one with level=error and reason=timeout.",
+    "code": "import logging, json, uuid, time\n\nclass JsonFormatter(logging.Formatter):\n    def format(self, record):\n        base = {\"ts\": time.strftime(\"%Y-%m-%dT%H:%M:%S\"),\n                \"level\": record.levelname, \"msg\": record.getMessage()}\n        base.update(getattr(record, \"fields\", {}))   # extra named fields\n        return json.dumps(base)\n\nhandler = logging.StreamHandler()\nhandler.setFormatter(JsonFormatter())\nlog = logging.getLogger(\"claims\"); log.addHandler(handler); log.setLevel(\"INFO\")\n\nrid = str(uuid.uuid4())\nlog.info(\"claim_received\", extra={\"fields\": {\"request_id\": rid, \"claim_id\": 44718}})\nlog.error(\"fraud_check_timeout\", extra={\"fields\": {\"request_id\": rid, \"after_ms\": 5000}})\n# {\"ts\": \"...\", \"level\": \"ERROR\", \"msg\": \"fraud_check_timeout\", \"request_id\": \"...\", \"after_ms\": 5000}",
+    "lang": "Python"
+   },
+   {
+    "title": "Metrics with RED and USE",
+    "body": "A metric is a number with a name, labels and a time. Three common types: a counter only goes up (total requests), a gauge goes up and down (queue length), and a histogram groups measurements into buckets so you can compute percentiles (request duration).\n\nTwo checklists tell you what to measure. RED is for services that handle requests: Rate (requests per second), Errors (failed requests per second or as a share), Duration (how long they take). USE is for resources like CPU, memory, disks and connection pools: Utilization (how busy), Saturation (how much work is waiting), Errors.\n\nLook at latency as percentiles. The p95 is the time under which 95% of requests finish. Averages hide the slow tail that angry users experience.",
+    "example": "An e-commerce checkout service shows an average latency of 180 ms, which looks fine. The p99 is 4.2 seconds. The histogram shows a cluster of slow requests only for customers with more than 50 items in the cart, which leads straight to an unindexed query.",
+    "table": {
+     "headers": [
+      "Method",
+      "Letter",
+      "Question it answers",
+      "Example metric"
+     ],
+     "rows": [
+      [
+       "RED",
+       "Rate",
+       "How much traffic?",
+       "http_requests_total"
+      ],
+      [
+       "RED",
+       "Errors",
+       "How much fails?",
+       "5xx per second"
+      ],
+      [
+       "RED",
+       "Duration",
+       "How slow?",
+       "p95 request seconds"
+      ],
+      [
+       "USE",
+       "Utilization",
+       "How busy is it?",
+       "CPU percent"
+      ],
+      [
+       "USE",
+       "Saturation",
+       "How much is waiting?",
+       "queue depth"
+      ],
+      [
+       "USE",
+       "Errors",
+       "Is the resource failing?",
+       "disk I/O errors"
+      ]
+     ]
+    },
+    "code": "from prometheus_client import Counter, Histogram, start_http_server\n\nREQS = Counter(\"http_requests_total\", \"Requests\", [\"route\", \"status\"])\nLAT = Histogram(\"http_request_seconds\", \"Request duration\", [\"route\"])\n\ndef handle_checkout(cart):\n    with LAT.labels(route=\"/checkout\").time():   # Duration\n        status = process(cart)\n    REQS.labels(route=\"/checkout\", status=str(status)).inc()  # Rate, Errors\n    return status\n\nstart_http_server(9100)   # Prometheus scrapes http://host:9100/metrics\n\n# PromQL, p95 latency over 5 minutes:\n# histogram_quantile(0.95, sum by (le) (rate(http_request_seconds_bucket[5m])))",
+    "lang": "Python"
+   },
+   {
+    "title": "Distributed tracing",
+    "body": "A modern request often touches many services: an API gateway, your app, a search index, a database, an LLM. A trace records the whole journey. It is made of spans; each span is one unit of work with a start time, a duration, a name and attributes. Spans nest: the 'handle request' span contains a 'query database' span and a 'call LLM' span.\n\nThe trace id is passed from service to service in a header (the W3C traceparent header is the standard), so every service adds its spans to the same trace.\n\nOpenTelemetry (OTel) is the open standard and set of SDKs for producing logs, metrics and traces in a vendor-neutral way. You instrument once and can send the data to Jaeger, Grafana Tempo, Datadog, Honeycomb or another backend.",
+    "example": "A support-bot request takes 9 seconds. The trace shows: retrieve documents 300 ms, rerank 200 ms, LLM call 1.8 s, then a second LLM call 6.5 s. The second call was a retry after a timeout on the first attempt. The fix is a shorter first timeout and streaming, which you would never have guessed from the total alone.",
+    "code": "from opentelemetry import trace\nfrom opentelemetry.sdk.trace import TracerProvider\nfrom opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter\n\nprovider = TracerProvider()\nprovider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))\ntrace.set_tracer_provider(provider)\ntracer = trace.get_tracer(\"support-bot\")\n\ndef answer(question: str) -> str:\n    with tracer.start_as_current_span(\"answer\") as span:      # parent span\n        span.set_attribute(\"question.length\", len(question))\n        with tracer.start_as_current_span(\"retrieve\"):        # child span\n            docs = search(question)\n        with tracer.start_as_current_span(\"llm.generate\"):    # child span\n            return generate(question, docs)",
+    "lang": "Python"
+   },
+   {
+    "title": "SLIs, SLOs, SLAs and error budgets",
+    "body": "A service level indicator (SLI) is a measurement of what users experience, usually a ratio of good events to all events. Examples: the share of requests that succeed, or the share that finish in under 500 ms.\n\nA service level objective (SLO) is the target for an SLI over a window, such as 99.9% of requests succeed over 30 days. A service level agreement (SLA) is the promise in the contract, usually looser than the SLO, with consequences like service credits if it is missed.\n\nThe error budget is what the SLO allows to fail: 100% minus the SLO. At 99.9% over 30 days that is 0.1% of requests, or roughly 43 minutes of full downtime. Teams use it to balance speed and safety: while budget remains, ship; when it is nearly spent, focus on reliability. Alerts that fire on how fast the budget is burning catch real problems with fewer false alarms.",
+    "example": "A document-processing API handles 2 million requests per 30 days with an SLO of 99.5% success. The budget is 10,000 failed requests. By day 10, 7,000 have failed because of a flaky OCR dependency. The burn rate is far above plan, so the team pauses feature releases and adds retries and a fallback before the SLA of 99.0% is at risk.",
+    "code": "def error_budget(slo: float, total: int, failed: int, days_gone: int, window=30):\n    budget = (1 - slo) * total                 # failures allowed in the window\n    used = failed / budget                     # share of budget spent\n    expected = days_gone / window              # share of time passed\n    return budget, used, used / expected       # burn rate: 1.0 = on plan\n\nbudget, used, burn = error_budget(0.995, 2_000_000, 7_000, 10)\nprint(f\"budget={budget:.0f} used={used:.0%} burn_rate={burn:.1f}x\")\n# budget=10000 used=70% burn_rate=2.1x  -> slow releases, fix reliability\n\nminutes = (1 - 0.999) * 30 * 24 * 60\nprint(f\"99.9% over 30 days allows {minutes:.1f} minutes of downtime\")   # 43.2",
+    "lang": "Python"
+   },
+   {
+    "title": "Alerts, on-call and runbooks",
+    "body": "An alert is a rule that notifies a person when something needs action. A good alert is about a symptom users feel, is actionable, and is rare. Pages (which wake someone up) are for urgent user impact. Everything else goes to a ticket or a chat channel.\n\nOn-call means a named person is responsible for responding during a period. When paged, they acknowledge, assess impact, mitigate first (roll back, fail over, turn off a feature flag) and investigate the root cause after users are safe.\n\nA runbook is a short document linked from the alert. It says what the alert means, how to check it, the common causes and the safe first actions. After an incident, a blameless postmortem records the timeline, the cause and the follow-up fixes without blaming people.",
+    "example": "At 02:10 an alert fires: checkout error rate above 2% for 10 minutes. The on-call engineer opens the linked runbook, checks the dashboard, and sees errors started with the 01:55 deploy. The runbook's step 2 says roll back the last deploy. Errors drop at 02:18. The next day the postmortem finds a missing database migration and adds a deploy check.",
+    "code": "# Prometheus alerting rule\ngroups:\n- name: checkout\n  rules:\n  - alert: CheckoutHighErrorRate\n    expr: |\n      sum(rate(http_requests_total{route=\"/checkout\",status=~\"5..\"}[5m]))\n        / sum(rate(http_requests_total{route=\"/checkout\"}[5m])) > 0.02\n    for: 10m                          # must persist, avoids flapping\n    labels:\n      severity: page\n    annotations:\n      summary: \"Checkout 5xx rate above 2% for 10 minutes\"\n      runbook_url: \"https://wiki.example.com/runbooks/checkout-errors\"",
+    "lang": "YAML",
+    "checklist": [
+     "Alert names the symptom and the threshold",
+     "Alert links to a runbook",
+     "Runbook: what it means, how to confirm, first safe actions",
+     "Dashboard link shows the relevant RED metrics",
+     "Escalation path and owner are written down",
+     "Postmortem template ready: timeline, impact, cause, actions"
+    ]
+   },
+   {
+    "title": "Tracing LLM calls",
+    "body": "LLM features need the same signals plus some of their own. For each model call, record the model name, the prompt template version, input and output token counts, latency (including time to first token when streaming), cost, the stop reason, and any tool calls with their results.\n\nAgents make many calls per user request, so traces matter even more. A trace shows the chain: plan, tool call, retrieval, second model call, final answer. Without it, a bad answer is a mystery.\n\nOpenTelemetry has semantic conventions for generative AI with attribute names such as gen_ai.request.model and gen_ai.usage.input_tokens, and several LLM observability tools (for example Langfuse, LangSmith, Arize Phoenix) build on traces. Store full prompts and outputs only if your data policy allows it, since they may contain customer PII.",
+    "example": "An insurer's claims assistant costs twice the forecast. The traces show that 30% of requests call the retrieval tool three times because the model keeps rephrasing the query. Grouping by prompt version shows it started with version 14. Reverting the prompt halves tokens per request, and a dashboard of cost per request by prompt version now catches this kind of change.",
+    "code": "import time\nfrom anthropic import Anthropic\nfrom opentelemetry import trace\n\nclient, tracer = Anthropic(), trace.get_tracer(\"claims-assistant\")\n\ndef ask(question: str, prompt_version=\"v15\") -> str:\n    with tracer.start_as_current_span(\"llm.chat\") as span:\n        t0 = time.monotonic()\n        msg = client.messages.create(model=MODEL, max_tokens=800,\n            messages=[{\"role\": \"user\", \"content\": question}])\n        span.set_attribute(\"gen_ai.request.model\", MODEL)\n        span.set_attribute(\"prompt.version\", prompt_version)\n        span.set_attribute(\"gen_ai.usage.input_tokens\", msg.usage.input_tokens)\n        span.set_attribute(\"gen_ai.usage.output_tokens\", msg.usage.output_tokens)\n        span.set_attribute(\"llm.stop_reason\", msg.stop_reason)\n        span.set_attribute(\"llm.latency_ms\", int((time.monotonic() - t0) * 1000))\n        return msg.content[0].text",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Structured log",
+    "A log event written as named fields, usually JSON, so it can be filtered and counted."
+   ],
+   [
+    "Metric",
+    "A numeric measurement recorded over time, such as requests per second."
+   ],
+   [
+    "Percentile (p95)",
+    "The value below which 95% of measurements fall; used for latency."
+   ],
+   [
+    "Trace",
+    "The record of one request's path through services, made of timed spans."
+   ],
+   [
+    "Span",
+    "One timed unit of work inside a trace, with a name and attributes."
+   ],
+   [
+    "OpenTelemetry",
+    "An open standard and SDKs for producing logs, metrics and traces for any backend."
+   ],
+   [
+    "SLI",
+    "Service level indicator: a measured ratio of good events to all events."
+   ],
+   [
+    "SLO",
+    "Service level objective: the internal target for an SLI over a time window."
+   ],
+   [
+    "SLA",
+    "Service level agreement: the contractual promise to a customer, with consequences if missed."
+   ],
+   [
+    "Error budget",
+    "The amount of failure an SLO allows, used to decide between shipping and fixing."
+   ]
+  ],
+  "practice": [
+   "Add JSON logging with a request id to a small FastAPI app so every line for one request shares the id. Deliverable: the code and five log lines from two concurrent requests that you can separate by id.",
+   "Expose RED metrics with prometheus_client, run Prometheus and Grafana locally with Docker Compose, and build one dashboard with rate, error share and p95 latency. Deliverable: a screenshot while a small load script runs.",
+   "Stretch: instrument an LLM call chain (retrieve, call model, call a tool, call model again) with OpenTelemetry spans including token counts, and write an SLO and a one-page runbook for it. Deliverable: a trace screenshot, the SLO definition and the runbook."
+  ]
+ },
+ "caching": {
+  "plain": "A cache is a place that keeps a copy of data so it can be returned faster than going to the original source. Performance is about two numbers: latency, the time one request takes, and throughput, how many requests per second the system can serve. Caches sit at many levels, from your browser to servers around the world to a fast in-memory store next to your application. The difficult part is freshness: deciding how long a copy may be used and removing it when the original changes.",
+  "analogy": "A chef keeps the most used ingredients on the counter instead of walking to the storeroom each time. The counter is the cache, the storeroom is the database. Items on the counter go stale, so the chef throws some away at the end of each shift (a TTL) and swaps any item right away when the storeroom gets a fresh delivery (invalidation).",
+  "why": "Customers judge a deployment by how fast it feels. An FDE is often asked why a dashboard takes eight seconds or why the LLM bill is so high. Knowing where to cache, how to keep it correct, and how to prove the improvement with a load test turns those complaints into quick wins.",
+  "subtopics": [
+   {
+    "title": "Latency, throughput and percentiles",
+    "body": "Latency is the time from sending a request to getting the full answer, measured in milliseconds. Throughput is how many requests the system completes per second. They are related but different: a system can have low latency at 10 requests per second and fall apart at 1,000.\n\nLook at latency as percentiles. p50 is the median. p95 and p99 show the slow tail. With many requests per page or per user session, most users will hit the tail at some point.\n\nKnow the rough cost of common operations. Reading from memory is far faster than a network call, which is faster than a disk-bound database query, which is usually faster than an LLM call measured in seconds. Caching works by replacing a slow step with a fast one.",
+    "example": "A retailer's product page calls five services. Each has a p99 of 800 ms, but a p50 of 50 ms. Because a page needs all five, the chance at least one is slow is much higher than 1%, so many page loads feel slow even though each service looks fine on average. Caching the two slowest services' responses removes most of the tail.",
+    "table": {
+     "headers": [
+      "Operation",
+      "Rough latency"
+     ],
+     "rows": [
+      [
+       "Read from app memory",
+       "under a microsecond"
+      ],
+      [
+       "Redis GET in same data center",
+       "about 0.2 to 1 ms"
+      ],
+      [
+       "Simple indexed database query",
+       "about 1 to 10 ms"
+      ],
+      [
+       "Complex analytic query",
+       "100 ms to many seconds"
+      ],
+      [
+       "Call to an API in another region",
+       "50 to 200 ms"
+      ],
+      [
+       "LLM completion of a few hundred tokens",
+       "one to many seconds"
+      ]
+     ]
+    },
+    "code": "import statistics, random\n\n# 1,000 simulated request times in ms: mostly fast, a few slow\ntimes = [random.gauss(60, 10) for _ in range(980)] + [random.uniform(800, 2000) for _ in range(20)]\ntimes.sort()\n\ndef pct(p):                       # simple percentile\n    return times[int(p / 100 * (len(times) - 1))]\n\nprint(f\"mean={statistics.mean(times):.0f} p50={pct(50):.0f} p95={pct(95):.0f} p99={pct(99):.0f}\")\n# the mean looks OK, the p99 shows the 2% of users who wait over a second",
+    "lang": "Python"
+   },
+   {
+    "title": "Where caches live",
+    "body": "The browser cache keeps files and responses on the user's device, controlled by the Cache-Control header your server sends. Static files like images and scripts can be cached for a long time if their file name changes when their content changes.\n\nA CDN (content delivery network) such as CloudFront, Cloudflare or Fastly keeps copies on servers near users. It serves static files and sometimes whole API responses that are the same for everyone.\n\nInside your system, an application cache can be an in-process dictionary (fast, but each server has its own copy and it vanishes on restart) or a shared store like Redis or Memcached. Databases cache too: their buffer pool keeps hot pages in memory, and you can build materialized views or summary tables to precompute heavy results.",
+    "example": "A news site for a publisher: article images and JavaScript are cached for a year in browsers and at the CDN (file names include a content hash). The article HTML is cached at the CDN for 60 seconds. Comment counts come from Redis with a 30-second TTL. The logged-in user's reading history is never cached at shared layers.",
+    "table": {
+     "headers": [
+      "Layer",
+      "Good for",
+      "Watch out for"
+     ],
+     "rows": [
+      [
+       "Browser",
+       "Static files, user's own data",
+       "Cannot force it to clear"
+      ],
+      [
+       "CDN",
+       "Static assets, public pages",
+       "Must not cache private data"
+      ],
+      [
+       "In-process memory",
+       "Small hot lookups",
+       "Different copy per server"
+      ],
+      [
+       "Redis",
+       "Shared results across servers",
+       "Another system to run"
+      ],
+      [
+       "Database views",
+       "Heavy aggregate queries",
+       "Refresh schedule"
+      ]
+     ]
+    },
+    "code": "# HTTP headers that control browser and CDN caching\n\n# Hashed static file: safe to keep for a year\nCache-Control: public, max-age=31536000, immutable\n\n# Public page: CDN may keep 60 s, browser must revalidate\nCache-Control: public, s-maxage=60, max-age=0\n\n# Personal data: never store in shared caches\nCache-Control: private, no-store\n\n# Revalidation: the browser sends If-None-Match with this value,\n# the server replies 304 Not Modified if nothing changed\nETag: \"a7f3c9\"\n",
+    "lang": "Text"
+   },
+   {
+    "title": "Cache-aside, TTLs and invalidation",
+    "body": "Cache-aside (also called lazy loading) is the most common pattern. On a read, the app checks the cache. On a hit it returns the copy. On a miss it reads the database, stores the result in the cache, and returns it. The cache only ever holds data someone asked for.\n\nA TTL (time to live) makes each entry expire on its own after a set time. Choose it from the business: how stale may this value be? A product description can be an hour old; a stock level shown at checkout maybe a few seconds.\n\nInvalidation means deleting or updating a cached entry when the source changes. The simplest reliable approach is to delete the key after a successful write so the next read reloads it. Other options are write-through (update the cache during the write) and versioned keys (change the key when the schema or logic changes, for example product:42:v2).",
+    "example": "An airline's fare search caches route prices for 5 minutes. When the revenue team changes a fare, the pricing service deletes the affected keys, so customers see the new price on their next search. When a developer changes the response format, they bump the key prefix from v3 to v4 so old entries are simply ignored and expire.",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "req",
+       90,
+       70,
+       "Read request",
+       "GET product 42"
+      ],
+      [
+       "cache",
+       265,
+       70,
+       "Check cache",
+       "key product:42"
+      ],
+      [
+       "hit",
+       440,
+       70,
+       "Hit",
+       "return copy"
+      ],
+      [
+       "miss",
+       265,
+       220,
+       "Miss",
+       "query the DB"
+      ],
+      [
+       "fill",
+       440,
+       220,
+       "Store with TTL",
+       "SET ex=300"
+      ],
+      [
+       "write",
+       615,
+       220,
+       "Price update",
+       "DELETE the key",
+       1
+      ]
+     ],
+     "edges": [
+      [
+       "req",
+       "cache"
+      ],
+      [
+       "cache",
+       "hit",
+       0,
+       "found"
+      ],
+      [
+       "cache",
+       "miss",
+       0,
+       "absent"
+      ],
+      [
+       "miss",
+       "fill"
+      ],
+      [
+       "write",
+       "fill",
+       0,
+       "clears"
+      ]
+     ]
+    },
+    "code": "import json, random\n\ndef cache_get_or_load(key: str, loader, ttl: int = 300):\n    value = r.get(key)\n    if value is not None:\n        return json.loads(value)                  # hit\n    value = loader()                              # miss: read source\n    jitter = random.randint(0, ttl // 10)         # spread expiry times\n    r.set(key, json.dumps(value), ex=ttl + jitter)\n    return value\n\nprice = cache_get_or_load(\"fare:JFK-LHR:2026-10-03:v4\",\n                          lambda: pricing_db.lowest_fare(\"JFK\", \"LHR\", \"2026-10-03\"),\n                          ttl=300)",
+    "lang": "Python"
+   },
+   {
+    "title": "Caching LLM responses and prompts",
+    "body": "LLM calls are slow and billed per token, so they are good candidates for caching. There are two distinct kinds.\n\nResponse caching is your own cache: hash the full request (model, system prompt, messages, parameters) and store the answer. An identical request returns the stored answer instantly and for free. It helps when the same questions repeat, such as classifying the same product titles again. Semantic caching goes further and matches similar questions using embeddings, which saves more but can return a wrong answer for a question that only looks similar, so use it carefully.\n\nPrompt caching is a provider feature. Many requests share a long identical start: a big system prompt, tool definitions, or a long document. The provider can store its processed form of that prefix for a short time, so later requests that start the same way are cheaper and faster, while the model still writes a fresh answer. With the Anthropic API you mark the end of the reusable prefix with cache_control, and the usage fields report tokens written to and read from the cache.",
+    "example": "A law firm's assistant sends the same 40-page contract with every question a lawyer asks about it. Without prompt caching, each question pays for all the contract tokens again. With the contract marked as a cacheable prefix, follow-up questions within the cache lifetime read it from the cache, which the usage fields confirm, and responses start sooner.",
+    "code": "from anthropic import Anthropic\nclient = Anthropic()\n\ndef ask_about_contract(contract_text: str, question: str):\n    msg = client.messages.create(\n        model=MODEL, max_tokens=600,\n        system=[\n            {\"type\": \"text\", \"text\": \"You answer questions about the contract below.\"},\n            {\"type\": \"text\", \"text\": contract_text,\n             \"cache_control\": {\"type\": \"ephemeral\"}},   # cache up to here\n        ],\n        messages=[{\"role\": \"user\", \"content\": question}],  # varies each call\n    )\n    u = msg.usage\n    print(\"written to cache:\", u.cache_creation_input_tokens,\n          \"read from cache:\", u.cache_read_input_tokens,\n          \"uncached input:\", u.input_tokens)\n    return msg.content[0].text",
+    "lang": "Python"
+   },
+   {
+    "title": "Load testing basics",
+    "body": "A load test sends realistic traffic to a system to see how latency, errors and resource use change as load grows. Run it against a staging environment that resembles production, never against a customer's production system without their written agreement.\n\nStart with a baseline at normal load, then ramp up to expected peak and beyond. Watch p95 latency, error rate and throughput together. The point where latency rises sharply or errors appear is your capacity limit. Find which resource saturates first (CPU, database connections, a rate limit).\n\nMake one change at a time, such as adding a cache, and rerun the same test so the before and after are comparable. Tools include Locust (Python), k6 (JavaScript) and JMeter.",
+    "example": "A bank's statement API must handle 300 requests per second at month-end. A Locust test shows p95 at 250 ms up to 120 req/s, then p95 jumps to 3 s and 5% of requests fail as the database connection pool saturates. After caching the account summary in Redis with a 60-second TTL, the same test reaches 350 req/s with p95 at 180 ms.",
+    "checklist": [
+     "Agree the goal: target requests per second and p95 limit",
+     "Use staging with production-like data volume",
+     "Script realistic user journeys, with think time",
+     "Run a baseline and save the numbers",
+     "Ramp load in steps and watch p95, errors and throughput",
+     "Find the first saturated resource",
+     "Change one thing, rerun the same test, compare"
+    ],
+    "code": "# locustfile.py\nfrom locust import HttpUser, task, between\n\nclass StatementUser(HttpUser):\n    wait_time = between(1, 3)          # think time between actions\n\n    @task(3)\n    def summary(self):\n        self.client.get(\"/accounts/1001/summary\")\n\n    @task(1)\n    def statement(self):\n        self.client.get(\"/accounts/1001/statements?month=2026-09\")\n\n# Run headless: 400 users, 20 new users per second, for 10 minutes\n# locust -f locustfile.py --host https://staging.example.com \\\n#        --headless -u 400 -r 20 -t 10m",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Latency",
+    "The time one request takes from start to finish."
+   ],
+   [
+    "Throughput",
+    "The number of requests a system completes per second."
+   ],
+   [
+    "Cache hit rate",
+    "The share of reads answered from the cache instead of the source."
+   ],
+   [
+    "CDN",
+    "Content delivery network: servers near users that hold copies of content."
+   ],
+   [
+    "Redis",
+    "An in-memory key-value store commonly used as a shared cache."
+   ],
+   [
+    "Cache-aside",
+    "A pattern where the app reads the cache, and on a miss loads from the source and fills the cache."
+   ],
+   [
+    "TTL",
+    "Time to live: how long a cached entry is kept before it expires."
+   ],
+   [
+    "Invalidation",
+    "Removing or updating a cached entry when the original data changes."
+   ],
+   [
+    "Prompt caching",
+    "A provider feature that reuses the processed form of a repeated prompt prefix to cut cost and latency."
+   ],
+   [
+    "Load test",
+    "A test that sends controlled traffic to measure performance and find capacity limits."
+   ]
+  ],
+  "practice": [
+   "Write a small FastAPI endpoint that sleeps 500 ms to simulate a slow query, then add Redis cache-aside with a 30-second TTL. Deliverable: timings for the first and second request and a note on what happens after 30 seconds.",
+   "Add an update endpoint that changes the underlying value and invalidates the key. Deliverable: a short script showing a read, an update, and a read that returns the new value without waiting for the TTL.",
+   "Stretch: load test the endpoint with Locust at 50, 200 and 500 users, with and without the cache, and make one LLM call path use prompt caching. Deliverable: a table of p95 and error rate per run, plus the cache usage fields from two consecutive LLM calls."
+  ]
+ },
+ "queues": {
+  "plain": "Some work takes too long, or depends on something too unreliable, to do while a user waits. A message queue is a service that holds tasks until a worker is ready to process them. Your API puts a message on the queue and answers right away. Separate programs called workers take messages off the queue and do the work in the background. This design lets the system absorb bursts of traffic, retry failures, and keep slow jobs from blocking fast ones.",
+  "analogy": "A busy restaurant kitchen uses a ticket rail. The waiter clips an order ticket to the rail and goes back to the tables at once. Cooks take tickets in order when they are free. If a dish is ruined, the ticket goes back up. If something cannot be made at all, the ticket goes to the manager's desk instead of being thrown away.",
+  "why": "FDE work is full of long jobs: ingesting a customer's million-row export, running an LLM over 10,000 documents, syncing to a slow CRM. Customers notice when these time out or run twice. Knowing queues, retries, idempotency and webhooks lets you build pipelines that finish reliably and report their status clearly.",
+  "subtopics": [
+   {
+    "title": "Sync versus async work",
+    "body": "Synchronous (sync) work happens inside the request: the client waits until the answer is ready. It is simple and right when the work is fast, usually well under a second or two, and the client needs the result immediately.\n\nAsynchronous (async) work is handed off. The server records the job, replies at once with a job id, and processes it later. The client finds out the result by polling a status endpoint or by receiving a webhook.\n\nChoose async when the work is slow, when traffic comes in bursts, when it calls an unreliable dependency, or when a failure should be retried without the user having to press the button again. HTTP 202 Accepted is the standard status for 'I have your request and will process it later'.",
+    "example": "An insurer's portal lets adjusters request a fraud report on a claim. Looking up the claim is sync: 80 ms, shown immediately. The fraud report reads 3 years of history and calls an LLM, taking about 90 seconds. That is async: the portal shows 'Report in progress', and a notification appears when it is done.",
+    "table": {
+     "headers": [
+      "Signal",
+      "Keep it sync",
+      "Make it async"
+     ],
+     "rows": [
+      [
+       "Duration",
+       "Under a second or two",
+       "Seconds to hours"
+      ],
+      [
+       "User needs result now?",
+       "Yes",
+       "Can wait or be notified"
+      ],
+      [
+       "Traffic",
+       "Steady",
+       "Bursty, large batches"
+      ],
+      [
+       "Dependency",
+       "Fast and reliable",
+       "Rate limited or flaky"
+      ],
+      [
+       "Failure handling",
+       "Show error to user",
+       "Retry in background"
+      ]
+     ]
+    },
+    "code": "from fastapi import FastAPI\napp = FastAPI()\n\n@app.get(\"/claims/{cid}\")                 # sync: fast lookup\ndef get_claim(cid: int):\n    return db.get_claim(cid)\n\n@app.post(\"/claims/{cid}/fraud-report\", status_code=202)   # async\ndef request_report(cid: int):\n    job = jobs.create(kind=\"fraud_report\", claim_id=cid, status=\"queued\")\n    queue.send({\"job_id\": job.id})         # hand off to workers\n    return {\"job_id\": job.id, \"status_url\": f\"/jobs/{job.id}\"}\n\n@app.get(\"/jobs/{job_id}\")                 # client polls this\ndef job_status(job_id: str):\n    j = jobs.get(job_id)\n    return {\"status\": j.status, \"result\": j.result}",
+    "lang": "Python"
+   },
+   {
+    "title": "Queues versus logs",
+    "body": "A message queue, such as Amazon SQS or RabbitMQ, is built for distributing work. Each message is delivered to one consumer. When the consumer finishes, it acknowledges (acks) or deletes the message and it is gone. If the consumer crashes, the message becomes visible again and another worker gets it.\n\nA log, such as Apache Kafka, is built for streams of events. Messages are appended in order to partitions and kept for a set retention period. Many independent consumer groups can each read the whole stream at their own pace, and they can go back and replay old events.\n\nUse a queue for 'please do this task'. Use a log for 'this happened', when several systems need to react to the same events or you need replay. Redis can also act as a simple broker for Celery or RQ, which is common for small and medium projects.",
+    "example": "An online retailer uses both. Kafka carries the 'order placed' event stream, which the warehouse, the email service and the analytics pipeline each consume independently. SQS holds 'generate invoice PDF' tasks, where each task should be done exactly once by whichever worker is free.",
+    "table": {
+     "headers": [
+      "",
+      "Queue (SQS, RabbitMQ)",
+      "Log (Kafka)"
+     ],
+     "rows": [
+      [
+       "Model",
+       "Tasks to be done",
+       "Events that happened"
+      ],
+      [
+       "Consumers per message",
+       "One worker",
+       "Every consumer group"
+      ],
+      [
+       "After processing",
+       "Message deleted",
+       "Kept until retention ends"
+      ],
+      [
+       "Replay old messages",
+       "No",
+       "Yes, from any offset"
+      ],
+      [
+       "Ordering",
+       "Best effort (FIFO queues exist)",
+       "Ordered per partition"
+      ]
+     ]
+    },
+    "code": "import json, boto3\nsqs = boto3.client(\"sqs\")\nURL = \"https://sqs.eu-west-1.amazonaws.com/123456789012/invoice-jobs\"\n\n# Producer: send a task\nsqs.send_message(QueueUrl=URL, MessageBody=json.dumps({\"order_id\": 55120}))\n\n# Consumer: long-poll, process, then delete\nresp = sqs.receive_message(QueueUrl=URL, MaxNumberOfMessages=10,\n                           WaitTimeSeconds=20, VisibilityTimeout=120)\nfor m in resp.get(\"Messages\", []):\n    make_invoice(json.loads(m[\"Body\"])[\"order_id\"])\n    sqs.delete_message(QueueUrl=URL, ReceiptHandle=m[\"ReceiptHandle\"])\n    # not deleted within 120 s? SQS makes it visible again for a retry",
+    "lang": "Python"
+   },
+   {
+    "title": "Workers with Celery and RQ",
+    "body": "A worker is a long-running process that pulls tasks from a queue and runs them. In Python, Celery is the most widely used framework: you decorate a function as a task, call task.delay(args) to enqueue it, and run worker processes that execute it. It works with Redis or RabbitMQ as the broker. RQ (Redis Queue) is a smaller, simpler alternative that uses only Redis.\n\nScale by running more workers, or more processes per worker. Keep the message small: pass an id, and let the worker load the data from the database or object storage. Big payloads in messages are slow and hit size limits (an SQS message is limited to 256 KB).\n\nSet a time limit on each task so a hung call cannot block a worker forever, and watch the queue length. A queue that keeps growing means workers are too few or too slow.",
+    "example": "A marketing agency client uploads 12,000 product descriptions to be rewritten by an LLM. The API creates one task per product with only the product id. Twenty Celery worker processes consume them. Queue depth starts at 12,000 and falls steadily; a dashboard of queue depth and tasks per minute shows the job will finish in about 40 minutes.",
+    "code": "# tasks.py\nfrom celery import Celery\n\napp = Celery(\"jobs\", broker=\"redis://localhost:6379/0\",\n             backend=\"redis://localhost:6379/1\")\n\n@app.task(time_limit=120)                  # kill a task stuck over 2 min\ndef rewrite_product(product_id: int):\n    p = db.get_product(product_id)         # load data by id\n    new_text = call_llm(p.description)\n    db.save_rewrite(product_id, new_text)\n\n# enqueue from the API or a script:\n#   for pid in product_ids: rewrite_product.delay(pid)\n# run workers:\n#   celery -A tasks worker --concurrency=20 --loglevel=INFO",
+    "lang": "Python"
+   },
+   {
+    "title": "Retries, dead letters and idempotency",
+    "body": "Classify failures. Transient errors (timeouts, 429 rate limits, 503s) are worth retrying. Permanent errors (bad input, a 400 or 404, a bug) will fail again, so record them and stop. Retry with exponential backoff and jitter: wait roughly 1, 2, 4, 8 seconds with some randomness, up to a maximum number of attempts.\n\nA dead-letter queue (DLQ) is where messages go after they have failed too many times. In SQS you set a redrive policy with maxReceiveCount on the source queue. The DLQ keeps the failed message for inspection and replay, and an alert on its size tells someone to look.\n\nMost queues deliver at least once, so a message can arrive twice, for example when a worker finishes but crashes before acknowledging. So every task must be idempotent: running it twice has the same effect as running it once. Common techniques are an idempotency key with a unique constraint, checking the job's status before acting, and upserts instead of inserts.",
+    "example": "A payments client sends payout jobs. Worker A pays invoice 7731, then its machine restarts before deleting the message. Worker B receives the same message. Because the payout table has a unique constraint on invoice_id and the task uses INSERT ... ON CONFLICT DO NOTHING, the second attempt does nothing and the supplier is paid once.",
+    "checklist": [
+     "Separate transient errors (retry) from permanent ones (fail fast)",
+     "Exponential backoff with jitter, and a maximum attempts count",
+     "Visibility timeout or ack deadline longer than the task takes",
+     "Dead-letter queue configured, with an alert on its depth",
+     "Idempotency key or unique constraint on every side effect",
+     "A tested way to replay messages from the DLQ"
+    ],
+    "code": "import json, boto3\nsqs = boto3.client(\"sqs\")\n\n# After 5 failed receives, SQS moves the message to the DLQ\nsqs.set_queue_attributes(\n    QueueUrl=JOBS_URL,\n    Attributes={\"RedrivePolicy\": json.dumps({\n        \"deadLetterTargetArn\": DLQ_ARN, \"maxReceiveCount\": \"5\"})})\n\n# Idempotent side effect: a repeat does nothing\nPAYOUT_SQL = '''\nINSERT INTO payouts (invoice_id, amount_cents, paid_at)\nVALUES (%s, %s, now())\nON CONFLICT (invoice_id) DO NOTHING;   -- unique on invoice_id\n'''",
+    "lang": "Python"
+   },
+   {
+    "title": "Webhooks in and out",
+    "body": "A webhook is an HTTP POST that one system sends to another when something happens, so the receiver does not have to poll. You send them to tell customers a job is done, and you receive them from tools like Stripe, GitHub or a CRM.\n\nWhen sending, include an event id and type, sign the body with an HMAC (a keyed hash using a secret shared with the receiver), and retry with backoff if the receiver fails. Treat the send itself as a queued job.\n\nWhen receiving, verify the signature before trusting anything, reply 2xx quickly, and put the real work on your own queue. Senders retry too, so deduplicate on the event id.",
+    "example": "A CRM sends your app a webhook every time a deal closes. Your endpoint checks the X-Signature header, stores the event id, enqueues a 'sync deal' task and returns 200 in 30 ms. When the CRM retries the same event after a network blip, the stored event id makes your endpoint skip it.",
+    "code": "import hmac, hashlib\nfrom fastapi import FastAPI, Request, HTTPException\n\napp = FastAPI()\nSECRET = load_from_vault(\"crm-webhook-secret\").encode()\n\n@app.post(\"/webhooks/crm\")\nasync def crm_webhook(request: Request):\n    body = await request.body()                       # raw bytes, before parsing\n    expected = hmac.new(SECRET, body, hashlib.sha256).hexdigest()\n    if not hmac.compare_digest(expected, request.headers.get(\"X-Signature\", \"\")):\n        raise HTTPException(401, \"bad signature\")\n    event = await request.json()\n    if seen_events.add_if_new(event[\"id\"]):          # dedupe retries\n        sync_deal.delay(event[\"data\"][\"deal_id\"])    # real work on the queue\n    return {\"ok\": True}                               # answer fast",
+    "lang": "Python"
+   },
+   {
+    "title": "Scheduling long LLM jobs",
+    "body": "LLM jobs add their own constraints: per-minute rate limits on requests and tokens, calls that take seconds to minutes, and occasional overload errors. Control concurrency so the total stays under your rate limits, for example a fixed number of worker processes or a token bucket shared through Redis.\n\nFor work that repeats on a timetable, use a scheduler: cron, Celery beat, or a cloud scheduler such as EventBridge Scheduler or Cloud Scheduler. The scheduler should only enqueue jobs; workers do the work, so a slow run never overlaps the next one's trigger in the same process.\n\nWhen results are not needed right away, a provider batch API can be a good fit. For example, the Anthropic Message Batches API accepts many requests at once, processes them asynchronously at a lower price, and lets you fetch the results when the batch ends. Track each item with a custom id so you can match results to your records and retry just the failures.",
+    "example": "A healthcare client (with a BAA in place) wants every new discharge summary from the day coded into categories by 6 a.m. At 1 a.m. a scheduled task collects the day's 3,000 summaries and submits them as one message batch, each with custom_id set to the document id. A second scheduled task polls the batch, writes results to the database, and re-queues the few errored items as normal tasks.",
+    "code": "from anthropic import Anthropic\nfrom celery.schedules import crontab\n\nclient = Anthropic()\n\n@app.task\ndef nightly_coding_batch():\n    docs = db.summaries_since_yesterday()\n    batch = client.messages.batches.create(requests=[\n        {\"custom_id\": f\"doc-{d.id}\",                # match results later\n         \"params\": {\"model\": MODEL, \"max_tokens\": 300,\n                    \"messages\": [{\"role\": \"user\", \"content\": PROMPT + d.text}]}}\n        for d in docs])\n    db.save_batch(batch.id)                         # poll it in another task\n\napp.conf.beat_schedule = {                         # Celery beat only enqueues\n    \"nightly-coding\": {\"task\": \"tasks.nightly_coding_batch\",\n                       \"schedule\": crontab(hour=1, minute=0)},\n}",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Asynchronous work",
+    "Work handed off to run later, so the caller does not wait for it to finish."
+   ],
+   [
+    "Message queue",
+    "A service that holds task messages until a worker takes and processes each one."
+   ],
+   [
+    "Log (event stream)",
+    "An ordered, retained record of events that many consumers can read and replay, as in Kafka."
+   ],
+   [
+    "Worker",
+    "A background process that pulls tasks from a queue and runs them."
+   ],
+   [
+    "Broker",
+    "The system that stores and delivers messages for a task framework, such as Redis or RabbitMQ for Celery."
+   ],
+   [
+    "At-least-once delivery",
+    "A guarantee that each message is delivered, possibly more than once."
+   ],
+   [
+    "Idempotent",
+    "An operation whose effect is the same whether it runs once or several times."
+   ],
+   [
+    "Dead-letter queue",
+    "A holding queue for messages that failed too many times, kept for inspection and replay."
+   ],
+   [
+    "Webhook",
+    "An HTTP POST one system sends to another to report an event."
+   ],
+   [
+    "Exponential backoff",
+    "Waiting longer between each retry, usually doubling, often with random jitter."
+   ]
+  ],
+  "practice": [
+   "Run Redis in Docker and write an RQ or Celery task that sleeps 5 seconds and writes a result to a file. Enqueue 20 tasks and run 4 workers. Deliverable: the code and the time it took with 1 worker versus 4.",
+   "Make the task fail randomly 30% of the time with a custom TransientError, add retries with backoff and a maximum of 3 attempts, and record final failures to a 'dead_letters' table. Deliverable: counts of succeeded, retried and dead-lettered tasks from one run.",
+   "Stretch: build POST /jobs that returns 202 with a job id and accepts an Idempotency-Key header, a worker that calls an LLM, and a signed webhook to a local receiver that verifies the HMAC. Deliverable: a demo log showing a duplicate POST creating only one job and the webhook arriving once."
+  ]
+ }
+}

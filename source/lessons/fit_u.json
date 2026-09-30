@@ -1,0 +1,30 @@
+{
+ "trees": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Moving a split and watching Gini change builds intuition fast; depth, pruning and forests then need clear explanation."
+ },
+ "boosting": {
+  "best": [
+   "reading",
+   "project"
+  ],
+  "why": "The residual loop and tuning order are learned by reading, then by training and explaining a real model end to end."
+ },
+ "knnsvm": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Adding points and changing k shows how neighbours vote; margins, kernels and Naive Bayes need worked explanation."
+ },
+ "clustering": {
+  "best": [
+   "interactive",
+   "project"
+  ],
+  "why": "Stepping k-means by hand makes the loop obvious, and a segmentation project teaches scaling, choosing k and profiling."
+ }
+}

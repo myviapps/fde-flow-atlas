@@ -1,0 +1,28 @@
+function renderLesson(c){
+  const L=(typeof LESSONS!=='undefined')&&LESSONS[c.id];const sec=document.getElementById('lesson');
+  if(!L){sec.hidden=true;return;}
+  sec.hidden=false;
+  const txt=(id,v)=>{document.getElementById(id).textContent=v||'';};
+  txt('lplain',L.plain);txt('lanalogy',L.analogy);txt('lwhy',L.why);
+  const paras=(host,s)=>{String(s||'').split(/\n\s*\n|\n/).map(x=>x.trim()).filter(Boolean).forEach(x=>{const p=document.createElement('p');p.textContent=x;host.appendChild(p);});};
+  const toc=document.getElementById('ltoc'),subs=document.getElementById('lsubs');toc.innerHTML='';subs.innerHTML='';
+  (L.subtopics||[]).forEach((s,i)=>{
+    const a=document.createElement('article');a.className='sub';a.id='sub-'+i;
+    const h=document.createElement('h3');const n=document.createElement('span');n.className='snum';n.textContent=String(i+1).padStart(2,'0');h.append(n,document.createTextNode(s.title));a.appendChild(h);
+    const b=document.createElement('div');b.className='body';paras(b,s.body);a.appendChild(b);
+    if(s.example){const ex=document.createElement('div');ex.className='example';const t=document.createElement('span');t.className='tag';t.textContent='Example';ex.appendChild(t);paras(ex,s.example);a.appendChild(ex);}
+    if(s.code){const f=document.createElement('figure');f.className='codeblock';const cap=document.createElement('figcaption');const l=document.createElement('span');l.textContent=s.lang||'Code';
+      const btn=document.createElement('button');btn.type='button';btn.textContent='Copy';
+      const pre=document.createElement('pre');const code=document.createElement('code');code.textContent=s.code.replace(/\s+$/,'');pre.appendChild(code);
+      btn.onclick=()=>{const done=()=>{btn.textContent='Copied';setTimeout(()=>btn.textContent='Copy',1500)};
+        try{navigator.clipboard.writeText(code.textContent).then(done,()=>{sel(code)});}catch(e){sel(code)}};
+      cap.append(l,btn);f.append(cap,pre);a.appendChild(f);}
+    subs.appendChild(a);
+    const tb=document.createElement('button');tb.type='button';tb.textContent=s.title;tb.onclick=()=>a.scrollIntoView({behavior:reduced?'auto':'smooth',block:'start'});toc.appendChild(tb);
+  });
+  const gl=document.getElementById('lgloss');gl.innerHTML='';
+  (L.glossary||[]).forEach(([t,d])=>{const dt=document.createElement('dt');dt.textContent=t;const dd=document.createElement('dd');dd.textContent=d;gl.append(dt,dd);});
+  const pr=document.getElementById('lpractice');pr.innerHTML='';
+  (L.practice||[]).forEach(x=>{const li=document.createElement('li');li.textContent=x;pr.appendChild(li);});
+}
+function sel(node){try{const r=document.createRange();r.selectNodeContents(node);const s=window.getSelection();s.removeAllRanges();s.addRange(r);}catch(e){}}

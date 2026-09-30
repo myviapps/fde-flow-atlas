@@ -1,0 +1,230 @@
+{
+ "fderoles": [
+  {
+   "q": "Which role usually builds and ships the production deployment inside the customer's environment?",
+   "options": [
+    "Sales Engineer",
+    "Forward Deployed Engineer",
+    "Customer Success Manager",
+    "Account Executive"
+   ],
+   "answer": 1,
+   "why": "The FDE owns the working build through go-live. The SE supports the sale, the CSM owns the relationship after go-live and the AE owns the deal."
+  },
+  {
+   "q": "Roughly what share of an FDE's time does the course material say goes to code and model work?",
+   "options": [
+    "10 to 20 percent",
+    "30 to 40 percent",
+    "70 to 80 percent",
+    "Close to 100 percent"
+   ],
+   "answer": 2,
+   "why": "Around 70 to 80 percent. The rest goes to discovery, demos and writing, which still matter; it is never close to 100 percent."
+  },
+  {
+   "q": "You join a deal the day after contract signature. What do you ask the sales engineer for first?",
+   "options": [
+    "Their commission plan, so you know their incentives",
+    "The product roadmap for next year",
+    "A handoff: promises, success criteria, demo data, people and risks",
+    "A new demo to show the customer again"
+   ],
+   "answer": 2,
+   "why": "Most trouble starts with promises and risks lost at the handoff. Getting them in writing lets you confirm scope with the customer early."
+  },
+  {
+   "q": "A posting titled 'Solutions Architect' says 'build and deploy production integrations, write Python daily'. What is it closest to?",
+   "options": [
+    "An FDE-style build role",
+    "A pure pre-sales demo role",
+    "A customer success role",
+    "An account executive role"
+   ],
+   "answer": 0,
+   "why": "Judge a job by its verbs. Building and deploying production code daily is FDE-like work, whatever the title says."
+  },
+  {
+   "q": "Spot the mistake: an FDE says 'I did 12 demos this month, so my build share is fine.' What is wrong with that thinking?",
+   "options": [
+    "Demos are always the most valuable part of the job",
+    "Demos are not build work; logging the week would show if code time fell",
+    "Twelve demos is too few for an FDE",
+    "Build share only matters in the first week"
+   ],
+   "answer": 1,
+   "why": "Demos are customer contact, not code and model work. Measuring the week shows whether build time has drifted below the target."
+  }
+ ],
+ "fdeskills": [
+  {
+   "q": "Which list names the five axes of the FDE skills radar used in this lesson?",
+   "options": [
+    "Speed, accuracy, cost, security, scale",
+    "Technical depth, problem finding, customer empathy, product judgment, ownership",
+    "Python, SQL, cloud, LLMs, Docker",
+    "Sales, marketing, support, finance, legal"
+   ],
+   "answer": 1,
+   "why": "The radar covers the whole job: building, finding the real problem, understanding people, deciding what to build and owning the result. Tool lists are part of technical depth only."
+  },
+  {
+   "q": "What does 'T-shaped' mean for an FDE?",
+   "options": [
+    "Expert in every area of the stack",
+    "Deep in one area and unaware of the rest",
+    "Able to work both on site and remote",
+    "Working breadth across many areas plus one deep spike"
+   ],
+   "answer": 3,
+   "why": "The top bar is breadth, the stroke is one deep specialty. Nobody is expert in everything, and a spike with no breadth fails on site."
+  },
+  {
+   "q": "You rate yourself 4 on problem finding but cannot name one project where you found the real need. What should you do?",
+   "options": [
+    "Cap it at 2 and plan work that creates evidence",
+    "Keep the 4 because you feel confident",
+    "Drop the axis because it is not technical",
+    "Ask the interviewer to skip that round"
+   ],
+   "answer": 0,
+   "why": "Without evidence the score is a guess. Capping it and planning an output, such as leading a discovery session, makes the rating honest and gives you a next step."
+  },
+  {
+   "q": "A client says 'use AI to make claims faster' and nothing more. What shows comfort with ambiguity?",
+   "options": [
+    "Wait until they send a full specification",
+    "Build a chatbot at once and hope it helps",
+    "List assumptions, test the riskiest cheaply, then decide and write it down",
+    "Tell them the request is too vague to work on"
+   ],
+   "answer": 2,
+   "why": "You make progress without pretending to be certain: separate facts from guesses and test the guess that would change the plan most."
+  },
+  {
+   "q": "Spot the trap: 'My technical score is 5, so the other axes do not matter for an FDE role.' What is wrong?",
+   "options": [
+    "Nothing, code is all the interview checks",
+    "FDE interviews and projects test all five axes, and low people skills fail engagements",
+    "A 5 is impossible, so the score is wrong",
+    "Technical depth is not part of the radar"
+   ],
+   "answer": 1,
+   "why": "FDE loops have customer and business rounds, and real engagements fail when the builder misses the real problem or the people. Balance matters more than one peak."
+  }
+ ],
+ "asyncwriting": [
+  {
+   "q": "What does BLUF mean for a work message?",
+   "options": [
+    "Background, links, updates, follow-up",
+    "A polite opening before any request",
+    "The first line states the point or the request",
+    "Sending the message to the whole team at once"
+   ],
+   "answer": 2,
+   "why": "Bottom line up front: readers decide from the first line, so the point or ask goes there. Background comes after it."
+  },
+  {
+   "q": "Which three details make a request easy to act on?",
+   "options": [
+    "A named owner, a deadline and a clear question",
+    "A greeting, an apology and a thank-you",
+    "A long history, a link and a screenshot",
+    "Tagging everyone, bold text and a reminder"
+   ],
+   "answer": 0,
+   "why": "One owner knows it is theirs, the deadline says when, and a clear question can be answered quickly. Extra people and history slow it down."
+  },
+  {
+   "q": "You finish at 17:00 in Toronto and the customer starts at 9:00 in Singapore. What is the best way to keep work moving?",
+   "options": [
+    "Stay online until midnight to answer questions",
+    "Wait for the weekly status call",
+    "Email the customer's CEO a summary each night",
+    "Post an end-of-day note with done, next, blocked and named needs"
+   ],
+   "answer": 3,
+   "why": "With no overlap, the written EOD note is the handoff. The customer can act on your needs in their morning, and you find answers when you start."
+  },
+  {
+   "q": "A debugging thread in the shared customer channel needs the database connection string. What do you do?",
+   "options": [
+    "Paste it and delete it after they copy it",
+    "Share it through the approved secrets vault and reference it in the thread",
+    "Post it in a direct message to the engineer",
+    "Put it in the ticket description instead"
+   ],
+   "answer": 1,
+   "why": "Secrets never go in chat or tickets, even briefly, because messages are stored and notifications are sent. Use the vault and point to it."
+  },
+  {
+   "q": "Spot the mistake: 'Hi all, quick update on a few things from this week...' is followed by 4 paragraphs, with the ask in the last line. What is wrong?",
+   "options": [
+    "It should open with a joke to keep attention",
+    "Updates should never be written down",
+    "The ask is buried, so readers may miss it or act late",
+    "It needs more background before the ask"
+   ],
+   "answer": 2,
+   "why": "Readers skim the first line. The ask with its owner and date should come first, with the context underneath."
+  }
+ ],
+ "ethics": [
+  {
+   "q": "What is a non-disclosure agreement (NDA)?",
+   "options": [
+    "A law that stops companies sharing any data",
+    "A rule that lets you share customer data after one year",
+    "A contract defining what information is confidential and how it may be used",
+    "A document listing the customer's approved AI tools"
+   ],
+   "answer": 2,
+   "why": "An NDA is a contract between parties about confidential information. It is not a general law, and it does not list tools."
+  },
+  {
+   "q": "Which statement about a model's accuracy is the most honest?",
+   "options": [
+    "It is 97 percent accurate on 500 typed invoices; scans are around 90 percent",
+    "It is 97 percent accurate",
+    "It is nearly perfect in our demos",
+    "It will reach 100 percent once it learns from you"
+   ],
+   "answer": 1,
+   "why": "An honest number states the conditions and the weak spots. Bare or demo-based figures mislead, and 'it will learn' may not be true."
+  },
+  {
+   "q": "You want to test a prompt on 20 real customer records tonight. What should you do?",
+   "options": [
+    "Use a masked sample in the customer-approved environment",
+    "Email them to your personal account to work from home",
+    "Ask a friend at another company to try them",
+    "Paste them into a free AI chat app, then delete the chat"
+   ],
+   "answer": 3,
+   "why": "Only approved tools covered by the data agreement, with the minimum masked data. Deleting a chat afterwards does not undo sharing."
+  },
+  {
+   "q": "A customer offers you expensive concert tickets at year-end. What is the right first step?",
+   "options": [
+    "Check your company's gift policy, then decline or declare as it requires",
+    "Accept, since customers expect it",
+    "Accept and give them to a colleague",
+    "Accept only if the project is finished"
+   ],
+   "answer": 1,
+   "why": "Gift rules are written in your code of conduct and often require declaring or declining anything above a small value."
+  },
+  {
+   "q": "Spot the mistake: 'Bank B asked what other banks do about fraud, so I showed them Bank A's new scoring rules.' What went wrong?",
+   "options": [
+    "Nothing, since both are customers",
+    "Confidential information from one customer was shared with another",
+    "The FDE should have charged for the advice",
+    "The rules should have been emailed instead"
+   ],
+   "answer": 0,
+   "why": "Information from one customer never goes to another. You can share general public patterns and your own product's capabilities."
+  }
+ ]
+}

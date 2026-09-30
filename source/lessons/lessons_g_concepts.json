@@ -1,0 +1,998 @@
+[
+ {
+  "id": "computers",
+  "mod": 0,
+  "sec": "0.1",
+  "name": "How computers run code",
+  "title": "From typed text to a running program",
+  "thesis": "A program is a text file until something runs it. The operating system starts the Python interpreter, which reads your file into memory and feeds instructions to the CPU, and the results come back to your screen.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: hello.py",
+  "code": "# hello.py  (a plain text file saved on the disk)\nname = \"Asha\"              # stored in RAM while it runs\ntotal = 3 + 4              # the CPU does the adding\nprint(\"Hello,\", name)      # output goes to the screen\nprint(\"3 + 4 =\", total)\n\n# In the terminal you type:\n#   python hello.py\n# and the screen shows:\n#   Hello, Asha\n#   3 + 4 = 7",
+  "nodes": [
+   [
+    "you",
+    90,
+    70,
+    "You",
+    "type on keyboard"
+   ],
+   [
+    "editor",
+    265,
+    70,
+    "Text editor",
+    "code held in RAM"
+   ],
+   [
+    "disk",
+    440,
+    70,
+    "Storage (SSD)",
+    "hello.py saved"
+   ],
+   [
+    "os",
+    615,
+    70,
+    "OS",
+    "operating system"
+   ],
+   [
+    "interp",
+    615,
+    220,
+    "Interpreter",
+    "python program"
+   ],
+   [
+    "ram",
+    440,
+    220,
+    "Memory (RAM)",
+    "running process"
+   ],
+   [
+    "cpu",
+    265,
+    220,
+    "CPU",
+    "does the work"
+   ],
+   [
+    "screen",
+    90,
+    220,
+    "Screen",
+    "output appears"
+   ]
+  ],
+  "edges": [
+   [
+    "you",
+    "editor",
+    0,
+    "type"
+   ],
+   [
+    "editor",
+    "disk",
+    0,
+    "save"
+   ],
+   [
+    "disk",
+    "os",
+    0,
+    "run"
+   ],
+   [
+    "os",
+    "interp",
+    0,
+    "start"
+   ],
+   [
+    "disk",
+    "interp",
+    0,
+    "read"
+   ],
+   [
+    "interp",
+    "ram"
+   ],
+   [
+    "ram",
+    "cpu"
+   ],
+   [
+    "cpu",
+    "screen",
+    0,
+    "print"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Type the code",
+    "n": [
+     "you",
+     "editor"
+    ],
+    "e": [
+     "you>editor"
+    ],
+    "d": "You type lines of Python into a text editor. Right now the text lives only in RAM, the computer's fast short-term memory, so it would be lost if the power went off.",
+    "l": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "t": "Save it as a file",
+    "n": [
+     "disk"
+    ],
+    "e": [
+     "editor>disk"
+    ],
+    "d": "Saving copies the text onto storage (an SSD or hard drive) as a file called hello.py. Storage keeps files after the computer is switched off.",
+    "l": [
+     0
+    ]
+   },
+   {
+    "t": "Ask to run it",
+    "n": [
+     "os"
+    ],
+    "e": [
+     "disk>os"
+    ],
+    "d": "You type python hello.py in a terminal. The operating system, the program that manages the whole computer, receives that request.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "The OS starts Python",
+    "n": [
+     "interp"
+    ],
+    "e": [
+     "os>interp"
+    ],
+    "d": "The operating system finds the Python interpreter program on disk and starts it. A program that is running is called a process."
+   },
+   {
+    "t": "Python reads your file",
+    "n": [
+     "interp",
+     "disk"
+    ],
+    "e": [
+     "disk>interp"
+    ],
+    "d": "The interpreter opens hello.py and checks the text follows Python's grammar. A typo here stops everything with a SyntaxError before any line runs."
+   },
+   {
+    "t": "Code goes into memory",
+    "n": [
+     "ram"
+    ],
+    "e": [
+     "interp>ram"
+    ],
+    "d": "Python turns your text into simpler instructions called bytecode and keeps them, plus your variables like name and total, in RAM.",
+    "l": [
+     1,
+     2
+    ]
+   },
+   {
+    "t": "The CPU does the work",
+    "n": [
+     "cpu"
+    ],
+    "e": [
+     "ram>cpu"
+    ],
+    "d": "The CPU, the chip that actually computes, carries out instructions one after another at billions of simple steps per second. Adding 3 and 4 is one of those steps.",
+    "l": [
+     2
+    ]
+   },
+   {
+    "t": "Output on the screen",
+    "n": [
+     "screen"
+    ],
+    "e": [
+     "cpu>screen"
+    ],
+    "d": "print() sends text back through the operating system to your terminal window. When the last line finishes, the process ends and its RAM is freed.",
+    "l": [
+     3,
+     4,
+     9,
+     10
+    ]
+   },
+   {
+    "t": "Compiled languages differ",
+    "n": [
+     "disk",
+     "cpu"
+    ],
+    "d": "Languages like C or Go are compiled first: a compiler turns the whole source into a machine-code file ahead of time, and the CPU runs that file directly. Python translates and runs your code each time you start it."
+   }
+  ],
+  "ideas": [
+   "CPU computes, RAM holds what is running right now, storage keeps files when the power is off.",
+   "A program is a file of instructions. A process is that program while it is running.",
+   "The operating system starts programs, shares out memory and handles files, screen and keyboard.",
+   "Python is interpreted: the python program reads your .py file and runs it each time.",
+   "Compiled languages produce a separate machine-code file before running."
+  ],
+  "traps": [
+   "Thinking code runs as you type it. Nothing happens until you save and run the file.",
+   "Confusing memory with storage: variables vanish when the program ends unless you write them to a file.",
+   "Assuming a .py file works on a machine that has no Python interpreter installed."
+  ],
+  "qa": [
+   [
+    "What is the difference between RAM and storage?",
+    "RAM is fast, temporary memory that holds running programs and their data and is wiped when power is off. Storage (SSD or disk) is slower but keeps files permanently."
+   ],
+   [
+    "What happens when you run python hello.py?",
+    "The operating system starts the Python interpreter as a process. It reads hello.py from disk, converts it to bytecode in RAM, and the CPU executes those instructions. print sends text to the terminal, then the process ends."
+   ],
+   [
+    "How is Python different from a compiled language like C?",
+    "C is compiled ahead of time into a machine-code file the CPU runs directly. Python code is read and executed by the interpreter at run time, which is slower but lets you run a file straight away without a build step."
+   ]
+  ]
+ },
+ {
+  "id": "terminal",
+  "mod": 0,
+  "sec": "0.2",
+  "name": "The terminal",
+  "title": "Talking to the computer with typed commands",
+  "thesis": "The terminal is a text window where you type commands and a program called the shell carries them out. Knowing where you are, how to move between folders, and how to run Python with its own packages covers most of what you will do there.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Shell: a first session",
+  "code": "# Mac / Linux (bash or zsh). Windows notes on the right.\npwd                          # where am I?  (Windows: cd)\nmkdir sales-report           # make a folder\ncd sales-report              # move into it\nls                           # list files  (Windows: dir)\npython3 -m venv .venv        # create a virtual environment\nsource .venv/bin/activate    # Windows: .venv\\Scripts\\activate\npip install requests         # install a package into .venv\nexport API_KEY=\"abc123\"      # Windows: $env:API_KEY=\"abc123\"\npython script.py             # run your program\ncd ..                        # go back up one folder",
+  "nodes": [
+   [
+    "you",
+    90,
+    70,
+    "You",
+    "type a command"
+   ],
+   [
+    "shell",
+    265,
+    70,
+    "Shell",
+    "bash · PowerShell"
+   ],
+   [
+    "cwd",
+    440,
+    70,
+    "Current folder",
+    "where you are"
+   ],
+   [
+    "files",
+    615,
+    70,
+    "Files & folders",
+    "paths / and \\"
+   ],
+   [
+    "venv",
+    615,
+    220,
+    "Virtual env",
+    ".venv folder"
+   ],
+   [
+    "pip",
+    440,
+    220,
+    "pip install",
+    "adds packages"
+   ],
+   [
+    "run",
+    265,
+    220,
+    "python script.py",
+    "runs your code"
+   ],
+   [
+    "env",
+    90,
+    220,
+    "Env variables",
+    "API_KEY=...",
+    1
+   ]
+  ],
+  "edges": [
+   [
+    "you",
+    "shell"
+   ],
+   [
+    "shell",
+    "cwd",
+    0,
+    "cd"
+   ],
+   [
+    "cwd",
+    "files",
+    0,
+    "ls / dir"
+   ],
+   [
+    "files",
+    "venv",
+    0,
+    "venv"
+   ],
+   [
+    "venv",
+    "pip",
+    0,
+    "activate"
+   ],
+   [
+    "pip",
+    "run"
+   ],
+   [
+    "env",
+    "run",
+    0,
+    "read"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Open a terminal",
+    "n": [
+     "you",
+     "shell"
+    ],
+    "e": [
+     "you>shell"
+    ],
+    "d": "The terminal is the window. The shell is the program inside it that reads each line you type and runs it when you press Enter. Mac and Linux usually use bash or zsh; Windows uses PowerShell or Command Prompt."
+   },
+   {
+    "t": "Where am I?",
+    "n": [
+     "cwd"
+    ],
+    "e": [
+     "shell>cwd"
+    ],
+    "d": "The shell is always sitting in one folder, the current working directory. pwd prints it on Mac and Linux; plain cd prints it in Windows Command Prompt, and pwd works in PowerShell.",
+    "l": [
+     1
+    ]
+   },
+   {
+    "t": "Look around and move",
+    "n": [
+     "files"
+    ],
+    "e": [
+     "cwd>files"
+    ],
+    "d": "ls (dir on Windows) lists what is in the folder. mkdir makes a new folder, cd name moves into it, and cd .. goes back up one level.",
+    "l": [
+     2,
+     3,
+     4,
+     10
+    ]
+   },
+   {
+    "t": "Make a virtual environment",
+    "n": [
+     "venv"
+    ],
+    "e": [
+     "files>venv"
+    ],
+    "d": "A virtual environment is a folder holding a private copy of Python and its packages for one project, so projects do not break each other.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Activate and install",
+    "n": [
+     "pip"
+    ],
+    "e": [
+     "venv>pip"
+    ],
+    "d": "Activating tells the shell to use the .venv Python. pip then downloads packages from the Python Package Index (PyPI) into that folder only.",
+    "l": [
+     6,
+     7
+    ]
+   },
+   {
+    "t": "Run your script",
+    "n": [
+     "run"
+    ],
+    "e": [
+     "pip>run"
+    ],
+    "d": "python script.py asks the interpreter to run the file script.py in the current folder. If the file is somewhere else, give its path.",
+    "l": [
+     9
+    ]
+   },
+   {
+    "t": "Pass settings in",
+    "n": [
+     "env",
+     "run"
+    ],
+    "e": [
+     "env>run"
+    ],
+    "d": "Environment variables are named values the shell hands to every program it starts. Secrets like API keys go here so they never sit inside your code.",
+    "l": [
+     8
+    ]
+   },
+   {
+    "t": "Paths differ by system",
+    "n": [
+     "cwd",
+     "files"
+    ],
+    "d": "Mac and Linux write paths with forward slashes, like /Users/asha/sales-report. Windows uses drive letters and backslashes, like C:\\Users\\asha\\sales-report."
+   }
+  ],
+  "ideas": [
+   "The shell runs commands inside the current working directory.",
+   "Absolute paths start from the top (/ or C:\\). Relative paths start from where you are.",
+   "cd moves, ls or dir lists, mkdir creates, cd .. goes up.",
+   "One virtual environment per project; activate it before pip install.",
+   "Keep secrets in environment variables, never in the code file."
+  ],
+  "traps": [
+   "Running python script.py from the wrong folder and getting 'No such file or directory'.",
+   "Installing packages with pip before activating the venv, so they land in the wrong Python.",
+   "Pasting an API key into a script and then sharing the script."
+  ],
+  "qa": [
+   [
+    "What is a virtual environment and why use one?",
+    "A folder with its own Python and packages for one project. It keeps versions separate, so upgrading a library for one project cannot break another, and you can record exact versions in requirements.txt."
+   ],
+   [
+    "You get 'ModuleNotFoundError: No module named requests'. What do you check?",
+    "Whether the right virtual environment is active, then run pip install requests inside it. python -m pip install makes sure pip matches the python you are running."
+   ],
+   [
+    "Why store an API key in an environment variable?",
+    "The key stays out of the source code and out of version control, and each machine or customer environment can supply its own value without editing the program."
+   ]
+  ]
+ },
+ {
+  "id": "python1",
+  "mod": 0,
+  "sec": "0.3",
+  "name": "Python basics",
+  "title": "Your first real Python programs",
+  "thesis": "Almost every program takes some input, stores it in variables of the right type, makes decisions, repeats work in loops, and packages steps into functions. When something breaks, Python tells you where in a traceback.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: cinema ticket prices",
+  "code": "name = input(\"Your name: \")         # input() always returns text (str)\nage = int(input(\"Your age: \"))      # int() turns \"30\" into the number 30\nis_member = True                    # a bool: True or False\n\ndef ticket_price(age, is_member):   # a function with two parameters\n    if age < 12:                    # if / elif / else picks one path\n        price = 5.0                 # a float: number with a decimal point\n    elif age >= 65:\n        price = 7.0\n    else:\n        price = 10.0\n    if is_member:\n        price = price * 0.8         # 20% member discount\n    return price                    # hand the answer back\n\nfor day in [\"Sat\", \"Sun\"]:          # the loop body runs once per day\n    print(name, day, ticket_price(age, is_member))",
+  "nodes": [
+   [
+    "inp",
+    90,
+    70,
+    "input()",
+    "text from the user"
+   ],
+   [
+    "var",
+    265,
+    70,
+    "Variables",
+    "name = value"
+   ],
+   [
+    "types",
+    440,
+    70,
+    "Types",
+    "int float str bool"
+   ],
+   [
+    "cond",
+    615,
+    70,
+    "if / else",
+    "choose a path"
+   ],
+   [
+    "loop",
+    615,
+    220,
+    "Loop",
+    "for · while"
+   ],
+   [
+    "func",
+    440,
+    220,
+    "Function",
+    "def · return"
+   ],
+   [
+    "out",
+    265,
+    220,
+    "print()",
+    "show the result"
+   ],
+   [
+    "err",
+    90,
+    220,
+    "Traceback",
+    "read the last line",
+    1
+   ]
+  ],
+  "edges": [
+   [
+    "inp",
+    "var"
+   ],
+   [
+    "var",
+    "types"
+   ],
+   [
+    "types",
+    "cond"
+   ],
+   [
+    "cond",
+    "loop"
+   ],
+   [
+    "loop",
+    "func",
+    0,
+    "call"
+   ],
+   [
+    "func",
+    "out",
+    0,
+    "return"
+   ],
+   [
+    "inp",
+    "err",
+    0,
+    "bad input"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Get input",
+    "n": [
+     "inp"
+    ],
+    "d": "input() shows a prompt, waits for the user to type and press Enter, and gives back what they typed as text.",
+    "l": [
+     0,
+     1
+    ]
+   },
+   {
+    "t": "Store it in variables",
+    "n": [
+     "var"
+    ],
+    "e": [
+     "inp>var"
+    ],
+    "d": "A variable is a name that points at a value. name = input(...) stores the typed text under the name name so later lines can use it.",
+    "l": [
+     0,
+     2
+    ]
+   },
+   {
+    "t": "Every value has a type",
+    "n": [
+     "types"
+    ],
+    "e": [
+     "var>types"
+    ],
+    "d": "int is a whole number, float has a decimal point, str is text and bool is True or False. \"30\" and 30 are different: you convert text to a number with int().",
+    "l": [
+     1,
+     2,
+     6
+    ]
+   },
+   {
+    "t": "Make a decision",
+    "n": [
+     "cond"
+    ],
+    "e": [
+     "types>cond"
+    ],
+    "d": "if checks a condition. If it is True the indented block runs; otherwise Python tries each elif, then falls to else. Indentation marks which lines belong to which block.",
+    "l": [
+     5,
+     5,
+     9,
+     11
+    ]
+   },
+   {
+    "t": "Repeat with a loop",
+    "n": [
+     "loop"
+    ],
+    "e": [
+     "cond>loop"
+    ],
+    "d": "A for loop runs its body once for each item in a collection. A while loop repeats as long as a condition stays True.",
+    "l": [
+     15
+    ]
+   },
+   {
+    "t": "Call a function",
+    "n": [
+     "func"
+    ],
+    "e": [
+     "loop>func"
+    ],
+    "d": "def defines a reusable block with parameters, the named inputs it expects. Each call passes arguments in, the body runs, and return sends one value back.",
+    "l": [
+     4,
+     13,
+     16
+    ]
+   },
+   {
+    "t": "Show the result",
+    "n": [
+     "out"
+    ],
+    "e": [
+     "func>out"
+    ],
+    "d": "print() writes values to the screen separated by spaces. Here it prints the name, the day and the price the function returned.",
+    "l": [
+     16
+    ]
+   },
+   {
+    "t": "When input is wrong",
+    "n": [
+     "err"
+    ],
+    "e": [
+     "inp>err"
+    ],
+    "d": "If the user types thirty, int() cannot convert it and Python stops with a traceback. Read it from the bottom: the last line names the error, the lines above show the file and line number.",
+    "l": [
+     1
+    ]
+   }
+  ],
+  "ideas": [
+   "A variable is a label for a value; = means 'store', == means 'is equal to'.",
+   "input() always returns a str. Convert with int() or float() before doing maths.",
+   "Indentation is part of Python's grammar: it decides which lines are inside an if, loop or function.",
+   "A function takes parameters, does one job and returns a value.",
+   "Read a traceback bottom up: error type and message, then the file and line."
+  ],
+  "traps": [
+   "Adding \"5\" + \"3\" and getting \"53\" because both are strings.",
+   "Using print inside a function when you meant return, so the caller gets None.",
+   "Mixing tabs and spaces or forgetting the colon after if, for or def."
+  ],
+  "qa": [
+   [
+    "What is the difference between print and return?",
+    "print shows a value on the screen and the program keeps going. return ends the function and hands a value back to the code that called it, which can store or reuse it."
+   ],
+   [
+    "Why does int(input()) crash sometimes?",
+    "input returns text. If the text is not a whole number, such as 'thirty' or '3.5', int raises ValueError. You can check first or wrap it in try/except and ask again."
+   ],
+   [
+    "How do you read a traceback?",
+    "Start at the last line for the error type and message, then look at the line just above for the file and line number where it happened. The lines higher up show the chain of function calls that led there."
+   ]
+  ]
+ },
+ {
+  "id": "python2",
+  "mod": 0,
+  "sec": "0.4",
+  "name": "Python data and files",
+  "title": "Holding data in collections and files",
+  "thesis": "Real work means many values at once. Lists, dicts, tuples and sets hold them in memory, files keep them on disk as CSV or JSON, and pandas does table work like filtering and totals in a few lines.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: store totals from sales.csv",
+  "code": "import csv, json\nimport pandas as pd\n\nwith open(\"sales.csv\", newline=\"\") as f:          # open the file for reading\n    rows = list(csv.DictReader(f))                 # a list of dicts, one per row\n\nstores = {r[\"store\"] for r in rows}                # a set: unique store names\nbig = [r for r in rows if float(r[\"amount\"]) > 10] # comprehension: filter rows\n\ntotals = {}                                        # dict: store -> total\nfor r in rows:\n    totals[r[\"store\"]] = totals.get(r[\"store\"], 0) + float(r[\"amount\"])\n\nwith open(\"totals.json\", \"w\") as f:\n    json.dump(totals, f, indent=2)                 # save the dict as JSON\n\ndf = pd.read_csv(\"sales.csv\")                      # the same job in pandas\nprint(df[df[\"amount\"] > 10])                       # filter rows\nprint(df.groupby(\"store\")[\"amount\"].sum())         # total per store",
+  "nodes": [
+   [
+    "file",
+    90,
+    70,
+    "sales.csv",
+    "text on disk",
+    1
+   ],
+   [
+    "reader",
+    265,
+    70,
+    "csv module",
+    "rows as dicts"
+   ],
+   [
+    "list",
+    440,
+    70,
+    "List",
+    "ordered rows"
+   ],
+   [
+    "dict",
+    615,
+    70,
+    "Dict",
+    "key -> value"
+   ],
+   [
+    "comp",
+    615,
+    220,
+    "Comprehension",
+    "filter · transform"
+   ],
+   [
+    "json",
+    440,
+    220,
+    "totals.json",
+    "results saved"
+   ],
+   [
+    "pandas",
+    265,
+    220,
+    "pandas",
+    "read_csv · groupby"
+   ],
+   [
+    "report",
+    90,
+    220,
+    "Summary",
+    "total per store"
+   ]
+  ],
+  "edges": [
+   [
+    "file",
+    "reader",
+    0,
+    "open()"
+   ],
+   [
+    "reader",
+    "list"
+   ],
+   [
+    "list",
+    "dict",
+    0,
+    "each row"
+   ],
+   [
+    "dict",
+    "comp"
+   ],
+   [
+    "comp",
+    "json",
+    0,
+    "json.dump"
+   ],
+   [
+    "file",
+    "pandas",
+    0,
+    "read_csv"
+   ],
+   [
+    "pandas",
+    "report",
+    0,
+    "groupby"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A CSV file on disk",
+    "n": [
+     "file"
+    ],
+    "d": "A CSV (comma-separated values) file is plain text: the first line holds column names and each later line is one row, with commas between values."
+   },
+   {
+    "t": "Open and read it",
+    "n": [
+     "reader"
+    ],
+    "e": [
+     "file>reader"
+    ],
+    "d": "open() connects your program to the file. The with block closes it automatically. csv.DictReader splits each line on commas and pairs values with the column names.",
+    "l": [
+     3,
+     4
+    ]
+   },
+   {
+    "t": "A list of rows",
+    "n": [
+     "list"
+    ],
+    "e": [
+     "reader>list"
+    ],
+    "d": "A list keeps items in order and you reach them by position, starting at 0. rows[0] is the first data row.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "Each row is a dict",
+    "n": [
+     "dict"
+    ],
+    "e": [
+     "list>dict"
+    ],
+    "d": "A dict maps keys to values, like a column name to that row's value. r[\"store\"] looks up the store. Note every value from a CSV arrives as text.",
+    "l": [
+     9,
+     11
+    ]
+   },
+   {
+    "t": "Sets and comprehensions",
+    "n": [
+     "comp"
+    ],
+    "e": [
+     "dict>comp"
+    ],
+    "d": "A set keeps only unique values. A comprehension builds a new list or set in one line: take each r in rows, keep it if a condition holds.",
+    "l": [
+     6,
+     7
+    ]
+   },
+   {
+    "t": "Save results as JSON",
+    "n": [
+     "json"
+    ],
+    "e": [
+     "comp>json"
+    ],
+    "d": "JSON is a text format that looks like Python dicts and lists. json.dump writes a dict to a file so another program, or you tomorrow, can load it back.",
+    "l": [
+     13,
+     14
+    ]
+   },
+   {
+    "t": "The pandas shortcut",
+    "n": [
+     "pandas"
+    ],
+    "e": [
+     "file>pandas"
+    ],
+    "d": "pandas is a popular library for tables. read_csv loads the whole file into a DataFrame, a table with named columns, and converts numbers for you.",
+    "l": [
+     1,
+     16
+    ]
+   },
+   {
+    "t": "Filter and group",
+    "n": [
+     "report"
+    ],
+    "e": [
+     "pandas>report"
+    ],
+    "d": "df[df[\"amount\"] > 10] keeps matching rows. groupby(\"store\") splits the table by store and .sum() adds each group's amounts, the same totals as the loop above.",
+    "l": [
+     17,
+     18
+    ]
+   }
+  ],
+  "ideas": [
+   "List: ordered, changeable. Tuple: ordered, fixed. Dict: key to value. Set: unique items, no order.",
+   "Use with open(...) so files are always closed, even after an error.",
+   "CSV values arrive as strings; convert before doing maths.",
+   "json.dump and json.load move dicts and lists to and from text files.",
+   "pandas read_csv, boolean filters and groupby replace many hand-written loops."
+  ],
+  "traps": [
+   "Treating CSV numbers as numbers without converting, so '9' > '10' comes out True.",
+   "Splitting CSV lines with .split(',') and breaking on values that contain commas.",
+   "Opening a file with mode 'w' when you meant to append, wiping its contents."
+  ],
+  "qa": [
+   [
+    "When would you use a dict instead of a list?",
+    "When you look things up by a key such as a customer id or store name. Finding a key in a dict is fast no matter how big it is, while finding an item in a list means scanning it."
+   ],
+   [
+    "Why use the csv module instead of splitting lines on commas?",
+    "Real CSV files quote values that contain commas or line breaks. The csv module handles quoting and escaping correctly; a plain split does not."
+   ],
+   [
+    "How would you total sales per store with pandas?",
+    "df = pd.read_csv('sales.csv'), then df.groupby('store')['amount'].sum(). Check the dtypes first so amount is numeric."
+   ]
+  ]
+ }
+]

@@ -1,0 +1,119 @@
+{
+ "mlworkflow": {
+  "title": "Fernwhistle Telecom: a 97 percent churn model that failed in its first month",
+  "company": "Fernwhistle Telecom (made up), regional mobile and broadband provider, about 400,000 subscribers, Ireland",
+  "situation": "Fernwhistle's analytics team built a churn model that scored 97 percent accuracy in their notebook and planned to send retention offers to the 2,000 highest-risk customers each month. In the first live month, only 4 percent of those customers actually left, barely above the 3 percent base churn rate, and 1,700 offers went to customers who were never going to leave.",
+  "problem": "The model had never been evaluated the way it would be used, so nobody knew whether it had learned anything real. Retraining with more features or a bigger model would only make the same hidden problems harder to see.",
+  "approach": [
+   "Rewrote the framing with the retention lead: predict on the 1st of each month whether a subscriber cancels within 60 days, using only data known on that date, so the team can phone the top 2,000.",
+   "Listed all 41 features with the date each value becomes known and found three leaks, including days_since_last_bill_payment computed on the export date, after many subscribers had already left.",
+   "Replaced the random split with a time split: train on 18 months, validate on the next 3, and lock the latest 3 months as the test set.",
+   "Reported a baseline first: calling subscribers whose contract ends within 60 days caught 31 percent of churners in the top 2,000.",
+   "Moved all preprocessing into one scikit-learn Pipeline, tuned a regularized logistic regression and a gradient boosted model with TimeSeriesSplit, and compared train and validation scores to confirm neither was overfitting.",
+   "Opened the test set once, fixed seeds, pinned library versions and saved the pipeline with the data snapshot date."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Churn model evaluation note (v2)\n\nFraming   Predict on the 1st of each month: will the subscriber cancel within 60 days?\nAction    Retention team phones the top 2,000 scores\nFeatures  38 (3 removed: known only after cancellation)\nSplit     Train Jan 2024-Jun 2025 | Validate Jul-Sep 2025 | Test Oct-Dec 2025 (opened once)\n\nMetric: share of actual churners caught in the top 2,000 (recall@2000)\n  Baseline (contract ends in 60 days)   31%\n  Logistic regression, validation       44%\n  Gradient boosting, validation         47%   train 51%, gap small\n  Gradient boosting, TEST               46%\n\nOld notebook accuracy (97%) is not comparable: random split plus leaked features.\nReproduce: git tag churn-v2, seed 42, data snapshot 2026-01-05, requirements.lock"
+  },
+  "outcome": "On the locked test months the new model caught 46 percent of churners in its top 2,000, against 31 percent for the contract rule. In the first two live months, 9 percent of contacted subscribers would have churned without contact, roughly three times the base rate, and the team measured a small but real drop in cancellations among those contacted.",
+  "lessons": [
+   "A score far above what the business expects is a signal to hunt for leakage, not to celebrate.",
+   "The split must copy real use: for monthly predictions, that means splitting by time.",
+   "A plain business-rule baseline gives the customer a number to trust and a bar to beat.",
+   "Reproducibility (seeds, pipeline, data snapshot) is what lets the customer's team keep the model alive after you leave."
+  ],
+  "discuss": [
+   "The analytics team is embarrassed that their 97 percent model was wrong. How would you present the findings so they stay on your side?",
+   "Why is recall in the top 2,000 a better metric here than accuracy or AUC?",
+   "How would you set up a monthly check that catches a new leak if someone adds a feature later?"
+  ]
+ },
+ "featureeng": {
+  "title": "Dunmere Energy: late-payment predictions that broke every night",
+  "company": "Dunmere Energy (made up), household gas and electricity retailer, about 250,000 accounts, Scotland",
+  "situation": "Dunmere wanted to predict which bills would be paid more than 30 days late so collections could send early reminders. A contractor's prototype scored well offline, but the nightly scoring job crashed about twice a week and, when it ran, its risk scores drifted away from what collections saw.",
+  "problem": "Features were built in a long pandas notebook: scaling and median filling were computed once on the whole history, plans were turned into columns by hand, and tariff codes were target encoded with raw averages. The nightly job re-implemented the steps separately, so any new tariff code or blank field broke it, and the offline score was inflated by leakage.",
+  "approach": [
+   "Inventoried every feature with its source column, formula and the moment its value is known, and removed average_days_late_all_time, which included bills after the prediction date.",
+   "Rebuilt features as of each bill date: days since account opened, number of late bills in the previous 12 months, bill amount relative to the account's previous 6-month average, and weekday of the bill.",
+   "Built one ColumnTransformer: median imputation with missing flags and StandardScaler for numbers, OneHotEncoder(handle_unknown=\"ignore\") for payment method and region, and TargetEncoder with smoothing for the 1,100 tariff codes.",
+   "Wrapped preprocessing and a logistic regression in one Pipeline and evaluated it with a time-based split so every transformer was fitted on past data only.",
+   "Saved the fitted Pipeline with joblib and changed the nightly job to load it and call predict_proba on raw rows, then tested it with a batch containing a brand-new tariff code and blank income fields."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from sklearn.compose import ColumnTransformer\nfrom sklearn.impute import SimpleImputer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline, make_pipeline\nfrom sklearn.preprocessing import OneHotEncoder, StandardScaler, TargetEncoder\n\nnumeric = [\"days_open\", \"late_bills_12m\", \"amount_vs_6m_avg\", \"bill_weekday\"]\ncategory = [\"payment_method\", \"region\"]\nmany_values = [\"tariff_code\"]                      # about 1,100 distinct codes\n\nprep = ColumnTransformer([\n    (\"num\", make_pipeline(SimpleImputer(strategy=\"median\", add_indicator=True),\n                          StandardScaler()), numeric),\n    (\"cat\", OneHotEncoder(handle_unknown=\"ignore\"), category),\n    (\"te\", TargetEncoder(target_type=\"binary\", smooth=20.0), many_values),\n])\nlate_payment_model = Pipeline([(\"prep\", prep),\n                               (\"clf\", LogisticRegression(max_iter=2000, C=0.5))])\n# late_payment_model.fit(train_df, train_df[\"late_30\"]) ; joblib.dump(...) for the nightly job"
+  },
+  "outcome": "The honest offline recall at the collections team's capacity dropped from a leaked 71 percent to 52 percent, but the live figure over the next quarter matched it at 50 percent. The nightly job had no crashes in 90 days, and early reminders reduced bills more than 30 days late by about 8 percent in the targeted group.",
+  "lessons": [
+   "Feature code that exists twice, once for training and once for scoring, will drift apart; ship one Pipeline.",
+   "Every aggregate feature needs an as-of date, or it quietly includes the future.",
+   "handle_unknown and smoothed target encoding are what keep a model alive when live data brings new categories.",
+   "A lower but honest offline score that matches live results is worth more than a high one that does not."
+  ],
+  "discuss": [
+   "Would you keep target encoding for tariff codes or group rare codes into an other bucket? How would you decide?",
+   "Collections asks why the new model's score is lower than the contractor's. What do you say?",
+   "What monitoring would you add so you notice when a new tariff family starts behaving differently?"
+  ]
+ },
+ "linreg": {
+  "title": "Quennell Freight: delivery time estimates that customers could trust",
+  "company": "Quennell Freight (made up), same-day courier, 90 vans, Netherlands",
+  "situation": "Quennell quoted every delivery window as '2 to 4 hours' because dispatchers guessed. About 18 percent of customers called to ask where their parcel was, costing the support team roughly 60 hours a week. The operations lead wanted an estimate in minutes on each booking.",
+  "problem": "A previous attempt fitted a model on all historical jobs and produced some absurd estimates, including negative minutes for short trips and three-hour estimates for 5 km runs. Nobody could explain the numbers, so dispatchers ignored them.",
+  "approach": [
+   "Started with a residual plot of minutes against distance and found a few hundred jobs over 3 hours caused by van breakdowns and customer no-shows, which dragged the least squares line; they were tagged with operations and excluded, and HuberRegressor was tested as a robust check.",
+   "Built features the dispatchers already used: road distance, number of stops, hour-of-day bucket, whether the drop is in a city centre, and an interaction of distance with rush hour.",
+   "Fitted plain linear regression and RidgeCV on scaled features with a time split: train on six months, validate on the following month.",
+   "Reported MAE and RMSE in minutes against a baseline of 'average minutes for that distance band', and read the coefficients back to dispatchers in their own terms, such as about 3.8 minutes per km plus 6 minutes per extra stop.",
+   "Checked residuals by hour and area; a funnel shape at long distances led to predicting a range (estimate plus or minus 1.5 times the MAE for that band) rather than a single number."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Delivery time model: validation month (4,812 jobs)\n\n                          MAE (min)   RMSE (min)   R2\nBaseline: distance band      17.9        24.6      0.41\nLinear regression            11.2        15.8      0.74\nRidgeCV (alpha=3.0)          11.0        15.5      0.75\n\nKey coefficients (per unit, others fixed)\n  road distance       +3.8 min per km\n  extra stop          +6.1 min\n  rush hour x km      +1.2 min per km\n  city centre drop    +9.4 min\n\nShown to customers: estimate +/- 1.5 x band MAE, rounded to 5 minutes"
+  },
+  "outcome": "Typical error fell from about 18 minutes with the distance-band baseline to 11 minutes. Over the next two months, 'where is my parcel' calls dropped from 18 percent to 11 percent of deliveries, and dispatchers kept using the estimates because they could see how each number was built.",
+  "lessons": [
+   "Look at residuals before trusting any fit; a few extreme points can ruin least squares.",
+   "Linear models earn trust when coefficients can be read back in the customer's own units.",
+   "Always compare MAE with a simple baseline so the improvement is concrete.",
+   "When error grows with the value, give a range rather than pretending to a single number."
+  ],
+  "discuss": [
+   "When would you move from linear regression to gradient boosting for this problem, and what would you lose?",
+   "The breakdowns were excluded. How should the customer-facing estimate account for the small chance of one?",
+   "How would you explain R squared of 0.75 to the operations lead without jargon?"
+  ]
+ },
+ "logreg": {
+  "title": "Marrowby Credit Union: a loan model that approved nobody for review",
+  "company": "Marrowby Credit Union (made up), member-owned lender, about 60,000 members, Wales",
+  "situation": "Marrowby wanted to flag small-loan applications at high risk of default so an underwriter could review them. Defaults were 4 percent of loans. A first model reported 96 percent accuracy, yet at the default threshold it flagged almost no applications, and underwriters were still reviewing everything by hand at about 25 minutes each.",
+  "problem": "Accuracy hid the fact that the model mostly predicted 'no default'. The compliance officer also required that every flag be explainable to the member in plain terms, which ruled out an opaque model without a clear justification.",
+  "approach": [
+   "Framed the decision: flag applications for manual review; underwriters can handle about 120 reviews a week out of 900 applications.",
+   "Built a scaled logistic regression with a few explainable features (debt-to-income ratio, missed payments in 12 months, months as a member, loan-to-savings ratio) inside a Pipeline, evaluated with a time split.",
+   "Reported precision and recall instead of accuracy and chose the threshold that produced about 120 flags a week on validation data, rather than using 0.5.",
+   "Compared class_weight=\"balanced\" with threshold tuning alone; both reached similar recall at 120 flags, so the unweighted model was kept because its probabilities stayed calibrated.",
+   "Translated coefficients into odds ratios for compliance, for example each missed payment in the last year multiplies the odds of default by about 1.8, and produced reason codes from the largest contributions for each flagged application."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Loan review model: threshold choice (validation, 11 weeks, 9,870 applications)\n\nThreshold   Flags/week   Precision   Recall (defaults caught)\n0.50             9          0.46          0.11\n0.20            58          0.24          0.36\n0.10           121          0.15          0.51   <- matches review capacity\n0.05           260          0.09          0.66\n\nOdds ratios (scaled features, per 1 standard deviation unless noted)\n  missed payments, 12 months (per payment)   x1.8\n  debt-to-income ratio                       x1.6\n  months as a member                         x0.7\n  loan-to-savings ratio                      x1.4\n\nReason codes = top 2 features by weight x value for each flagged application"
+  },
+  "outcome": "At threshold 0.10 the model sent about 120 applications a week for review and caught about half of the loans that later defaulted, against about 13 percent caught by the previous random spot checks at the same review volume. Underwriters stopped reviewing low-risk applications in full, saving roughly 250 hours a month.",
+  "lessons": [
+   "With rare positives, accuracy is almost meaningless; choose metrics that count the rare class.",
+   "The threshold comes from team capacity and the cost of mistakes, not from the model.",
+   "Odds ratios and reason codes make logistic regression acceptable to risk and compliance teams.",
+   "Class weights and threshold tuning can reach similar recall; weights distort probabilities, so check calibration."
+  ],
+  "discuss": [
+   "A member asks why their application was reviewed. What would you tell them, and what must you avoid saying?",
+   "How would you check that the model does not treat any protected group unfairly? (See responsibleai.)",
+   "If review capacity doubled next quarter, what would you change and what would you measure?"
+  ]
+ }
+}

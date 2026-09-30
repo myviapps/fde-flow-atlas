@@ -1,0 +1,230 @@
+{
+ "trees": [
+  {
+   "q": "What does Gini impurity measure for a group of rows in a decision tree?",
+   "options": [
+    "How evenly the rows are spread across the feature values",
+    "How mixed the class labels are, from 0 for a pure group upward",
+    "How many splits are needed to reach a leaf",
+    "How much the tree's accuracy improves on test data"
+   ],
+   "answer": 1,
+   "why": "Gini is 0 when every row shares one class and rises as the classes mix, reaching 0.5 for a 50/50 two-class group."
+  },
+  {
+   "q": "How does a random forest differ from plain bagging of decision trees?",
+   "options": [
+    "It trains trees in sequence on the previous errors",
+    "It uses only one shallow tree per feature",
+    "Each split considers a random subset of the features",
+    "It removes the bootstrap sampling step entirely"
+   ],
+   "answer": 2,
+   "why": "Random forests keep bootstrap samples and add random feature choice at each split, which makes the trees less alike. Training in sequence on errors is boosting."
+  },
+  {
+   "q": "A client's tree scores 100% on training data and 81% on new data. What do you try first?",
+   "options": [
+    "Limit depth or raise min_samples_leaf and tune with cross-validation",
+    "Add more features so the tree can split even further",
+    "Report the training score since it shows the model's full ability",
+    "Switch the impurity measure from Gini to entropy"
+   ],
+   "answer": 0,
+   "why": "The large gap means the tree memorised noise. Pruning through depth or leaf size, tuned on validation folds, is the direct fix; changing Gini to entropy rarely matters."
+  },
+  {
+   "q": "A risk team must read and audit every rule, but also wants the best scores. What do you propose?",
+   "options": [
+    "One unlimited-depth tree for both jobs",
+    "A random forest, with its impurity importances as the rules",
+    "A pruned shallow tree to explain, plus a forest or boosted model to score",
+    "A kNN model, since neighbours are easy to show"
+   ],
+   "answer": 2,
+   "why": "A shallow pruned tree gives readable rules, while an ensemble gives stronger scores; disagreements can go to human review."
+  },
+  {
+   "q": "Spot the mistake: 'customer_id ranks second in feature_importances_, so IDs drive churn.'",
+   "options": [
+    "Nothing, importance always reflects real causes",
+    "Impurity importance favours many-valued columns like IDs; check permutation importance",
+    "The ranking is wrong because trees ignore numeric columns",
+    "IDs matter, but only after scaling them first"
+   ],
+   "answer": 1,
+   "why": "Impurity importance is biased toward high-cardinality features and is measured on training data. Permutation importance on held-out data shows an ID adds nothing."
+  }
+ ],
+ "boosting": [
+  {
+   "q": "In gradient boosting, what is each new tree trained to predict?",
+   "options": [
+    "The original target, using a fresh bootstrap sample",
+    "The errors (residuals or gradients) of the model so far",
+    "The feature that has the highest importance",
+    "The average of all previous trees' predictions"
+   ],
+   "answer": 1,
+   "why": "Each round fits a small tree to what the current model still gets wrong, then adds it in scaled by the learning rate."
+  },
+  {
+   "q": "What usually happens if you lower the learning rate from 0.3 to 0.03 and keep the same number of trees?",
+   "options": [
+    "The model overfits much faster",
+    "Training becomes unstable and diverges",
+    "The model may underfit because it needs many more trees",
+    "Nothing, the learning rate only affects speed"
+   ],
+   "answer": 2,
+   "why": "Smaller steps need more rounds to reach the same fit. Use early stopping or raise the number of trees when you lower the rate."
+  },
+  {
+   "q": "A shipper wants to predict next week's late deliveries. How should you split data for early stopping?",
+   "options": [
+    "A random 15% of all rows, shuffled",
+    "The most recent weeks as validation, with an even later period for the test",
+    "Use the test set for early stopping to save data",
+    "No validation set, just use 1,000 trees"
+   ],
+   "answer": 1,
+   "why": "For time-ordered problems, validation and test data must come after the training period, or the model sees the future and scores look too good."
+  },
+  {
+   "q": "Operations asks why a single order was flagged by your boosted model. What do you show?",
+   "options": [
+    "The global feature importance bar chart",
+    "The model's total number of trees",
+    "SHAP values for that order, turned into plain reasons",
+    "The learning rate and max depth settings"
+   ],
+   "answer": 2,
+   "why": "SHAP gives per-row contributions that add up to that prediction, which answers 'why this one'. Global importance only says what matters on average."
+  },
+  {
+   "q": "Spot the mistake: 'SHAP shows region adds +0.4 to risk, so moving depots out of that region will cut delays.'",
+   "options": [
+    "SHAP explains the model's use of a feature, not cause and effect",
+    "SHAP values cannot be positive for classification",
+    "SHAP only works for linear models",
+    "The value should be divided by the learning rate first"
+   ],
+   "answer": 0,
+   "why": "A large contribution means the model relies on the feature. Whether changing it changes outcomes needs causal evidence such as an experiment."
+  }
+ ],
+ "knnsvm": [
+  {
+   "q": "How does kNN classify a new row?",
+   "options": [
+    "It fits a line and checks which side the row is on",
+    "It finds the k most similar training rows and takes a vote",
+    "It multiplies word probabilities for each class",
+    "It builds k trees and averages them"
+   ],
+   "answer": 1,
+   "why": "kNN stores training rows and predicts from the majority of the k nearest ones by distance."
+  },
+  {
+   "q": "In an SVM, what are support vectors?",
+   "options": [
+    "The training points nearest the boundary that define it",
+    "The features with the largest weights",
+    "Extra columns created by the kernel",
+    "Rows the model classified wrongly on test data"
+   ],
+   "answer": 0,
+   "why": "Only the points closest to the margin decide where the boundary lies; moving other points does not change it."
+  },
+  {
+   "q": "A kNN model on income in dollars and age in years ignores age. What is the likely cause and fix?",
+   "options": [
+    "k is too small; raise k to 50",
+    "Age has too few values; drop it",
+    "Features are unscaled; add StandardScaler in a Pipeline",
+    "Distances are wrong; switch to Naive Bayes"
+   ],
+   "answer": 2,
+   "why": "Income's large range dominates Euclidean distance. Scaling inside a pipeline gives both features fair weight without leaking test data."
+  },
+  {
+   "q": "A help desk needs a ticket router this week and has 300 labelled tickets. What do you build first?",
+   "options": [
+    "A kernel SVM on raw text characters",
+    "Word counts with Multinomial Naive Bayes as a baseline",
+    "kNN on ticket length and hour sent",
+    "A deep neural network trained from scratch"
+   ],
+   "answer": 1,
+   "why": "Naive Bayes on counts trains in seconds, works with few labels and is easy to inspect, so it is a strong first baseline to beat."
+  },
+  {
+   "q": "Spot the mistake: 'Test accuracy dropped, so we raised RBF gamma to 100 to fit the data more closely.'",
+   "options": [
+    "gamma only affects training speed",
+    "High gamma makes each point's influence tiny and tends to overfit",
+    "gamma must always equal C",
+    "RBF kernels ignore gamma when data is scaled"
+   ],
+   "answer": 1,
+   "why": "Large gamma gives wiggly boundaries that hug training points, which usually lowers test accuracy further. Tune gamma and C with cross-validation."
+  }
+ ],
+ "clustering": [
+  {
+   "q": "What are the two steps k-means repeats until it converges?",
+   "options": [
+    "Split and prune",
+    "Assign points to the nearest center, then move centers to their points' mean",
+    "Merge the two closest clusters, then redraw the tree",
+    "Label dense points as core, then mark others as noise"
+   ],
+   "answer": 1,
+   "why": "k-means alternates assign and update. Merging is hierarchical clustering; core and noise points are DBSCAN."
+  },
+  {
+   "q": "What does a silhouette score near 0 for a point mean?",
+   "options": [
+    "The point sits near the border between two clusters",
+    "The point is exactly at its cluster center",
+    "The point is noise and will be removed",
+    "The clustering has perfect separation"
+   ],
+   "answer": 0,
+   "why": "Silhouette compares distance to the own cluster with distance to the nearest other; near 0 means both are about equal."
+  },
+  {
+   "q": "A retailer's k-means gives one segment of 40 huge buyers and one of everyone else. What do you do first?",
+   "options": [
+    "Increase k to 20 until segments look even",
+    "Log-transform and scale features, and handle extreme accounts separately",
+    "Switch to Naive Bayes",
+    "Report the two segments as found"
+   ],
+   "answer": 1,
+   "why": "Skewed, unscaled spend lets a few extreme rows dominate distances. Log, scale and a rule for outliers usually give usable segments."
+  },
+  {
+   "q": "Fraud analysts want to find odd transactions and groups of any shape, with no k known. Which method fits?",
+   "options": [
+    "k-means with k=2",
+    "Hierarchical clustering with single linkage and no scaling",
+    "DBSCAN, which labels sparse points as noise",
+    "Linear regression on the transaction amount"
+   ],
+   "answer": 2,
+   "why": "DBSCAN needs no k, finds clusters of any shape and marks isolated points with -1, which is useful for spotting outliers."
+  },
+  {
+   "q": "Spot the mistake: 'We picked k=9 because it had the lowest inertia of all k we tried.'",
+   "options": [
+    "Inertia always falls as k grows, so lowest inertia just favours the largest k",
+    "Inertia should be maximised, not minimised",
+    "k-means cannot use more than 8 clusters",
+    "Inertia is only valid for DBSCAN"
+   ],
+   "answer": 0,
+   "why": "More clusters always reduce inertia. Use the elbow, silhouette, stability and business needs to choose k."
+  }
+ ]
+}

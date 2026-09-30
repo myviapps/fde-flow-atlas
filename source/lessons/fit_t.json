@@ -1,0 +1,30 @@
+{
+ "mlworkflow": {
+  "best": [
+   "animation",
+   "practice"
+  ],
+  "why": "The workflow is an ordered process best seen step by step, then made a habit by running it on real datasets."
+ },
+ "featureeng": {
+  "best": [
+   "practice",
+   "flowchart"
+  ],
+  "why": "Feature skills stick by transforming messy tables often; the flowchart shows how Pipeline and ColumnTransformer fit together."
+ },
+ "linreg": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Dragging the learning rate and stepping gradient descent makes loss, overshoot and overfitting visible before the math."
+ },
+ "logreg": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Moving weights and watching the boundary, log loss and accuracy change builds intuition for probabilities and thresholds."
+ }
+}

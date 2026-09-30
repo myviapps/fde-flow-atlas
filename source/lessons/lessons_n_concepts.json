@@ -1,0 +1,815 @@
+[
+ {
+  "id": "apistyles",
+  "mod": 2,
+  "sec": "2.1",
+  "name": "REST, GraphQL, gRPC, hooks",
+  "title": "Choosing an API style: REST, GraphQL, gRPC and webhooks",
+  "thesis": "An API style is a set of conventions for how two programs ask each other for things. REST is the safe default for public APIs, GraphQL helps when many clients need different shapes of data, gRPC suits fast calls between your own services, and webhooks flip the direction so the other side tells you when something happens.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   290
+  ],
+  "note": "Start at the top left. Each box on the top row is a question: follow 'yes' down to the style it points to, or 'no' to the right. If the other system should tell you when something happens, go straight down to webhooks.",
+  "nodes": [
+   [
+    "q1",
+    90,
+    70,
+    "Request or event",
+    "who starts it?"
+   ],
+   [
+    "q2",
+    265,
+    70,
+    "Internal, fast?",
+    "service to service"
+   ],
+   [
+    "q3",
+    440,
+    70,
+    "Varied clients?",
+    "many screen shapes"
+   ],
+   [
+    "rest",
+    615,
+    70,
+    "REST + OpenAPI",
+    "default public API"
+   ],
+   [
+    "gql",
+    440,
+    220,
+    "GraphQL",
+    "client picks fields"
+   ],
+   [
+    "grpc",
+    265,
+    220,
+    "gRPC",
+    "Protobuf, HTTP/2"
+   ],
+   [
+    "hook",
+    90,
+    220,
+    "Webhook",
+    "they push events"
+   ]
+  ],
+  "edges": [
+   [
+    "q1",
+    "q2",
+    0,
+    "request"
+   ],
+   [
+    "q2",
+    "q3",
+    0,
+    "no"
+   ],
+   [
+    "q3",
+    "rest",
+    0,
+    "no"
+   ],
+   [
+    "q3",
+    "gql",
+    0,
+    "yes"
+   ],
+   [
+    "q2",
+    "grpc",
+    0,
+    "yes"
+   ],
+   [
+    "q1",
+    "hook",
+    0,
+    "event"
+   ]
+  ],
+  "ideas": [
+   "REST models things as resources at URLs (/orders/42) and uses HTTP verbs and status codes. It is the most widely understood style.",
+   "GraphQL exposes one endpoint where the client writes a query naming exactly the fields it wants, which avoids many round trips for complex screens.",
+   "gRPC sends compact binary Protobuf messages over HTTP/2 with a typed contract, so it is fast and good between services you control.",
+   "Polling asks 'anything new?' on a timer. A webhook is an HTTP call the other system makes to you when an event happens, so you get news sooner with fewer wasted requests.",
+   "An OpenAPI spec is a machine-readable contract for a REST API. Version the API (for example /v2) when you must make a breaking change."
+  ],
+  "traps": [
+   "Accepting webhook calls without verifying the signature, so anyone who finds the URL can send fake events.",
+   "Picking GraphQL or gRPC because it is fashionable when the customer's team and tools only know REST.",
+   "Renaming or removing a field in place and breaking every client that relied on it."
+  ],
+  "qa": [
+   [
+    "A customer's system can send webhooks or you can poll its API. Which do you pick?",
+    "Webhooks for freshness and lower load, with a signature check, fast 2xx response and idempotent handling of duplicates. I would still keep a slow reconciliation poll, for example hourly, because webhooks can be missed during outages."
+   ],
+   [
+    "When would you choose gRPC over REST?",
+    "For high-volume calls between internal services that my team controls, where typed contracts and low latency matter. For anything a customer's developers or browsers call directly, REST with an OpenAPI spec is easier to adopt and debug."
+   ],
+   [
+    "How do you change an API without breaking clients?",
+    "Make additive changes (new optional fields, new endpoints) freely. For breaking changes, publish a new version alongside the old one, update the OpenAPI spec, announce a deprecation date and watch traffic on the old version before removing it."
+   ]
+  ]
+ },
+ {
+  "id": "nosql",
+  "mod": 2,
+  "sec": "2.2",
+  "name": "NoSQL and choosing a DB",
+  "title": "NoSQL families and how to pick a database",
+  "thesis": "Relational databases are the default because they handle most workloads well. Document, key-value, wide-column, graph and vector databases each make one access pattern much easier or faster, at the cost of flexibility elsewhere. Pick from the queries you must run, not from the brand.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Document databases such as MongoDB store JSON-like records, good when each item has a different set of fields and is read as a whole.",
+   "Key-value stores such as Redis and DynamoDB look things up by a key very quickly. Redis keeps data in memory; DynamoDB is a managed AWS service that scales by partition key.",
+   "Wide-column stores such as Cassandra spread huge write-heavy tables across many machines and are queried by partition key.",
+   "Graph databases such as Neo4j store nodes and relationships, good for questions like 'who is connected to whom within three hops'.",
+   "Vector databases (or Postgres with pgvector) find the items whose embeddings are closest to a query embedding, which powers semantic search and RAG."
+  ],
+  "traps": [
+   "Choosing a NoSQL database before listing the queries, then discovering you need joins and ad hoc reports.",
+   "Designing a DynamoDB or Cassandra table with a hot partition key, such as the current date, so one machine takes all the load.",
+   "Adding a new database for every feature when Postgres with JSONB or pgvector would have covered it."
+  ],
+  "qa": [
+   [
+    "A customer wants to move from Postgres to MongoDB 'because it scales'. What do you ask?",
+    "What queries and volumes they have today, where it is slow, and whether they rely on joins, transactions or SQL reports. Often indexing, read replicas or JSONB columns fix the pain. I would only move if the access pattern is document-shaped and the gain is measured."
+   ],
+   [
+    "When is a key-value store the right choice?",
+    "When nearly every read and write is 'get or set this item by its key', such as sessions, carts, feature flags or rate-limit counters. It is fast and simple, but poor for ad hoc queries across many items."
+   ],
+   [
+    "Do you need a separate vector database for RAG?",
+    "Not always. For up to a few million chunks, pgvector inside an existing Postgres is often enough and keeps one system to secure and back up. A dedicated vector database makes sense at larger scale or when you need its filtering and indexing features."
+   ]
+  ]
+ },
+ {
+  "id": "streaming",
+  "mod": 2,
+  "sec": "2.2",
+  "name": "Real-time streaming",
+  "title": "Real-time streaming with Kafka and change data capture",
+  "thesis": "Batch jobs process yesterday's data in one go; streaming processes each event seconds after it happens. Kafka stores events in partitioned, replayable logs, consumer groups share the work, and change data capture turns database updates into events without touching the application.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "An at-least-once Kafka consumer for Debezium events",
+  "code": "from confluent_kafka import Consumer\nimport json\n\nconsumer = Consumer({\n    \"bootstrap.servers\": \"kafka:9092\",\n    \"group.id\": \"fraud-scorer\",        # members of a group share partitions\n    \"enable.auto.commit\": False,        # we decide when an offset is done\n    \"auto.offset.reset\": \"earliest\",\n})\nconsumer.subscribe([\"shop.public.orders\"])  # topic written by Debezium\n\nwhile True:\n    msg = consumer.poll(1.0)              # wait up to 1 s for the next event\n    if msg is None or msg.error():\n        continue\n    change = json.loads(msg.value())\n    order = change[\"payload\"][\"after\"]    # the row after the change\n    if order and order[\"amount\"] > 5000:\n        save_alert(order[\"id\"])           # idempotent upsert, safe to repeat\n    consumer.commit(message=msg)          # at-least-once: commit after work",
+  "nodes": [
+   [
+    "db",
+    90,
+    70,
+    "Orders DB",
+    "Postgres WAL"
+   ],
+   [
+    "cdc",
+    265,
+    70,
+    "Debezium",
+    "reads the log"
+   ],
+   [
+    "topic",
+    440,
+    70,
+    "Kafka topic",
+    "shop.public.orders"
+   ],
+   [
+    "part",
+    615,
+    70,
+    "Partitions",
+    "keyed by order id"
+   ],
+   [
+    "group",
+    615,
+    220,
+    "Consumer group",
+    "fraud-scorer x3"
+   ],
+   [
+    "proc",
+    440,
+    220,
+    "Stream logic",
+    "rules, windows"
+   ],
+   [
+    "sink",
+    265,
+    220,
+    "Alerts table",
+    "idempotent upsert"
+   ],
+   [
+    "commit",
+    90,
+    220,
+    "Commit offset",
+    "mark progress"
+   ]
+  ],
+  "edges": [
+   [
+    "db",
+    "cdc"
+   ],
+   [
+    "cdc",
+    "topic"
+   ],
+   [
+    "topic",
+    "part"
+   ],
+   [
+    "part",
+    "group"
+   ],
+   [
+    "group",
+    "proc"
+   ],
+   [
+    "proc",
+    "sink"
+   ],
+   [
+    "sink",
+    "commit"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A row changes in the database",
+    "n": [
+     "db"
+    ],
+    "d": "A customer places an order and the app inserts a row into Postgres. Postgres records every change in its write-ahead log (WAL) before applying it."
+   },
+   {
+    "t": "Debezium captures the change",
+    "n": [
+     "cdc"
+    ],
+    "e": [
+     "db>cdc"
+    ],
+    "d": "Debezium, a change data capture (CDC) tool, reads the WAL and turns each insert, update or delete into an event with the row before and after. The application code is not changed."
+   },
+   {
+    "t": "The event lands in a topic",
+    "n": [
+     "topic"
+    ],
+    "e": [
+     "cdc>topic"
+    ],
+    "d": "Kafka appends the event to the topic shop.public.orders. A topic is an append-only log that keeps events for a set retention period, so consumers can read them again later."
+   },
+   {
+    "t": "The key picks a partition",
+    "n": [
+     "part"
+    ],
+    "e": [
+     "topic>part"
+    ],
+    "d": "The topic is split into partitions. Events with the same key, here the order id, always go to the same partition, so their order is preserved."
+   },
+   {
+    "t": "A consumer group shares the work",
+    "n": [
+     "group"
+    ],
+    "e": [
+     "part>group"
+    ],
+    "d": "Three copies of the fraud scorer join the group fraud-scorer. Kafka assigns each partition to exactly one member, so adding members spreads the load.",
+    "l": [
+     5,
+     9,
+     12
+    ]
+   },
+   {
+    "t": "Stream logic runs on each event",
+    "n": [
+     "proc"
+    ],
+    "e": [
+     "group>proc"
+    ],
+    "d": "The consumer parses the event and applies its rule. Real jobs often keep state, such as a count per card over the last five minutes, called a window.",
+    "l": [
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "t": "Results are written safely",
+    "n": [
+     "sink"
+    ],
+    "e": [
+     "proc>sink"
+    ],
+    "d": "The alert is written with an upsert keyed by order id. If the same event is processed twice, the table still holds one alert.",
+    "l": [
+     18
+    ]
+   },
+   {
+    "t": "The offset is committed",
+    "n": [
+     "commit"
+    ],
+    "e": [
+     "sink>commit"
+    ],
+    "d": "Only after the work succeeds does the consumer commit its offset, its position in the partition. If it crashes first, it rereads the event: at-least-once delivery, made safe by the idempotent write.",
+    "l": [
+     6,
+     19
+    ]
+   }
+  ],
+  "ideas": [
+   "Batch processing handles a large chunk of data on a schedule; stream processing handles each event as it arrives, with latency in seconds.",
+   "A Kafka topic is split into partitions. Order is guaranteed only within a partition, so choose the key that must stay in order.",
+   "Within a consumer group each partition goes to one consumer, so the partition count caps how many consumers can work in parallel.",
+   "Change data capture reads the database's transaction log and publishes every change as an event, without polling tables or editing the app.",
+   "At-least-once plus idempotent writes is the practical default. Exactly-once exists in Kafka but only within specific setups, such as Kafka to Kafka with transactions."
+  ],
+  "traps": [
+   "Committing the offset before the work is done, which silently loses events when a consumer crashes.",
+   "Assuming events arrive in global order across partitions.",
+   "Building streaming when the business only looks at the numbers once a day, which adds cost and on-call load for no benefit."
+  ],
+  "qa": [
+   [
+    "What is the difference between at-least-once and exactly-once?",
+    "At-least-once means no event is lost, but some may be processed twice after a failure. Exactly-once means each event affects the result once. Kafka can give exactly-once for read-process-write within Kafka using transactions; when writing to outside systems I use at-least-once with idempotent writes keyed by a unique id."
+   ],
+   [
+    "How would you get changes out of a customer's production database without slowing it down?",
+    "Use log-based CDC such as Debezium, which reads the transaction log instead of running queries against tables. I would agree the replication slot or log retention settings with their DBA and monitor lag, because a stuck connector can make the log grow."
+   ],
+   [
+    "Your consumers are falling behind. What do you check?",
+    "Consumer lag per partition, whether one partition is hot because of a skewed key, how long each event takes to process, and whether there are fewer consumers than partitions. Fixes include adding consumers up to the partition count, batching writes or changing the key."
+   ]
+  ]
+ },
+ {
+  "id": "cicd",
+  "mod": 2,
+  "sec": "2.3",
+  "name": "CI/CD pipelines",
+  "title": "CI/CD: from a pull request to a safe production release",
+  "thesis": "Continuous integration runs checks on every change so problems are caught within minutes. Continuous delivery packages each passing change so it can be released with one approval. Environments, feature flags and quick rollbacks make releasing boring, which is the goal.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "A GitHub Actions workflow: test, then staging, then production",
+  "code": "name: ci-cd\non:\n  pull_request:\n  push:\n    branches: [main]\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n      - run: pip install -r requirements.txt ruff pytest pip-audit\n      - run: ruff check .                       # lint\n      - run: pytest -q                          # unit tests\n      - run: pip-audit -r requirements.txt      # known-vulnerable deps\n\n  deploy-staging:\n    needs: test\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    environment: staging\n    steps:\n      - uses: actions/checkout@v4\n      - run: docker build -t registry.example.com/app:${{ github.sha }} .\n      - run: ./scripts/push_and_deploy.sh staging ${{ github.sha }}\n\n  deploy-prod:\n    needs: deploy-staging\n    runs-on: ubuntu-latest\n    environment: production                     # waits for a reviewer\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/push_and_deploy.sh production ${{ github.sha }}",
+  "nodes": [
+   [
+    "push",
+    90,
+    70,
+    "Pull request",
+    "git push"
+   ],
+   [
+    "trig",
+    265,
+    70,
+    "Workflow starts",
+    "on: pull_request"
+   ],
+   [
+    "test",
+    440,
+    70,
+    "Lint + test",
+    "ruff, pytest"
+   ],
+   [
+    "scan",
+    615,
+    70,
+    "Security scan",
+    "vulnerable deps"
+   ],
+   [
+    "build",
+    615,
+    220,
+    "Build image",
+    "tag = commit SHA"
+   ],
+   [
+    "stg",
+    440,
+    220,
+    "Staging",
+    "auto deploy"
+   ],
+   [
+    "prod",
+    265,
+    220,
+    "Production",
+    "approval gate"
+   ],
+   [
+    "flag",
+    90,
+    220,
+    "Flags, rollback",
+    "release slowly"
+   ]
+  ],
+  "edges": [
+   [
+    "push",
+    "trig"
+   ],
+   [
+    "trig",
+    "test"
+   ],
+   [
+    "test",
+    "scan"
+   ],
+   [
+    "scan",
+    "build"
+   ],
+   [
+    "build",
+    "stg"
+   ],
+   [
+    "stg",
+    "prod"
+   ],
+   [
+    "prod",
+    "flag"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A developer opens a pull request",
+    "n": [
+     "push"
+    ],
+    "d": "A developer pushes a branch and opens a pull request (PR), a request to merge the change into main. Nothing reaches users yet."
+   },
+   {
+    "t": "The workflow is triggered",
+    "n": [
+     "trig"
+    ],
+    "e": [
+     "push>trig"
+    ],
+    "d": "GitHub Actions reads the workflow file in .github/workflows. The 'on' section says which events start it, here pull requests and pushes to main.",
+    "l": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "t": "Lint and tests run",
+    "n": [
+     "test"
+    ],
+    "e": [
+     "trig>test"
+    ],
+    "d": "A fresh virtual machine, called a runner, checks out the code, installs dependencies, runs the linter and the unit tests. Any failure marks the PR red.",
+    "l": [
+     7,
+     11,
+     14,
+     15,
+     16
+    ]
+   },
+   {
+    "t": "Dependencies are scanned",
+    "n": [
+     "scan"
+    ],
+    "e": [
+     "test>scan"
+    ],
+    "d": "pip-audit checks the installed packages against a database of known vulnerabilities. Teams often add secret scanning and container image scanning here too.",
+    "l": [
+     17
+    ]
+   },
+   {
+    "t": "An image is built once",
+    "n": [
+     "build"
+    ],
+    "e": [
+     "scan>build"
+    ],
+    "d": "After merge to main, the app is built into a Docker image tagged with the commit SHA. The same image moves through every environment, so what you tested is what you ship.",
+    "l": [
+     19,
+     20,
+     21,
+     26
+    ]
+   },
+   {
+    "t": "Staging gets it automatically",
+    "n": [
+     "stg"
+    ],
+    "e": [
+     "build>stg"
+    ],
+    "d": "The staging environment is a copy of production with test data. Deploying there on every merge lets you run smoke tests and demos against the real build.",
+    "l": [
+     23,
+     27
+    ]
+   },
+   {
+    "t": "Production waits for approval",
+    "n": [
+     "prod"
+    ],
+    "e": [
+     "stg>prod"
+    ],
+    "d": "The production environment has a required reviewer, so the job pauses until someone approves. This is continuous delivery: always releasable, released on a decision.",
+    "l": [
+     29,
+     30,
+     32,
+     35
+    ]
+   },
+   {
+    "t": "Release behind a flag, keep a way back",
+    "n": [
+     "flag"
+    ],
+    "e": [
+     "prod>flag"
+    ],
+    "d": "New behavior can ship switched off behind a feature flag and be turned on for 5 percent of users first. If metrics drop, turn the flag off or redeploy the previous image tag."
+   }
+  ],
+  "ideas": [
+   "Continuous integration: every change is merged often and checked automatically. Continuous delivery: every passing change is ready to deploy. Continuous deployment: it deploys with no human step.",
+   "A GitHub Actions workflow is YAML with triggers (on), jobs that run on runners, and steps that run commands or reusable actions.",
+   "Build the artifact once and promote the same image through staging and production.",
+   "Environments hold their own secrets and protection rules, such as required reviewers for production.",
+   "Feature flags separate deploying code from releasing a feature, and a rollback plan should take minutes."
+  ],
+  "traps": [
+   "Rebuilding the image separately for production, so the thing you tested is not the thing you ship.",
+   "Putting secrets in the workflow file or printing them in logs instead of using encrypted secrets.",
+   "Tolerating flaky tests until everyone ignores red builds."
+  ],
+  "qa": [
+   [
+    "What is the difference between continuous delivery and continuous deployment?",
+    "With continuous delivery every change that passes the pipeline is deployable, but a person decides when it goes to production. With continuous deployment it goes to production automatically. Many enterprise customers want delivery with an approval step for audit reasons."
+   ],
+   [
+    "A release breaks production. What should the pipeline let you do?",
+    "Roll back in minutes by redeploying the previous image tag, or turn off the feature flag if the change was flagged. Database migrations should be backward compatible so the old version can still run. Then write a test that would have caught it."
+   ],
+   [
+    "The customer's security team asks what your pipeline checks. What do you say?",
+    "Lint and unit tests on every PR, dependency vulnerability scanning, secret scanning, an image built once and tagged with the commit, staging deploys on merge and a required approval for production, with every run logged for audit."
+   ]
+  ]
+ },
+ {
+  "id": "integration",
+  "mod": 2,
+  "sec": "6.1",
+  "name": "Enterprise integration",
+  "title": "Connecting to legacy enterprise systems",
+  "thesis": "Enterprise data rarely comes from one clean API. It arrives through SFTP file drops, EDI messages, SOAP services, database replicas and ERP or CRM APIs. An FDE builds a thin, well-monitored integration layer that normalizes these into one model and respects each system's limits and security rules.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   420
+  ],
+  "note": "The top row shows common legacy sources (dashed because the customer owns them). They all feed one integration hub, which normalizes the data before your app uses it. Writes back to the ERP go through its API with throttling.",
+  "nodes": [
+   [
+    "sftp",
+    90,
+    70,
+    "SFTP drop",
+    "nightly CSV files",
+    1
+   ],
+   [
+    "edi",
+    265,
+    70,
+    "EDI partner",
+    "X12 or EDIFACT",
+    1
+   ],
+   [
+    "soap",
+    440,
+    70,
+    "SOAP service",
+    "WSDL + XML",
+    1
+   ],
+   [
+    "erp",
+    615,
+    70,
+    "ERP / CRM API",
+    "SAP, Salesforce",
+    1
+   ],
+   [
+    "replica",
+    90,
+    210,
+    "DB replica",
+    "read-only copy",
+    1
+   ],
+   [
+    "hub",
+    265,
+    210,
+    "Integration hub",
+    "iPaaS or own code"
+   ],
+   [
+    "norm",
+    440,
+    210,
+    "Normalize",
+    "one clean model"
+   ],
+   [
+    "app",
+    615,
+    210,
+    "Your app",
+    "AI workflow"
+   ],
+   [
+    "wb",
+    615,
+    350,
+    "Write back",
+    "throttled, retried"
+   ]
+  ],
+  "edges": [
+   [
+    "sftp",
+    "hub"
+   ],
+   [
+    "edi",
+    "hub"
+   ],
+   [
+    "soap",
+    "hub"
+   ],
+   [
+    "erp",
+    "hub"
+   ],
+   [
+    "replica",
+    "hub"
+   ],
+   [
+    "hub",
+    "norm"
+   ],
+   [
+    "norm",
+    "app"
+   ],
+   [
+    "app",
+    "wb",
+    0,
+    "service account"
+   ]
+  ],
+  "ideas": [
+   "SFTP file drops are still common: a system exports a CSV or fixed-width file on a schedule and you pick it up. Check completeness before processing.",
+   "EDI (electronic data interchange) is a strict text format, such as ANSI X12 or EDIFACT, that companies use to exchange orders and invoices.",
+   "SOAP is an older XML-based web service style described by a WSDL file. Many banks, insurers and governments still run SOAP services.",
+   "A read replica lets you query a copy of the production database without adding load to the main one.",
+   "ERP and CRM systems such as SAP and Salesforce have APIs with rate limits. Use a dedicated service account with least privilege, and back off when told to."
+  ],
+  "traps": [
+   "Processing a file that is still being uploaded, or processing the same file twice.",
+   "Using a named employee's login for an integration, so it breaks when they leave or change password.",
+   "Retrying immediately in a tight loop after a 429 error, which makes the rate limit problem worse."
+  ],
+  "qa": [
+   [
+    "A customer's only way to share data is a nightly SFTP drop. How do you make it reliable?",
+    "Agree a file naming convention and a completion signal, such as a .done marker file or a row count trailer. Move files to processed or failed folders, record each file's checksum so it is never loaded twice, validate the schema and alert if the file does not arrive on time."
+   ],
+   [
+    "When would you use an iPaaS tool instead of writing code?",
+    "When the customer already owns one, their IT team will maintain the integration, and the flows are standard connector-to-connector moves. I write code when the logic is complex, needs versioned tests, or the volume makes per-task pricing expensive."
+   ],
+   [
+    "How do you handle an API rate limit on a CRM?",
+    "Read the documented limits, batch requests where the API allows it, cache what does not change, and on a 429 wait for the Retry-After time or back off exponentially with jitter. I also spread large backfills over quiet hours and monitor the remaining quota."
+   ]
+  ]
+ },
+ {
+  "id": "bi",
+  "mod": 2,
+  "sec": "2.2",
+  "name": "BI dashboards",
+  "title": "BI dashboards and metrics that people trust",
+  "thesis": "Business intelligence (BI) tools turn warehouse tables into charts people use to run the business. The hard part is agreeing what each metric means, defining it once in a metrics layer, and designing a dashboard that answers a few real questions quickly.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "BI tools such as Power BI, Tableau, Looker and Metabase connect to a database or warehouse and let people build charts, filters and dashboards.",
+   "A metrics layer (also called a semantic layer) defines each metric once, such as 'active customer', so every dashboard computes it the same way.",
+   "Start a dashboard from the decisions it supports and the three to five KPIs that inform them.",
+   "Put headline numbers on top, trends next, and breakdowns and detail below. Show comparisons such as last month or target.",
+   "Write KPI queries against clean modeled tables with explicit date grains, and document the definition next to the chart."
+  ],
+  "traps": [
+   "Building 30 charts because the data exists, so nobody can find the answer they need.",
+   "Letting each team define 'revenue' or 'active user' in its own SQL, producing numbers that disagree in meetings.",
+   "Pointing heavy dashboards straight at a production database and slowing the app down."
+  ],
+  "qa": [
+   [
+    "Two dashboards show different revenue numbers. How do you fix it?",
+    "Find both definitions and compare them line by line: refunds, taxes, currency, time zone, date used. Agree one definition with the finance owner, put it in the metrics layer or a single modeled table, point both dashboards at it and label the definition on the chart."
+   ],
+   [
+    "What makes a good KPI dashboard?",
+    "It serves one audience and a few decisions, shows three to five KPIs with comparisons to target or a prior period, uses simple chart types, loads quickly and shows when the data was last refreshed. Every metric has an owner and a written definition."
+   ],
+   [
+    "The customer asks which BI tool to buy. How do you answer?",
+    "I start from what they already have and who will build dashboards. Organizations on Microsoft 365 often lean to Power BI, a strong analyst team may prefer Tableau, Looker suits teams who want a modeled semantic layer in code, and Metabase is a light open-source option. The metric definitions matter more than the tool."
+   ]
+  ]
+ }
+]

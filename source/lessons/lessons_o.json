@@ -1,0 +1,909 @@
+{
+ "docai": {
+  "plain": "Document AI is the work of turning documents such as PDFs, scanned pages, photos and forms into structured data a program can use, like a row in a database. Some PDFs contain real text you can copy; others are only pictures of paper, and a program must first recognise the letters with OCR (optical character recognition). After that, you keep the layout, meaning which words sit in which table cell or column, and pull out the specific fields you need into a schema, a fixed list of named fields with types. Finally you check the results with rules and let a person review the doubtful ones.",
+  "analogy": "It is like a mailroom clerk processing paper forms. First they sort the envelopes, then they read each form carefully, copy the important boxes into a ledger with fixed columns, double-check the sums, and put anything smudged or strange in a tray for the supervisor.",
+  "why": "Almost every enterprise engagement touches documents: invoices in accounts payable, claim forms at an insurer, lab reports at a hospital, contracts in legal. A customer will often say 'we just need the AI to read our PDFs', and the FDE has to turn that into a pipeline that is accurate, auditable and cheap enough to run on hundreds of thousands of pages. This also feeds other projects, since RAG over documents (see the rag concept) only works if the text was extracted well.",
+  "subtopics": [
+   {
+    "title": "Text-layer PDFs versus scanned images",
+    "body": "A PDF is a container. When software such as Word or an accounting system creates a PDF, it stores the actual characters and their positions. This is called a text layer, and a library can read it directly and exactly.\n\nWhen someone scans paper or photographs a page, the PDF holds only an image of each page. Reading it with a text library returns nothing, or a few stray characters. These pages need OCR first.\n\nMany real collections are mixed. Some scanners also run OCR themselves and add a hidden text layer of uncertain quality. So the first step of any pipeline is to check each file, and often each page, and route it to the right path. This single check can save a large share of processing cost, because reading a text layer is fast and nearly free.",
+    "example": "A logistics company sends you 10,000 supplier invoices. You run a quick check on each page: if a text library returns more than 50 characters, it has a usable text layer. The result: 7,400 files are born-digital and go straight to extraction; 2,600 are scans and go to OCR. Without this check, you would have paid to OCR or send images of 7,400 files that did not need it.",
+    "code": "import pdfplumber\n\ndef classify_pages(path: str, min_chars: int = 50) -> list[str]:\n    \"\"\"Label each page 'text' or 'scan'.\"\"\"\n    labels = []\n    with pdfplumber.open(path) as pdf:\n        for page in pdf.pages:\n            text = page.extract_text() or \"\"    # None when no text layer\n            has_images = len(page.images) > 0   # scans are usually one big image\n            if len(text.strip()) >= min_chars:\n                labels.append(\"text\")\n            elif has_images:\n                labels.append(\"scan\")           # send to OCR\n            else:\n                labels.append(\"empty\")          # blank page, skip\n    return labels\n\nprint(classify_pages(\"invoice_0042.pdf\"))   # e.g. ['text', 'text']",
+    "lang": "Python",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "file",
+       90,
+       70,
+       "Incoming file",
+       "PDF, TIFF, JPG"
+      ],
+      [
+       "check",
+       265,
+       70,
+       "Text layer?",
+       "chars on page"
+      ],
+      [
+       "read",
+       440,
+       70,
+       "Read text",
+       "fast, exact"
+      ],
+      [
+       "layout",
+       615,
+       70,
+       "Layout step",
+       "tables, blocks"
+      ],
+      [
+       "ocr",
+       265,
+       220,
+       "OCR or vision",
+       "scanned pages"
+      ],
+      [
+       "quality",
+       440,
+       220,
+       "Quality check",
+       "OCR confidence"
+      ]
+     ],
+     "edges": [
+      [
+       "file",
+       "check"
+      ],
+      [
+       "check",
+       "read",
+       0,
+       "yes"
+      ],
+      [
+       "read",
+       "layout"
+      ],
+      [
+       "check",
+       "ocr",
+       0,
+       "no"
+      ],
+      [
+       "ocr",
+       "quality"
+      ],
+      [
+       "quality",
+       "layout"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "How OCR works and where it fails",
+    "body": "OCR software looks at an image, finds regions that look like text, splits them into lines and characters, and guesses each character. Tesseract is a widely used open-source engine. Cloud services such as AWS Textract, Azure AI Document Intelligence and Google Document AI add layout, tables and form fields on top of plain OCR.\n\nOCR quality depends heavily on the image. Low resolution, skewed pages, stamps over text, handwriting and faint fax copies all cause errors. Common fixes are rendering pages at around 300 DPI (dots per inch), straightening the page (deskewing) and converting to black and white.\n\nMost engines report a confidence score per word. A low average confidence is a cheap signal that the page needs a better method or a human look. Classic mistakes to watch for are 0 and O, 1 and l, and a dropped decimal point, which can turn 1,250.00 into 125000.",
+    "example": "A regional hospital scans referral letters. On clean letters Tesseract reads almost every word correctly, but fax copies score an average confidence around 60 and misread patient numbers. You add a rule: pages with average confidence below 75 go to a vision-capable LLM or to a human, and all patient numbers are checked against the patient index before use.",
+    "code": "import pytesseract\nfrom pdf2image import convert_from_path\n\npages = convert_from_path(\"referral_scan.pdf\", dpi=300)   # render pages as images\n\nfor n, img in enumerate(pages, start=1):\n    gray = img.convert(\"L\")                                # grayscale helps OCR\n    data = pytesseract.image_to_data(gray, output_type=pytesseract.Output.DICT)\n    confs = [float(c) for c in data[\"conf\"] if float(c) >= 0]   # -1 = not a word\n    avg = sum(confs) / len(confs) if confs else 0\n    text = \" \".join(w for w in data[\"text\"] if w.strip())\n    route = \"ok\" if avg >= 75 else \"needs_review\"\n    print(f\"page {n}: avg confidence {avg:.0f} -> {route}\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Keeping layout and tables intact",
+    "body": "Plain text loses structure. An invoice table with columns for description, quantity, unit price and amount becomes a jumble of numbers when flattened into one string. The model then has to guess which number belongs where, and it sometimes guesses wrong.\n\nLayout analysis finds blocks (headings, paragraphs, tables, headers and footers) and their reading order. Table extraction returns rows and cells. For text-layer PDFs, libraries like pdfplumber can often find tables from the lines and word positions. For scans and complex forms, cloud document services or vision models usually do better.\n\nA practical tip: pass tables to an LLM as Markdown or CSV rather than raw text. Also keep page numbers and positions with every value, so a reviewer can jump to the exact spot later.",
+    "example": "A building supplies distributor receives delivery notes with a 12-row item table. Flattened text gave the model runs like '4 12.50 50.00 2 8.00 16.00', and it mixed up quantity and price on about one in twenty lines. After switching to pdfplumber's table extraction and passing each table as Markdown, those mix-ups disappeared on the test set.",
+    "code": "import pdfplumber\n\ndef tables_as_markdown(path: str) -> list[str]:\n    out = []\n    with pdfplumber.open(path) as pdf:\n        for page_no, page in enumerate(pdf.pages, start=1):\n            for table in page.extract_tables():       # list of rows, each a list of cells\n                header, *rows = table\n                md = \"| \" + \" | \".join(c or \"\" for c in header) + \" |\\n\"\n                md += \"|\" + \"---|\" * len(header) + \"\\n\"\n                for r in rows:\n                    md += \"| \" + \" | \".join(c or \"\" for c in r) + \" |\\n\"\n                out.append(f\"Page {page_no}\\n{md}\")    # keep the page for audit\n    return out\n\nfor t in tables_as_markdown(\"delivery_note_118.pdf\"):\n    print(t)",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Document type",
+      "Best first tool",
+      "Watch out for"
+     ],
+     "rows": [
+      [
+       "Born-digital PDF",
+       "Text library (pdfplumber, pypdf)",
+       "Odd reading order in columns"
+      ],
+      [
+       "Clean scan",
+       "OCR engine or cloud OCR",
+       "Skew, low resolution"
+      ],
+      [
+       "Complex form or table",
+       "Cloud document service or vision LLM",
+       "Merged cells, checkboxes"
+      ],
+      [
+       "Handwriting",
+       "Vision LLM or specialist service, plus review",
+       "Low accuracy, names and numbers"
+      ],
+      [
+       "Photo from a phone",
+       "Vision LLM after cropping",
+       "Glare, perspective, blur"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Extracting fields into a schema with an LLM",
+    "body": "Once you have text or page images, you need specific fields: invoice number, date, supplier, total, line items. Write these down first as a schema in code. In Python a Pydantic model works well, because it can produce a JSON Schema and also validate the result.\n\nVision-capable LLMs accept page images or whole PDFs as input, so they can use the visual layout directly. A reliable way to get structured output is tool use: you define one tool whose input schema is your record, and force the model to call it. The tool call's input is then your extracted record.\n\nTell the model to return null when a field is not on the page instead of guessing. Ask for dates in one format. And keep the prompt focused on one document type; a separate schema per type (invoice, credit note, delivery note) beats one giant schema.",
+    "example": "For the logistics customer, the schema has invoice_number, invoice_date, supplier_name, currency, total and a list of line items. A PDF is sent as a document block with one forced tool call named record_invoice. On a labelled set of 200 invoices you then measure accuracy per field, for example invoice number 99 percent and total 97 percent, which tells you where to focus.",
+    "code": "import anthropic, base64\nfrom pydantic import BaseModel\n\nclass Invoice(BaseModel):\n    invoice_number: str | None\n    invoice_date: str | None        # YYYY-MM-DD\n    supplier_name: str | None\n    currency: str | None\n    total: float | None\n\nclient = anthropic.Anthropic()\npdf_b64 = base64.standard_b64encode(open(\"invoice_0042.pdf\", \"rb\").read()).decode()\ntool = {\"name\": \"record_invoice\", \"description\": \"Record one invoice.\",\n        \"input_schema\": Invoice.model_json_schema()}\n\nmsg = client.messages.create(\n    model=MODEL, max_tokens=1024, tools=[tool],\n    tool_choice={\"type\": \"tool\", \"name\": \"record_invoice\"},   # force structured output\n    messages=[{\"role\": \"user\", \"content\": [\n        {\"type\": \"document\", \"source\": {\"type\": \"base64\",\n         \"media_type\": \"application/pdf\", \"data\": pdf_b64}},\n        {\"type\": \"text\", \"text\": \"Extract the invoice. Use null for any field not shown.\"}]}])\n\nfields = next(b.input for b in msg.content if b.type == \"tool_use\")\ninvoice = Invoice.model_validate(fields)     # raises if types are wrong\nprint(invoice)",
+    "lang": "Python"
+   },
+   {
+    "title": "Validation, human review and measuring accuracy",
+    "body": "A tidy JSON result can still be wrong. Validation has two layers. Schema validation checks that fields exist and have the right type. Business rules check that values make sense: line items add up to the total, the date is not in the future, the supplier exists in the supplier master list, the purchase order number matches an open order.\n\nAnything that fails goes to a human review queue. A good review screen shows the page image on one side and the extracted fields on the other, with the doubtful fields highlighted. Reviewer corrections should be saved, because they become new test cases.\n\nTo know whether the pipeline is good enough, build a labelled test set of real documents with correct answers, and measure accuracy per field and per document type. Agree with the customer on a target, such as 98 percent on totals, before go-live. Keep also a small random sample of passing documents for review, so silent errors are caught.",
+    "example": "An insurer processes 3,000 claim forms a day. Rules flag about 12 percent for review: missing policy numbers, dates of loss after the claim date, or amounts over 10,000. Two reviewers clear the queue in half a day, and their corrections are added to the test set every Friday, which lets the team see accuracy by field improve week by week.",
+    "code": "from datetime import date\n\ndef review_reasons(inv, supplier_ids: set[str], line_totals: list[float]) -> list[str]:\n    reasons = []\n    if inv.total is None or inv.invoice_number is None:\n        reasons.append(\"missing required field\")\n    if inv.total is not None and abs(sum(line_totals) - inv.total) > 0.01:\n        reasons.append(\"line items do not add up\")\n    if inv.invoice_date and inv.invoice_date > date.today().isoformat():\n        reasons.append(\"date in the future\")\n    if inv.supplier_name not in supplier_ids:\n        reasons.append(\"unknown supplier\")\n    return reasons           # empty list: auto-approve; else human queue\n\n# Accuracy per field on a labelled test set\ndef field_accuracy(preds: list[dict], gold: list[dict], field: str) -> float:\n    hits = sum(p.get(field) == g.get(field) for p, g in zip(preds, gold))\n    return hits / len(gold)",
+    "lang": "Python",
+    "checklist": [
+     "Schema written in code, one per document type",
+     "Labelled test set of at least 50 to 100 real documents per type",
+     "Business rules agreed with the customer's operations team",
+     "Review screen shows page image next to extracted fields",
+     "Every value stores its source file and page number",
+     "Random sample of auto-approved documents reviewed weekly",
+     "Accuracy target per field agreed before go-live"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Text layer",
+    "The real, selectable characters stored inside a PDF created by software."
+   ],
+   [
+    "OCR",
+    "Optical character recognition: software that reads characters from an image of text."
+   ],
+   [
+    "DPI",
+    "Dots per inch; the resolution a page is rendered at, around 300 is typical for OCR."
+   ],
+   [
+    "Layout analysis",
+    "Finding the blocks, columns, tables and reading order on a page."
+   ],
+   [
+    "Schema",
+    "A fixed list of named fields and their types that every extracted record must follow."
+   ],
+   [
+    "Vision-capable LLM",
+    "A language model that accepts images or PDFs as input alongside text."
+   ],
+   [
+    "Confidence score",
+    "A number from the OCR engine or model estimating how likely a reading is correct."
+   ],
+   [
+    "Human review queue",
+    "A list of documents that failed checks, waiting for a person to fix and approve them."
+   ],
+   [
+    "Labelled test set",
+    "Real documents with the correct field values written down, used to measure accuracy."
+   ]
+  ],
+  "practice": [
+   "Collect 10 PDFs (a mix of downloaded forms and phone scans of receipts). Write a script that labels each page as text, scan or empty, and print a count per label.",
+   "Pick one document type, write a Pydantic schema for it, and extract fields from 10 samples with an LLM using a forced tool call. Hand-label the correct answers and report accuracy per field.",
+   "Stretch: add three business rules and a simple review step (a CSV of flagged documents with reasons). Measure how many documents are flagged and how many real errors the flags catch."
+  ]
+ },
+ "serving": {
+  "plain": "Serving a model means running it on hardware so applications can send it requests and get answers back. Open-weight models, such as the Llama, Mistral, Qwen and Gemma families, publish their trained weights (the billions of numbers that make up the model) so you can download and run them yourself. Running them fast requires GPUs (graphics processing units, chips that do many calculations in parallel) with enough VRAM, the memory on the GPU itself. An inference server is the program that loads the model onto the GPU, accepts requests over an API and generates the answers efficiently.",
+  "analogy": "Think of a busy restaurant kitchen. The GPU is the stove, VRAM is the counter space, the model weights are the big pots that must always sit on the counter, and the KV cache is the space each order in progress needs. The inference server is the head chef who groups orders so the stove never sits idle.",
+  "why": "Many customers, especially in healthcare, defence, finance and government, cannot send data to a public API, or want to control cost at high volume. An FDE is asked questions like 'can we run this on our own servers, and what hardware do we need?'. You need to do the memory math on a whiteboard, choose a sensible server and precision, and explain the trade-offs honestly.",
+  "subtopics": [
+   {
+    "title": "Open weights and your hosting options",
+    "body": "With a closed model you can only call the vendor's API. With an open-weight model you have the files, so you choose where it runs. The licence still matters: some open models have terms about commercial use or company size, so always read it.\n\nThere are three common ways to use a model. A hosted API from the model vendor is the simplest. A managed endpoint on a cloud provider runs a model inside the customer's cloud account, which often satisfies data residency rules. Self-hosting on your own GPUs, in the cloud or on-premises, gives full control and full responsibility.\n\nOpen models are usually smaller and less capable than the strongest closed models, but a well-chosen open model can be good enough for focused tasks such as classification, extraction or summarisation, especially after fine-tuning (see the finetune concept).",
+    "example": "A European bank wants to summarise internal call notes. Its policy forbids sending customer data outside its own cloud tenancy. Options on the table: a cloud provider's managed model endpoint inside the bank's account, or an open 8B model served with vLLM on two cloud GPUs in the bank's private network. Both keep data in the tenancy; the second gives control over versions and cost at their volume.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Option",
+      "You manage",
+      "Good when",
+      "Main downside"
+     ],
+     "rows": [
+      [
+       "Vendor hosted API",
+       "Only your app",
+       "Fast start, best models",
+       "Data leaves your network"
+      ],
+      [
+       "Managed cloud endpoint",
+       "Account, networking",
+       "Data must stay in your cloud",
+       "Model choice set by provider"
+      ],
+      [
+       "Self-hosted in cloud",
+       "GPUs, server, scaling",
+       "Custom or fine-tuned models",
+       "Ops work, idle GPU cost"
+      ],
+      [
+       "Self-hosted on-prem",
+       "Everything, incl. hardware",
+       "Air-gapped or strict rules",
+       "Upfront cost, slow to scale"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "GPU and VRAM math",
+    "body": "The first question is always: does it fit in VRAM? Two things need space.\n\nThe weights. Memory is roughly the number of parameters times the bytes per parameter. In 16-bit precision (FP16 or BF16) each parameter takes 2 bytes, so a 7 billion parameter model needs about 14 GB and a 70B model about 140 GB.\n\nThe KV cache. While generating, the model keeps the attention keys and values for every token of every active request, so it does not recompute them. Its size per token is 2 (keys and values) times layers times KV heads times head size times bytes. It grows with context length and with the number of users served at once. Add some overhead for activations and the framework, and leave headroom: servers like vLLM take a set fraction of VRAM and use what is left after the weights for KV cache.",
+    "example": "Take an 8B model with 32 layers, 8 KV heads and head size 128 (similar to Llama 3 8B). Weights in 16-bit are about 16 GB. KV cache per token is 2 x 32 x 8 x 128 x 2 bytes = 131,072 bytes, which is 128 KB. One request with 8,000 tokens of context uses about 1 GB. On a 24 GB GPU, after 16 GB of weights and some overhead, roughly 6 GB remains, so about 6 such long requests at once. With 2,000-token requests, around 24 fit.",
+    "code": "def weights_gb(params_billion: float, bits: int) -> float:\n    return params_billion * 1e9 * bits / 8 / 1e9          # bytes -> GB\n\ndef kv_cache_gb(tokens: int, layers: int, kv_heads: int, head_dim: int, bytes_per=2) -> float:\n    per_token = 2 * layers * kv_heads * head_dim * bytes_per   # 2 = keys + values\n    return tokens * per_token / 1e9\n\nvram = 24.0            # one 24 GB GPU\noverhead = 2.0         # activations, CUDA context, fragmentation (rough)\nw = weights_gb(8, 16)  # 8B model in 16-bit\nper_req = kv_cache_gb(8000, layers=32, kv_heads=8, head_dim=128)\n\nfree = vram - w - overhead\nprint(f\"weights {w:.1f} GB, KV per 8k request {per_req:.2f} GB\")\nprint(f\"concurrent 8k requests that fit: {int(free // per_req)}\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Quantization: fewer bits per weight",
+    "body": "Quantization stores each weight with fewer bits, for example 8 or 4 instead of 16. The model gets much smaller and often faster, because moving memory is a main bottleneck during generation. The cost is some loss of quality, usually small at 8-bit and more noticeable at 4-bit, and it depends on the model and the task.\n\nYou will see several formats. GPTQ and AWQ are popular 4-bit methods for GPU serving. GGUF is the file format used by llama.cpp and Ollama, with many quantization levels, and runs well on CPUs and laptops. FP8 is an 8-bit floating point format supported natively on recent data centre GPUs.\n\nNever assume a quantized model is good enough. Run the customer's evaluation set (see the evals concept) on both the full and the quantized version and compare, because small drops can hide in exactly the cases that matter, such as numbers or rare languages.",
+    "example": "A 70B model needs about 140 GB in 16-bit, so at least two 80 GB GPUs. In 4-bit the weights are about 35 GB plus some overhead for quantization data, which fits on one 80 GB GPU with room for KV cache. The team runs the customer's 300-question eval: accuracy moves from 91 to 89 percent. The customer accepts that drop in exchange for halving the GPU count.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Precision",
+      "Bytes per weight",
+      "7B weights",
+      "70B weights"
+     ],
+     "rows": [
+      [
+       "FP16 / BF16",
+       "2",
+       "about 14 GB",
+       "about 140 GB"
+      ],
+      [
+       "FP8 / INT8",
+       "1",
+       "about 7 GB",
+       "about 70 GB"
+      ],
+      [
+       "4-bit (GPTQ, AWQ, GGUF Q4)",
+       "about 0.5",
+       "about 4 GB",
+       "about 35 to 40 GB"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Inference servers: vLLM, TGI and Ollama",
+    "body": "You could load a model with the transformers library and call generate in a loop, but that serves one request at a time and wastes the GPU. Inference servers solve this.\n\nvLLM is an open-source server built for high throughput. Its PagedAttention technique manages KV cache memory in small blocks, like pages in an operating system, which avoids waste and lets more requests run together. It offers an OpenAI-compatible API. Text Generation Inference (TGI) is Hugging Face's serving toolkit, shipped as a Docker image; check its current status and roadmap before choosing it for new work. SGLang is another high-throughput option. Ollama wraps llama.cpp to make running quantized models on a laptop or single machine very easy, which is great for prototypes and local development.\n\nIn practice, choose vLLM or a similar server for production GPU serving with many users, and Ollama for demos, local testing and small internal tools. Put all of them behind a gateway that handles authentication, rate limits and logging.",
+    "example": "An FDE builds a prototype on a laptop with Ollama in an afternoon, pointing the customer's app at localhost. For the pilot with 150 users, the same app switches its base URL to a vLLM server on a cloud GPU. Because both expose an OpenAI-compatible API, only configuration changes.",
+    "code": "# Local prototype with Ollama (listens on port 11434)\nollama pull MODEL\nollama run MODEL \"Summarise: the printer on floor 3 is jammed again\"\n# OpenAI-compatible endpoint: http://localhost:11434/v1\n\n# Production-style GPU serving with vLLM (port 8000 by default)\npip install vllm\nvllm serve MODEL \\\n  --max-model-len 8192 \\\n  --gpu-memory-utilization 0.90 \\\n  --tensor-parallel-size 2      # split the model across 2 GPUs\n\n# TGI as a container (maps container port 80 to 8080)\ndocker run --gpus all -p 8080:80 -v $PWD/data:/data \\\n  ghcr.io/huggingface/text-generation-inference:latest --model-id MODEL",
+    "lang": "bash"
+   },
+   {
+    "title": "Batching, throughput and latency",
+    "body": "Latency is how fast one user gets an answer. Two numbers matter: time to first token (TTFT) and the speed of generation after that, in tokens per second per user. Throughput is how much total work the server does, in tokens per second across all users.\n\nGenerating one token for one user barely uses a GPU's compute, because most time goes to reading weights from memory. Batching processes many requests together, so the weights are read once for all of them. Continuous batching goes further: requests join and leave the batch at every step instead of waiting for the whole batch to finish.\n\nBigger batches raise throughput but eventually slow each individual user down. So always load test at the concurrency you expect, and pick settings that meet the latency target (for example TTFT under 1 second at the 95th percentile) with the fewest GPUs.",
+    "example": "Load testing an 8B model on one GPU: with 1 concurrent user the server produces around 60 tokens per second for that user. At 32 concurrent users each user sees perhaps 30 tokens per second, but the GPU produces around 1,000 tokens per second in total. The customer's target is 25 tokens per second per user, so one GPU can serve about 32 active sessions. These figures are illustrative; your own test decides.",
+    "code": "import asyncio, time\nfrom openai import AsyncOpenAI\n\nclient = AsyncOpenAI(base_url=\"http://gpu-host:8000/v1\", api_key=\"local-key\")\n\nasync def one_request() -> int:\n    r = await client.chat.completions.create(\n        model=\"MODEL\", max_tokens=200,\n        messages=[{\"role\": \"user\", \"content\": \"Write a 150-word product update.\"}])\n    return r.usage.completion_tokens\n\nasync def load_test(concurrency: int):\n    start = time.perf_counter()\n    tokens = await asyncio.gather(*[one_request() for _ in range(concurrency)])\n    secs = time.perf_counter() - start\n    print(f\"{concurrency:>3} users: {sum(tokens)/secs:7.0f} tok/s total, \"\n          f\"{secs:5.1f}s per request\")\n\nfor c in (1, 8, 32, 64):\n    asyncio.run(load_test(c))",
+    "lang": "Python"
+   },
+   {
+    "title": "On-prem versus cloud: making the call",
+    "body": "On-premises means GPUs in the customer's own data centre. It suits air-gapped networks (no internet connection), strict data rules and steady, high, predictable load. It needs upfront spending, power and cooling, spare parts, and people to run it, and buying GPUs can take months.\n\nCloud GPUs can be rented by the hour, scale up for a pilot and down afterwards, and come with managed networking and security tools. They can be expensive if left running idle, and popular GPU types are sometimes hard to get.\n\nA fair comparison counts everything: hardware or rental, engineers' time, utilisation (a GPU busy 20 percent of the day costs the same as one busy 90 percent), upgrades and the cost of the hosted API alternative. Often the answer is to start in the cloud or on an API, measure real usage, then decide.",
+    "example": "A defence contractor needs a document assistant inside an air-gapped network. Cloud is ruled out, so the FDE sizes a single server with 4 GPUs for a quantized 70B model plus a small embedding model, plans for offline model updates by approved media, and adds monitoring that works without internet access.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Can data leave the customer's network or cloud tenancy at all?",
+     "Expected requests per day, peak concurrency and prompt length",
+     "Latency target: TTFT and tokens per second per user",
+     "Quality bar met by an open model on the customer's eval set?",
+     "Model licence allows this commercial use",
+     "Who patches, monitors and upgrades the servers?",
+     "Full cost compared: GPUs, staff time, idle hours, API alternative"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Open-weight model",
+    "A model whose trained weights are published so anyone can download and run it, under a licence."
+   ],
+   [
+    "VRAM",
+    "The memory on a GPU; the model weights and KV cache must fit in it."
+   ],
+   [
+    "KV cache",
+    "Saved attention keys and values for tokens already processed, reused to generate the next token quickly."
+   ],
+   [
+    "Quantization",
+    "Storing weights with fewer bits (such as 8 or 4) to save memory, with some quality loss."
+   ],
+   [
+    "Inference server",
+    "Software that loads a model and serves requests over an API with batching and streaming."
+   ],
+   [
+    "Continuous batching",
+    "Adding and removing requests from the running batch at each generation step to keep the GPU busy."
+   ],
+   [
+    "TTFT",
+    "Time to first token: how long a user waits before the first word of the answer appears."
+   ],
+   [
+    "Throughput",
+    "Total tokens generated per second across all users on a server."
+   ],
+   [
+    "Tensor parallelism",
+    "Splitting one model's layers across several GPUs so a model too big for one GPU can run."
+   ],
+   [
+    "Air-gapped",
+    "A network with no connection to the internet, common in defence and critical infrastructure."
+   ]
+  ],
+  "practice": [
+   "Install Ollama on your laptop, pull a small open model, and call it from Python through the OpenAI-compatible endpoint. Record the time to first token and tokens per second for three prompts of different lengths.",
+   "Using the VRAM calculator above, make a table for 8B and 70B models at 16-bit and 4-bit, and work out how many 4,000-token requests fit on a 24 GB, 48 GB and 80 GB GPU.",
+   "Stretch: rent one cloud GPU for an hour, run vLLM with a small model, and use the load test script at concurrency 1, 8, 32 and 64. Plot total throughput and per-request time, and write a one-paragraph sizing recommendation."
+  ]
+ },
+ "frameworks": {
+  "plain": "An agent framework is a library that helps you build LLM applications where the model can call tools and take several steps. Underneath, every agent is a simple loop: send messages to the model, and if it asks to use a tool, run the tool and send back the result, until the model gives a final answer. Frameworks such as LangChain, LlamaIndex, LangGraph and the Claude Agent SDK package that loop together with extras: connectors to data sources, memory, saved state, tracing and ready-made tools. The skill is knowing which extras you actually need.",
+  "analogy": "Building an agent is like cooking dinner. You can cook from raw ingredients (the plain SDK), buy a meal kit with pre-measured parts (a framework), or hire a caterer who brings their own kitchen (a full agent harness). Meal kits save time for the dishes they were designed for, and get in the way when you want to cook something else.",
+  "why": "Customers often arrive with an agent already half-built on some framework, or ask 'which framework should we standardise on?'. An FDE must read that code, debug it, and give an honest recommendation that the customer's own team can maintain after you leave. Picking badly costs weeks: either rebuilding features a framework gives for free, or fighting abstractions that hide what the model sees.",
+  "subtopics": [
+   {
+    "title": "The core loop every framework wraps",
+    "body": "Before comparing frameworks, write the loop yourself once. You describe tools with a name, a description and a JSON Schema for their inputs (see the tools concept). You send the conversation and the tools to the model. If the response's stop reason is tool use, you run each requested tool, append the results, and call the model again. Otherwise you are done.\n\nThat is the whole agent. Everything else, including retries, memory, streaming, logging and limits on how many steps may run, is added around this loop.\n\nA plain loop has real strengths. You see the exact messages sent, you can test each tool as a normal function, and there are no hidden prompts. For many enterprise tasks this plus good tools and evaluations is all you need.",
+    "example": "A retailer wants a support assistant that looks up orders and starts returns. The FDE writes a 40-line loop with two tools, get_order and create_return, plus a cap of 10 steps. Every call is logged to the customer's existing logging system. The whole thing is easy for the customer's two Python developers to read.",
+    "code": "import json, anthropic\n\nclient = anthropic.Anthropic()\ntools = [{\"name\": \"get_order\", \"description\": \"Look up an order by its id.\",\n          \"input_schema\": {\"type\": \"object\",\n                           \"properties\": {\"order_id\": {\"type\": \"string\"}},\n                           \"required\": [\"order_id\"]}}]\n\ndef run_tool(name: str, args: dict) -> dict:\n    if name == \"get_order\":\n        return {\"order_id\": args[\"order_id\"], \"status\": \"shipped\", \"eta\": \"2026-10-02\"}\n    return {\"error\": f\"unknown tool {name}\"}\n\nmessages = [{\"role\": \"user\", \"content\": \"Where is order 4471?\"}]\nfor _ in range(10):                                   # hard cap on steps\n    resp = client.messages.create(model=MODEL, max_tokens=1024,\n                                  tools=tools, messages=messages)\n    messages.append({\"role\": \"assistant\", \"content\": resp.content})\n    if resp.stop_reason != \"tool_use\":\n        break                                         # final answer\n    results = [{\"type\": \"tool_result\", \"tool_use_id\": b.id,\n                \"content\": json.dumps(run_tool(b.name, b.input))}\n               for b in resp.content if b.type == \"tool_use\"]\n    messages.append({\"role\": \"user\", \"content\": results})\n\nprint(next(b.text for b in resp.content if b.type == \"text\"))",
+    "lang": "Python"
+   },
+   {
+    "title": "LangChain and LlamaIndex: integrations and data",
+    "body": "LangChain is a large Python and JavaScript ecosystem. Its main value is a common interface over many model providers and a big library of integrations: document loaders, vector stores, retrievers, output parsers and tools. Recent versions build their agent features on LangGraph. Its companion product LangSmith offers tracing and evaluation.\n\nLlamaIndex focuses on connecting LLMs to data. It gives you readers for many file types and sources, ways to split and index documents, and query engines that do retrieval plus answering in a few lines. It also has agent and workflow features, but it is chosen most often for RAG-heavy projects (see the rag concept).\n\nBoth move fast, and their APIs have changed a lot between versions. Pin versions, read the current docs rather than old blog posts, and wrap framework calls behind your own small functions so you can swap them later.",
+    "example": "A law firm wants to ask questions over 8,000 engagement letters stored in SharePoint. LlamaIndex's loaders and indexing get a working prototype in a day. The team keeps LlamaIndex for ingestion and retrieval, but writes the final answering step and citation formatting in plain code so they control the prompt exactly.",
+    "code": "# pip install llama-index   (defaults to an OpenAI model; configure your own LLM\n# and embedding model through llama_index.core.Settings in real projects)\nfrom llama_index.core import SimpleDirectoryReader, VectorStoreIndex\n\ndocs = SimpleDirectoryReader(\"./engagement_letters\").load_data()  # PDFs, DOCX, TXT\nindex = VectorStoreIndex.from_documents(docs)          # chunk, embed, store\nquery_engine = index.as_query_engine(similarity_top_k=5)\n\nanswer = query_engine.query(\"Which letters cap liability below 1 million?\")\nprint(answer)                                           # generated answer\nfor node in answer.source_nodes:                        # the chunks it used\n    print(node.metadata.get(\"file_name\"), round(node.score or 0, 3))",
+    "lang": "Python"
+   },
+   {
+    "title": "LangGraph: state, branches and checkpoints",
+    "body": "LangGraph, from the LangChain team, models an agent or workflow as a graph. Nodes are functions that read and update a shared state object. Edges say what runs next, and conditional edges choose the next node from the state.\n\nIts strongest feature is checkpointing. After each step the state can be saved to memory or a database, keyed by a thread id. That lets a flow pause for a human approval and resume hours later, recover after a crash, or let a user go back to an earlier step. It also supports streaming and multi-agent setups.\n\nThe price is more concepts to learn and more code than a simple loop. It pays off when the process is long-running, branching or needs people in the middle.",
+    "example": "An insurer's refund flow: an LLM assesses a claim, small refunds go to a refund step, large ones to escalation. Refunds must be approved by a person. With LangGraph the graph pauses before send_refund, the claim state is saved under the claim id, and when a handler clicks approve the next day the graph resumes from exactly that point.",
+    "code": "from typing import TypedDict\nfrom langgraph.graph import StateGraph, START, END\nfrom langgraph.checkpoint.memory import InMemorySaver\n\nclass Claim(TypedDict):\n    claim_id: str\n    amount: float\n    decision: str\n\ndef assess(s: Claim) -> dict:          # in practice: an LLM call\n    return {\"decision\": \"refund\" if s[\"amount\"] < 500 else \"escalate\"}\ndef send_refund(s: Claim) -> dict: return {}\ndef escalate(s: Claim) -> dict: return {}\n\ng = StateGraph(Claim)\ng.add_node(\"assess\", assess)\ng.add_node(\"send_refund\", send_refund)\ng.add_node(\"escalate\", escalate)\ng.add_edge(START, \"assess\")\ng.add_conditional_edges(\"assess\", lambda s: s[\"decision\"],\n                        {\"refund\": \"send_refund\", \"escalate\": \"escalate\"})\ng.add_edge(\"send_refund\", END)\ng.add_edge(\"escalate\", END)\n\napp = g.compile(checkpointer=InMemorySaver(), interrupt_before=[\"send_refund\"])\ncfg = {\"configurable\": {\"thread_id\": \"claim-981\"}}\napp.invoke({\"claim_id\": \"981\", \"amount\": 120.0, \"decision\": \"\"}, cfg)  # pauses\napp.invoke(None, cfg)                  # resume after a human approves",
+    "lang": "Python"
+   },
+   {
+    "title": "Claude Agent SDK and other agent SDKs",
+    "body": "The Claude Agent SDK, from Anthropic, exposes the agent harness that powers Claude Code as a library for Python and TypeScript. You give it a prompt and options, and it runs the loop for you with built-in tools for reading and editing files, running shell commands, searching and fetching web pages. It supports MCP servers for your own tools (see the mcp concept), subagents, hooks that run your code before or after tool calls, and permission settings that limit what the agent may do.\n\nIt fits tasks where an agent works through files and commands over many steps: coding, operations runbooks, research over a folder of reports. For a simple chat with two API tools, the plain SDK loop is smaller.\n\nOther vendors and communities offer similar kits, for example the OpenAI Agents SDK, Google's Agent Development Kit, Microsoft's agent frameworks, CrewAI and Pydantic AI. They differ in which models they favour, how they handle multi-agent setups and how much they hide. Judge them the same way: what work do they remove, and what do they hide from you?",
+    "example": "A utility's IT team wants a daily job that reads yesterday's application logs, groups errors, and writes a short report to a shared folder. The FDE uses the Claude Agent SDK with only Read, Grep, Glob and Write tools allowed, a working directory limited to the logs and reports folders, and a cap on turns. No shell access is granted, which makes the security review simple.",
+    "code": "# pip install claude-agent-sdk\nimport asyncio\nfrom claude_agent_sdk import query, ClaudeAgentOptions\n\noptions = ClaudeAgentOptions(\n    system_prompt=\"You write short daily error reports for the IT team.\",\n    allowed_tools=[\"Read\", \"Grep\", \"Glob\", \"Write\"],   # no shell access\n    permission_mode=\"acceptEdits\",                       # may write files without asking\n    cwd=\"/srv/ops-agent\",                                # working folder\n    max_turns=20,                                        # stop runaway loops\n)\n\nasync def main():\n    prompt = \"Group yesterday's errors in logs/app.log and write reports/daily.md\"\n    async for message in query(prompt=prompt, options=options):\n        print(message)                                   # stream progress\n\nasyncio.run(main())",
+    "lang": "Python"
+   },
+   {
+    "title": "Side by side comparison",
+    "body": "The table below is a rough guide. All of these tools change quickly, so check current documentation before a decision, and build a small spike with real data.\n\nNotice that the options are not exclusive. A common, healthy pattern is plain code for the main loop, LlamaIndex or LangChain only for a loader or two, and LangGraph only for the one flow that needs pausing and approval.\n\nWhatever you choose, add tracing so every prompt, tool call and result is visible, and keep evaluations independent of the framework, so you can switch later and prove nothing got worse.",
+    "example": "In a design review, a telecom customer asks for 'the standard framework'. The FDE shows this table, then maps their three use cases: a ticket classifier (plain workflow, no agent), a knowledge assistant (LlamaIndex for ingestion plus a plain answering step) and a network change assistant that needs engineer approval (LangGraph). The customer agrees to standardise on tracing and evals instead of one framework.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Option",
+      "Best at",
+      "Watch out for"
+     ],
+     "rows": [
+      [
+       "Plain SDK loop",
+       "Full control, easy to debug",
+       "You build retries, state, tracing"
+      ],
+      [
+       "LangChain",
+       "Many model and data integrations",
+       "Layers of abstraction, API churn"
+      ],
+      [
+       "LlamaIndex",
+       "Ingestion, indexing, RAG queries",
+       "Less natural for non-RAG agents"
+      ],
+      [
+       "LangGraph",
+       "Stateful flows, human approval, resume",
+       "More concepts and boilerplate"
+      ],
+      [
+       "Claude Agent SDK",
+       "Agents working with files, shell, MCP",
+       "Needs careful tool permissions"
+      ],
+      [
+       "Other agent SDKs",
+       "Vendor-specific features, multi-agent",
+       "Lock-in to one ecosystem"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "When a framework helps and when it hurts",
+    "body": "A framework helps when it replaces code you would otherwise write and maintain: dozens of connectors, durable state and resume, a tested permission system, or tracing that plugs into your stack. It also helps when the customer's team already knows it well.\n\nIt hurts when it hides the prompt, when its abstractions do not match your problem, when upgrades break your code every few months, or when a security review has to approve a large dependency tree for a small feature.\n\nA good rule for an FDE: start with the simplest thing that works, usually a plain loop or a fixed workflow, and add a framework the moment you notice you are rebuilding one of its features badly. Leave behind code the customer's engineers can understand without you.",
+    "example": "A healthcare startup's agent was built with several framework layers, and nobody could tell why it sometimes skipped a tool. The FDE added tracing, found that a default prompt template was cutting the tool list, and replaced that part with a 60-line plain loop. Test pass rate rose from 82 to 94 percent, and the team kept the framework's document loaders.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Can I state which framework features I actually need?",
+     "Can I see the exact prompt and tool list sent to the model?",
+     "Does it work with the customer's language, cloud and model provider?",
+     "Is the dependency acceptable to their security review?",
+     "Are versions pinned and upgrade notes read?",
+     "Will the customer's own team be able to maintain it?",
+     "Are evals and tracing independent of the framework?"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Agent loop",
+    "Repeatedly calling the model, running any tools it requests and returning results until it answers."
+   ],
+   [
+    "Tool schema",
+    "A JSON Schema describing a tool's name and inputs so the model can call it correctly."
+   ],
+   [
+    "Workflow",
+    "A fixed sequence of steps written in code, where the model does not choose what happens next."
+   ],
+   [
+    "LangChain",
+    "An open-source ecosystem of LLM building blocks and integrations for Python and JavaScript."
+   ],
+   [
+    "LlamaIndex",
+    "An open-source framework focused on loading, indexing and querying data with LLMs."
+   ],
+   [
+    "LangGraph",
+    "A library for building agents as graphs of nodes over shared state, with checkpoints."
+   ],
+   [
+    "Checkpoint",
+    "A saved copy of an agent's state after a step, so it can pause, resume or recover."
+   ],
+   [
+    "Claude Agent SDK",
+    "Anthropic's library exposing the Claude Code agent harness, with built-in tools, MCP and permissions."
+   ],
+   [
+    "Tracing",
+    "Recording every model call, tool call and result in order, so behaviour can be inspected."
+   ]
+  ],
+  "practice": [
+   "Write the plain tool loop above with two made-up tools (for example get_weather and convert_currency) and log every message. Count how many model calls a typical question takes.",
+   "Build the same small document Q&A over 20 text files twice: once with LlamaIndex and once with plain code (embed, search, prompt). Compare lines of code and answer quality on 10 questions you write.",
+   "Stretch: turn a three-step approval process (draft, human approve, send) into a LangGraph graph with a checkpointer and interrupt_before. Show that it pauses, then resumes correctly with the same thread id."
+  ]
+ },
+ "graphrag": {
+  "plain": "A knowledge graph stores information as entities (things such as companies, people, parts or places) connected by relationships (such as SUPPLIES, WORKS_FOR or LOCATED_IN). Each fact is a small triple: subject, relationship, object. A graph database is a database built to store and search these connections quickly. GraphRAG is a family of techniques that build such a graph from documents with an LLM and then use it to find connected facts to put in the model's prompt, so it can answer questions that need several linked pieces of information.",
+  "analogy": "Plain RAG is like a librarian who hands you the five pages that best match your question. A knowledge graph is like the detective's wall with photos connected by string: you can follow a string from one person to a company to an address, even if no single page mentions all three.",
+  "why": "Enterprise questions are often about connections: which of our products depend on a supplier in a flooded region, which contracts are signed by subsidiaries of this company, who approved changes to this system. Plain chunk retrieval often misses these because the facts sit in different documents. An FDE needs to recognise when a graph adds real value and when it is expensive decoration on top of RAG that already works.",
+  "subtopics": [
+   {
+    "title": "Entities, relationships and triples",
+    "body": "Start with a small vocabulary. An entity is a thing with an identity, like the company Hollin Castings or the part Brake caliper B7. A relationship connects two entities and has a direction and a type, like Hollin Castings SUPPLIES Brake caliper B7. Both entities and relationships can carry properties, such as a country or a contract start date.\n\nWritten as a triple, a fact is (subject, relationship, object). A set of triples forms a graph: entities are nodes, relationships are edges.\n\nThe design work is choosing the types. A small, fixed list of entity types (Company, Part, Product, Site) and relationship types (SUPPLIES, PART_OF, LOCATED_IN) is called an ontology or schema. Keeping it small is what makes the graph useful, because the same kind of fact is always stored the same way.",
+    "example": "An automotive parts maker describes its supply chain with four entity types and three relationships. Hollin Castings (Company) LOCATED_IN Kumamoto (Site). Hollin Castings SUPPLIES Brake caliper B7 (Part). Brake caliper B7 PART_OF Model R hatchback (Product). Three small facts, from three different documents, now connect a city to a finished car.",
+    "code": "ENTITY TYPES:        Company, Part, Product, Site\nRELATIONSHIP TYPES:  SUPPLIES (Company -> Part)\n                     PART_OF  (Part -> Product)\n                     LOCATED_IN (Company -> Site)\n\nTRIPLES (subject, relationship, object):\n  (Hollin Castings,  LOCATED_IN, Kumamoto)            from supplier_register.xlsx\n  (Hollin Castings,  SUPPLIES,   Brake caliper B7)    from contract_2291.pdf\n  (Brake caliper B7, PART_OF,    Model R hatchback)   from bill_of_materials.csv\n\nPICTURE:\n  [Kumamoto] <-LOCATED_IN- [Hollin Castings] -SUPPLIES-> [Brake caliper B7]\n                                                            |\n                                                         PART_OF\n                                                            v\n                                                    [Model R hatchback]",
+    "lang": "Text"
+   },
+   {
+    "title": "Graph databases and Cypher",
+    "body": "You could store triples in a normal SQL table, but questions that follow many hops need many self-joins and get slow and hard to write. A graph database stores each node with direct links to its neighbours, so following connections is cheap.\n\nNeo4j is the most widely known graph database. It uses a query language called Cypher, where you draw the pattern you want with ASCII art: (a)-[:SUPPLIES]->(b). MATCH finds patterns, MERGE creates nodes or edges only if they do not already exist, and RETURN picks the output. Other options include Amazon Neptune, Memgraph and graph features in some relational and multi-model databases.\n\nFor an FDE, the high-level point is simple: a graph database makes variable-length, many-hop questions easy to express and fast to run. You still need indexes on the properties you look up, such as names or IDs.",
+    "example": "The question 'which products are affected if Hollin Castings stops shipping?' becomes a single Cypher pattern from the company through SUPPLIES and PART_OF to products. In SQL this would be two joins today and more as the chain grows, for example when parts go into sub-assemblies that go into products.",
+    "code": "// Create an index so name lookups are fast\nCREATE INDEX entity_name IF NOT EXISTS FOR (e:Entity) ON (e.name);\n\n// Add facts without creating duplicates\nMERGE (c:Entity {name: 'Hollin Castings', type: 'Company'})\nMERGE (p:Entity {name: 'Brake caliper B7', type: 'Part'})\nMERGE (c)-[:SUPPLIES {source: 'contract_2291.pdf'}]->(p);\n\n// Which products depend on this company, through any number of PART_OF hops?\nMATCH (c:Entity {name: 'Hollin Castings'})-[:SUPPLIES]->(part)\n      -[:PART_OF*1..4]->(product:Entity {type: 'Product'})\nRETURN DISTINCT product.name AS affected_product;",
+    "lang": "Cypher",
+    "table": {
+     "headers": [
+      "Store",
+      "Good at",
+      "Weak at"
+     ],
+     "rows": [
+      [
+       "Relational (SQL)",
+       "Tables, totals, transactions",
+       "Long chains of joins"
+      ],
+      [
+       "Vector index",
+       "Finding similar passages",
+       "Exact relationships, counting"
+      ],
+      [
+       "Graph database",
+       "Following connections, paths",
+       "Fuzzy text search on its own"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Building a graph from documents with an LLM",
+    "body": "Most enterprise facts live in unstructured text, so the graph must be extracted. The pattern is: split documents into chunks, ask an LLM to return entities and relationships for each chunk using your fixed types, then load them into the graph with a pointer back to the source chunk.\n\nUse structured output, for example a forced tool call with a schema listing allowed types, so the output is always parseable. Include short definitions and one example of each relationship type in the prompt.\n\nThe hardest step is entity resolution: deciding that Hollin Castings, Hollin Castings Ltd. and HCL are the same company. Use normalisation (lowercase, strip suffixes like Ltd), match against reference data such as a supplier master list, and only then fall back to fuzzy matching or an LLM judgement. Always sample the result and measure precision, since extraction is a model output like any other.",
+    "example": "A manufacturer processes 4,000 supplier contracts. Extraction returns 26,000 raw entity mentions. After normalising names and matching them to the 1,900 supplier IDs in the ERP system, they collapse to 2,100 company nodes, with 200 left for human review. A 300-edge sample checked by a buyer shows 94 percent of SUPPLIES edges are correct.",
+    "code": "import anthropic, re\n\nclient = anthropic.Anthropic()\nREL_TYPES = [\"SUPPLIES\", \"PART_OF\", \"LOCATED_IN\"]\ntool = {\"name\": \"record_facts\", \"description\": \"Record facts stated in the text.\",\n        \"input_schema\": {\"type\": \"object\", \"properties\": {\"facts\": {\"type\": \"array\",\n            \"items\": {\"type\": \"object\", \"properties\": {\n                \"subject\": {\"type\": \"string\"},\n                \"relation\": {\"type\": \"string\", \"enum\": REL_TYPES},   # fixed types only\n                \"object\": {\"type\": \"string\"}},\n              \"required\": [\"subject\", \"relation\", \"object\"]}}}, \"required\": [\"facts\"]}}\n\ndef extract_facts(chunk: str) -> list[dict]:\n    msg = client.messages.create(model=MODEL, max_tokens=2048, tools=[tool],\n        tool_choice={\"type\": \"tool\", \"name\": \"record_facts\"},\n        messages=[{\"role\": \"user\", \"content\": \"Only facts stated explicitly.\\n\\n\" + chunk}])\n    return next(b.input[\"facts\"] for b in msg.content if b.type == \"tool_use\")\n\ndef normalise(name: str) -> str:            # first step of entity resolution\n    name = re.sub(r\"\\b(ltd|inc|gmbh|co|kk)\\.?$\", \"\", name.lower().strip())\n    return re.sub(r\"\\s+\", \" \", name).strip(\" .,\")\n\nprint(normalise(\"Hollin Castings Ltd.\"))    # -> 'hollin castings'",
+    "lang": "Python"
+   },
+   {
+    "title": "GraphRAG for multi-hop questions",
+    "body": "A multi-hop question needs several facts chained together. 'Which products depend on suppliers in Kumamoto?' needs supplier to site, supplier to part, and part to product. Vector search may return a chunk about each, or may not, because none of them looks very similar to the question.\n\nA typical graph-based retrieval step works like this. Find the entities named in the question (Kumamoto), look them up in the graph, walk the relevant relationships a few hops, collect the paths and the source text behind each edge, and give those to the LLM. The model then writes an answer and cites the sources. An LLM can also translate questions into Cypher, but check generated queries carefully and restrict them to read-only access.\n\nMicrosoft Research's GraphRAG approach adds another idea: it groups the graph into communities of closely linked entities and writes a summary for each. Those summaries help with broad questions such as 'what are the main risks across all supplier contracts?', which no single chunk can answer. This indexing is costly, so it fits large, fairly stable collections.",
+    "example": "After a flood warning, a planner asks which cars could be delayed. The system finds Kumamoto, walks to three suppliers, seven parts and two products, and passes those 12 facts plus their contract snippets to the model. The answer names both products, lists the parts and links each claim to its source document. Plain vector RAG on the same question returned only one of the two products in testing.",
+    "code": "def graph_context(driver, place: str) -> str:\n    records, _, _ = driver.execute_query(\"\"\"\n        MATCH (s:Entity)-[:LOCATED_IN]->(:Entity {name: $place}),\n              path = (s)-[:SUPPLIES]->(part)-[:PART_OF]->(product)\n        RETURN s.name AS supplier, part.name AS part, product.name AS product,\n               [r IN relationships(path) | r.source] AS sources\n        LIMIT 50\"\"\", place=place)                       # read-only, bounded\n    lines = [f\"{r['supplier']} supplies {r['part']}, used in {r['product']} \"\n             f\"(sources: {', '.join(r['sources'])})\" for r in records]\n    return \"\\n\".join(lines)\n\ndef answer(question: str, place: str) -> str:\n    facts = graph_context(driver, place)\n    prompt = (f\"Answer using only these facts and cite sources.\\n\\nFACTS:\\n{facts}\"\n              f\"\\n\\nQUESTION: {question}\")\n    msg = client.messages.create(model=MODEL, max_tokens=800,\n                                 messages=[{\"role\": \"user\", \"content\": prompt}])\n    return msg.content[0].text",
+    "lang": "Python"
+   },
+   {
+    "title": "When plain RAG is enough",
+    "body": "Graphs are powerful and expensive. Extraction calls an LLM on every chunk, resolution needs careful work, and the graph must be updated when documents change. Many projects do not need it.\n\nPlain vector or hybrid RAG (see the rag concept) is usually enough when questions are answered by one or two passages, such as 'what is our parental leave policy?' or 'how do I reset the router?'. Start there, build an evaluation set of real questions, and look at the failures. If many failures are multi-hop or relationship questions, a graph is worth trying for those.\n\nA middle path is common: keep vector RAG for most questions, and add a small graph built from structured data the customer already has, such as an ERP supplier table or an org chart, before extracting anything from text.",
+    "example": "An HR team asks for GraphRAG over 600 policy documents. The FDE builds plain hybrid RAG first and tests 120 real employee questions: 111 are answered correctly. The 9 failures are mostly about outdated documents, not relationships. The team fixes the content and skips the graph, saving several weeks.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Collected 50 or more real user questions",
+     "Tested plain vector or hybrid RAG on them first",
+     "Counted failures that need several linked facts",
+     "Checked for structured sources (ERP, CRM, org chart) to seed the graph",
+     "Agreed a small, fixed list of entity and relationship types",
+     "Planned entity resolution against reference data",
+     "Budgeted extraction cost and a way to update the graph"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Entity",
+    "A distinct thing, such as a company, person, part or place, stored as a node."
+   ],
+   [
+    "Relationship",
+    "A typed, directed link between two entities, such as SUPPLIES, stored as an edge."
+   ],
+   [
+    "Triple",
+    "One fact written as (subject, relationship, object)."
+   ],
+   [
+    "Ontology",
+    "The agreed list of entity types, relationship types and their meaning for a graph."
+   ],
+   [
+    "Graph database",
+    "A database designed to store nodes and edges and follow connections quickly."
+   ],
+   [
+    "Cypher",
+    "The pattern-based query language used by Neo4j and some other graph databases."
+   ],
+   [
+    "Entity resolution",
+    "Deciding which different mentions refer to the same real thing and merging them."
+   ],
+   [
+    "Multi-hop question",
+    "A question whose answer requires chaining two or more facts together."
+   ],
+   [
+    "Community summary",
+    "In GraphRAG, an LLM-written summary of a cluster of closely connected entities."
+   ]
+  ],
+  "practice": [
+   "Take three short news articles about companies and write down by hand every (subject, relationship, object) triple you can find using at most four relationship types. Draw the resulting graph.",
+   "Run Neo4j locally (for example with the official Docker image), load your triples with MERGE, and write two Cypher queries: one single-hop and one that follows two relationships.",
+   "Stretch: extract triples from 20 documents with an LLM and a forced tool call, apply simple name normalisation, load them, and compare answers from plain vector RAG and from graph context on five multi-hop questions you write."
+  ]
+ },
+ "multimodal": {
+  "plain": "Multimodal AI means models that work with more than text, such as images and audio. Vision-capable LLMs accept pictures, screenshots and PDF pages as input and can describe them, read text in them or answer questions about them. Speech-to-text (STT, also called automatic speech recognition) turns spoken audio into written text, and text-to-speech (TTS) turns text into natural-sounding audio. A voice agent chains these together with an LLM so people can talk to a system by phone or microphone and hear it answer.",
+  "analogy": "A voice agent is like a phone interpreter working with an expert. The interpreter listens and writes down what the caller says, passes the note to the expert, then reads the expert's reply aloud. If either of them is slow, the caller hears silence.",
+  "why": "Customers have huge volumes of calls, photos and scanned images: contact centres, insurance claims with damage photos, field technicians photographing equipment. They ask FDEs to automate parts of this. You need to know what the models can reliably do, how to build a pipeline that feels fast, and where people must stay involved.",
+  "subtopics": [
+   {
+    "title": "Sending images to an LLM",
+    "body": "With a vision-capable model you add an image to the message as a content block, next to your text instruction. The image can be sent as base64 data or, with some APIs, as a URL. The model sees it as part of the prompt.\n\nImages cost tokens, roughly in proportion to their pixel size, so resize large photos to what the task needs. Very small text, dense tables, exact counting and precise positions are known weak spots, so test those cases carefully.\n\nFor extraction tasks, combine vision with the document-pipeline habits from the docai concept: a fixed schema, validation and human review. For judgement tasks, such as 'is this damage consistent with the claim?', treat the model's answer as a suggestion for a person, not a decision.",
+    "example": "A home insurer receives phone photos of water damage. The model is asked to describe the damaged areas, list visible items and flag if the photo seems to show a different room from the claim description. Adjusters see the summary next to the photos, saving them a few minutes per claim, and they make the decision.",
+    "code": "import anthropic, base64\n\nclient = anthropic.Anthropic()\nwith open(\"claim_7781_kitchen.jpg\", \"rb\") as f:\n    img_b64 = base64.standard_b64encode(f.read()).decode()\n\nmsg = client.messages.create(\n    model=MODEL,\n    max_tokens=600,\n    messages=[{\"role\": \"user\", \"content\": [\n        {\"type\": \"image\",\n         \"source\": {\"type\": \"base64\", \"media_type\": \"image/jpeg\", \"data\": img_b64}},\n        {\"type\": \"text\",\n         \"text\": \"Describe visible water damage in 3 bullet points. \"\n                 \"Say 'unclear' if you cannot tell. Do not guess costs.\"},\n    ]}],\n)\nprint(msg.content[0].text)     # a suggestion for the adjuster, not a decision",
+    "lang": "Python"
+   },
+   {
+    "title": "Speech-to-text and measuring it",
+    "body": "STT models take audio and return text, often with timestamps per word. Whisper is a well-known open model you can run yourself; many cloud providers and specialist companies offer STT APIs, including streaming versions that return partial text while the person is still speaking.\n\nPhone audio is harder than studio audio. It is usually sampled at 8 kHz, has background noise and cross-talk, and callers say names, account numbers and addresses that general models get wrong. Many services let you add a list of expected words (sometimes called custom vocabulary or keyword boosting), which helps with product names.\n\nThe standard quality measure is word error rate (WER): the number of word substitutions, deletions and insertions divided by the number of words in a correct reference transcript. Measure it on the customer's own recordings, and separately check the fields that matter, like account numbers, because one wrong digit is a failure even if WER looks good. Diarization, which labels who spoke when, is useful for call analytics.",
+    "example": "A utility tests two STT options on 100 recorded customer calls with hand-made transcripts. Overall WER is similar, around 12 and 14 percent, but one option gets the 10-digit meter number fully right in 91 of 100 calls and the other in 78. The team picks the first and adds read-back confirmation of meter numbers.",
+    "code": "# pip install openai-whisper jiwer   (Whisper also needs ffmpeg installed)\nimport whisper, jiwer\n\nmodel = whisper.load_model(\"small\")                  # sizes: tiny ... large\nresult = model.transcribe(\"call_0193.wav\", language=\"en\")\nhypothesis = result[\"text\"].lower().strip()\n\nreference = \"hi my meter number is four four one two and the power is out\"\nprint(\"transcript:\", hypothesis)\nprint(\"WER:\", round(jiwer.wer(reference, hypothesis), 3))   # 0.0 is perfect\n\nfor seg in result[\"segments\"]:                         # timestamps per segment\n    print(f\"{seg['start']:6.1f}s  {seg['text']}\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Text-to-speech that sounds right",
+    "body": "TTS turns the agent's reply into audio. Modern voices sound natural, but they read what you give them. A reply written for a screen, with bullet points, tables, URLs or abbreviations, sounds strange aloud.\n\nSo voice agents need a speech-friendly style: short sentences, one question at a time, no lists, and numbers written the way people say them. It often helps to normalise text before TTS: expand abbreviations, read account numbers digit by digit and say dates in words. Some engines support SSML, a markup language for pauses, emphasis and pronunciation, or have their own pronunciation controls.\n\nFor latency, use a streaming TTS that returns the first audio chunk quickly, and send text one sentence at a time. Voice cloning and custom brand voices raise consent and misuse questions; follow the vendor's policies and the customer's legal advice.",
+    "example": "A pharmacy chain's refill line originally read 'Your order #RX-20931 ships 10/03' as 'hash R X twenty thousand nine hundred thirty-one ships ten slash oh three'. After adding a normaliser, it says 'Your order R X, 2, 0, 9, 3, 1, ships on October 3', and complaints about confusing messages dropped.",
+    "code": "import re\nfrom datetime import date\n\ndef speakable(text: str) -> str:\n    \"\"\"Make screen text sound natural when read by TTS.\"\"\"\n    text = text.replace(\"#\", \"\")                               # drop symbols\n    text = re.sub(r\"\\b([A-Z]{2})-(\\d+)\\b\",                    # RX-20931 -> R X, 2, 0, 9...\n                  lambda m: \" \".join(m.group(1)) + \", \" + \", \".join(m.group(2)), text)\n    text = re.sub(r\"\\b(\\d{4})-(\\d{2})-(\\d{2})\\b\",               # ISO dates -> words\n                  lambda m: f\"{date(int(m[1]), int(m[2]), int(m[3])):%B} {int(m[3])}\", text)\n    text = re.sub(r\"^\\s*[-*]\\s+\", \"\", text, flags=re.M)         # remove bullets\n    return text\n\nprint(speakable(\"Your order #RX-20931 ships on 2026-10-03.\"))\n# Your order R X, 2, 0, 9, 3, 1 ships on October 3.",
+    "lang": "Python"
+   },
+   {
+    "title": "Voice agent designs and latency budgets",
+    "body": "The common design is a cascade: voice activity detection (VAD) to spot when the caller stops speaking, streaming STT, an LLM with tools, then streaming TTS. Each part can be chosen and tested separately, and you get a text transcript for free. A newer design uses speech-to-speech models that take audio in and produce audio out directly, which can reduce latency and keep tone of voice, but gives you less control at each step.\n\nIn conversation, people expect replies quickly, and pauses of more than a second or so start to feel awkward. So set a latency budget: a target time for each stage, adding up to roughly one second from the end of the caller's speech to the start of the agent's audio. Measure each stage in production logs.\n\nThe biggest wins come from streaming everywhere, starting TTS on the first sentence, keeping prompts and replies short, and speeding up tool calls. If a lookup will take time, the agent can say a brief line such as 'Let me check that for you' while it runs.",
+    "example": "A car rental firm's voice agent took about 2.8 seconds per turn. Stage timing showed 700 ms of end-of-turn waiting, 1,300 ms until the LLM finished its whole reply, and 500 ms for TTS on the full text. Tuning the silence threshold, streaming the LLM output and starting TTS on the first sentence brought it to about 1.1 seconds.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Stage",
+      "What happens",
+      "Typical target"
+     ],
+     "rows": [
+      [
+       "End of turn",
+       "VAD waits for a short silence",
+       "200 to 300 ms"
+      ],
+      [
+       "STT final text",
+       "Streaming transcript is finalised",
+       "100 to 200 ms"
+      ],
+      [
+       "LLM first sentence",
+       "Model streams its first sentence",
+       "300 to 500 ms"
+      ],
+      [
+       "TTS first audio",
+       "First audio chunk is ready",
+       "100 to 200 ms"
+      ],
+      [
+       "Network and playback",
+       "Audio reaches the caller",
+       "50 to 150 ms"
+      ],
+      [
+       "Total",
+       "Caller stops to agent speaks",
+       "about 1 second"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Enterprise uses and guardrails",
+    "body": "Good first projects are ones where people already look at images or listen to audio and then type what they found. Examples: reading forms and receipts, summarising and tagging recorded calls, checking photos in claims or inspections, and handling simple, high-volume phone requests such as appointment changes, delivery updates or outage reports.\n\nVoice and vision bring extra responsibilities. Calls are often recorded, so consent and retention rules apply, and audio can include card numbers or health details that must be redacted before storage. In many places, and under the EU AI Act's transparency rules, people should be told when they are talking to an AI. Always offer a clear path to a human.\n\nStart narrow: one call reason or one photo type, with measured success rates, then expand.",
+    "example": "A water utility starts with one call reason, reporting a leak, which is about 18 percent of calls. The agent collects the address and a description, creates a work order and gives a reference number. Anything else, or any caller who says 'agent', transfers to a person with a summary.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "One narrow use case with a clear success measure",
+     "Test set of real calls or images, including noisy and hard ones",
+     "Latency budget per stage, measured in logs",
+     "Caller told they are speaking to an AI, with a path to a human",
+     "Consent, recording and retention rules checked",
+     "Sensitive data (card numbers, health details) redacted before storage",
+     "Numbers and names read back for confirmation"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Multimodal",
+    "Able to take in or produce more than one kind of data, such as text, images and audio."
+   ],
+   [
+    "Vision-capable LLM",
+    "A language model that accepts images as part of its input."
+   ],
+   [
+    "STT",
+    "Speech-to-text, also called automatic speech recognition: converting audio to text."
+   ],
+   [
+    "TTS",
+    "Text-to-speech: generating spoken audio from text."
+   ],
+   [
+    "VAD",
+    "Voice activity detection: telling speech from silence to know when someone has finished talking."
+   ],
+   [
+    "WER",
+    "Word error rate: substitutions, deletions and insertions divided by words in the reference transcript."
+   ],
+   [
+    "Barge-in",
+    "The caller interrupting while the agent is speaking; the agent should stop and listen."
+   ],
+   [
+    "Latency budget",
+    "A target time for each stage of a pipeline that together meet an overall response goal."
+   ],
+   [
+    "Diarization",
+    "Labelling which speaker said which part of a recording."
+   ],
+   [
+    "SSML",
+    "Speech Synthesis Markup Language, used to control pauses, emphasis and pronunciation in TTS."
+   ]
+  ],
+  "practice": [
+   "Send three photos of everyday documents (a receipt, a label, a whiteboard) to a vision-capable model with a strict output format. Note which fields it reads correctly and where it struggles.",
+   "Record yourself reading five sentences with numbers and names, transcribe them with Whisper, and compute WER against your script. Then repeat with background noise and compare.",
+   "Stretch: build a push-to-talk voice loop on your laptop (record, STT, LLM, TTS, play) and log the time for each stage. Change one thing, such as streaming or a shorter prompt, and show the new timings."
+  ]
+ },
+ "responsibleai": {
+  "plain": "Responsible AI is the practice of building and running AI systems so they are fair, safe, transparent and accountable. Bias means a system treats groups of people differently in ways that are unfair or unlawful, and fairness testing measures this. Transparency means people know when AI is involved and can understand the basis for decisions that affect them. Governance is the set of policies, roles, reviews and records an organisation uses to decide which AI systems it builds, how they are checked and who is responsible when something goes wrong.",
+  "analogy": "It is like food safety in a restaurant chain. There are rules for where ingredients come from, labels listing allergens, inspections, a named person responsible in each kitchen, and a record of what was served, so that when someone gets sick the cause can be found and fixed.",
+  "why": "Customers in banking, insurance, healthcare, hiring and the public sector face regulators, auditors and the press. A project can be stopped late by a risk committee if governance was ignored. An FDE who can talk clearly about fairness testing, human oversight, documentation, the NIST AI RMF and the EU AI Act, and who builds these into the design, gets projects approved faster and avoids harm.",
+  "subtopics": [
+   {
+    "title": "Bias and fairness you can measure",
+    "body": "Bias can enter at many points. Historical data can reflect past discrimination. Labels can be inconsistent between groups. A proxy feature, such as postcode, can stand in for a protected attribute such as ethnicity. And an LLM can pick up stereotypes from its training text.\n\nFairness is measured by comparing outcomes across groups. Common checks include selection rate (what share of each group gets a positive outcome), error rates per group (for example false rejections) and quality of LLM outputs per language or dialect. Different fairness definitions can conflict, so the customer must choose which matters for their use case, ideally with legal advice.\n\nA widely used rule of thumb from US employment guidelines is the four-fifths rule: if one group's selection rate is below 80 percent of the highest group's rate, that is treated as a sign of possible adverse impact that needs investigation. It is a screening signal, not a legal verdict.",
+    "example": "A staffing firm tests an AI screening assistant on 2,000 past applications. Candidates over 50 are advanced at 18 percent and those under 50 at 30 percent. The ratio is 0.60, below 0.8, so the team investigates, finds the prompt rewards 'recent graduate' phrasing, removes it and retests before any launch.",
+    "code": "import pandas as pd\n\n# one row per applicant: group label and whether the AI advanced them\ndf = pd.DataFrame({\n    \"age_band\": [\"under_50\"] * 1400 + [\"50_plus\"] * 600,\n    \"advanced\": [1] * 420 + [0] * 980 + [1] * 108 + [0] * 492,\n})\n\nrates = df.groupby(\"age_band\")[\"advanced\"].mean()      # selection rate per group\nratio = rates.min() / rates.max()                      # adverse impact ratio\nprint(rates.round(3).to_dict())                        # {'50_plus': 0.18, 'under_50': 0.3}\nprint(f\"impact ratio: {ratio:.2f}\")\nif ratio < 0.8:\n    print(\"Below four-fifths: investigate before use\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Transparency and explanation",
+    "body": "Transparency has two sides. First, disclosure: people should know when they are interacting with an AI system or reading AI-generated content. The EU AI Act includes transparency duties of this kind, such as telling people they are talking to a chatbot unless it is obvious, and marking certain AI-generated content.\n\nSecond, explanation: when AI influences a decision about someone, such as a loan or a job application, they and the staff involved should be able to understand the main reasons. For LLM systems, practical explanation means showing the sources used, the key factors extracted, and the rule or reviewer that made the final call.\n\nInside the organisation, transparency means records: which model and prompt version produced an output, what data it saw and who approved it. Logging this is cheap when designed in and very hard to reconstruct later.",
+    "example": "A lender uses an LLM to summarise income documents for underwriters. Each summary shows the documents and page numbers it relied on, and the decision letter to the applicant states the underwriter's reasons in plain words. The system logs the model version and prompt version for every file.",
+    "code": "AI USE NOTICE (shown before a chat starts)\n\n  You are chatting with an automated assistant that uses AI.\n  It can answer questions about your policy and start a claim.\n  It cannot approve or reject claims; a member of our team does that.\n  Type 'agent' at any time to reach a person.\n  Conversations are stored for 90 days to improve the service.\n  More information: [link to AI use page]\n\nPER-OUTPUT RECORD (stored, not shown)\n  output_id, timestamp, model_version, prompt_version,\n  source_documents, reviewer_id, final_decision, override_reason",
+    "lang": "Text"
+   },
+   {
+    "title": "Human oversight that actually works",
+    "body": "Human oversight means a person can monitor, question and override the AI system. There are levels: human-in-the-loop (a person approves each decision), human-on-the-loop (a person monitors and can step in) and human-in-command (people decide whether and how the system is used at all).\n\nOversight fails when it is only a formality. Automation bias is the tendency to accept a system's suggestion without checking. If a reviewer approves 400 AI decisions an hour and almost never disagrees, they are not really overseeing anything.\n\nMake oversight real: give reviewers the evidence along with the answer; set realistic workloads; train them on the system's known weaknesses; let them override easily; and track override rates. A very low override rate can mean the system is excellent or that nobody is checking, so spot-check with independent reviews.",
+    "example": "In a claims triage pilot, reviewers override 0.4 percent of AI recommendations. An independent audit of 200 cases finds 6 percent should have been changed. The team adds the key evidence to the review screen, lowers each reviewer's queue, and the override rate rises to 5 percent, closer to the audited error rate.",
+    "code": "-- Override rate per reviewer per week: very low values need a closer look\nSELECT reviewer_id,\n       date_trunc('week', reviewed_at)                       AS week,\n       count(*)                                              AS reviewed,\n       avg(CASE WHEN final_decision <> ai_recommendation\n                THEN 1.0 ELSE 0.0 END)                       AS override_rate,\n       percentile_cont(0.5) WITHIN GROUP\n           (ORDER BY seconds_spent)                          AS median_seconds\nFROM   ai_reviews\nGROUP  BY reviewer_id, week\nORDER  BY week DESC, override_rate ASC;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Model cards and system documentation",
+    "body": "A model card is a short document describing a model: what it is for, how it was built, how it performs and where it should not be used. The idea comes from a 2019 research paper by Mitchell and colleagues, and many model publishers now release cards with their models. Datasheets for datasets are a related idea for training data.\n\nFor an enterprise LLM application, write a system card that covers the whole system, not only the base model: intended use and users, the model and version, prompts and tools, data sources, evaluation results including per-group results, known limitations, human oversight, monitoring and an owner.\n\nKeep it short and keep it current. A two-page card updated with each release is far more useful than a 60-page document nobody reads.",
+    "example": "For a benefits eligibility assistant at a city council, the system card states that it answers questions about three benefit schemes in English and Spanish, is not used to decide eligibility, scored 93 percent on a 250-question test set (91 percent in Spanish), and has named owners in the digital team and the benefits department.",
+    "code": "SYSTEM CARD: Benefits question assistant, v1.3\n\nPurpose:        Answer residents' questions about 3 benefit schemes\nNot for:        Deciding eligibility or payment amounts\nUsers:          Residents via website; staff via intranet\nModel:          MODEL (vendor-hosted), prompt v1.3, retrieval over 140 pages\nData:           Council benefit guidance; no personal data stored in index\nEvaluation:     250 test questions: 93% correct overall\n                English 94%, Spanish 91%; refusals checked on 40 off-topic items\nLimitations:    Weak on rare edge cases; guidance updates need re-indexing\nOversight:      Staff review 5% sample weekly; escalation button in every chat\nMonitoring:     Accuracy sample, complaint rate, latency, cost per month\nOwners:         Digital team (tech), Benefits department (content)\nLast review:    2026-09-01",
+    "lang": "Text"
+   },
+   {
+    "title": "NIST AI RMF and the EU AI Act",
+    "body": "The NIST AI Risk Management Framework (AI RMF 1.0), published by the US National Institute of Standards and Technology in January 2023, is voluntary. It organises AI risk work into four functions: Govern (policies, roles, culture), Map (understand context and possible harms), Measure (test and track risks) and Manage (prioritise and act on risks). NIST also published a Generative AI Profile in 2024 that applies the framework to generative AI. ISO/IEC 42001 is a related international standard for an AI management system that organisations can be certified against.\n\nThe EU AI Act (Regulation (EU) 2024/1689) is law. It entered into force on 1 August 2024 and applies in stages: bans on prohibited practices from February 2025, rules for general-purpose AI models from August 2025, and most other obligations, including many for high-risk systems, from August 2026 or later. In late 2025 the European Commission proposed changes that could delay some high-risk deadlines, so always check the current timetable. It sorts systems by risk level, shown in the table.\n\nThe Act gives duties to providers (who build or place a system on the market) and deployers (organisations that use it). Fines can be large, up to 35 million euros or 7 percent of worldwide annual turnover for the most serious breaches. An FDE should explain these frameworks accurately and leave legal classification to the customer's lawyers.",
+    "example": "A European bank wants an LLM to help assess small business loan applications. Credit scoring of natural persons is listed as high-risk, and this case is borderline, so the FDE flags it early, suggests the bank's legal team confirm the classification, and designs for high-risk expectations anyway: documented risk management, data governance, logging, human oversight and accuracy testing.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "EU AI Act tier",
+      "Examples",
+      "What it means"
+     ],
+     "rows": [
+      [
+       "Unacceptable (prohibited)",
+       "Social scoring, certain manipulative uses",
+       "Banned"
+      ],
+      [
+       "High-risk",
+       "Hiring, credit scoring, education, critical services",
+       "Risk management, logs, oversight, conformity"
+      ],
+      [
+       "Transparency duties",
+       "Chatbots, AI-generated or deepfake content",
+       "Tell people, label content"
+      ],
+      [
+       "Minimal risk",
+       "Spam filters, most internal tools",
+       "No specific new duties"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "An AI governance checklist for a customer",
+    "body": "Governance works best as a short, repeatable process that every AI use case goes through, scaled to its risk. Low-risk internal tools get a light review. High-risk uses get a full one.\n\nThe FDE's role is to bring a practical checklist into the first weeks of the project, fill it in with the customer's product owner, legal, security and risk teams, and turn its answers into design choices: which data is allowed, where a human signs off, what is logged and what is tested.\n\nThe checklist below is a starting point that maps loosely onto Govern, Map, Measure and Manage. Adapt it to the customer's existing risk processes rather than creating a parallel one.",
+    "example": "At a mid-size insurer, the FDE runs a 60-minute workshop using this checklist for a claims summarisation tool. It is rated medium risk: staff-facing and advisory only. Three actions come out of it: a per-language evaluation, a monthly 50-claim audit sample and a named business owner who approves prompt changes.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Use case, users and affected people described in one page",
+     "Risk tier agreed, including legal view on EU AI Act or local rules",
+     "Named business owner and technical owner",
+     "Data sources approved; personal data minimised and retention set",
+     "Evaluation set with results per relevant group or language",
+     "Human oversight point defined, with reviewer training",
+     "Disclosure to users and a path to a human",
+     "Logging of model version, prompt version, inputs and decisions",
+     "Monitoring and incident process: who is alerted and how to pause",
+     "System card written and reviewed at each release"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Bias",
+    "Systematic differences in how an AI system treats groups, which may be unfair or unlawful."
+   ],
+   [
+    "Selection rate",
+    "The share of a group that receives a positive outcome, such as being shortlisted."
+   ],
+   [
+    "Four-fifths rule",
+    "A US employment rule of thumb that flags possible adverse impact when one group's selection rate is under 80 percent of the highest group's."
+   ],
+   [
+    "Automation bias",
+    "The tendency of people to accept an automated suggestion without checking it."
+   ],
+   [
+    "Human-in-the-loop",
+    "A design where a person must approve each AI output before it takes effect."
+   ],
+   [
+    "Model card",
+    "A short document describing a model's purpose, performance, limits and intended use."
+   ],
+   [
+    "NIST AI RMF",
+    "A voluntary US framework for managing AI risk through Govern, Map, Measure and Manage."
+   ],
+   [
+    "EU AI Act",
+    "The European Union's AI regulation, which sets duties according to a system's risk level."
+   ],
+   [
+    "High-risk AI system",
+    "Under the EU AI Act, a system in listed sensitive areas, such as hiring or credit, with strict requirements."
+   ],
+   [
+    "Deployer",
+    "Under the EU AI Act, an organisation that uses an AI system in its own operations."
+   ]
+  ],
+  "practice": [
+   "Pick an AI product you use (a chatbot, a photo app) and write a one-page system card for it from public information, marking what you could not find.",
+   "Create a small made-up dataset of 200 loan decisions with two groups, compute selection rates and the impact ratio in pandas, then change the data so it passes the four-fifths check and explain what you changed.",
+   "Stretch: take a use case such as 'AI that drafts replies to patient messages at a clinic', fill in the governance checklist, sort it into an EU AI Act tier with your reasoning, and list three design changes the checklist leads to."
+  ]
+ }
+}

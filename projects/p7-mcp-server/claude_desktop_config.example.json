@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mock-crm": {
+      "command": "/ABSOLUTE/PATH/TO/p7-mcp-server/.venv/bin/python",
+      "args": ["/ABSOLUTE/PATH/TO/p7-mcp-server/crm_server.py"]
+    }
+  }
+}

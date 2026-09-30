@@ -1,0 +1,1541 @@
+{
+ "computers": [
+  {
+   "q": "What is RAM used for?",
+   "options": [
+    "Permanent storage of files after shutdown",
+    "Fast short-term memory for programs running right now",
+    "Translating Python into machine code",
+    "Connecting the computer to the internet"
+   ],
+   "answer": 1,
+   "why": "RAM holds whatever is running right now and is wiped when power goes off. Files that must survive a restart live in storage."
+  },
+  {
+   "q": "What does the operating system do?",
+   "options": [
+    "It is the chip that carries out every instruction",
+    "It is the text file where your code is saved",
+    "It manages hardware, files and running programs for other software",
+    "It is the Python library that reads CSV files"
+   ],
+   "answer": 2,
+   "why": "The OS starts first and manages memory, files and processes so other programs can run. The CPU is hardware, not the OS."
+  },
+  {
+   "q": "A customer runs your .py file on a server and gets 'command not found: python'. What is the most likely cause?",
+   "options": [
+    "No Python interpreter is installed or on the PATH",
+    "The file needs to be compiled to .exe first",
+    "The server has too little RAM for the script",
+    "The CPU cannot read text files"
+   ],
+   "answer": 0,
+   "why": "A .py file is just text; it needs the Python interpreter to run it. The error says the shell cannot find that program."
+  },
+  {
+   "q": "Your script builds a list of 10,000 cleaned orders, then ends. The customer asks where the results are. What went wrong?",
+   "options": [
+    "The CPU deleted the list to save power",
+    "The list was never saved to a file, so it vanished with the process",
+    "Python only keeps lists for one hour",
+    "The OS moved the list to the recycle bin"
+   ],
+   "answer": 1,
+   "why": "Variables live in RAM and disappear when the program ends. To keep results you must write them to storage, such as a CSV file."
+  },
+  {
+   "q": "A teammate says: 'I edited the script, so the new logic is already running on the server.' What is the mistake?",
+   "options": [
+    "Scripts must be run twice before changes apply",
+    "Nothing is wrong; edits apply instantly",
+    "Only compiled languages need saving",
+    "Code does nothing until the file is saved and run again"
+   ],
+   "answer": 3,
+   "why": "Source code is just text in storage. A running process keeps using the old version until you save and restart it."
+  }
+ ],
+ "terminal": [
+  {
+   "q": "What is a shell?",
+   "options": [
+    "A program that reads the commands you type and runs them",
+    "The window border around a terminal app",
+    "A folder that stores Python packages",
+    "A kind of virtual environment for Windows only"
+   ],
+   "answer": 0,
+   "why": "The terminal is the window; the shell (bash, zsh, PowerShell) inside it reads each command and runs it."
+  },
+  {
+   "q": "What does a virtual environment give you?",
+   "options": [
+    "A faster CPU for running scripts",
+    "A remote server to run code on",
+    "A separate place to install packages for one project",
+    "A backup copy of your source files"
+   ],
+   "answer": 2,
+   "why": "A venv keeps each project's packages apart, so one project's versions do not break another's."
+  },
+  {
+   "q": "You type python report.py and get 'No such file or directory', but the file exists. What do you check first?",
+   "options": [
+    "Reinstall Python from scratch",
+    "Run pwd and ls to see which folder you are in",
+    "Rename the file to report.txt",
+    "Restart the computer"
+   ],
+   "answer": 1,
+   "why": "The shell looks for relative paths in the current folder. Usually you are just in the wrong directory; cd there or give the full path."
+  },
+  {
+   "q": "You pip install requests, activate the venv, run your script and get ModuleNotFoundError. Why?",
+   "options": [
+    "requests only works on Linux",
+    "The package name must be capitalised",
+    "pip needs a reboot before packages load",
+    "It was installed before activating, so it went to another Python"
+   ],
+   "answer": 3,
+   "why": "pip installs into whichever Python is active. Activate the venv first, then install, so the package lands where your script runs."
+  },
+  {
+   "q": "A colleague shares a script with the customer's API key typed on line 3. What is the better practice?",
+   "options": [
+    "Keep the key but mark the file read-only",
+    "Put the key in a comment so Python ignores it",
+    "Shorten the key so it is harder to read",
+    "Store the key in an environment variable and read it in code"
+   ],
+   "answer": 3,
+   "why": "Secrets in code get shared and committed. Environment variables keep the key out of the file itself."
+  }
+ ],
+ "python1": [
+  {
+   "q": "What does a function's return statement do?",
+   "options": [
+    "Prints a value on the screen",
+    "Stops the whole program immediately",
+    "Sends a value back to the code that called the function",
+    "Restarts the function from the top"
+   ],
+   "answer": 2,
+   "why": "return hands a value back to the caller. print only shows it on screen, and the caller gets nothing."
+  },
+  {
+   "q": "In a traceback, where do you look first?",
+   "options": [
+    "The first line, which names the Python version",
+    "The middle lines, which list every import",
+    "Any line mentioning a library you installed",
+    "The last line, which gives the error type and message"
+   ],
+   "answer": 3,
+   "why": "Read a traceback from the bottom up. The last line says what went wrong, and the lines above show where."
+  },
+  {
+   "q": "A customer file has quantity '5' and '3' read with input(). Your total prints 53. What is the fix?",
+   "options": [
+    "Convert both with int() before adding",
+    "Use * instead of + to combine them",
+    "Wrap the result in str()",
+    "Add them inside a for loop"
+   ],
+   "answer": 0,
+   "why": "input() and file reads give strings, and + joins strings. Converting with int() or float() makes + do arithmetic."
+  },
+  {
+   "q": "Your function calc_tax(amount) works when tested alone, but total = calc_tax(100) gives None. What is likely wrong?",
+   "options": [
+    "The parameter needs a default value",
+    "The function uses print instead of return",
+    "Functions cannot take numbers as inputs",
+    "The variable total is a reserved word"
+   ],
+   "answer": 1,
+   "why": "A function without return gives back None. print shows the value on screen but does not hand it to the caller."
+  },
+  {
+   "q": "Which line would cause a SyntaxError?",
+   "options": [
+    "for x in range(3):",
+    "if price > 10:",
+    "def total(a, b)",
+    "while count < 5:"
+   ],
+   "answer": 2,
+   "why": "def, if, for and while lines must end with a colon. Missing colons and mixed tabs and spaces are classic beginner errors."
+  }
+ ],
+ "python2": [
+  {
+   "q": "Which collection maps keys to values?",
+   "options": [
+    "list",
+    "tuple",
+    "set",
+    "dict"
+   ],
+   "answer": 3,
+   "why": "A dict stores key and value pairs and looks values up by key. A set holds unique items with no values attached."
+  },
+  {
+   "q": "What does a with open(...) block do for you?",
+   "options": [
+    "It closes the file automatically when the block ends",
+    "It converts the file to JSON",
+    "It makes the file read-only for other users",
+    "It loads the file into a pandas DataFrame"
+   ],
+   "answer": 0,
+   "why": "The with block closes the file even if an error happens, so data is flushed and the file is not left locked."
+  },
+  {
+   "q": "You compare CSV amounts and '9' > '10' comes out True. What should you do?",
+   "options": [
+    "Sort the rows alphabetically first",
+    "Convert the values with float() or int() before comparing",
+    "Open the file in 'a' mode instead",
+    "Remove the header row"
+   ],
+   "answer": 1,
+   "why": "The csv module gives strings, and strings compare letter by letter. Convert to numbers before comparing."
+  },
+  {
+   "q": "A customer CSV has a company name 'Brightline, Inc.'. Your parser using line.split(',') shifts every column. Fix?",
+   "options": [
+    "Replace all commas with spaces first",
+    "Use more columns in your code",
+    "Use the csv module, which handles quoted commas",
+    "Switch to reading with json.load"
+   ],
+   "answer": 2,
+   "why": "Quoted values can contain commas. csv.reader and csv.DictReader handle quoting correctly; a plain split does not."
+  },
+  {
+   "q": "You append daily results to log.csv using open('log.csv', 'w'). Next day only today's rows remain. Why?",
+   "options": [
+    "The with block deletes old rows",
+    "CSV files cannot hold more than one day",
+    "'w' replaces existing contents; use 'a' to append",
+    "You must call file.save() at the end"
+   ],
+   "answer": 2,
+   "why": "Mode 'w' wipes the file each time it opens. Mode 'a' adds to the end."
+  }
+ ],
+ "internet": [
+  {
+   "q": "What does DNS do?",
+   "options": [
+    "Encrypts traffic between browser and server",
+    "Turns a name like shop.example.com into an IP address",
+    "Picks which program on a machine receives a message",
+    "Stores web pages so they load faster"
+   ],
+   "answer": 1,
+   "why": "DNS resolves names to IP addresses. Ports pick the program, and TLS handles encryption."
+  },
+  {
+   "q": "What is a port?",
+   "options": [
+    "A number that picks which program on a machine you are talking to",
+    "The cable that connects a laptop to Wi-Fi",
+    "Another name for an IP address",
+    "A folder where a server keeps its logs"
+   ],
+   "answer": 0,
+   "why": "One machine can run many servers, and the port number (443 for HTTPS, 22 for SSH) selects one."
+  },
+  {
+   "q": "A customer says 'your service is down' but it works for you. What do you check first?",
+   "options": [
+    "Restart your production servers",
+    "Ask them to reinstall their browser",
+    "Rewrite the API in a faster language",
+    "Whether their machine resolves the name to an IP (DNS)"
+   ],
+   "answer": 3,
+   "why": "Check layers in order: name, then route and port, then TLS, then HTTP. Often the fault is DNS or a firewall on their side."
+  },
+  {
+   "q": "From a customer VM, the name resolves but a connection to port 443 times out. What is the likely cause?",
+   "options": [
+    "The certificate expired",
+    "The server returned a 404",
+    "A firewall is blocking that port on the path",
+    "The JSON response is malformed"
+   ],
+   "answer": 2,
+   "why": "A timeout on connect points to a network block. Certificate and HTTP errors only appear after the connection opens."
+  },
+  {
+   "q": "A customer believes HTTPS hides which sites employees visit. What is correct?",
+   "options": [
+    "HTTPS hides the content, but the IP and usually the site name are visible",
+    "Yes, HTTPS hides everything about the visit",
+    "HTTPS only hides passwords, not page content",
+    "HTTPS hides the site name but not the content"
+   ],
+   "answer": 0,
+   "why": "TLS encrypts the content of the traffic. The network can still see the IP address and usually the site name."
+  }
+ ],
+ "dbbasics": [
+  {
+   "q": "What is a primary key?",
+   "options": [
+    "A password needed to open the database",
+    "The first column in any table",
+    "A column that uniquely identifies each row",
+    "A column that links to another table"
+   ],
+   "answer": 2,
+   "why": "A primary key is unique per row. A column that points at another table's key is a foreign key."
+  },
+  {
+   "q": "What does an INNER JOIN return?",
+   "options": [
+    "Every row from the left table",
+    "Only rows that have a match in both tables",
+    "Every row from both tables",
+    "Rows with no match on either side"
+   ],
+   "answer": 1,
+   "why": "INNER JOIN keeps only matches. A LEFT JOIN keeps every left row and fills NULL where nothing matches."
+  },
+  {
+   "q": "A customer asks you to fix one misspelled city. You are about to run UPDATE customers SET city='Leeds'. What is missing?",
+   "options": [
+    "A JOIN to the orders table",
+    "An ORDER BY clause",
+    "A LIMIT of 100 rows",
+    "A WHERE clause, or every row gets changed"
+   ],
+   "answer": 3,
+   "why": "UPDATE and DELETE without WHERE change every row in the table. Always run the matching SELECT first."
+  },
+  {
+   "q": "Your Python script INSERTs rows into SQLite with no errors, but the rows are gone when you reopen the file. Why?",
+   "options": [
+    "SQLite only keeps rows in memory",
+    "INSERT needs a primary key value",
+    "The table was not indexed",
+    "You never called commit() on the connection"
+   ],
+   "answer": 3,
+   "why": "sqlite3 changes are part of a transaction until you commit. Close without committing and they are discarded."
+  },
+  {
+   "q": "Which is the safe way to use a name typed by a user in a query?",
+   "options": [
+    "f\"SELECT * FROM users WHERE name = '{name}'\"",
+    "\"SELECT * FROM users WHERE name = '\" + name + \"'\"",
+    "cur.execute(\"SELECT * FROM users WHERE name = ?\", (name,))",
+    "\"SELECT * FROM users WHERE name = %s\" % name"
+   ],
+   "answer": 2,
+   "why": "Placeholders let the database treat input as data. Building SQL with string formatting allows SQL injection."
+  }
+ ],
+ "mlbasics": [
+  {
+   "q": "In a dataset for predicting house prices, what is the label?",
+   "options": [
+    "The sale price you want to predict",
+    "The number of rooms",
+    "The algorithm you chose",
+    "The row number of each sale"
+   ],
+   "answer": 0,
+   "why": "The label is the answer to predict. Rooms and size are features, the inputs known at prediction time."
+  },
+  {
+   "q": "What is overfitting?",
+   "options": [
+    "Using too little training data to start",
+    "Memorising training examples, including noise, so new data goes badly",
+    "Training a model for too short a time",
+    "Choosing a model that is too simple"
+   ],
+   "answer": 1,
+   "why": "An overfit model scores well on examples it saw and poorly on new ones. A held-out test set reveals it."
+  },
+  {
+   "q": "A data scientist at Harbor Freight Co. reports 99% accuracy. What do you ask first?",
+   "options": [
+    "Which programming language was used",
+    "How long training took",
+    "Whether the accuracy is on a held-out test set",
+    "Whether the model is a neural network"
+   ],
+   "answer": 2,
+   "why": "Accuracy on training data looks far better than real life. Only a test set the model never saw shows true performance."
+  },
+  {
+   "q": "A customer wants to calculate tax from a fixed government table. They ask for an ML model. What do you suggest?",
+   "options": [
+    "Train a neural network on past tax bills",
+    "Collect a million examples first",
+    "Use an LLM to estimate each bill",
+    "Write plain rules; the logic is already known"
+   ],
+   "answer": 3,
+   "why": "ML helps when rules are too fuzzy to write. When the rules are clear and fixed, normal code is cheaper and exact."
+  },
+  {
+   "q": "A teammate says 'the bigger model will always beat logistic regression on our 800 rows.' What is the flaw?",
+   "options": [
+    "On small data, simple models often do as well or better",
+    "Logistic regression cannot use numbers",
+    "Bigger models never overfit",
+    "800 rows is too many for any model"
+   ],
+   "answer": 0,
+   "why": "Complex models need lots of data and overfit small datasets easily. Try a simple baseline first."
+  }
+ ],
+ "mathbasics": [
+  {
+   "q": "What is the dot product of [2, 1, 3] and [1, 0, 2]?",
+   "options": [
+    "6",
+    "8",
+    "5",
+    "10"
+   ],
+   "answer": 1,
+   "why": "Multiply matching positions and add: 2x1 + 1x0 + 3x2 = 8."
+  },
+  {
+   "q": "What does softmax do to a model's raw scores?",
+   "options": [
+    "Sorts them from largest to smallest",
+    "Rounds them to whole numbers",
+    "Removes negative scores",
+    "Turns them into probabilities that add up to 1"
+   ],
+   "answer": 3,
+   "why": "Softmax turns raw scores into values between 0 and 1 that sum to 1, so they can be read as a share of belief."
+  },
+  {
+   "q": "A customer asks how fast your API is. Most calls take 200 ms but a few take 9 s. What do you report?",
+   "options": [
+    "The average latency only",
+    "The fastest call you saw",
+    "p50 and p95 latency",
+    "The total time of all calls"
+   ],
+   "answer": 2,
+   "why": "Averages hide or get distorted by slow outliers. p50 shows the typical call, p95 shows what the slow tail feels like."
+  },
+  {
+   "q": "You multiply a 2x3 matrix by a vector. How long must the vector be?",
+   "options": [
+    "6",
+    "2",
+    "3",
+    "Any length works"
+   ],
+   "answer": 2,
+   "why": "Each row is dotted with the vector, so the vector length must match the number of columns, which is 3."
+  },
+  {
+   "q": "A classifier outputs 0.66 for 'fraud'. A manager says 'so it is 66% certain.' What is the trap?",
+   "options": [
+    "Softmax scores are always exactly calibrated",
+    "0.66 means the model is 34% certain",
+    "Scores above 0.5 are always correct",
+    "Softmax gives a score share and is often poorly calibrated"
+   ],
+   "answer": 3,
+   "why": "Softmax output is a relative share, not a checked probability. Many models are over or under confident."
+  }
+ ],
+ "linux": [
+  {
+   "q": "What does tail -f app.log do?",
+   "options": [
+    "Deletes the log file",
+    "Shows the last lines and keeps printing new ones as they arrive",
+    "Shows the first 10 lines only",
+    "Opens the log in a text editor"
+   ],
+   "answer": 1,
+   "why": "tail -f follows the file live, which is the fastest way to watch what a service is doing."
+  },
+  {
+   "q": "In SSH key authentication, which key stays on your laptop?",
+   "options": [
+    "The private key",
+    "The public key",
+    "Both keys, and neither goes to the server",
+    "Neither; keys live in /etc on the server"
+   ],
+   "answer": 0,
+   "why": "The private key never leaves your machine. The public key goes into ~/.ssh/authorized_keys on the server."
+  },
+  {
+   "q": "A pipeline on a customer server gets 'Permission denied' writing to /data/out. What do you do first?",
+   "options": [
+    "Run chmod 777 on /data/out",
+    "Delete the folder and recreate it",
+    "Check the folder's owner and permissions with ls -l",
+    "Reboot the server"
+   ],
+   "answer": 2,
+   "why": "Find out who owns it and what is allowed, then grant only what is needed. chmod 777 lets every user change the files."
+  },
+  {
+   "q": "A stuck Python worker needs to stop. What should you try first?",
+   "options": [
+    "kill -9 on its PID",
+    "Delete the script file",
+    "Unplug the network",
+    "kill (SIGTERM) so it can clean up"
+   ],
+   "answer": 3,
+   "why": "SIGTERM lets the program finish writes and exit cleanly. kill -9 is a last resort because it stops it instantly."
+  },
+  {
+   "q": "Which habit leaks secrets on a shared customer server?",
+   "options": [
+    "Reading keys from environment variables",
+    "Pasting an API key directly into a curl command",
+    "Storing keys in a secret manager",
+    "Using ssh-agent for your private key"
+   ],
+   "answer": 1,
+   "why": "Commands typed in the shell are saved to history in plain text, so anyone who reads it gets the key."
+  }
+ ],
+ "frontend": [
+  {
+   "q": "What is the role of CSS?",
+   "options": [
+    "It describes how the page looks",
+    "It describes the page's content and structure",
+    "It makes the page respond to clicks",
+    "It stores data on the server"
+   ],
+   "answer": 0,
+   "why": "HTML is structure, CSS is appearance, and JavaScript is behaviour."
+  },
+  {
+   "q": "What does TypeScript add to JavaScript?",
+   "options": [
+    "Faster execution in the browser",
+    "A built-in database",
+    "Type checks that catch mistakes before the code runs",
+    "Automatic page styling"
+   ],
+   "answer": 2,
+   "why": "TypeScript checks types while you write, so errors like reading the wrong field show up before a customer sees them."
+  },
+  {
+   "q": "Your demo calls the customer's API from the browser and the console shows a CORS error. What does it mean?",
+   "options": [
+    "The API is down",
+    "The API key is wrong",
+    "The JSON is malformed",
+    "The server does not allow requests from your page's origin"
+   ],
+   "answer": 3,
+   "why": "CORS is the browser enforcing the server's rules about which origins may call it. Fix it on the server or call from a backend."
+  },
+  {
+   "q": "You have two days to show Nimbus Logistics a document-search demo. What do you prioritise?",
+   "options": [
+    "A custom component library",
+    "Pixel-perfect design and animations",
+    "A full React app with routing and auth",
+    "A working flow on their real data, even with plain styling"
+   ],
+   "answer": 3,
+   "why": "A demo must answer the customer's real question. Streamlit or a simple page with their data beats polish on fake data."
+  },
+  {
+   "q": "A demo page has fetch() calls to an LLM with the API key in the JavaScript. What is wrong?",
+   "options": [
+    "fetch cannot call LLM APIs",
+    "Anyone can open developer tools and copy the key",
+    "The key will expire faster in a browser",
+    "JavaScript cannot send headers"
+   ],
+   "answer": 1,
+   "why": "Anything in browser code is visible to the user. Keep keys on a backend that calls the model for the page."
+  }
+ ],
+ "oop": [
+  {
+   "q": "What is a class in Python?",
+   "options": [
+    "A single value stored in a variable",
+    "A file that holds several functions",
+    "A blueprint that defines data and methods for objects",
+    "A loop that runs over a list"
+   ],
+   "answer": 2,
+   "why": "A class describes what data an object holds and what it can do. Each object made from it is an instance."
+  },
+  {
+   "q": "What is the job of __init__?",
+   "options": [
+    "It sets up a new object's starting attributes",
+    "It deletes an object when finished",
+    "It imports the class into another file",
+    "It prints the object nicely"
+   ],
+   "answer": 0,
+   "why": "__init__ runs when you create an instance and stores its starting values on self."
+  },
+  {
+   "q": "You connect to three customer CRMs with different APIs. How do you keep pipeline code simple?",
+   "options": [
+    "Copy the pipeline three times, one per CRM",
+    "Put all three APIs into one giant if/elif function",
+    "Ask the customers to change their APIs",
+    "Write one class per CRM with the same methods, like get_contacts()"
+   ],
+   "answer": 3,
+   "why": "A shared interface lets the pipeline call get_contacts() without caring which CRM it is. Each class hides its own quirks."
+  },
+  {
+   "q": "A teammate built Invoice(Order), a subclass, only to reuse one helper function. What do you suggest?",
+   "options": [
+    "Add two more levels of inheritance",
+    "Use composition or a plain function instead",
+    "Make every class inherit from Invoice",
+    "Remove all methods from Order"
+   ],
+   "answer": 1,
+   "why": "Inheritance means 'is a'. An invoice is not an order, so sharing a helper through composition or a function is cleaner."
+  },
+  {
+   "q": "What goes wrong in: def __init__(self, tags=[]): self.tags = tags?",
+   "options": [
+    "All instances share the same list object",
+    "Lists cannot be attributes",
+    "self is missing from the parameters",
+    "The class cannot be instantiated"
+   ],
+   "answer": 0,
+   "why": "A mutable default is created once and shared by every call. Use tags=None and create a new list inside."
+  }
+ ],
+ "asyncpy": [
+  {
+   "q": "What does await do inside an async function?",
+   "options": [
+    "Runs the code on a new CPU core",
+    "Pauses this task until the result is ready, letting others run",
+    "Blocks the whole program until done",
+    "Retries the call if it fails"
+   ],
+   "answer": 1,
+   "why": "await hands control back to the event loop while waiting, so other tasks can make progress in the meantime."
+  },
+  {
+   "q": "Which kind of work benefits most from asyncio?",
+   "options": [
+    "Heavy number crunching on one big array",
+    "Resizing thousands of images in memory",
+    "Many network calls that spend time waiting",
+    "Sorting a huge list"
+   ],
+   "answer": 2,
+   "why": "Async helps when code waits on I/O like HTTP calls. CPU-heavy work needs processes, not async."
+  },
+  {
+   "q": "You must fetch 2,000 records one API call each from a slow customer API. What speeds this up safely?",
+   "options": [
+    "Fire all 2,000 at once with no limit",
+    "Loop over them one by one with requests",
+    "Run calls concurrently with asyncio.gather and a semaphore limit",
+    "Add time.sleep between calls"
+   ],
+   "answer": 2,
+   "why": "Concurrency hides waiting time, and a semaphore caps parallel calls so you do not overload their API or hit rate limits."
+  },
+  {
+   "q": "Inside an async function, a teammate calls time.sleep(5) and requests.get(). What happens?",
+   "options": [
+    "Nothing; they are async automatically",
+    "Python raises a SyntaxError",
+    "The calls run faster than usual",
+    "They block the event loop, so all other tasks freeze"
+   ],
+   "answer": 3,
+   "why": "Blocking calls stop the whole loop. Use await asyncio.sleep and an async HTTP client such as httpx or aiohttp."
+  },
+  {
+   "q": "Your code calls fetch_page(1) without await and gets a coroutine object instead of data. Why?",
+   "options": [
+    "Calling an async function only creates a coroutine; you must await it",
+    "The API returned an error",
+    "fetch_page needs to be a class",
+    "Coroutines only work in Jupyter"
+   ],
+   "answer": 0,
+   "why": "An async function returns a coroutine that does nothing until awaited or scheduled as a task."
+  }
+ ],
+ "stats": [
+  {
+   "q": "What does the median tell you?",
+   "options": [
+    "The most common value",
+    "The sum divided by the count",
+    "The middle value when data is sorted",
+    "The gap between highest and lowest"
+   ],
+   "answer": 2,
+   "why": "Half the values are below the median and half above. Unlike the mean, it barely moves with outliers."
+  },
+  {
+   "q": "What does a p-value measure?",
+   "options": [
+    "The chance the result is important for the business",
+    "How likely data this extreme is if there were no real effect",
+    "The probability the hypothesis is true",
+    "The size of the difference between groups"
+   ],
+   "answer": 1,
+   "why": "A p-value assumes no effect and asks how surprising the data would be. It is not the chance your idea is right."
+  },
+  {
+   "q": "A customer says ice cream sales and drownings rise together, so ice cream is dangerous. What do you point out?",
+   "options": [
+    "Correlation is strong, so causation is proven",
+    "The data must be wrong",
+    "Drownings cause ice cream sales",
+    "A third factor, hot weather, may drive both"
+   ],
+   "answer": 3,
+   "why": "Correlation is not causation. A hidden confounder such as temperature can move both numbers."
+  },
+  {
+   "q": "Kestrel Retail ran an A/B test with 40 users per group and wants to ship. What do you check first?",
+   "options": [
+    "Whether the sample is big enough to trust the difference",
+    "Which button colour looks nicer",
+    "Whether the test ran on a weekday",
+    "How many engineers built each version"
+   ],
+   "answer": 0,
+   "why": "Tiny samples give noisy results. Check sample size and confidence intervals before calling a winner."
+  },
+  {
+   "q": "A report says 'average deal size is $50k' but most deals are $5k and two are $2M. What is the trap?",
+   "options": [
+    "The mean is always the best summary",
+    "Outliers pull the mean far above the typical deal",
+    "The median would be even higher",
+    "Deal sizes cannot be averaged"
+   ],
+   "answer": 1,
+   "why": "A few extreme values drag the mean. Report the median, and say the outliers exist."
+  }
+ ],
+ "genesis": [
+  {
+   "q": "What best describes a Forward Deployed Engineer?",
+   "options": [
+    "A salesperson who gives product demos",
+    "A consultant who writes reports and bills hours",
+    "An engineer who ships production code inside one customer and feeds lessons to the product",
+    "A support agent who answers tickets"
+   ],
+   "answer": 2,
+   "why": "FDEs build and deploy real code on the vendor's platform at the customer, and push repeated needs back into the product."
+  },
+  {
+   "q": "In the Echo and Delta split, what does the Echo own?",
+   "options": [
+    "Building the core product roadmap alone",
+    "Writing the data pipelines",
+    "Running the cloud infrastructure",
+    "Understanding the customer's organisation, problem and success metric"
+   ],
+   "answer": 3,
+   "why": "The Echo, or Deployment Strategist, frames the problem and manages the relationship. The Deltas build."
+  },
+  {
+   "q": "At Orion Freight you hand-build the same CSV connector for the third customer in a row. What do you do?",
+   "options": [
+    "Keep building it by hand each time",
+    "Charge the customer extra for it",
+    "Stop supporting CSV files",
+    "Log it as a repeated gap and push it to the product team"
+   ],
+   "answer": 3,
+   "why": "Closing the loop turns repeated field work into product features, so each deployment needs less custom work."
+  },
+  {
+   "q": "A customer sends a vague request: 'make our planning smarter.' Acting as a human API, what do you do?",
+   "options": [
+    "Forward the message to the product team as a ticket",
+    "Translate it into a concrete problem and metric, then build",
+    "Wait until they write a full requirements document",
+    "Start training a large model right away"
+   ],
+   "answer": 1,
+   "why": "A human API translates, filters and builds. Just relaying requests turns you into a ticket router."
+  },
+  {
+   "q": "Which sign shows an FDE team slipping into being a consultancy?",
+   "options": [
+    "Every deployment stays custom and nothing reaches the product",
+    "FDEs spend most of their time writing code",
+    "Deployments get faster over time",
+    "The product gains connectors from field work"
+   ],
+   "answer": 0,
+   "why": "The model pays off only when field work becomes product. Otherwise it is software with consulting attached."
+  }
+ ],
+ "slg": [
+  {
+   "q": "What is Net Revenue Retention (NRR)?",
+   "options": [
+    "Revenue from new customers this year",
+    "Profit after all costs are paid",
+    "How revenue from existing customers changes, counting expansion, contraction and churn",
+    "The number of customers who renewed"
+   ],
+   "answer": 2,
+   "why": "NRR = (starting ARR + expansion - contraction - churn) / starting ARR. Above 100% means the base grows without new logos."
+  },
+  {
+   "q": "Why do FDE-heavy companies often have lower gross margin?",
+   "options": [
+    "Engineer time on customer work adds to cost of goods sold",
+    "They charge lower prices",
+    "Cloud hosting is free for pure software firms",
+    "They pay no sales commissions"
+   ],
+   "answer": 0,
+   "why": "Putting engineers on deployments raises COGS. The company trades that margin for a moat of deep, sticky deployments."
+  },
+  {
+   "q": "Your first deployment at Pinecrest Health works. How do you help drive expansion?",
+   "options": [
+    "Add as many features as possible to the first workflow",
+    "Wait for leadership to ask for more",
+    "Offer discounts to the current team",
+    "Show a clear win metric and find the next team with a similar problem"
+   ],
+   "answer": 3,
+   "why": "Land and expand: one visible win with a metric leaders care about, then make it easy for the next team to start."
+  },
+  {
+   "q": "Leadership asks if SLG is working. Which two numbers do you track?",
+   "options": [
+    "Number of FDEs and office locations",
+    "FDE hours per new deployment and NRR",
+    "Website traffic and sign-ups",
+    "Lines of code and bugs fixed"
+   ],
+   "answer": 1,
+   "why": "You want FDE hours per deployment going down as work becomes product, and NRR staying high."
+  },
+  {
+   "q": "A founder says 'lower margin is fine forever, FDEs are our product.' What is the problem?",
+   "options": [
+    "NRR does not matter for SLG",
+    "FDEs always raise gross margin",
+    "If deployments stay bespoke, margins never improve",
+    "Switching costs make margin irrelevant"
+   ],
+   "answer": 2,
+   "why": "The margin cost is only worth it if field work becomes product and hours per deployment fall."
+  }
+ ],
+ "http": [
+  {
+   "q": "What does a 429 status code mean?",
+   "options": [
+    "Not found",
+    "Server crashed",
+    "Too many requests; slow down",
+    "Request succeeded"
+   ],
+   "answer": 2,
+   "why": "429 means you hit a rate limit. Wait, often per the Retry-After header, then retry."
+  },
+  {
+   "q": "Which HTTP method is normally used to read data without changing it?",
+   "options": [
+    "POST",
+    "GET",
+    "PUT",
+    "DELETE"
+   ],
+   "answer": 1,
+   "why": "GET reads. POST creates, PUT replaces, DELETE removes."
+  },
+  {
+   "q": "A customer's API returns 401 from your pipeline. What do you check first?",
+   "options": [
+    "Whether the token is missing, wrong or expired",
+    "Whether the server is overloaded",
+    "Whether your JSON body has a typo",
+    "Whether the URL uses HTTP instead of HTTPS"
+   ],
+   "answer": 0,
+   "why": "401 means the server does not accept your credentials. A 429 would mean wait, and a 400 would mean fix the request."
+  },
+  {
+   "q": "Your pipeline fails against a customer API and you are unsure why. What is a good first step?",
+   "options": [
+    "Rewrite the pipeline in another language",
+    "Ask the customer to change their API",
+    "Add more retries and hope it passes",
+    "Reproduce the call with curl to isolate the problem"
+   ],
+   "answer": 3,
+   "why": "curl removes your code from the picture. If curl fails too, the issue is auth, network or the API, not your pipeline."
+  },
+  {
+   "q": "You pull a customer's orders and report 'you have exactly 100 orders.' What likely went wrong?",
+   "options": [
+    "You only read the first page of results",
+    "The API only stores 100 orders",
+    "JSON cannot hold more than 100 items",
+    "Your token limits you to 100 rows forever"
+   ],
+   "answer": 0,
+   "why": "APIs return data in pages. Loop until there are no more pages, or you will under-count."
+  }
+ ],
+ "git": [
+  {
+   "q": "What does git add do?",
+   "options": [
+    "Saves a commit to the remote",
+    "Creates a new branch",
+    "Copies a file's current state into the staging area",
+    "Downloads the latest changes"
+   ],
+   "answer": 2,
+   "why": "git add stages changes. git commit then saves exactly what is staged."
+  },
+  {
+   "q": "You pushed a bad commit to a shared branch. What is the safe way to undo it?",
+   "options": [
+    "Edit the files and never commit",
+    "git reset --hard and force-push",
+    "Delete the repository and clone again",
+    "git revert, which adds a new commit undoing it"
+   ],
+   "answer": 3,
+   "why": "revert keeps history intact for everyone. Rewriting shared history can erase teammates' work."
+  },
+  {
+   "q": "You accidentally committed a .env file with a customer's API key and pushed it. What do you do?",
+   "options": [
+    "Delete the file in a new commit and move on",
+    "Make the repo private",
+    "Rename the file to .env.old",
+    "Rotate the key, then remove the file and add .env to .gitignore"
+   ],
+   "answer": 3,
+   "why": "Git history keeps the old commit, so the key is exposed. Rotating it is the only real fix."
+  },
+  {
+   "q": "After a week of work you have one PR mixing a new connector, a refactor and bug fixes. Reviewers stall. Better?",
+   "options": [
+    "Ask reviewers to approve without reading",
+    "Split it into smaller focused pull requests",
+    "Merge it yourself without review",
+    "Add more comments to the giant PR"
+   ],
+   "answer": 1,
+   "why": "Small PRs with one purpose are easier to review properly and safer to merge or roll back."
+  },
+  {
+   "q": "A teammate's push was rejected, so they plan git push --force on main. What is the risk?",
+   "options": [
+    "It is always safe on main",
+    "It only affects their local copy",
+    "It can erase commits other people already pushed",
+    "Git will merge automatically"
+   ],
+   "answer": 2,
+   "why": "Force-pushing overwrites the remote branch. Pull and merge or rebase instead."
+  }
+ ],
+ "tdd": [
+  {
+   "q": "What is the order of the TDD loop?",
+   "options": [
+    "Green, red, refactor",
+    "Refactor, red, green",
+    "Red, refactor, green",
+    "Red, green, refactor"
+   ],
+   "answer": 3,
+   "why": "Write a failing test (red), make it pass simply (green), then clean up the code (refactor) while tests stay green."
+  },
+  {
+   "q": "What is a pytest fixture?",
+   "options": [
+    "A function that prepares something a test needs",
+    "A test that always passes",
+    "A tool that measures code coverage",
+    "A file listing CI settings"
+   ],
+   "answer": 0,
+   "why": "Fixtures set up sample data, temp files or connections, and pytest passes them to tests that name them as arguments."
+  },
+  {
+   "q": "You are writing an ingestion job for a customer API. Which tests are most valuable first?",
+   "options": [
+    "Tests for a perfectly clean response only",
+    "Tests for 429, 500, timeout and malformed records",
+    "Tests that check the CSS of the dashboard",
+    "Tests that count lines of code"
+   ],
+   "answer": 1,
+   "why": "Failure paths break pipelines in production. Mock those responses so you can test them on demand."
+  },
+  {
+   "q": "Your unit tests call the customer's live API and often fail randomly. What do you change?",
+   "options": [
+    "Mock the API in unit tests; keep a few separate integration tests",
+    "Run the tests more times until they pass",
+    "Delete the flaky tests",
+    "Increase the timeout to 5 minutes"
+   ],
+   "answer": 0,
+   "why": "Live calls are slow, flaky and can change real data. Unit tests should use fakes."
+  },
+  {
+   "q": "A test mocks the parser, the API and the writer, then asserts the mock returned what it was told. What is wrong?",
+   "options": [
+    "It needs more fixtures",
+    "It is too fast",
+    "It checks only the mock and proves nothing about your code",
+    "It should use unittest instead of pytest"
+   ],
+   "answer": 2,
+   "why": "Over-mocking tests the fake. Mock only the external boundary and let your real logic run."
+  }
+ ],
+ "bigo": [
+  {
+   "q": "Checking x in a Python set is typically what complexity?",
+   "options": [
+    "O(n)",
+    "O(n^2)",
+    "O(log n)",
+    "O(1)"
+   ],
+   "answer": 3,
+   "why": "Sets and dicts use a hash table, so lookups jump straight to the item. x in a list is O(n)."
+  },
+  {
+   "q": "A function does 3n + 50 steps. What is its Big-O?",
+   "options": [
+    "O(1)",
+    "O(3n + 50)",
+    "O(n)",
+    "O(n^2)"
+   ],
+   "answer": 2,
+   "why": "Big-O drops constants and small terms, keeping only how work grows with n."
+  },
+  {
+   "q": "A dedupe script checks each of 1 million rows against a list of seen IDs and runs for hours. What is the fix?",
+   "options": [
+    "Use a faster laptop",
+    "Store seen IDs in a set instead of a list",
+    "Split the file into 10 parts",
+    "Sort the list after every row"
+   ],
+   "answer": 1,
+   "why": "Membership in a list is O(n), making the whole job O(n^2). A set makes each check O(1)."
+  },
+  {
+   "q": "Your code gets 5,000 order IDs, then calls the API once per order for details. It is very slow. Why?",
+   "options": [
+    "The API returns too much JSON",
+    "Python loops are always slow",
+    "It is the N+1 problem; fetch details in bulk",
+    "The order IDs are not sorted"
+   ],
+   "answer": 2,
+   "why": "One call per item multiplies network round trips by n. Use a batch endpoint or bulk query."
+  },
+  {
+   "q": "A teammate tested a join on 100 rows, it ran in 0.1 s, so they shipped it. What is the trap?",
+   "options": [
+    "Small tests hide an O(n^2) loop that explodes on 1 million rows",
+    "100 rows is too many for a test",
+    "0.1 s means the code is O(1)",
+    "Joins always run in constant time"
+   ],
+   "answer": 0,
+   "why": "Quadratic work looks fast on tiny data. Estimate growth or test at realistic size."
+  }
+ ],
+ "resilient": [
+  {
+   "q": "What is exponential backoff?",
+   "options": [
+    "Retrying immediately as many times as possible",
+    "Stopping after the first failure",
+    "Waiting longer after each failure, like 1, 2, 4, 8 seconds",
+    "Sending requests in random order"
+   ],
+   "answer": 2,
+   "why": "Backing off gives a struggling server time to recover. Adding jitter spreads retries so clients do not stampede."
+  },
+  {
+   "q": "What is a dead-letter queue?",
+   "options": [
+    "A place that stores failed records with the reason, for later replay",
+    "A list of deleted users",
+    "A queue that drops bad records forever",
+    "A cache of successful API responses"
+   ],
+   "answer": 0,
+   "why": "Nothing is thrown away. You can report data quality issues and replay records after a fix."
+  },
+  {
+   "q": "Your ingestion job crashes halfway through 400 pages of a customer API. What design lets it resume safely?",
+   "options": [
+    "Start from page 1 every time",
+    "Save a checkpoint (cursor) and use idempotent writes",
+    "Download everything into memory first",
+    "Skip the pages that failed"
+   ],
+   "answer": 1,
+   "why": "A checkpoint lets you restart where you stopped, and idempotent writes mean re-processing a page does no harm."
+  },
+  {
+   "q": "A customer API sometimes hangs for minutes and your worker freezes. What is missing?",
+   "options": [
+    "A bigger server",
+    "More logging lines",
+    "A faster JSON parser",
+    "A timeout on every HTTP call"
+   ],
+   "answer": 3,
+   "why": "Without a timeout, one stuck request can hold a worker forever. Set one and treat it as a retryable error."
+  },
+  {
+   "q": "Your retry loop retries every error, including 400 Bad Request, five times. What is the mistake?",
+   "options": [
+    "400 means the server is overloaded",
+    "400 should be retried ten times",
+    "Retries should only happen on 200",
+    "400 means the request is wrong; retrying will not fix it"
+   ],
+   "answer": 3,
+   "why": "Retry transient errors like 429, 5xx and timeouts. A 400 needs a code or data fix."
+  }
+ ],
+ "sql": [
+  {
+   "q": "In logical order, which clause runs before SELECT?",
+   "options": [
+    "ORDER BY",
+    "LIMIT",
+    "WHERE",
+    "None; SELECT always runs first"
+   ],
+   "answer": 2,
+   "why": "Logical order is FROM, JOIN, WHERE, GROUP BY, HAVING, SELECT, ORDER BY, LIMIT. So WHERE cannot use a SELECT alias."
+  },
+  {
+   "q": "How do you correctly find rows where email is missing?",
+   "options": [
+    "WHERE email = NULL",
+    "WHERE email IS NULL",
+    "WHERE email = ''",
+    "WHERE email == NULL"
+   ],
+   "answer": 1,
+   "why": "Any comparison with NULL returns unknown, which WHERE treats as false. Use IS NULL."
+  },
+  {
+   "q": "A customer says your revenue total is 3x too high after joining orders to order_items. What do you check first?",
+   "options": [
+    "Row counts before and after the join to spot fan-out",
+    "Whether the database needs more RAM",
+    "Whether SUM is spelled correctly",
+    "The ORDER BY clause"
+   ],
+   "answer": 0,
+   "why": "Joining one-to-many repeats each order per item, so summing order totals triples them. Check the grain."
+  },
+  {
+   "q": "A customer wants each sale shown with that rep's running total, keeping every row. What do you use?",
+   "options": [
+    "GROUP BY rep",
+    "A subquery with DISTINCT",
+    "A HAVING clause",
+    "SUM() OVER (PARTITION BY rep ORDER BY date)"
+   ],
+   "answer": 3,
+   "why": "A window function adds a column without collapsing rows. GROUP BY would return one row per rep."
+  },
+  {
+   "q": "A query filters AVG(amount) > 100 inside WHERE and errors. What is the mistake?",
+   "options": [
+    "AVG is not allowed in SQL",
+    "Filters on aggregates belong in HAVING",
+    "WHERE must come after GROUP BY",
+    "Amounts must be cast to text first"
+   ],
+   "answer": 1,
+   "why": "WHERE runs before grouping, so aggregates do not exist yet. HAVING filters groups after aggregation."
+  }
+ ],
+ "planner": [
+  {
+   "q": "What does the query planner do?",
+   "options": [
+    "Checks your SQL for spelling mistakes only",
+    "Stores data in tables",
+    "Chooses how to fetch data, such as scan or index, based on estimated cost",
+    "Backs up the database nightly"
+   ],
+   "answer": 2,
+   "why": "The planner compares candidate plans and picks the cheapest by its estimates. The executor then runs it."
+  },
+  {
+   "q": "How do you read an EXPLAIN plan tree?",
+   "options": [
+    "From the most indented line upward",
+    "From the top line downward",
+    "Only the last line matters",
+    "Alphabetically by node name"
+   ],
+   "answer": 0,
+   "why": "Innermost nodes run first and feed their parents, so start at the deepest indentation."
+  },
+  {
+   "q": "A report query at Tidewater Bank filters on customer_id and sorts by created_at. It is slow. What do you try?",
+   "options": [
+    "An index on (created_at, customer_id)",
+    "Two separate hash indexes",
+    "Removing the ORDER BY for the customer",
+    "A composite index on (customer_id, created_at)"
+   ],
+   "answer": 3,
+   "why": "Equality column first, then the sort or range column, lets a B-tree jump to the customer and read rows already sorted."
+  },
+  {
+   "q": "EXPLAIN ANALYZE shows estimated rows 10 but actual rows 2,000,000. What does this suggest?",
+   "options": [
+    "The query has a syntax error",
+    "Table statistics are stale; run ANALYZE",
+    "The server is out of disk space",
+    "The index is too big"
+   ],
+   "answer": 1,
+   "why": "Bad estimates lead to bad plans. Refreshing statistics often fixes it."
+  },
+  {
+   "q": "A teammate wants to add an index on every column of a busy orders table 'to be safe.' What is the trap?",
+   "options": [
+    "Postgres only allows one index per table",
+    "Indexes are free and always help",
+    "Every index slows writes and uses space",
+    "Indexes only work on text columns"
+   ],
+   "answer": 2,
+   "why": "Each insert and update must maintain every index. Add indexes that real queries need."
+  }
+ ],
+ "normalize": [
+  {
+   "q": "What is a foreign key?",
+   "options": [
+    "A key that must be encrypted",
+    "The first column of every table",
+    "A column that points to the primary key of another table",
+    "A key used only in NoSQL databases"
+   ],
+   "answer": 2,
+   "why": "Foreign keys link tables, such as orders.customer_id pointing to customers.id."
+  },
+  {
+   "q": "What does first normal form (1NF) require?",
+   "options": [
+    "Each column holds a single value, not a list",
+    "Every table has at least three columns",
+    "No table has a foreign key",
+    "All data sits in one table"
+   ],
+   "answer": 0,
+   "why": "A cell like 'SKU1, SKU2, SKU3' breaks 1NF. Split repeating values into their own rows or table."
+  },
+  {
+   "q": "Crescent Books sends an orders sheet with customer address repeated on every row. A customer moves. What happens?",
+   "options": [
+    "Nothing; the sheet updates itself",
+    "Only the first row needs changing",
+    "Addresses cannot change in spreadsheets",
+    "You must update many rows and may miss some"
+   ],
+   "answer": 3,
+   "why": "Repeated facts drift out of sync. Normalizing puts the address in one customers row."
+  },
+  {
+   "q": "You are designing a customers table. Which is the best primary key?",
+   "options": [
+    "The customer's email address",
+    "A surrogate id, with email kept unique",
+    "The customer's full name",
+    "The customer's phone number"
+   ],
+   "answer": 1,
+   "why": "Emails and names can change or repeat. A stable surrogate id avoids breaking every link when they do."
+  },
+  {
+   "q": "A teammate loads the customer's messy sheet straight into one wide table and builds the app on it. What is the risk?",
+   "options": [
+    "Duplicated facts will conflict and updates will miss rows",
+    "Wide tables cannot be queried",
+    "The database will reject the load",
+    "Joins become impossible forever"
+   ],
+   "answer": 0,
+   "why": "Building on unnormalized data bakes in duplication. Model the entities first, then load."
+  }
+ ],
+ "acid": [
+  {
+   "q": "What does atomicity mean?",
+   "options": [
+    "Every query runs in under a second",
+    "All changes in a transaction happen, or none do",
+    "Data is copied to many servers",
+    "Only one user can connect at a time"
+   ],
+   "answer": 1,
+   "why": "Atomicity is all or nothing. If one step fails, ROLLBACK undoes the rest."
+  },
+  {
+   "q": "How does PostgreSQL provide durability?",
+   "options": [
+    "By keeping everything in RAM",
+    "By refusing concurrent writes",
+    "By writing changes to a write-ahead log on disk before COMMIT returns",
+    "By emailing a backup each night"
+   ],
+   "answer": 2,
+   "why": "Once COMMIT returns, the change is in the WAL on disk, so it survives a crash."
+  },
+  {
+   "q": "A payment moves money between two accounts, and the app crashed after the debit only. What should the code have done?",
+   "options": [
+    "Log the error and continue",
+    "Run the credit first next time",
+    "Add a retry around the debit",
+    "Put both updates in one transaction with BEGIN and COMMIT"
+   ],
+   "answer": 3,
+   "why": "Wrapping both updates in one transaction means a crash leaves neither applied, not half."
+  },
+  {
+   "q": "Two workers read stock=5, each subtract 1, and write 4. One sale was lost. What is a fix?",
+   "options": [
+    "Run the workers on different days",
+    "Add more RAM",
+    "Use a bigger integer type",
+    "Use SELECT ... FOR UPDATE or an atomic UPDATE stock = stock - 1"
+   ],
+   "answer": 3,
+   "why": "Read-modify-write races lose updates. Lock the row or let the database do the math in one statement."
+  },
+  {
+   "q": "A developer checks 'email must be unique' only in app code, not the schema. What is the trap?",
+   "options": [
+    "Concurrent requests can still insert duplicates",
+    "App checks are always enough",
+    "Constraints make inserts impossible",
+    "UNIQUE only works on numbers"
+   ],
+   "answer": 0,
+   "why": "Two requests can pass the app check at the same time. A UNIQUE constraint makes the database enforce the rule."
+  }
+ ],
+ "spark": [
+  {
+   "q": "What is a partition in Spark?",
+   "options": [
+    "A chunk of the dataset processed in parallel",
+    "A separate Spark cluster",
+    "A backup copy of a table",
+    "A type of join"
+   ],
+   "answer": 0,
+   "why": "Spark splits data into partitions, and executors process them in parallel."
+  },
+  {
+   "q": "When does a Spark transformation like filter actually run?",
+   "options": [
+    "Immediately when you write it",
+    "Only when an action like count or write is called",
+    "Every time you save the notebook",
+    "Never; filters are ignored"
+   ],
+   "answer": 1,
+   "why": "Transformations are lazy. Spark builds a plan and runs it only when an action asks for a result."
+  },
+  {
+   "q": "You join a 2 TB events table to a 5 MB country lookup and the job is slow. What do you try?",
+   "options": [
+    "Increase the shuffle partitions to 10,000",
+    "Collect the big table to the driver",
+    "Broadcast the small table so the big one does not shuffle",
+    "Convert both tables to CSV"
+   ],
+   "answer": 2,
+   "why": "A broadcast join copies the small side to every executor, so the huge table never moves across the network."
+  },
+  {
+   "q": "One task in a join runs for an hour while others finish in a minute. What is the likely cause?",
+   "options": [
+    "The cluster has too many executors",
+    "Parquet files are too small",
+    "The driver is out of disk",
+    "Data skew: one key has far more rows than others"
+   ],
+   "answer": 3,
+   "why": "A hot key sends most rows to one task. Salting the key or broadcast joins spread the work."
+  },
+  {
+   "q": "A notebook calls df.collect() on a 500 GB DataFrame and crashes. What is the mistake?",
+   "options": [
+    "The DataFrame needed caching first",
+    "collect() only works on CSV",
+    "collect() pulls all data to the driver, which runs out of memory",
+    "The cluster has too few partitions"
+   ],
+   "answer": 2,
+   "why": "collect brings every row to one machine. Write results out, or use take or show for a sample."
+  }
+ ],
+ "etl": [
+  {
+   "q": "What is a watermark in extraction?",
+   "options": [
+    "A logo stamped on exported files",
+    "A saved high point, like last updated_at, to pull only new rows",
+    "A full copy of every row",
+    "An encryption key for the source"
+   ],
+   "answer": 1,
+   "why": "Watermarks enable incremental loads, so you avoid copying a 200 million row table every night."
+  },
+  {
+   "q": "What does idempotent mean for a pipeline job?",
+   "options": [
+    "It runs faster the second time",
+    "It never fails",
+    "Running it twice gives the same result as once",
+    "It only runs once a day"
+   ],
+   "answer": 2,
+   "why": "Pipelines get retried. Idempotent loads, like MERGE on a key, do not create duplicates on rerun."
+  },
+  {
+   "q": "A transformation bug corrupted last week's clean tables at Maple Grocers. What lets you recover without the customer?",
+   "options": [
+    "Having landed the raw extracted data unchanged",
+    "Asking the customer to export again",
+    "Restoring your laptop from backup",
+    "Editing the rows by hand"
+   ],
+   "answer": 0,
+   "why": "Keeping a raw layer means you fix the code and rerun over the raw data."
+  },
+  {
+   "q": "A business user asks why yesterday's dashboard is empty. What pipeline feature should have caught it?",
+   "options": [
+    "A bigger warehouse",
+    "More columns in the source",
+    "A faster orchestrator",
+    "Freshness and row-count data quality tests"
+   ],
+   "answer": 3,
+   "why": "Tests after each step catch stale or missing data before users or AI agents see it."
+  },
+  {
+   "q": "A nightly job uses plain INSERT. It failed halfway, was retried, and totals doubled. What is the fix?",
+   "options": [
+    "Use MERGE or delete-then-insert on a key so reruns are safe",
+    "Never retry failed jobs",
+    "Run the job twice as often",
+    "Add an index on the target table"
+   ],
+   "answer": 0,
+   "why": "Appending on retry creates duplicates. An idempotent load keyed on a unique id gives the same result each run."
+  }
+ ],
+ "warehouse": [
+  {
+   "q": "Why is columnar storage fast for analytics?",
+   "options": [
+    "It stores each row together on disk",
+    "Queries read only the columns they need, and columns compress well",
+    "It keeps everything in RAM",
+    "It disables indexes"
+   ],
+   "answer": 1,
+   "why": "Analytic queries touch a few columns across many rows. Column stores skip the rest and compress similar values."
+  },
+  {
+   "q": "In a star schema, what is a fact table?",
+   "options": [
+    "A table of descriptive attributes like product name",
+    "A lookup of country codes",
+    "A log of schema changes",
+    "One row per business event with numeric measures and keys"
+   ],
+   "answer": 3,
+   "why": "Facts hold events and measures. Dimensions around them describe who, what, where and when."
+  },
+  {
+   "q": "Summit Outdoor wants 3-year sales dashboards and plans to query their live order database. What do you advise?",
+   "options": [
+    "Turn off transactions to speed it up",
+    "Add more dashboards to the live database",
+    "Run the queries only at lunchtime",
+    "Copy data into a warehouse so analytics does not slow the live app"
+   ],
+   "answer": 3,
+   "why": "Heavy scans on the OLTP database hurt the live application. A warehouse is built for this workload."
+  },
+  {
+   "q": "A customer's warehouse bill jumped after analysts started using SELECT * on a 300-column table. Why?",
+   "options": [
+    "SELECT * is blocked on warehouses",
+    "Wide tables are always free",
+    "Per-byte pricing charges for every column scanned",
+    "SELECT * forces a full backup"
+   ],
+   "answer": 2,
+   "why": "Warehouses with on-demand pricing, such as BigQuery, bill by bytes scanned, and in a column store SELECT * scans every column. Compute-billed warehouses like Snowflake also cost more because the scan takes longer. Select only the columns you need."
+  },
+  {
+   "q": "Revenue doubled after joining sales to a Type 2 customer dimension on customer_id only. What was missed?",
+   "options": [
+    "A date condition matching the valid version of each customer",
+    "A GROUP BY on product",
+    "A LEFT JOIN instead of INNER",
+    "A DISTINCT on the fact table"
+   ],
+   "answer": 0,
+   "why": "Type 2 keeps several rows per customer. Without a validity date filter each fact matches every version."
+  }
+ ]
+}

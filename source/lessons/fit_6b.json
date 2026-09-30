@@ -1,0 +1,37 @@
+{
+ "aireadiness": {
+  "best": [
+   "interactive",
+   "document"
+  ],
+  "why": "Scoring your own list of ideas on a 2x2 teaches prioritisation; the readiness scorecard is a document you fill in with the sponsor."
+ },
+ "golive": {
+  "best": [
+   "flowchart",
+   "document"
+  ],
+  "why": "Go-live is a sequence of gates you should see at once, then practise with a cutover plan and UAT sheet you fill in."
+ },
+ "supportops": {
+  "best": [
+   "interactive",
+   "document"
+  ],
+  "why": "Triaging practice tickets builds severity and routing judgement; the support model and escalation matrix is a document you fill in."
+ },
+ "incidents": {
+  "best": [
+   "animation",
+   "interactive"
+  ],
+  "why": "An incident is a sequence in time; stepping through it, then running a timed drill with a comms timer, builds the habits."
+ },
+ "enablement": {
+  "best": [
+   "document",
+   "reading"
+  ],
+  "why": "Enablement is planned and run through documents: role goals, trust guides, a prompt library and a CoE charter you fill in."
+ }
+}

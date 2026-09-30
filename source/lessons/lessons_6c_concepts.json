@@ -1,0 +1,1051 @@
+[
+ {
+  "mod": 3,
+  "sec": "3.3",
+  "name": "Agent memory and state",
+  "title": "Agent memory and state: what an agent keeps, forgets and resumes",
+  "thesis": "A language model remembers nothing between calls. Everything an agent seems to remember is data your code stores and puts back into the prompt: the recent thread (short-term memory), a summary of older turns, and facts saved to a long-term store. Good memory design decides what to keep, what to compact, what to forget, whose memory it is, and how to resume after a crash.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: one turn of a memory-aware agent (sketch)",
+  "code": "def handle_turn(user_id, text, state, store):\n    memories = store.search(user_id, text, k=3)      # recall\n    state.thread.append({'role': 'user', 'content': text})\n    if count_tokens(state.thread) > 0.8 * BUDGET:     # budget check\n        old, recent = state.thread[:-6], state.thread[-6:]\n        state.summary = summarise(state.summary, old)  # compact\n        state.thread = recent\n        for fact in extract_facts(old):               # what to keep\n            store.upsert(user_id, fact)               # long-term write\n    prompt = build_prompt(state.summary, memories, state.thread)\n    reply = call_model(prompt)\n    state.thread.append({'role': 'assistant', 'content': reply})\n    save_checkpoint(user_id, state)                   # resume point\n    return reply",
+  "nodes": [
+   [
+    "msg",
+    90,
+    70,
+    "User message",
+    "turn 12 arrives"
+   ],
+   [
+    "thread",
+    265,
+    70,
+    "Thread",
+    "short-term memory"
+   ],
+   [
+    "budget",
+    440,
+    70,
+    "Token budget",
+    "over 80 percent?"
+   ],
+   [
+    "compact",
+    615,
+    70,
+    "Compact",
+    "summary of old turns"
+   ],
+   [
+    "extract",
+    615,
+    220,
+    "Extract facts",
+    "what to remember"
+   ],
+   [
+    "store",
+    440,
+    220,
+    "Long-term store",
+    "per user, deletable"
+   ],
+   [
+    "recall",
+    265,
+    220,
+    "Recall",
+    "top 3 memories"
+   ],
+   [
+    "reply",
+    90,
+    220,
+    "Reply + save",
+    "checkpoint state"
+   ]
+  ],
+  "edges": [
+   [
+    "msg",
+    "thread",
+    0,
+    "append"
+   ],
+   [
+    "thread",
+    "budget"
+   ],
+   [
+    "budget",
+    "compact",
+    0,
+    "over"
+   ],
+   [
+    "compact",
+    "extract"
+   ],
+   [
+    "extract",
+    "store",
+    0,
+    "write"
+   ],
+   [
+    "store",
+    "recall",
+    0,
+    "search"
+   ],
+   [
+    "recall",
+    "reply",
+    0,
+    "into prompt"
+   ],
+   [
+    "reply",
+    "thread",
+    0,
+    "save"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A new message arrives",
+    "n": [
+     "msg",
+     "thread"
+    ],
+    "e": [
+     "msg>thread"
+    ],
+    "d": "The customer's twelfth message is appended to the thread, the list of messages in this conversation. The model itself stores nothing; the thread lives in your database.",
+    "l": [
+     2
+    ]
+   },
+   {
+    "t": "Check the token budget",
+    "n": [
+     "thread",
+     "budget"
+    ],
+    "e": [
+     "thread>budget"
+    ],
+    "d": "Before calling the model, the code counts the thread's tokens. If it passes a threshold, such as 80 percent of the budget you set, it is time to shrink it.",
+    "l": [
+     3
+    ]
+   },
+   {
+    "t": "Compact older turns",
+    "n": [
+     "budget",
+     "compact"
+    ],
+    "e": [
+     "budget>compact"
+    ],
+    "d": "The oldest turns are replaced by a short running summary, while the last few turns stay word for word. The thread fits again and the gist survives.",
+    "l": [
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "t": "Pick facts worth keeping",
+    "n": [
+     "compact",
+     "extract"
+    ],
+    "e": [
+     "compact>extract"
+    ],
+    "d": "Before old turns disappear, a small step pulls out durable facts, such as 'prefers email' or 'account on the Pro plan'. Chit-chat and one-off details are dropped.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "Write to long-term memory",
+    "n": [
+     "extract",
+     "store"
+    ],
+    "e": [
+     "extract>store"
+    ],
+    "d": "Facts are saved to a store keyed by tenant and user. Upsert means a newer fact replaces an older one about the same thing, so memory does not contradict itself.",
+    "l": [
+     8
+    ]
+   },
+   {
+    "t": "Recall what is relevant",
+    "n": [
+     "store",
+     "recall"
+    ],
+    "e": [
+     "store>recall"
+    ],
+    "d": "On each turn the agent searches the store with the new message and takes only the top few matches. Loading every memory would waste the same budget you just saved.",
+    "l": [
+     1
+    ]
+   },
+   {
+    "t": "Build the prompt and reply",
+    "n": [
+     "recall",
+     "reply"
+    ],
+    "e": [
+     "recall>reply"
+    ],
+    "d": "The prompt is the summary, the recalled memories and the recent thread. The model answers as if it remembered, because the right text is in front of it.",
+    "l": [
+     9,
+     10,
+     11
+    ]
+   },
+   {
+    "t": "Save a checkpoint",
+    "n": [
+     "reply",
+     "thread"
+    ],
+    "e": [
+     "reply>thread"
+    ],
+    "d": "The whole state is saved after the turn. If the server restarts or a long task pauses for approval, the agent resumes from this checkpoint instead of starting over.",
+    "l": [
+     12
+    ]
+   }
+  ],
+  "ideas": [
+   "The model is stateless: every call must be given everything it needs, so memory is a data design problem in your code.",
+   "Short-term memory is the thread in the context window; long-term memory is a separate store you search and load selectively.",
+   "Compaction keeps the last few turns verbatim and replaces older turns with a summary, before the window overflows.",
+   "Long-term memory comes in three kinds: semantic (facts), episodic (past events) and procedural (how to do things).",
+   "Memories are personal data: isolate them per user, show what is stored, and make deletion real."
+  ],
+  "traps": [
+   "Stuffing every past message into the prompt until it overflows, which raises cost and makes the model miss the important parts.",
+   "Saving everything the user says as a fact, including guesses, jokes and instructions injected by a malicious document.",
+   "Keying memory only by user id in a multi-tenant product, so one customer's memories can leak into another customer's prompts."
+  ],
+  "qa": [
+   [
+    "How would you give a support agent memory across conversations?",
+    "Keep the current thread as short-term memory with a token budget and compaction. After each conversation, extract a few durable facts, such as plan, preferences and open issues, and upsert them into a store keyed by tenant and user. At the start of a new conversation, search that store with the first message and load only the top matches. Add a way for the user to see and delete memories, and evaluate whether recalled facts are correct."
+   ],
+   [
+    "A long agent task keeps failing halfway after 40 minutes. What do you change?",
+    "Add checkpoints: save the agent's state, meaning the thread, the plan, completed steps and tool results, after every step, keyed by a run id. On restart, load the last checkpoint and continue. Make steps idempotent so a step that ran twice does no harm, and cap the number of turns so a stuck run stops."
+   ],
+   [
+    "What is the difference between compaction and long-term memory?",
+    "Compaction shrinks the current conversation so it fits the window, by summarising older turns. Long-term memory survives after the conversation ends and is searched later. They work together: compaction is a good moment to extract facts for long-term memory."
+   ]
+  ],
+  "id": "agentmemory"
+ },
+ {
+  "mod": 3,
+  "sec": "3.5",
+  "name": "LLM observability",
+  "title": "LLM observability and production feedback",
+  "thesis": "Once an LLM app is live, you need to see inside every request: which prompt was sent, which tools ran, how many tokens it used, how long each step took, what it cost and whether the user was happy. Traces made of nested spans capture this, redaction keeps personal data out, and feedback plus sampled online evals turn production traffic into better tests.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: tracing one agent run with OpenTelemetry (sketch)",
+  "code": "with tracer.start_as_current_span('invoke_agent') as run:      # root span\n    run.set_attribute('session.id', session_id)\n    with tracer.start_as_current_span('retrieve') as r:\n        docs = search(question)\n        r.set_attribute('retrieval.count', len(docs))\n    with tracer.start_as_current_span('chat MODEL') as llm:\n        reply = call_model(redact(prompt))                     # no raw PII\n        llm.set_attribute('gen_ai.usage.input_tokens', reply.in_tok)\n        llm.set_attribute('gen_ai.usage.output_tokens', reply.out_tok)\n    with tracer.start_as_current_span('execute_tool') as t:\n        t.set_attribute('gen_ai.tool.name', 'lookup_order')\n# exporter sends finished spans to the tracing backend\n# later: thumbs-down feedback is attached to the trace id",
+  "nodes": [
+   [
+    "req",
+    90,
+    70,
+    "User request",
+    "one question"
+   ],
+   [
+    "root",
+    265,
+    70,
+    "Root span",
+    "the whole run"
+   ],
+   [
+    "child",
+    440,
+    70,
+    "Child spans",
+    "retrieve, LLM, tool"
+   ],
+   [
+    "redact",
+    615,
+    70,
+    "Redact + export",
+    "PII removed"
+   ],
+   [
+    "backend",
+    615,
+    220,
+    "Tracing backend",
+    "search, dashboards"
+   ],
+   [
+    "fb",
+    440,
+    220,
+    "User feedback",
+    "thumbs, comments"
+   ],
+   [
+    "review",
+    265,
+    220,
+    "Review + label",
+    "why did it fail?"
+   ],
+   [
+    "evalset",
+    90,
+    220,
+    "Eval cases",
+    "regression tests"
+   ]
+  ],
+  "edges": [
+   [
+    "req",
+    "root",
+    0,
+    "starts"
+   ],
+   [
+    "root",
+    "child",
+    0,
+    "nests"
+   ],
+   [
+    "child",
+    "redact"
+   ],
+   [
+    "redact",
+    "backend",
+    0,
+    "OTLP"
+   ],
+   [
+    "backend",
+    "fb",
+    14,
+    "trace id"
+   ],
+   [
+    "fb",
+    "backend",
+    14,
+    "attach"
+   ],
+   [
+    "fb",
+    "review"
+   ],
+   [
+    "review",
+    "evalset",
+    0,
+    "add case"
+   ],
+   [
+    "evalset",
+    "root",
+    0,
+    "next release"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A request starts a trace",
+    "n": [
+     "req",
+     "root"
+    ],
+    "e": [
+     "req>root"
+    ],
+    "d": "A trace is the record of one request from start to finish. Its top span, the root span, covers the whole agent run and carries ids such as the session and the user's tenant.",
+    "l": [
+     0,
+     1
+    ]
+   },
+   {
+    "t": "Each step becomes a child span",
+    "n": [
+     "root",
+     "child"
+    ],
+    "e": [
+     "root>child"
+    ],
+    "d": "Retrieval, every model call and every tool call get their own span with a start time, a duration and attributes such as token counts. Spans nest, so you can see which step belongs to which.",
+    "l": [
+     2,
+     5,
+     9
+    ]
+   },
+   {
+    "t": "Record tokens, model and tool names",
+    "n": [
+     "child"
+    ],
+    "e": [],
+    "d": "The model span records input and output tokens and the model name, following the OpenTelemetry GenAI naming conventions. Cost is computed from tokens and your price table.",
+    "l": [
+     7,
+     8,
+     10
+    ]
+   },
+   {
+    "t": "Redact, then export",
+    "n": [
+     "child",
+     "redact"
+    ],
+    "e": [
+     "child>redact"
+    ],
+    "d": "Before anything leaves the app, personal data such as emails and card numbers is masked. Then an exporter sends finished spans in batches.",
+    "l": [
+     6,
+     11
+    ]
+   },
+   {
+    "t": "Store and search in a backend",
+    "n": [
+     "redact",
+     "backend"
+    ],
+    "e": [
+     "redact>backend"
+    ],
+    "d": "A tracing backend, such as Langfuse, Phoenix or a cloud service, stores traces, lets you search by user or error, and draws latency, cost and quality dashboards."
+   },
+   {
+    "t": "Users give feedback",
+    "n": [
+     "backend",
+     "fb"
+    ],
+    "e": [
+     "backend>fb",
+     "fb>backend"
+    ],
+    "d": "The app passes the trace id to the front end. When a user clicks thumbs down, the feedback is attached to that exact trace, so you can see what the model saw.",
+    "l": [
+     12
+    ]
+   },
+   {
+    "t": "Review and label failures",
+    "n": [
+     "fb",
+     "review"
+    ],
+    "e": [
+     "fb>review"
+    ],
+    "d": "A person reviews negative traces and labels the cause: retrieval missed the document, the prompt was unclear, or a tool failed. Patterns matter more than single cases."
+   },
+   {
+    "t": "Turn failures into eval cases",
+    "n": [
+     "review",
+     "evalset",
+     "root"
+    ],
+    "e": [
+     "review>evalset",
+     "evalset>root"
+    ],
+    "d": "Confirmed failures become new test cases in the eval set, with the expected answer. The next release must pass them, so the same failure does not come back."
+   }
+  ],
+  "ideas": [
+   "A trace is one request; spans are its steps, nested like folders, each with a duration and attributes.",
+   "For LLM apps, record prompts, tool calls, token counts, latency and cost per span, plus model and prompt versions.",
+   "OpenTelemetry's GenAI conventions give standard attribute names such as gen_ai.usage.input_tokens, so tools can read your data.",
+   "Redact personal data before export and set a retention period; traces are often the most sensitive data you hold.",
+   "User feedback is most useful attached to a trace id and turned into eval cases; sampled online evals watch quality daily."
+  ],
+  "traps": [
+   "Logging full prompts and replies with customer names and account numbers into a third-party tool with no retention limit.",
+   "Tracking only average latency and total cost, so one slow tool or one runaway agent loop stays hidden.",
+   "Collecting thumbs-down clicks that nobody reviews, so the feedback never changes the prompt, the retrieval or the tests."
+  ],
+  "qa": [
+   [
+    "A customer says the assistant 'got slower this week'. How do you investigate?",
+    "Open the traces for the week and compare p50 and p95 latency per span type against the week before. That shows whether the model calls, retrieval or a tool got slower, or whether runs now take more steps. Then check what changed: prompt version, model version, data size or a dependency, and look at a few of the slowest traces end to end."
+   ],
+   [
+    "How do you turn user feedback into better quality?",
+    "Capture thumbs and comments with the trace id, review negative ones weekly, label the root cause, and add confirmed failures to the eval set with the right answer. Fix the cause, run the evals, and ship only if the new cases pass without breaking old ones. Track the thumbs-down rate per week to see if it works."
+   ],
+   [
+    "What would you tell a bank's security team about what your traces contain?",
+    "Which fields are captured, that emails, account and card numbers are redacted before export, where the traces are stored and in which region, who can access them, and how long they are kept before deletion. Offer to self-host the tracing backend in their cloud if the data must not leave it."
+   ]
+  ],
+  "id": "llmobs"
+ },
+ {
+  "mod": 3,
+  "sec": "3.5",
+  "name": "Data labeling and review",
+  "title": "Data labeling and human review",
+  "thesis": "Labels are the answers a model learns from and is tested against, so their quality sets the ceiling for everything else. Good labeling means clear guidelines with edge cases, two people labeling the same sample so you can measure agreement, an expert settling disputes, hidden gold questions to catch drift, and in production a review queue that sends the model's unsure cases to people.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: one labeling round (sketch)",
+  "code": "items = sample(tickets, 200)                   # a fair sample\nguide = load('guidelines-v3.md')               # labels + edge cases\na = annotate(items, 'Ana', guide)              # labels blind,\nb = annotate(items, 'Ben', guide)              # without seeing each other\npct, kappa = agreement(a, b)                   # how often they match\ndisputes = [i for i in items if a[i] != b[i]]\ngold = adjudicate(disputes, expert='Chloe')    # expert decides, rule added\nmodel.fit(gold); scores = model.predict(pool)  # train or evaluate\nqueue = [x for x in scores if x.conf < 0.70]   # unsure -> humans",
+  "nodes": [
+   [
+    "raw",
+    90,
+    70,
+    "Raw items",
+    "tickets, docs"
+   ],
+   [
+    "guide",
+    265,
+    70,
+    "Guidelines",
+    "labels + edge cases"
+   ],
+   [
+    "annot",
+    440,
+    70,
+    "Two annotators",
+    "label blind"
+   ],
+   [
+    "agree",
+    615,
+    70,
+    "Agreement",
+    "percent + kappa"
+   ],
+   [
+    "adjud",
+    615,
+    220,
+    "Adjudication",
+    "expert decides"
+   ],
+   [
+    "gold",
+    440,
+    220,
+    "Gold labels",
+    "trusted answers"
+   ],
+   [
+    "model",
+    265,
+    220,
+    "Model",
+    "train or evaluate"
+   ],
+   [
+    "queue",
+    90,
+    220,
+    "Review queue",
+    "unsure cases"
+   ]
+  ],
+  "edges": [
+   [
+    "raw",
+    "guide",
+    0,
+    "sample"
+   ],
+   [
+    "guide",
+    "annot",
+    0,
+    "train"
+   ],
+   [
+    "annot",
+    "agree",
+    0,
+    "compare"
+   ],
+   [
+    "agree",
+    "adjud",
+    0,
+    "disputes"
+   ],
+   [
+    "adjud",
+    "gold",
+    0,
+    "final label"
+   ],
+   [
+    "gold",
+    "model",
+    0,
+    "fit + test"
+   ],
+   [
+    "model",
+    "queue",
+    0,
+    "low conf"
+   ],
+   [
+    "queue",
+    "raw",
+    0,
+    "next batch"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Pick a fair sample",
+    "n": [
+     "raw"
+    ],
+    "e": [],
+    "d": "Start from the real data: support tickets, documents or model outputs. Take a random sample, plus extra examples of rare classes, so the labels cover what the system will really see.",
+    "l": [
+     0
+    ]
+   },
+   {
+    "t": "Write guidelines first",
+    "n": [
+     "raw",
+     "guide"
+    ],
+    "e": [
+     "raw>guide"
+    ],
+    "d": "Guidelines define every label, give examples of each, and say what to do with the tricky cases. Without them, two careful people will label the same item differently.",
+    "l": [
+     1
+    ]
+   },
+   {
+    "t": "Two people label the same items",
+    "n": [
+     "guide",
+     "annot"
+    ],
+    "e": [
+     "guide>annot"
+    ],
+    "d": "Annotators, the people who label, practise on a small batch, then label the same sample without seeing each other's answers, so their agreement is honest.",
+    "l": [
+     2,
+     3
+    ]
+   },
+   {
+    "t": "Measure agreement",
+    "n": [
+     "annot",
+     "agree"
+    ],
+    "e": [
+     "annot>agree"
+    ],
+    "d": "Percent agreement counts how often they matched. Cohen's kappa corrects for matches that would happen by luck. Low agreement usually means the guidelines are unclear, not that people are careless.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "An expert settles disputes",
+    "n": [
+     "agree",
+     "adjud"
+    ],
+    "e": [
+     "agree>adjud"
+    ],
+    "d": "Every disagreement goes to an adjudicator, a senior person who picks the final label and, when the guideline was unclear, adds a rule so the same dispute does not repeat.",
+    "l": [
+     5,
+     6
+    ]
+   },
+   {
+    "t": "Gold labels become the reference",
+    "n": [
+     "adjud",
+     "gold"
+    ],
+    "e": [
+     "adjud>gold"
+    ],
+    "d": "Settled labels form the gold set. Some gold items are hidden in future batches as checks, so you notice when an annotator drifts."
+   },
+   {
+    "t": "Train and test the model",
+    "n": [
+     "gold",
+     "model"
+    ],
+    "e": [
+     "gold>model"
+    ],
+    "d": "Gold labels become training data or an evaluation set. The model now scores every new item with a confidence.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "Unsure cases go to people",
+    "n": [
+     "model",
+     "queue",
+     "raw"
+    ],
+    "e": [
+     "model>queue",
+     "queue>raw"
+    ],
+    "d": "Items the model is unsure about go to a human review queue. Their labels feed the next batch, which is active learning: you spend human time where the model learns most.",
+    "l": [
+     8
+    ]
+   }
+  ],
+  "ideas": [
+   "A model can only be as good as its labels; noisy labels cap accuracy and make evals lie.",
+   "Guidelines with worked edge cases matter more than the labeling tool.",
+   "Measure agreement between two annotators on the same items; kappa corrects percent agreement for luck.",
+   "Adjudication settles disputes and improves the guidelines; hidden gold questions catch drift over time.",
+   "In production, route low-confidence or high-risk items to a human queue and feed those labels back."
+  ],
+  "traps": [
+   "Treating one person's labels as ground truth without ever measuring agreement.",
+   "Reporting 90 percent agreement on data where one label is 90 percent of items, so chance alone explains it.",
+   "Changing the guidelines halfway through without re-checking labels made under the old rules."
+  ],
+  "qa": [
+   [
+    "Two annotators agree 85 percent of the time. Is that good?",
+    "It depends on chance agreement. If one class is 80 percent of the data, two people guessing that class would agree often by luck, so I would compute Cohen's kappa. I would also read the disagreements, because they show which guideline rule is unclear. Then fix the rule and re-measure on a fresh sample."
+   ],
+   [
+    "How would you set up labeling for a customer's golden eval set?",
+    "Write guidelines with the customer's experts, including edge cases. Have two people label 50 to 100 items blind, measure kappa, adjudicate disagreements and update the rules until agreement is stable. Then label the rest with gold questions mixed in, and record the guideline version with each label."
+   ],
+   [
+    "The model is live. Where do humans fit?",
+    "In a review queue. Items below a confidence threshold, or in high-risk categories, go to a person before any action. Their decisions are logged as labels, used to measure the model in production and fed back as training or eval data. The threshold is tuned against reviewer capacity."
+   ]
+  ],
+  "id": "labeling"
+ },
+ {
+  "mod": 3,
+  "sec": "3.1",
+  "name": "Voice agents",
+  "title": "Voice agents in production",
+  "thesis": "A production voice agent answers real phone calls. Audio travels from the phone network to your server over a WebSocket in small frames; voice activity detection decides when the caller has finished; streaming speech-to-text, an LLM and streaming text-to-speech produce the reply; and the whole loop must feel natural, which in practice means roughly under a second, while handling interruptions, recording consent and failures.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: the core loop of a voice agent (sketch)",
+  "code": "async def on_call(ws):                        # audio arrives over a WebSocket\n    async for frame in ws:                    # about 20 ms of audio each\n        if vad.speech_started(frame):\n            tts.stop()                        # barge-in: caller interrupts\n        stt.send(frame)                       # streaming speech-to-text\n        if vad.end_of_turn():                 # caller paused long enough\n            text = stt.final()\n            async for chunk in llm.stream(text):          # first tokens fast\n                async for audio in tts.speak(chunk):      # speak sentence 1\n                    await ws.send(audio)                  # back to the phone",
+  "nodes": [
+   [
+    "caller",
+    90,
+    70,
+    "Caller",
+    "on a phone"
+   ],
+   [
+    "tel",
+    265,
+    70,
+    "Phone network",
+    "PSTN, SIP trunk"
+   ],
+   [
+    "ws",
+    440,
+    70,
+    "WebSocket",
+    "20 ms frames"
+   ],
+   [
+    "vad",
+    615,
+    70,
+    "VAD",
+    "turn ended?"
+   ],
+   [
+    "stt",
+    615,
+    220,
+    "Speech to text",
+    "streaming"
+   ],
+   [
+    "llm",
+    440,
+    220,
+    "LLM + tools",
+    "streams tokens"
+   ],
+   [
+    "tts",
+    265,
+    220,
+    "Text to speech",
+    "first audio fast"
+   ],
+   [
+    "out",
+    90,
+    220,
+    "Audio out",
+    "back to caller"
+   ]
+  ],
+  "edges": [
+   [
+    "caller",
+    "tel",
+    0,
+    "dials"
+   ],
+   [
+    "tel",
+    "ws",
+    0,
+    "media stream"
+   ],
+   [
+    "ws",
+    "vad",
+    0,
+    "frames"
+   ],
+   [
+    "vad",
+    "stt",
+    0,
+    "speech"
+   ],
+   [
+    "stt",
+    "llm",
+    0,
+    "transcript"
+   ],
+   [
+    "llm",
+    "tts",
+    0,
+    "sentences"
+   ],
+   [
+    "tts",
+    "out",
+    0,
+    "audio"
+   ],
+   [
+    "out",
+    "caller",
+    0,
+    "hears"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "The caller dials a number",
+    "n": [
+     "caller",
+     "tel"
+    ],
+    "e": [
+     "caller>tel"
+    ],
+    "d": "The call travels over the public phone network (PSTN) to a phone number rented from a telephony provider. The provider can connect the call to your software, often over SIP, the standard protocol for internet phone calls."
+   },
+   {
+    "t": "Audio streams over a WebSocket",
+    "n": [
+     "tel",
+     "ws"
+    ],
+    "e": [
+     "tel>ws"
+    ],
+    "d": "The provider opens a WebSocket to your server and sends the caller's audio as small frames, each about 20 milliseconds long, while the call is live. Your server sends audio back the same way.",
+    "l": [
+     0,
+     1
+    ]
+   },
+   {
+    "t": "VAD listens for speech",
+    "n": [
+     "ws",
+     "vad"
+    ],
+    "e": [
+     "ws>vad"
+    ],
+    "d": "Voice activity detection (VAD) marks each frame as speech or silence. If the caller starts talking while the agent is speaking, that is barge-in, and the agent stops its audio at once.",
+    "l": [
+     2,
+     3
+    ]
+   },
+   {
+    "t": "Speech-to-text runs while they talk",
+    "n": [
+     "vad",
+     "stt"
+    ],
+    "e": [
+     "vad>stt"
+    ],
+    "d": "Frames stream into speech-to-text (STT), which returns partial text as the caller speaks. When VAD sees a long enough pause, the turn is over and STT returns the final transcript.",
+    "l": [
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "t": "The LLM starts replying",
+    "n": [
+     "stt",
+     "llm"
+    ],
+    "e": [
+     "stt>llm"
+    ],
+    "d": "The transcript goes to the LLM with the conversation so far and any tools, such as a booking lookup. Its reply streams back token by token, so the next stage does not wait for the whole answer.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "Text-to-speech speaks sentence one",
+    "n": [
+     "llm",
+     "tts"
+    ],
+    "e": [
+     "llm>tts"
+    ],
+    "d": "As soon as the first sentence is complete, streaming text-to-speech (TTS) turns it into audio. Later sentences are converted while the first one is playing.",
+    "l": [
+     8
+    ]
+   },
+   {
+    "t": "Audio goes back to the caller",
+    "n": [
+     "tts",
+     "out",
+     "caller"
+    ],
+    "e": [
+     "tts>out",
+     "out>caller"
+    ],
+    "d": "Audio frames are sent back over the WebSocket to the phone network and the caller hears the reply. The time from the caller's last word to this first sound is the latency that matters.",
+    "l": [
+     9
+    ]
+   },
+   {
+    "t": "Measure the whole loop",
+    "n": [
+     "vad",
+     "stt",
+     "llm",
+     "tts"
+    ],
+    "e": [],
+    "d": "Each stage adds delay: end-of-turn waiting, final transcript, the LLM's first tokens, the first TTS audio and the network. A latency budget gives each stage a target so the total stays near a second."
+   }
+  ],
+  "ideas": [
+   "Two designs: a cascade of STT, LLM and TTS gives control and transcripts; speech-to-speech models take audio in and out directly and can be faster, with less step-by-step control.",
+   "Phone calls reach software through a telephony provider, via the PSTN and often SIP, and audio usually streams to your server over a WebSocket.",
+   "Voice activity detection decides when a turn ends and enables barge-in, stopping the agent when the caller interrupts.",
+   "Latency is a budget across stages; streaming every stage and shortening end-of-turn waits give the biggest gains.",
+   "Production voice needs call testing at scale, recording consent, careful handling of card numbers and a human transfer path."
+  ],
+  "traps": [
+   "Measuring latency on office Wi-Fi with a studio microphone, then launching on noisy 8 kHz phone lines.",
+   "Waiting for the full LLM reply before starting text-to-speech, adding a second or more to every turn.",
+   "Recording every call by default without checking consent rules, or recording callers reading out card numbers."
+  ],
+  "qa": [
+   [
+    "A voice agent feels slow to callers. How do you find where the time goes?",
+    "Log timestamps for each stage of every turn: end of speech, end-of-turn decision, final transcript, first LLM token, first TTS audio and audio sent. Compare p50 and p95 per stage against the budget. Usually the fixes are a shorter end-of-turn wait, streaming LLM output into TTS by sentence, a faster model for simple turns, and speeding up or pre-announcing slow tool calls."
+   ],
+   [
+    "When would you choose a speech-to-speech model over a cascade?",
+    "When low latency and natural tone matter most and the conversation is fairly open, such as a companion or tutoring agent. For regulated or tool-heavy flows, such as payments or bookings, a cascade is often easier to control, test and audit because every step has text you can check. Many teams test both on the customer's real calls."
+   ],
+   [
+    "What compliance questions do you ask before a voice pilot?",
+    "Whether calls are recorded and who must consent, since some places require every party to agree; how long recordings and transcripts are kept and where; whether callers read out card numbers, which should be paused or kept out of recordings; whether the caller must be told they are speaking to an AI; and, for outbound calls, which calling rules apply."
+   ]
+  ],
+  "id": "voice"
+ }
+]

@@ -1,0 +1,1144 @@
+{
+ "mathbasics": {
+  "add_subtopics": [
+   {
+    "title": "Exponents, logarithms and percentages",
+    "body": "An exponent says how many times to multiply a number by itself: 2 to the power 3, written 2**3 in Python, is 2 x 2 x 2 = 8. Exponents describe compounding. Growth of 5% a month for a year is 1.05**12, about 1.80, so the total growth is almost 80%, not 12 x 5 = 60%.\n\nA logarithm (log) runs the other way. It answers 'what power gives this number?'. log10(1000) = 3 because 10**3 = 1000, and log2(1024) = 10. The natural log, written ln or np.log, uses the constant e (about 2.718). Logs turn multiplying into adding: log(a x b) = log(a) + log(b).\n\nYou meet logs in three places. Log-scale charts give each step on the axis ten times the value of the step before, so a chart can show 10 users and 10 million users together. Log-probabilities: an LLM gives each token a probability, and a sentence's probability is all of them multiplied together, which quickly becomes too small for a computer to store. Adding the logs is safe instead. Log loss, the error that classification models and LLMs are trained to reduce, is minus the log of the probability given to the right answer, so being confident and wrong costs a lot. Perplexity is e to the power of the average negative log-probability per token: roughly how many tokens the model was choosing between.\n\nFinally, percentages. Going from 4% to 5% is a change of 1 percentage point but a 25% relative increase. Say which one you mean, because customers and executives mix them up constantly.",
+    "example": "A retail customer's dashboard says conversion 'rose 25%' after an AI search pilot. The finance lead thinks sales jumped by a quarter. In fact conversion went from 4% to 5%: +1 percentage point, or +25% relative. You write both numbers on the slide. Separately, the model vendor reports perplexity 1.67 on the customer's product descriptions, and you can explain it as 'on average the model was about as unsure as choosing between fewer than two words'.",
+    "code": "import math\nimport numpy as np\n\n# Powers and compounding: 5% growth a month for 12 months\nprint(round(1.05 ** 12, 3))            # 1.796  (almost 80% growth, not 60%)\n\n# A log answers \"what power gives this number?\"\nprint(math.log10(1_000))               # 3.0   because 10**3 = 1000\nprint(math.log2(1_024))                # 10.0  because 2**10 = 1024\nprint(round(math.log(math.e), 1))      # 1.0   natural log, base e\nprint(round(math.log(2) / math.log(1.05), 1))   # 14.2 months to double at 5%/month\n\n# Log-probabilities: multiply many small probabilities -> add their logs\ntoken_probs = np.array([0.9, 0.6, 0.8, 0.3])   # model's probability for each true token\nprint(round(token_probs.prod(), 4))            # 0.1296 (shrinks toward 0 fast)\nlogp = np.log(token_probs)\nprint(round(logp.sum(), 3))                    # -2.043 (same information, safe to add)\nprint(round(np.exp(logp.sum()), 4))            # 0.1296 back again\n\n# Log loss for one prediction is -log(probability given to the right answer)\nfor p in [0.9, 0.5, 0.1]:\n    print(p, round(-math.log(p), 2))           # 0.11, 0.69, 2.3: confident and wrong hurts most\n\n# Perplexity = exp(average negative log-probability per token)\nprint(round(math.exp(-logp.mean()), 2))        # 1.67: \"as unsure as picking from about 1.7 tokens\"\n\n# Percent change versus percentage points\nold, new = 0.04, 0.05                          # conversion 4% -> 5%\nprint(f\"{(new - old) * 100:.1f} percentage points\")   # 1.0 percentage points\nprint(f\"{(new - old) / old:.0%} relative change\")     # 25% relative change",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "You see",
+      "It means",
+      "Watch out"
+     ],
+     "rows": [
+      [
+       "2**10",
+       "Multiply 2 by itself 10 times = 1024",
+       "Growth compounds; do not add percentages"
+      ],
+      [
+       "log10(1000) = 3",
+       "10 to the power 3 is 1000",
+       "Each log-axis step is x10, not +10"
+      ],
+      [
+       "log-probability",
+       "log of a probability, always 0 or below",
+       "Closer to 0 is more likely"
+      ],
+      [
+       "log loss",
+       "-log(p of the right answer)",
+       "Confident and wrong is punished hard"
+      ],
+      [
+       "percentage points",
+       "Difference between two percentages",
+       "Not the same as a relative %"
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "The dot product and similarity",
+    "body": "The dot product of two vectors of the same length is: multiply each pair of matching positions, then add all the results. For a = [2, 1, 3] and b = [1, 0, 2]: 2x1 + 1x0 + 3x2 = 2 + 0 + 6 = 8.\n\nThe dot product is large when both vectors have big numbers in the same positions. It is zero when they have nothing in common, and negative when they point opposite ways.\n\nLonger vectors give bigger dot products just because they are bigger. Cosine similarity fixes this by dividing by both lengths, giving a score from -1 to 1 that only measures direction. Search systems for LLM apps compare a question's embedding with each document's embedding this way and return the documents with the highest scores.\n\nMany embedding APIs return normalised vectors, meaning each vector has been divided by its own length so its length is exactly 1. For unit-length vectors the lengths in the cosine formula are both 1, so the plain dot product already equals the cosine similarity. That is why vector databases offer an 'inner product' (dot product) distance: it is cheaper to compute and gives the same ranking as cosine when your vectors are normalised. Check the embedding provider's docs, or compute np.linalg.norm on one vector; if it prints 1.0, you can use the dot product directly.",
+    "example": "Three help articles have tiny made-up embeddings over the topics [billing, login, shipping]: refunds [0.9, 0.1, 0.2], password reset [0.1, 0.9, 0.0], delivery times [0.1, 0.0, 0.9]. A user asks 'I was charged twice', embedded as [0.8, 0.2, 0.1]. Dot products: refunds 0.72 + 0.02 + 0.02 = 0.76, password 0.08 + 0.18 + 0 = 0.26, delivery 0.08 + 0 + 0.09 = 0.17. Refunds wins. If the embeddings are normalised first, the dot product of query and refunds is 0.99, exactly the cosine score, so a vector database set to inner product would rank the articles the same way.",
+    "code": "import numpy as np\n\na = np.array([2, 1, 3]); b = np.array([1, 0, 2])\nprint(a @ b)                         # 8   (@ means dot product)\n\ndocs = {\"refunds\":        np.array([0.9, 0.1, 0.2]),\n        \"password reset\": np.array([0.1, 0.9, 0.0]),\n        \"delivery times\": np.array([0.1, 0.0, 0.9])}\nquery = np.array([0.8, 0.2, 0.1])    # 'I was charged twice'\n\nfor name, vec in docs.items():\n    dot = query @ vec\n    cos = dot / (np.linalg.norm(query) * np.linalg.norm(vec))\n    print(f\"{name:15s} dot={dot:.2f} cosine={cos:.2f}\")\n# refunds scores highest on both measures\n\n# Normalise: divide a vector by its length so the length becomes 1\ndef unit(v):\n    return v / np.linalg.norm(v)\n\nq1, r1 = unit(query), unit(docs[\"refunds\"])\nprint(round(np.linalg.norm(q1), 6))   # 1.0\nprint(round(q1 @ r1, 2))              # 0.99  dot of unit vectors = cosine",
+    "lang": "Python"
+   },
+   {
+    "title": "Matrices and matrix times vector",
+    "body": "A matrix is a rectangle of numbers with rows and columns. A matrix with 2 rows and 3 columns is called 2 by 3, written 2x3.\n\nTo multiply a matrix by a vector, take the dot product of each row with the vector. Each row gives one number, so a 2x3 matrix times a length-3 vector gives a length-2 vector. The vector's length must equal the number of columns, or the multiplication is not defined and numpy raises an error.\n\nThis is the main operation inside a neural network. Each layer holds a matrix of learned weights. The input vector goes in, gets multiplied, and a new vector comes out, usually followed by a simple function like 'replace negatives with 0'. Stack many layers and you have a deep network.\n\nThe same operation powers search. Put every document embedding in one matrix, one row per document, shape (n_docs, dim). Multiplying that matrix by a query vector gives one similarity score per document in a single step, much faster than a Python loop. np.argsort(-scores)[:k] then returns the positions of the k highest scores (the minus sign sorts from highest to lowest).\n\nThe transpose, written .T, swaps rows and columns, so shape (4, 3) becomes (3, 4). You need it when you score a batch of queries at once: queries (2, 3) @ docs.T (3, 4) gives a (2, 4) table of every query against every document. The rule for A @ B is that A's number of columns must equal B's number of rows. Most 'shapes not aligned' or 'mismatch in its core dimension' errors mean a missing .T or a vector that should have been a batch; print .shape on both sides first.",
+    "example": "W = [[1, 0, 1], [0, 2, 0]] and a = [2, 1, 3]. Row one: 1x2 + 0x1 + 1x3 = 5. Row two: 0x2 + 2x1 + 0x3 = 2. So W times a = [5, 2]. In business terms: if the rows are two shops' price lists and a is a shopping basket, the result is the basket's total at each shop. For search, four help articles become a (4, 3) matrix D. D @ query gives [0.76, 0.26, 0.17, 0.59], and the top two are refunds and invoices.",
+    "code": "import numpy as np\n\nW = np.array([[1, 0, 1],       # 2 rows, 3 columns: shape (2, 3)\n              [0, 2, 0]])\na = np.array([2, 1, 3])        # length 3, matches 3 columns\n\nprint(W.shape)                 # (2, 3)\nprint(W @ a)                   # [5 2]  one dot product per row\n\n# A tiny neural network layer: weights, then 'negatives become 0'\nW1 = np.array([[0.5, -1.0, 0.2],\n               [1.0,  0.3, -0.4]])\nh = np.maximum(0, W1 @ a)      # ReLU function\nprint(h)                       # [0.6 1.1]\n\n# W @ np.array([1, 2])  would fail: shapes (2,3) and (2,) do not match\n\n# Score every document at once: one row per document embedding\nnames = [\"refunds\", \"password reset\", \"delivery times\", \"invoices\"]\nD = np.array([[0.9, 0.1, 0.2],\n              [0.1, 0.9, 0.0],\n              [0.1, 0.0, 0.9],\n              [0.7, 0.0, 0.3]])            # shape (4, 3): 4 docs, dimension 3\nquery = np.array([0.8, 0.2, 0.1])          # shape (3,)\n\nscores = D @ query                         # shape (4,): one score per doc\nprint(scores.round(2))                     # [0.76 0.26 0.17 0.59]\ntop_k = np.argsort(-scores)[:2]            # indexes of the 2 highest scores\nprint([names[i] for i in top_k])           # ['refunds', 'invoices']\n\n# Transpose swaps rows and columns: (4, 3) becomes (3, 4)\nprint(D.T.shape)                           # (3, 4)\nQ = np.array([[0.8, 0.2, 0.1],\n              [0.1, 0.8, 0.1]])            # 2 queries in a batch: shape (2, 3)\nprint((Q @ D.T).shape)                     # (2, 4): each query against each doc\n# Q @ D  fails: (2, 3) @ (4, 3), the inner sizes 3 and 4 do not match",
+    "lang": "Python"
+   },
+   {
+    "title": "Probability and softmax",
+    "body": "A probability is a number from 0 to 1 that says how likely something is: 0 means never, 1 means certain, 0.5 means half the time. If you list every possible outcome, their probabilities add up to exactly 1.\n\nA model's last layer outputs raw scores, one per possible answer. These are also called logits and can be any size, including negative. Softmax converts them into probabilities in two steps: raise e (a constant, about 2.718) to the power of each score, which makes every value positive and exaggerates differences, then divide each by the total.\n\nAn LLM does this over its whole vocabulary, often tens of thousands of tokens, to get the probability of each possible next token. A setting called temperature divides the scores before softmax: a low temperature makes the top choice dominate, a high temperature spreads the probability out, which gives more varied text.\n\nA conditional probability is the chance of one thing given that another is true, written P(A | B) and read 'probability of A given B'. It is easy to confuse P(flagged | fraud) with P(fraud | flagged), and the gap between them is driven by the base rate: how common the thing is in the first place. When the thing you look for is rare, even an accurate detector produces mostly false alarms, because the few real cases are swamped by small error rates on the huge number of normal cases. Always ask for the base rate before you judge a model's accuracy claim.",
+    "example": "A support ticket classifier gives raw scores billing 2.0, technical 1.0, other 0.1. e^2.0 is about 7.39, e^1.0 about 2.72, e^0.1 about 1.11. The total is about 11.21. Dividing gives billing 0.66, technical 0.24, other 0.10. They add to 1, and billing is the most likely category. Base rates: a bank's fraud flag catches 99% of fraud and wrongly flags only 1% of normal payments. Fraud is 0.1% of payments. Out of 100,000 payments, 100 are fraud and 99 of those are flagged, but 1% of the 99,900 normal ones, 999 payments, are flagged too. Only 99 of the 1,098 flagged payments are fraud, about 9%. The analysts reviewing flags will see roughly ten false alarms for every real case, so plan the review queue with that in mind.",
+    "code": "import numpy as np\n\ndef softmax(scores, temperature=1.0):\n    z = np.array(scores) / temperature\n    z = z - z.max()                  # avoids overflow, same result\n    e = np.exp(z)                    # e to the power of each score\n    return e / e.sum()               # divide by the total\n\nscores = [2.0, 1.0, 0.1]             # billing, technical, other\nprint(softmax(scores).round(2))      # [0.66 0.24 0.1 ]\nprint(softmax(scores).sum())         # 1.0 (up to rounding)\n\nprint(softmax(scores, 0.5).round(2)) # low temp: top choice dominates\nprint(softmax(scores, 2.0).round(2)) # high temp: more spread out\n\n# Base rates: a \"99% accurate\" fraud flag on 100,000 transactions\ncases = 100_000\nfraud = int(cases * 0.001)           # base rate 0.1% -> 100 real frauds\nlegit = cases - fraud                # 99,900 normal transactions\ncaught = fraud * 0.99                # flags 99% of fraud: 99\nfalse_alarms = legit * 0.01          # wrongly flags 1% of normal ones: 999\nflagged = caught + false_alarms\nprint(f\"flagged {flagged:.0f}, of which fraud {caught:.0f}\")        # flagged 1098, of which fraud 99\nprint(f\"P(fraud | flagged) = {caught / flagged:.1%}\")                # 9.0%",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Exponent",
+    "The power a number is raised to; 2**3 means 2 x 2 x 2."
+   ],
+   [
+    "Logarithm",
+    "The power you must raise a base to in order to get a number; log10(1000) = 3."
+   ],
+   [
+    "Log-probability",
+    "The log of a probability; models add these instead of multiplying tiny probabilities."
+   ],
+   [
+    "Perplexity",
+    "e to the power of the average negative log-probability per token; lower means the model is less surprised."
+   ],
+   [
+    "Percentage point",
+    "The plain difference between two percentages, such as 4% to 5% being 1 point."
+   ],
+   [
+    "Normalised vector",
+    "A vector divided by its own length so its length is 1."
+   ],
+   [
+    "Transpose",
+    "Swapping a matrix's rows and columns, written .T in numpy."
+   ],
+   [
+    "Base rate",
+    "How common something is before any test or model is applied."
+   ],
+   [
+    "Conditional probability",
+    "The probability of A given that B is true, written P(A | B)."
+   ]
+  ],
+  "add_practice": [
+   "Compute 1.02**52 and explain in one sentence what it means for a metric that grows 2% a week. Then compute the log-loss for predictions of 0.95, 0.6 and 0.05 on the right answer and rank them.",
+   "Build a (5, 4) matrix of made-up document embeddings, normalise every row, score a query with one matrix multiplication and print the top 3 with argsort. Then score a batch of 2 queries using .T.",
+   "A spam filter catches 95% of spam and wrongly flags 2% of good mail, and 5% of mail is spam. Work out with 10,000 emails what share of flagged mail is really spam."
+  ]
+ },
+ "linux": {
+  "add_subtopics": [
+   {
+    "title": "Installing software and running your own service",
+    "body": "Before installing anything on a customer server, find out what it is. cat /etc/os-release names the distribution and version, for example Ubuntu 24.04 or Red Hat Enterprise Linux 9. uname -m shows the CPU type: x86_64 or aarch64 (ARM). Both decide which packages and Docker images will work.\n\nSoftware comes from the distribution's package manager. Debian and Ubuntu use apt (sudo apt update, then sudo apt install python3-venv). Red Hat, Rocky and Amazon Linux use dnf (sudo dnf install python3.12). Many customers only allow approved packages, so ask before installing and write down what you added.\n\nTo keep your app running after you log out, and to restart it after a crash or reboot, write a systemd unit file in /etc/systemd/system/, such as qa-service.service. The important lines are: User= (run as a dedicated, unprivileged user, never root), WorkingDirectory= (the app folder), EnvironmentFile= (a file of KEY=value settings, mode 600), ExecStart= (the full command, with absolute paths), and Restart=on-failure with RestartSec=5.\n\nAfter creating or editing a unit, run sudo systemctl daemon-reload so systemd reads it, then sudo systemctl enable --now qa-service to start it now and at every boot. Check it with systemctl status and journalctl -u qa-service.\n\nIf your app writes its own log file instead of the journal, add a logrotate rule in /etc/logrotate.d/ so old logs are compressed and deleted. That prevents the full-disk outage from the first subtopic.",
+    "example": "An FDE deploys a Q&A service on a logistics customer's Ubuntu 24.04 VM. cat /etc/os-release and uname -m confirm Ubuntu on x86_64. She installs python3-venv with apt, creates a qa user, puts the code in /opt/qa-service and the API key in /etc/qa-service/env with mode 600. The unit file below starts uvicorn as qa. After a reboot test during the change window, systemctl status shows the service active again within seconds, and a forced crash shows systemd restarting it after 5 seconds.",
+    "code": "cat /etc/os-release | head -3      # which distribution and version?\nuname -m                           # x86_64 or aarch64\n\nsudo apt update && sudo apt install -y python3-venv   # Debian/Ubuntu\n# sudo dnf install -y python3.12                      # RHEL/Rocky/Amazon Linux\n\nsudo useradd --system --home /opt/qa-service --shell /usr/sbin/nologin qa\n\n# /etc/systemd/system/qa-service.service\n# [Unit]\n# Description=Q&A service\n# After=network-online.target\n# Wants=network-online.target\n#\n# [Service]\n# User=qa\n# WorkingDirectory=/opt/qa-service\n# EnvironmentFile=/etc/qa-service/env          # KEY=value lines, chmod 600\n# ExecStart=/opt/qa-service/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000\n# Restart=on-failure\n# RestartSec=5\n#\n# [Install]\n# WantedBy=multi-user.target\n\nsudo systemctl daemon-reload               # read new or changed unit files\nsudo systemctl enable --now qa-service     # start now and at every boot\nsystemctl status qa-service                # active (running)?\njournalctl -u qa-service -n 50             # last 50 log lines\n\n# /etc/logrotate.d/qa-service  (only if the app writes its own log files)\n# /var/log/qa/*.log {\n#     daily\n#     rotate 14\n#     compress\n#     missingok\n#     notifempty\n#     copytruncate\n# }",
+    "lang": "bash",
+    "checklist": [
+     "Checked the OS and CPU type (os-release, uname -m)",
+     "Asked before installing packages and recorded what was added",
+     "Service runs as its own non-root user",
+     "Secrets in an EnvironmentFile with mode 600",
+     "Absolute paths in ExecStart",
+     "Restart=on-failure set",
+     "daemon-reload, then enable --now",
+     "Reboot tested and logs rotated"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "The filesystem and moving around",
+    "body": "Linux has one tree of folders (called directories) starting at the root, written /. There are no drive letters. A path like /var/log/nginx/error.log reads from the root down. A path that does not start with / is relative to where you are now, which pwd (print working directory) shows.\n\nA few directories matter every day. /etc holds configuration files. /var/log holds logs. /home/yourname is your home directory, shortened to ~. /tmp is scratch space that may be wiped. /opt and /srv often hold installed applications.\n\nThe basic commands are ls to list, cd to move, cat to print a file, less to page through one, cp and mv to copy and move, rm to delete, mkdir to make a directory, and find to search by name. df -h shows free disk space and du -sh shows how big a folder is. A full disk is one of the most common reasons a service suddenly stops.\n\nOn a server there is no mouse, so you edit files in a terminal editor. nano is the friendly one: type to edit, Ctrl+O then Enter to save, Ctrl+X to exit (the shortcuts are listed at the bottom of the screen). Many servers only have vim, which opens in a mode where keys are commands, not text. Press i to start typing, Esc to stop, then type :wq and Enter to save and quit, or :q! and Enter to quit without saving. Knowing how to leave vim saves a lot of panic.\n\nTo empty a huge log without deleting it, truncate it: truncate -s 0 file or : > file sets its size to zero while the program keeps writing to the same file. Deleting it with rm is a trap if a process still has the file open: the name disappears, but the disk space is not freed until that process closes the file or restarts. df still shows the disk full, and sudo lsof +L1 lists such deleted-but-open files.",
+    "example": "You SSH into a logistics customer's server where the Q&A service stopped overnight. df -h shows / at 100 percent. du -sh /var/log/* reveals a 38 GB debug log from the service. After copying the last hour off for analysis (tail -n 200000 ... > ~/debug-last-hour.log) and truncating the file with sudo truncate -s 0, the service starts again, and you add log rotation so it cannot happen twice.",
+    "table": {
+     "headers": [
+      "Path",
+      "What lives there",
+      "You go there to"
+     ],
+     "rows": [
+      [
+       "/etc",
+       "System and app config",
+       "Check nginx or service settings"
+      ],
+      [
+       "/var/log",
+       "Log files",
+       "Read errors"
+      ],
+      [
+       "/home/you (~)",
+       "Your files",
+       "Keep scripts and notes"
+      ],
+      [
+       "/opt, /srv",
+       "Installed apps",
+       "Find the customer's deployment"
+      ],
+      [
+       "/tmp",
+       "Temporary files",
+       "Scratch work, may be wiped"
+      ]
+     ]
+    },
+    "code": "pwd                          # where am I?  /home/deploy\nls -lah /opt/qa-service      # long listing, hidden files, human sizes\ncd /var/log                  # absolute path\ncd ..                        # up one level\nfind /opt -name \"*.env\"      # find files by name\ndf -h                        # free disk space per filesystem\ndu -sh /var/log/* | sort -h  # which logs take the most space\nless /etc/nginx/nginx.conf   # page through a file (q to quit, /word to search)\n\nsudo truncate -s 0 /var/log/qa/debug.log   # empty a log the service still writes to\n# rm on that file would NOT free space until the service restarts:\nsudo lsof +L1                # open files that were deleted (still using disk)\nnano /opt/qa-service/.env.example   # Ctrl+O save, Ctrl+X exit\n# vim: i to type, Esc, then :wq to save and quit, or :q! to discard",
+    "lang": "bash"
+   },
+   {
+    "title": "SSH and copying files",
+    "body": "SSH connects you to a remote machine's shell over an encrypted channel. It normally uses a key pair: a private key that stays on your laptop and a public key that is added to ~/.ssh/authorized_keys on the server. ssh-keygen creates the pair. Never send the private key to anyone.\n\nThe command is ssh user@host. Often you cannot reach the server directly and must go through a jump host (also called a bastion), a single hardened machine that is the only way in; ssh -J handles that. A ~/.ssh/config file saves you from typing long options each time.\n\nscp copies files over SSH, in either direction. rsync does the same but only sends what changed, which is better for folders. ssh -L forwards a port, so a web page running on the server's port 8000 appears on your laptop at localhost:8000 without opening it to the internet.\n\nIf your SSH connection drops, everything you started in that session is normally stopped. That is a disaster in the middle of a two-hour migration or backfill. Run long jobs inside tmux (or the older screen). tmux keeps a session alive on the server: start it with tmux new -s backfill, run the job, and detach with Ctrl+B then D. Later, even after a laptop lid closes or the VPN drops, ssh back in and run tmux attach -t backfill to see the job still running. Where tmux is not installed, nohup command > job.log 2>&1 & runs the job in the background, ignores the hang-up signal and writes its output to a file. For anything that must run every night, use a systemd service or cron instead of a terminal.",
+    "example": "A bank gives you access to app-01, reachable only through bastion.bank.example. You add both to ~/.ssh/config, then 'ssh app01' takes you straight through. To check the internal admin page of the deployed service, ssh -L 8000:localhost:8000 app01 lets you open http://localhost:8000 in your own browser. Later, a 3-hour document backfill runs inside tmux on app01, so when the hotel Wi-Fi drops you reconnect and tmux attach shows it at 64 percent, still running.",
+    "code": "ssh-keygen -t ed25519 -C \"you@company.com\"     # create a key pair (once)\n\n# ~/.ssh/config\n# Host bastion\n#     HostName bastion.bank.example\n#     User jdoe\n# Host app01\n#     HostName 10.20.3.14\n#     User deploy\n#     ProxyJump bastion              # go through the jump host\n\nssh app01                                      # connect using the config\nscp ./release.tar.gz app01:/opt/qa-service/    # copy a file up\nscp app01:/var/log/qa/app.log ./               # copy a file down\nrsync -avz ./config/ app01:/opt/qa-service/config/   # sync a folder\nssh -L 8000:localhost:8000 app01               # server port 8000 -> your localhost:8000\n\n# Keep long jobs alive if SSH drops\ntmux new -s backfill                           # start a named session\npython backfill.py --since 2026-01-01          # run the long job inside it\n# detach: Ctrl+B then D.  Reconnect later with:\ntmux attach -t backfill\ntmux ls                                        # list sessions\n\n# No tmux? Run it in the background with nohup\nnohup python backfill.py > backfill.log 2>&1 &\ntail -f backfill.log",
+    "lang": "bash"
+   },
+   {
+    "title": "curl, jq, environment variables and cron",
+    "body": "curl sends HTTP requests from the command line, so you can test an API without writing code. -i shows response headers, -s hides the progress bar, -X picks the method, -H adds a header and -d sends a body. jq is a small tool that pretty-prints JSON and pulls out fields, for example .items[].name.\n\nEnvironment variables are named values that programs read at startup, the usual place for configuration such as DATABASE_URL or an API key. export sets one in the current shell and env lists them. A service managed by systemd gets its variables from its unit file or an EnvironmentFile, not from your shell.\n\ncron runs commands on a schedule. Each line in a crontab has five time fields (minute, hour, day of month, month, day of week) followed by the command. cron uses a minimal environment, so use absolute paths and send output to a log file.\n\nThe end of the crontab line below, >> /var/log/qa/reindex.log 2>&1, handles output. >> appends normal output (stdout) to the log file instead of overwriting it, as a single > would. 2>&1 then sends error output (stderr, stream 2) to the same place as stdout (stream 1), so tracebacks land in the log too. Without it, cron tries to email errors to a local mailbox nobody reads, and failures vanish. The terminal topic explains stdout, stderr, redirection and exit codes in full.",
+    "example": "Before blaming the app, you test from the server itself: curl the local health endpoint, then curl the LLM provider's API with the key from the environment. If the local call works and the external one hangs, the customer's firewall or proxy is blocking outbound traffic, and you now have exact evidence to give their network team.",
+    "code": "curl -s http://localhost:8000/health | jq .          # local health check\ncurl -i https://api.example.com/v1/status            # show status line and headers\n\nexport API_TOKEN=\"$(cat ~/.secrets/token)\"           # avoid typing secrets inline\ncurl -s -X POST http://localhost:8000/ask \\\n     -H \"Authorization: Bearer $API_TOKEN\" \\\n     -H \"Content-Type: application/json\" \\\n     -d '{\"question\": \"What is the travel policy?\"}' \\\n  | jq -r '.answer, .sources[].title'                # pull out fields\n\nenv | grep -i proxy                                  # any proxy settings?\n\n# crontab -e   (min hour day month weekday command)\n# 15 2 * * * /opt/qa-service/venv/bin/python /opt/qa-service/reindex.py >> /var/log/qa/reindex.log 2>&1\n#   runs at 02:15 daily; >> appends stdout to the log; 2>&1 sends stderr there too",
+    "lang": "bash"
+   }
+  ],
+  "add_glossary": [
+   [
+    "systemd unit file",
+    "A small config file (such as qa-service.service) that tells systemd how to run and restart a service."
+   ],
+   [
+    "Package manager",
+    "The tool that installs software from the distribution's repositories, such as apt or dnf."
+   ],
+   [
+    "logrotate",
+    "A tool that compresses and deletes old log files on a schedule."
+   ],
+   [
+    "tmux",
+    "A terminal multiplexer that keeps sessions running on the server after you disconnect."
+   ],
+   [
+    "nohup",
+    "Runs a command that ignores the hang-up signal, so it keeps going after you log out."
+   ],
+   [
+    "Truncate",
+    "Empty a file to zero bytes without deleting it."
+   ]
+  ],
+  "add_practice": [
+   "On a Linux VM, write a systemd unit for python3 -m http.server 8000 running as a new user 'demo', enable it with enable --now, reboot, and show it came back. Then kill the process with kill -9 and show that Restart=on-failure starts it again.",
+   "Start a 10-minute loop (for i in $(seq 600); do date; sleep 1; done) inside tmux, detach, close the terminal, reconnect and reattach. Then fill a test file with 100 MB, delete it while tail -f holds it open, and find it with lsof +L1."
+  ]
+ },
+ "frontend": {
+  "add_subtopics": [
+   {
+    "title": "Streaming model answers into the page",
+    "body": "A model can take ten seconds or more to write a long answer. If the page waits for the whole thing, users stare at 'Thinking...' and assume it is broken. Streaming fixes this: the server sends the answer in small pieces as the model produces them, and the page adds each piece to the screen the moment it arrives. The fastapi topic shows the server half; this subtopic is the browser half.\n\nWith fetch, the response body is a stream. res.body.getReader() gives a reader, and each await reader.read() returns the next chunk of bytes, or done: true at the end. A TextDecoder turns the bytes into text; pass { stream: true } so a character split across two chunks (an accented letter, for example) is joined correctly. Append each piece with textContent += so model output is never run as HTML.\n\nAlways add a Stop button. An AbortController gives you a signal you pass to fetch; calling controller.abort() cancels the request, the read throws an AbortError, and you can show '[stopped]'. Stopping also stops the server paying for tokens nobody will read, if the server checks for a closed connection.\n\nServer-sent events (SSE) are a standard text format for streams: lines that start with 'data:'. The browser's EventSource object reads them for you and reconnects automatically, but it only makes GET requests with no body, so for a POST with a question you read the stream with fetch as shown and split lines yourself.\n\nIn Streamlit, st.write_stream(generator) does all of this: pass a Python generator that yields text pieces and it draws them as they come and returns the full text.",
+    "example": "A legal team's contract Q&A demo took 14 seconds per answer and the partners kept clicking Ask again, sending duplicate requests. The FDE switched the backend to a streaming endpoint and the page to the reader loop below. The first words now appear in under a second, the Ask button is disabled while an answer is streaming, and a Stop button lets a partner cancel an answer that is going in the wrong direction.",
+    "code": "// stream.js: show the answer piece by piece as the backend sends it\nconst out = document.querySelector(\"#answer\");\nconst askBtn = document.querySelector(\"#ask\");\nconst stopBtn = document.querySelector(\"#stop\");\nlet controller = null;\n\nasync function askStream(question) {\n  controller = new AbortController();              // lets the Stop button cancel\n  out.textContent = \"\";\n  askBtn.disabled = true;\n  stopBtn.disabled = false;\n  try {\n    const res = await fetch(\"/ask/stream\", {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body: JSON.stringify({ question }),\n      signal: controller.signal,                   // connects fetch to the controller\n    });\n    if (!res.ok) throw new Error(`Server said ${res.status}`);\n    const reader = res.body.getReader();           // read the body as it arrives\n    const decoder = new TextDecoder();             // bytes -> text (UTF-8)\n    while (true) {\n      const { done, value } = await reader.read(); // value is one chunk of bytes\n      if (done) break;\n      out.textContent += decoder.decode(value, { stream: true });\n    }\n  } catch (err) {\n    if (err.name === \"AbortError\") out.textContent += \" [stopped]\";\n    else out.textContent = \"Sorry, something went wrong: \" + err.message;\n  } finally {\n    askBtn.disabled = false;\n    stopBtn.disabled = true;\n  }\n}\n\naskBtn.addEventListener(\"click\", () => askStream(document.querySelector(\"#q\").value));\nstopBtn.addEventListener(\"click\", () => controller?.abort());\n\n// Tested against a server that sends \"Parental \", \"leave \", \"is \", \"20 \", \"days.\"\n// Normal run shows:        Parental leave is 20 days.\n// Stop pressed early shows: Parental leave is  [stopped]",
+    "lang": "JavaScript",
+    "table": {
+     "headers": [
+      "Approach",
+      "Good for",
+      "Limits"
+     ],
+     "rows": [
+      [
+       "fetch + getReader()",
+       "POST with a question body, any text format",
+       "You parse the pieces yourself"
+      ],
+      [
+       "EventSource (SSE)",
+       "GET endpoints that push events, auto reconnect",
+       "GET only, no request body or custom headers"
+      ],
+      [
+       "WebSocket",
+       "Two-way live traffic such as voice",
+       "More moving parts; see apistyles"
+      ],
+      [
+       "st.write_stream",
+       "Streamlit demos",
+       "Python generator in, text drawn as it arrives"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Accessibility basics for customer-facing UIs",
+    "body": "Accessibility means people can use your page whatever their abilities: people who use a screen reader (software that reads the page aloud), people who only use a keyboard, and people with low vision or colour blindness. Large customers, governments and banks often require it in contracts, usually by pointing to WCAG (Web Content Accessibility Guidelines) level AA. A demo that fails an accessibility check can block a pilot from going wider.\n\nFive habits cover most problems. First, every input gets a <label> tied to it with for= and id=. Placeholder text disappears when you type and many screen readers do not read it, so it is not a label. Second, use real elements: <button> for actions and <a href> for links. A clickable <div> cannot be reached with the Tab key or pressed with Enter. Third, every meaningful image gets alt text that says what it shows; decorative images get alt=\"\" so they are skipped. Fourth, contrast: normal text needs a contrast ratio of at least 4.5 to 1 against its background. Light grey #999999 on white is only about 2.85 to 1 and fails; #767676 is the lightest grey that passes. Never use colour alone to carry meaning, such as red for low confidence: add a word or an icon. Fifth, keep the focus outline visible (:focus-visible) so keyboard users can see where they are.\n\nFor AI pages, put aria-live=\"polite\" on the answer area so screen readers announce new or streamed answers.\n\nTest it: unplug the mouse and use the page with Tab, Shift+Tab and Enter only. Then run the Lighthouse accessibility audit in browser DevTools or the axe extension, and fix what they report.",
+    "example": "A public-sector customer asked for a WCAG 2.2 AA statement before letting 400 caseworkers use an AI letter-drafting tool. A quick audit found three problems in the demo: the search box had only a placeholder, the 'Generate' control was a styled div that the keyboard could not reach, and low-confidence drafts were marked only with a pale red border. The FDE fixed all three in an afternoon with the pattern below, and the Lighthouse accessibility score went from 71 to 100.",
+    "code": "<!-- An accessible version of the question form -->\n<style>\n  :root { --text: #1f2328; --bg: #ffffff; --muted: #57606a; }  /* muted grey still passes 4.5:1 */\n  body  { color: var(--text); background: var(--bg); }\n  .hint { color: var(--muted); }\n  button:focus-visible, input:focus-visible { outline: 3px solid #0969da; outline-offset: 2px; }\n</style>\n\n<form id=\"ask-form\">\n  <label for=\"q\">Your question</label>                 <!-- a real label, not only a placeholder -->\n  <input id=\"q\" name=\"q\" aria-describedby=\"q-hint\" required>\n  <p id=\"q-hint\" class=\"hint\">For example: How many days of parental leave?</p>\n  <button type=\"submit\">Ask</button>                   <!-- real button: Tab and Enter work for free -->\n</form>\n\n<img src=\"org-chart.png\" alt=\"HR team: 1 director, 3 policy advisers\">\n<img src=\"divider.png\" alt=\"\">                         <!-- decorative: empty alt, screen readers skip it -->\n\n<p><span aria-hidden=\"true\">&#9888;</span> <strong>Low confidence:</strong> check the source.</p>  <!-- words, not only a red colour -->\n\n<div id=\"answer\" aria-live=\"polite\"></div>             <!-- screen readers announce new answers -->",
+    "lang": "HTML",
+    "checklist": [
+     "Every input has a <label> linked with for and id",
+     "Actions are <button>, navigation is <a href>",
+     "Meaningful images have alt text; decorative ones alt=\"\"",
+     "Text contrast is at least 4.5:1 (check with DevTools)",
+     "Meaning never relies on colour alone",
+     "The whole flow works with Tab, Shift+Tab and Enter",
+     "The answer area has aria-live=\"polite\"",
+     "Lighthouse or axe shows no errors"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "HTML, CSS and JavaScript roles",
+    "body": "HTML (HyperText Markup Language) uses tags such as <h1> for a heading, <p> for a paragraph, <input> for a text box and <button> for a button. Tags nest inside each other to form a tree that the browser calls the DOM (Document Object Model).\n\nCSS (Cascading Style Sheets) selects elements and sets properties such as color, font size, spacing and layout. Two layout systems handle most needs: flexbox for arranging items in a row or column, and grid for two-dimensional layouts.\n\nJavaScript runs in the browser. It can find elements in the DOM, listen for events like a click, change the page, and call servers. The three are usually separate files linked from the HTML page, though a small demo can keep them in one file.\n\nTwo small habits make even a demo usable by everyone. Give every input a <label>: placeholder text vanishes as soon as someone types and screen readers often ignore it, so it is not a label. And use a real <button> for anything clickable, because a <div> with a click handler cannot be reached with the keyboard. The accessibility subtopic below goes further.",
+    "example": "An HR team wants to try a policy question box. The HTML below gives a heading, a text box and a button; the CSS in the style block puts the box and button side by side; and one script tag loads app.js, which will make the button do something in the next two subtopics. The label 'Your question' sits above the box, so it stays visible while the user types, and the Ask control is a real button that works with Tab and Enter.",
+    "table": {
+     "headers": [
+      "Layer",
+      "Answers the question",
+      "Tiny example"
+     ],
+     "rows": [
+      [
+       "HTML",
+       "What is on the page?",
+       "<button>Ask</button>"
+      ],
+      [
+       "CSS",
+       "How does it look?",
+       "button { padding: 8px; }"
+      ],
+      [
+       "JavaScript",
+       "What does it do?",
+       "button.onclick = ask"
+      ],
+      [
+       "TypeScript",
+       "Is the data the right shape?",
+       "let n: number = 3"
+      ]
+     ]
+    },
+    "code": "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Policy Q&amp;A</title>\n  <style>\n    body   { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; }\n    .row   { display: flex; gap: 8px; }          /* flexbox: items side by side */\n    input  { flex: 1; padding: 8px; }\n    #answer { margin-top: 16px; white-space: pre-wrap; }\n  </style>\n</head>\n<body>\n  <h1>Ask the HR policies</h1>\n  <label for=\"q\">Your question</label>          <!-- placeholder text is not a label -->\n  <div class=\"row\">\n    <input id=\"q\" placeholder=\"How many days of parental leave?\">\n    <button id=\"ask\">Ask</button>               <!-- a real button, not a clickable div -->\n  </div>\n  <div id=\"answer\"></div>\n  <script src=\"app.js\"></script>   <!-- behavior lives in JavaScript -->\n</body>\n</html>",
+    "lang": "HTML"
+   },
+   {
+    "title": "JavaScript basics and the DOM",
+    "body": "JavaScript declares variables with const (cannot be reassigned) and let (can be). Functions can be written with the function keyword or as arrow functions, (x) => x * 2. Objects look like Python dicts, { name: 'Ana', age: 31 }, and arrays like Python lists.\n\nTo change the page, you first find an element with document.querySelector, using the same selectors as CSS ('#answer' for an id, '.row' for a class). Then you read or set its properties, such as .value for an input or .textContent for text.\n\nTo react to the user, attach an event listener: button.addEventListener('click', handler). The browser calls your handler function whenever the event happens. Use textContent rather than innerHTML when showing text from a model or a user, because innerHTML would run any HTML inside it, which is a security risk called cross-site scripting.\n\nA few everyday rules. Compare with === (strict equality), never ==, because == converts types first: 0 == \"\" is true, 0 === \"\" is false. JavaScript has two 'no value' markers: undefined means a variable or field was never set (a missing key in a JSON object reads as undefined), and null means someone set it to 'nothing' on purpose. Arrays have map (change every item), filter (keep matching items) and find (the first match, or undefined), which you will use on every API response. JSON.stringify turns an object into JSON text to send; JSON.parse turns JSON text back into an object. Larger code is split into modules: export a function from one file and import it in another. The typescript topic covers these language basics, promises and Node in depth.",
+    "example": "In the HR demo, the page needs to show a character counter under the question box and disable the Ask button when the box is empty. That is two lines inside an 'input' event listener: update the counter's textContent and set button.disabled. When the page later receives a list of source documents, filter keeps only those with a score above 0.5 and map turns each one into a line of text.",
+    "code": "// app.js (first version: no server yet)\nconst input  = document.querySelector(\"#q\");\nconst button = document.querySelector(\"#ask\");\nconst out    = document.querySelector(\"#answer\");\n\nbutton.disabled = true;\n\ninput.addEventListener(\"input\", () => {\n  button.disabled = input.value.trim() === \"\";   // no empty questions\n});\n\nbutton.addEventListener(\"click\", () => {\n  const question = input.value.trim();\n  out.textContent = `You asked: ${question}`;    // textContent, never innerHTML\n});\n\n// ---- basics.js: everyday JavaScript you can try with:  node basics.js ----\nconsole.log(0 == \"\", 0 === \"\");              // true false  (== converts types; use ===)\nconsole.log(null == undefined, null === undefined);   // true false\nlet notSetYet;\nconsole.log(notSetYet);                      // undefined (declared, no value yet)\n\nconst orders = [\n  { id: 1, total: 40, status: \"paid\" },\n  { id: 2, total: 15, status: \"open\" },\n  { id: 3, total: 90, status: \"paid\" },\n];\nconsole.log(orders.filter((o) => o.status === \"paid\").map((o) => o.total));  // [ 40, 90 ]\nconsole.log(orders.find((o) => o.id === 2));   // { id: 2, total: 15, status: 'open' }\nconsole.log(orders.find((o) => o.id === 9));   // undefined (no match)\n\nconst body = JSON.stringify({ question: \"Leave?\", top_k: 3 });  // object -> text\nconsole.log(body);                           // {\"question\":\"Leave?\",\"top_k\":3}\nconsole.log(JSON.parse(body).top_k);         // 3  (text -> object)\n\n// Modules: in format.js write   export function money(n) { return n.toFixed(2); }\n// and in app.js write           import { money } from \"./format.js\";\n// (in the page use <script type=\"module\" src=\"app.js\"></script>)",
+    "lang": "JavaScript"
+   },
+   {
+    "title": "Calling an API with fetch",
+    "body": "fetch(url, options) sends an HTTP request from the browser. It returns a Promise, an object representing a result that will arrive later. Inside an async function you write await fetch(...) to pause until the response arrives, then await res.json() to parse the body.\n\nfetch only rejects on network failure. A 404 or 500 response still resolves, so check res.ok yourself. Show a loading state while waiting, since LLM calls can take several seconds, and show a clear message on errors.\n\nTwo rules matter for AI demos. First, never put a model provider's API key in browser code; anyone can read it in the developer tools. The browser calls your own backend, and the backend holds the key and calls the model. Second, browsers enforce CORS (Cross-Origin Resource Sharing): a page on one origin can only read responses from another origin if that server sends an Access-Control-Allow-Origin header allowing it. If your page is on localhost:5173 and your API on localhost:8000, the API must allow that origin.\n\nWhen a demo breaks, open the browser DevTools first (F12, or right-click and Inspect). The Network tab lists every request the page made: click one to see the URL, method, request body, status code and the response body. A red row with status 500 means the server failed; 401 or 403 means authentication; a request marked 'CORS error' or blocked means the server did not allow your page's origin, and the Console tab will print the exact message. The Console also shows JavaScript errors with the file and line number, and anything you console.log. Most 'the button does nothing' problems are solved in these two tabs in under a minute.",
+    "example": "For the HR demo, the page calls POST /ask on a small FastAPI backend with the question. The backend retrieves policy passages, calls the model with the key from its environment, and returns answer and sources. FastAPI's CORSMiddleware lists http://localhost:5173 as an allowed origin during development. When the demo first showed 'Failed to fetch', the Network tab showed the /ask request blocked, and the Console said no Access-Control-Allow-Origin header was present; adding the origin to CORSMiddleware fixed it.",
+    "code": "// app.js (calls our own backend, which holds the API key)\nconst API = \"http://localhost:8000\";\n\nasync function ask(question) {\n  out.textContent = \"Thinking...\";                     // loading state\n  button.disabled = true;\n  try {\n    const res = await fetch(`${API}/ask`, {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body: JSON.stringify({ question }),\n    });\n    if (!res.ok) throw new Error(`Server said ${res.status}`);  // 4xx/5xx\n    const data = await res.json();\n    out.textContent = data.answer + \"\\n\\n\" +\n      data.sources.map((s) => \"- \" + s.title).join(\"\\n\");\n  } catch (err) {\n    out.textContent = \"Sorry, something went wrong: \" + err.message;\n  } finally {\n    button.disabled = false;\n  }\n}\n\nbutton.addEventListener(\"click\", () => ask(input.value.trim()));",
+    "lang": "JavaScript"
+   },
+   {
+    "title": "React components at a glance",
+    "body": "React builds a page from components. A component is a function that returns JSX, an HTML-like syntax inside JavaScript. Components receive inputs called props from their parent and can keep their own data in state, created with the useState hook.\n\nWhen state changes, React calls the component again and updates only the parts of the page that changed. You do not touch the DOM yourself; you change state and describe what the page should look like for that state. This makes interfaces with many moving parts much easier to keep correct.\n\nOther hooks cover common needs: useEffect runs code after rendering, for example to load data when the component first appears. Frameworks such as Next.js add routing and server features on top of React. For a demo, a single-page app created with Vite is usually enough.\n\nTo start a project, run npm create vite@latest askbox -- --template react-ts, then npm install to download the libraries listed in package.json, then npm run dev to start a local server at http://localhost:5173 that reloads when you save. package.json is the project's manifest: it lists dependencies and scripts, short names for commands, so npm run dev, npm run build (make the files for production) and npm test run whatever the scripts section says.\n\nAn async handler must also handle failure. Wrap the request in try/catch/finally: check res.ok, store an error message in state if anything fails, and turn loading off in finally, which always runs. Without it, one failed request leaves the button disabled on 'Thinking...' for good.",
+    "example": "An insurer's claims triage demo has a ClaimList component showing 20 claims and a ClaimDetail component showing the model's suggested priority and reasons. Clicking a claim sets selectedId in state; React re-renders ClaimDetail with the new claim's props, with no manual DOM code. When the claims API was restarted in the middle of a demo, the fixed AskBox showed 'Server said 502' and the Ask button came back, instead of freezing.",
+    "code": "// Create the project once:  npm create vite@latest askbox -- --template react-ts\n// then:  cd askbox, npm install, npm run dev   (opens http://localhost:5173)\n\n// AskBox.tsx\nimport { useState } from \"react\";\n\ntype Props = { apiUrl: string };\ntype AskResponse = { answer: string };\n\nexport function AskBox({ apiUrl }: Props) {\n  const [question, setQuestion] = useState(\"\");\n  const [answer, setAnswer] = useState<string | null>(null);\n  const [error, setError] = useState<string | null>(null);\n  const [loading, setLoading] = useState(false);\n\n  async function ask() {\n    setLoading(true);\n    setError(null);\n    try {\n      const res = await fetch(`${apiUrl}/ask`, {\n        method: \"POST\",\n        headers: { \"Content-Type\": \"application/json\" },\n        body: JSON.stringify({ question }),\n      });\n      if (!res.ok) throw new Error(`Server said ${res.status}`);  // 4xx/5xx\n      const data: AskResponse = await res.json();\n      setAnswer(data.answer);             // state change -> React re-renders\n    } catch (err) {\n      setAnswer(null);\n      setError(err instanceof Error ? err.message : String(err));\n    } finally {\n      setLoading(false);                  // always runs, so the button never stays stuck\n    }\n  }\n\n  return (\n    <div>\n      <label htmlFor=\"question\">Your question</label>\n      <input\n        id=\"question\"\n        value={question}\n        onChange={(e) => setQuestion(e.target.value)}\n      />\n      <button onClick={ask} disabled={loading || !question}>Ask</button>\n      {loading && <p>Thinking...</p>}\n      {error && <p role=\"alert\">Sorry, something went wrong: {error}</p>}\n      {!loading && answer && <p>{answer}</p>}\n    </div>\n  );\n}",
+    "lang": "TypeScript"
+   },
+   {
+    "title": "A quick demo UI in Streamlit",
+    "body": "Streamlit is a Python library that turns a script into a web app. You call functions such as st.title, st.text_input, st.file_uploader and st.button, and Streamlit draws the matching widgets. Run it with 'streamlit run app.py' and it opens in the browser.\n\nThe mental model is simple: every time the user interacts with a widget, Streamlit reruns the whole script from top to bottom with the new widget values. Use st.session_state to keep values between reruns, such as a chat history, and st.cache_resource or st.cache_data to avoid reloading a model or re-reading a file on every rerun.\n\nBecause the code runs on the server in Python, API keys stay out of the browser, and you can reuse the same retrieval and model code you wrote in a notebook. The trade-off is less control over layout and behavior than React. Use Streamlit for internal demos and pilots, and move to a proper front end when the design and scale requirements grow.\n\nFor chat-style demos, st.chat_input draws a message box pinned to the bottom of the page, and st.chat_message('user') or st.chat_message('assistant') draws a chat bubble. Keep the conversation in st.session_state and redraw it on every rerun, then use st.write_stream to stream the new answer. Gradio is a similar Python library, popular for model demos, with a ready-made ChatInterface.\n\nOne safety rule: never share a demo on a public URL without authentication. A public Streamlit or Gradio link exposes the customer's documents and spends your API budget for anyone who finds it. Keep it on localhost, on the customer's network, or behind their single sign-on.",
+    "example": "On day one of an engagement with a manufacturer, the FDE loads 200 maintenance manuals into a vector index in a notebook. By the afternoon the same functions sit behind a Streamlit app with an upload box, a question box and an expandable 'Sources' section, and the plant's engineers are trying it on real questions. On day two the plant asked for a chat version, so the FDE added the chat_app.py below, run only inside the plant's network.",
+    "table": {
+     "headers": [
+      "Need",
+      "Streamlit",
+      "React + API"
+     ],
+     "rows": [
+      [
+       "Time to first demo",
+       "Hours",
+       "A day or more"
+      ],
+      [
+       "Language",
+       "Python only",
+       "TypeScript + Python backend"
+      ],
+      [
+       "Layout control",
+       "Limited",
+       "Full"
+      ],
+      [
+       "Many concurrent users",
+       "Fine for pilots",
+       "Built for it"
+      ],
+      [
+       "Best for",
+       "Internal demos, pilots",
+       "Customer-facing products"
+      ]
+     ]
+    },
+    "code": "# app.py   run with:  streamlit run app.py\nimport streamlit as st\nfrom my_rag import load_index, answer_question   # your own notebook code\n\nst.title(\"Maintenance manual assistant\")\n\n@st.cache_resource                       # load once, reuse across reruns\ndef get_index():\n    return load_index(\"indexes/manuals\")\n\nif \"history\" not in st.session_state:    # survives reruns\n    st.session_state.history = []\n\nquestion = st.text_input(\"Ask about a machine or procedure\")\nif st.button(\"Ask\") and question:\n    with st.spinner(\"Searching manuals...\"):\n        result = answer_question(get_index(), question)   # key read from env on server\n    st.session_state.history.append((question, result[\"answer\"]))\n    st.write(result[\"answer\"])\n    with st.expander(\"Sources\"):\n        for src in result[\"sources\"]:\n            st.markdown(f\"- {src['title']} (page {src['page']})\")\n\n\n# chat_app.py   run with:  streamlit run chat_app.py\nimport streamlit as st\nfrom my_rag import answer_stream        # your own code: yields text pieces\n\nst.title(\"Maintenance chat\")\n\nif \"messages\" not in st.session_state:\n    st.session_state.messages = []      # list of {\"role\": ..., \"content\": ...}\n\nfor m in st.session_state.messages:     # redraw the conversation on every rerun\n    with st.chat_message(m[\"role\"]):\n        st.write(m[\"content\"])\n\nif prompt := st.chat_input(\"Ask about a machine\"):\n    st.session_state.messages.append({\"role\": \"user\", \"content\": prompt})\n    with st.chat_message(\"user\"):\n        st.write(prompt)\n    with st.chat_message(\"assistant\"):\n        reply = st.write_stream(answer_stream(prompt, st.session_state.messages))\n    st.session_state.messages.append({\"role\": \"assistant\", \"content\": reply})",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Streaming response",
+    "A response sent in small pieces as they are ready, so the page can show the start before the end exists."
+   ],
+   [
+    "AbortController",
+    "A browser object whose abort() cancels a fetch that was given its signal."
+   ],
+   [
+    "Server-sent events (SSE)",
+    "A standard text format for pushing a stream of 'data:' lines from server to browser; read with EventSource."
+   ],
+   [
+    "Accessibility (a11y)",
+    "Making a page usable by people who use screen readers, keyboards only, or have low vision."
+   ],
+   [
+    "WCAG",
+    "Web Content Accessibility Guidelines; customers usually require level AA."
+   ],
+   [
+    "Contrast ratio",
+    "How different text and background brightness are; normal text needs at least 4.5:1."
+   ],
+   [
+    "aria-live",
+    "An attribute that makes screen readers announce changes inside an element."
+   ],
+   [
+    "DevTools",
+    "The browser's built-in tools; the Network and Console tabs show requests and errors."
+   ],
+   [
+    "package.json",
+    "A Node project's manifest listing its dependencies and named scripts such as dev and build."
+   ],
+   [
+    "Strict equality (===)",
+    "Comparison that does not convert types; always prefer it over ==."
+   ]
+  ],
+  "add_practice": [
+   "Add a streaming endpoint to your FastAPI backend that yields five words with a short sleep, then change the page to read it with getReader() and add a Stop button. Deliverable: a screen recording or notes showing the text appearing piece by piece and stopping on click.",
+   "Audit your demo page for accessibility: use it with the keyboard only, run Lighthouse, and fix every issue. Deliverable: before and after scores and a list of what you changed.",
+   "Stop your backend and click Ask in the React AskBox. Confirm the error message appears and the button becomes usable again. Then find the failed request in the DevTools Network tab and write down its status."
+  ]
+ },
+ "oop": {
+  "replace_subtopics": [
+   {
+    "title": "Methods and attributes",
+    "body": "A method is a function written inside a class. When you call o1.total(), Python quietly turns that into Order.total(o1), so self inside the method is o1. Methods read and change the object's own attributes, which keeps the logic next to the data it uses.\n\nThere are two kinds of attributes. Instance attributes live on one object (self.lines). Class attributes are defined in the class body and shared by every object, which suits constants such as a tax rate.\n\nPython also has special methods with double underscores, often called dunder methods. __repr__ controls how the object prints, which makes debugging much easier. A leading single underscore, as in _cache, is a convention meaning 'internal, do not touch from outside'.\n\nThree decorators change how a method is called. @property turns a method into something you read like an attribute, o1.line_count with no parentheses; use it for values computed from other attributes. @classmethod receives the class (cls) instead of an object, which makes it perfect for alternative constructors such as Order.from_row(row) that build an order from one row of a customer's CSV or JSON export. @staticmethod receives neither; it is a plain helper function that lives in the class because it belongs with it.\n\nTwo dunder methods control printing. __repr__ is for developers: it should be unambiguous and is used in the REPL, in logs and inside lists. __str__ is for people and is what print() and f-strings use; if you only write one, write __repr__, since Python falls back to it.\n\nOne trap: if you define __eq__ so that two objects compare equal by value, Python removes the default __hash__, and the objects can no longer go in a set or be dict keys. Add a matching __hash__, or use @dataclass(frozen=True), which writes both for you.",
+    "example": "The distributor charges 12% VAT on every order. You store VAT_RATE once as a class attribute, add an add_line method that validates quantity, and a total method that sums the lines and applies VAT. Order 1001 with 2 bags of flour at 18.50 comes to 37.00 before VAT and 41.44 after. Harbourview Cafe's export has the id as text, a padded customer name and a price with a comma decimal, so Order.from_row and Order.parse_price clean them in one place.",
+    "code": "class Order:\n    VAT_RATE = 0.12                      # class attribute, shared\n\n    def __init__(self, order_id, customer):\n        self.order_id = order_id          # instance attributes\n        self.customer = customer\n        self.lines = []\n\n    def add_line(self, sku, qty, unit_price):\n        if qty <= 0:\n            raise ValueError(f\"qty must be positive, got {qty}\")\n        self.lines.append((sku, qty, unit_price))\n\n    def total(self):\n        net = sum(q * p for _, q, p in self.lines)\n        return round(net * (1 + self.VAT_RATE), 2)\n\n    @property                             # read like an attribute: o1.line_count\n    def line_count(self):\n        return len(self.lines)\n\n    @classmethod                          # another way to build an Order\n    def from_row(cls, row):\n        return cls(int(row[\"order_id\"]), row[\"customer\"].strip())\n\n    @staticmethod                         # a helper that needs no self or cls\n    def parse_price(text):\n        return float(text.replace(\",\", \".\"))\n\n    def __repr__(self):                   # for developers: REPL, logs, lists\n        return f\"Order({self.order_id}, {self.customer!r}, {len(self.lines)} lines)\"\n\n    def __str__(self):                    # for people: print() and f-strings\n        return f\"Order {self.order_id} for {self.customer}\"\n\no1 = Order(1001, \"Lindqvist Bakery\")\no1.add_line(\"flour-25kg\", 2, 18.50)\nprint(repr(o1), o1.total())   # Order(1001, 'Lindqvist Bakery', 1 lines) 41.44\nprint(o1)                     # Order 1001 for Lindqvist Bakery\nprint(o1.line_count)          # 1   (no parentheses)\n\nrow = {\"order_id\": \"1002\", \"customer\": \" Harbourview Cafe \", \"price\": \"18,50\"}  # from a CSV export\no2 = Order.from_row(row)\no2.add_line(\"flour-25kg\", 1, Order.parse_price(row[\"price\"]))\nprint([o1, o2])               # [Order(1001, 'Lindqvist Bakery', 1 lines), Order(1002, 'Harbourview Cafe', 1 lines)]\n\nclass Sku:\n    def __init__(self, code):\n        self.code = code\n    def __eq__(self, other):               # equal when the codes match\n        return isinstance(other, Sku) and self.code == other.code\n\nprint(Sku(\"A1\") == Sku(\"A1\"))  # True\ntry:\n    {Sku(\"A1\")}                # sets and dict keys need a hash\nexcept TypeError as err:\n    print(err)                 # unhashable type: 'Sku'",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Piece",
+      "Where it lives",
+      "Example"
+     ],
+     "rows": [
+      [
+       "Instance attribute",
+       "On one object",
+       "self.lines"
+      ],
+      [
+       "Class attribute",
+       "On the class, shared",
+       "VAT_RATE = 0.12"
+      ],
+      [
+       "Method",
+       "In the class, gets self",
+       "def total(self)"
+      ],
+      [
+       "Dunder method",
+       "Hook Python calls for you",
+       "__init__, __repr__"
+      ],
+      [
+       "_private name",
+       "Convention only",
+       "self._cache"
+      ],
+      [
+       "@property",
+       "Method read like an attribute",
+       "o1.line_count"
+      ],
+      [
+       "@classmethod",
+       "Gets cls; alternative constructors",
+       "Order.from_row(row)"
+      ],
+      [
+       "@staticmethod",
+       "Plain helper inside the class",
+       "Order.parse_price('18,50')"
+      ],
+      [
+       "__repr__ / __str__",
+       "Developer view / human view",
+       "print(repr(o1)), print(o1)"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Inheritance versus composition",
+    "body": "Inheritance lets a new class start from an existing one: class EmailNotifier(Notifier) gets all of Notifier's methods and can override some of them. Use it when the child really is a kind of the parent and can be used anywhere the parent is expected. super() calls the parent's version of a method.\n\nComposition means a class holds other objects as attributes and asks them to do work. An OrderService has a notifier; it does not need to be one. You can pass in an email notifier in production and a fake one in tests without changing OrderService.\n\nA good rule of thumb: prefer composition, and use inheritance for shallow 'is a' families that share one interface. Deep chains of inheritance are hard to follow because behavior is spread across many files.\n\nA base class that only says 'children must write this method' is better written with the abc module. Inherit from ABC and mark the method with @abstractmethod. Now a child that forgets send() fails the moment you try to create it, with a clear TypeError, instead of failing later with NotImplementedError in the middle of a nightly run. typing.Protocol is a lighter option: it describes the methods an object must have, without inheritance, and a type checker such as mypy reports any object that does not match.\n\nThe same inheritance idea gives you your own exceptions. Define a small family: class IntegrationError(Exception) for anything that went wrong with a customer system, and children such as RetryableError (temporary, try again) and BadRecordError (skip this record and report it). Callers can then catch exactly the level they care about: except RetryableError to retry, except IntegrationError to catch the whole family. Always inherit from Exception, not BaseException, and give the class a docstring. The resilient topic builds retries on exactly this pattern.",
+    "example": "The distributor wants confirmations by email for most cafes and by SMS for two food trucks. You write a small Notifier base class with a send method, and two children that override it. OrderService receives whichever notifier fits the customer. When a third channel (a webhook) arrives, you add one class and OrderService does not change. Later a contractor adds WebhookNotifier but forgets send(); with ABC the test suite fails immediately when the object is created. The supplier sync raises RetryableError on a 503 and BadRecordError for a row with no SKU, so the job retries the first and skips and reports the second.",
+    "code": "from abc import ABC, abstractmethod\n\nclass Notifier(ABC):                  # ABC: a base class that cannot be used directly\n    @abstractmethod\n    def send(self, to, text):         # every child must write its own send()\n        ...\n\nclass EmailNotifier(Notifier):        # inheritance: is a Notifier\n    def send(self, to, text):\n        print(f\"EMAIL to {to}: {text}\")\n\nclass SmsNotifier(Notifier):\n    def send(self, to, text):\n        print(f\"SMS to {to}: {text[:160]}\")\n\nclass WebhookNotifier(Notifier):      # forgot to write send()\n    pass\n\ntry:\n    WebhookNotifier()\nexcept TypeError as err:\n    print(err)   # Can't instantiate abstract class WebhookNotifier ... send (wording varies by version)\n\nclass OrderService:\n    def __init__(self, notifier: Notifier):\n        self.notifier = notifier      # composition: has a Notifier\n\n    def confirm(self, order, contact):\n        self.notifier.send(contact, f\"Order {order.order_id} confirmed\")\n\nOrderService(EmailNotifier()).confirm(o1, \"orders@lindqvist.example\")\n# EMAIL to orders@lindqvist.example: Order 1001 confirmed\nOrderService(SmsNotifier()).confirm(o1, \"+46 70 000 0000\")\n# SMS to +46 70 000 0000: Order 1001 confirmed\n\n# Your own exception classes: a small family, so callers can catch at the right level\nclass IntegrationError(Exception):\n    \"\"\"Anything that went wrong talking to a customer system.\"\"\"\n\nclass RetryableError(IntegrationError):\n    \"\"\"Temporary: try again later (timeouts, 429, 503).\"\"\"\n\nclass BadRecordError(IntegrationError):\n    def __init__(self, record_id, reason):\n        super().__init__(f\"record {record_id}: {reason}\")\n        self.record_id = record_id    # extra data the caller can use\n\nfor exc in [RetryableError(\"supplier API returned 503\"), BadRecordError(77, \"missing sku\")]:\n    try:\n        raise exc\n    except RetryableError as err:\n        print(\"retry later:\", err)    # retry later: supplier API returned 503\n    except IntegrationError as err:\n        print(\"skip and report:\", err)  # skip and report: record 77: missing sku",
+    "lang": "Python",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "svc",
+       90,
+       70,
+       "OrderService",
+       "has a notifier"
+      ],
+      [
+       "base",
+       265,
+       70,
+       "Notifier",
+       "send(to, text)"
+      ],
+      [
+       "email",
+       440,
+       70,
+       "EmailNotifier",
+       "is a Notifier"
+      ],
+      [
+       "sms",
+       440,
+       220,
+       "SmsNotifier",
+       "is a Notifier"
+      ],
+      [
+       "fake",
+       265,
+       220,
+       "FakeNotifier",
+       "for tests",
+       1
+      ]
+     ],
+     "edges": [
+      [
+       "svc",
+       "base",
+       0,
+       "uses"
+      ],
+      [
+       "email",
+       "base",
+       0,
+       "inherits"
+      ],
+      [
+       "sms",
+       "base",
+       0,
+       "inherits"
+      ],
+      [
+       "fake",
+       "base",
+       0,
+       "inherits"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Dataclasses and type hints",
+    "body": "Many classes are mostly records: a bundle of named fields. Writing __init__, __repr__ and __eq__ by hand for each one is tedious. The @dataclass decorator reads the annotated fields and writes those methods for you.\n\nType hints are the annotations after a colon, such as qty: int or lines: list[Line]. They tell readers and tools what each value should be. Python itself does not check them when the program runs; editors and a type checker such as mypy use them to catch mistakes before you run the code.\n\nTwo details matter. Mutable defaults like a list must use field(default_factory=list), or every object would share the same list. And frozen=True makes an object read-only, which is useful for values that should never change after creation, such as a parsed configuration.\n\nMoney should never be a float, because floats cannot store most decimal fractions exactly (0.1 + 0.2 prints 0.30000000000000004), as the dataformats topic explains. Use Decimal from the decimal module, build it from a string such as Decimal(\"18.50\"), and round with quantize at the end.\n\nWhich record type should you pick? Use a dataclass for data your own code creates and trusts. Use a Pydantic BaseModel for data from outside, such as an API request, a customer file or an LLM's JSON output, because Pydantic checks and converts every field when the object is created and raises a clear error on bad input. Use a TypedDict when the data must stay a plain dict (for example it goes straight into json.dumps) but you still want the type checker to know its keys.",
+    "example": "You rewrite Order as a dataclass with a nested Line dataclass. The file shrinks from 25 lines to 15, printing an order now shows every field, and two orders with the same data compare equal, which makes unit tests simpler. When a colleague passes qty='2' as a string, mypy flags it before it reaches the customer. After switching unit_price to Decimal, totals match the customer's invoicing system to the cent. The same order arriving through the web API is parsed with a Pydantic model instead, because that input is untrusted.",
+    "code": "from dataclasses import dataclass, field\nfrom datetime import date\nfrom decimal import Decimal, ROUND_HALF_UP\nfrom typing import TypedDict\n\n@dataclass(frozen=True)\nclass Line:\n    sku: str\n    qty: int\n    unit_price: Decimal          # money: Decimal, never float\n\n@dataclass\nclass Order:\n    order_id: int\n    customer: str\n    placed: date\n    lines: list[Line] = field(default_factory=list)  # never lines=[]\n\n    def total(self, vat: Decimal = Decimal(\"0.12\")) -> Decimal:\n        net = sum((l.qty * l.unit_price for l in self.lines), Decimal(\"0\"))\n        return (net * (1 + vat)).quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP)\n\no = Order(1001, \"Lindqvist Bakery\", date(2026, 3, 2))\no.lines.append(Line(\"flour-25kg\", 2, Decimal(\"18.50\")))  # build Decimal from a string\nprint(o)          # Order(order_id=1001, customer='Lindqvist Bakery', ...)\nprint(o.total())  # 41.44\nprint(0.1 + 0.2, Decimal(\"0.1\") + Decimal(\"0.2\"))   # 0.30000000000000004 0.3\n\n# A TypedDict only describes the shape of an ordinary dict, for the type checker\nclass OrderRow(TypedDict):\n    order_id: int\n    customer: str\n\nrow: OrderRow = {\"order_id\": 1001, \"customer\": \"Lindqvist Bakery\"}\nprint(type(row).__name__)   # dict  (still a plain dict at runtime)",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Choose",
+      "When",
+      "Checks at runtime?"
+     ],
+     "rows": [
+      [
+       "@dataclass",
+       "Records your own code creates",
+       "No, hints only"
+      ],
+      [
+       "Pydantic BaseModel",
+       "Untrusted input: API bodies, files, LLM output",
+       "Yes, validates and converts"
+      ],
+      [
+       "TypedDict",
+       "Must stay a plain dict, but typed",
+       "No, type checker only"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Modules, packages and the virtual environment",
+    "body": "A module is simply a .py file. A package is a folder of modules that Python can import from, and the folder name becomes part of the import path: from orderflow.models import Order. Splitting code this way keeps each file focused on one job.\n\nThe line if __name__ == '__main__': runs only when you execute the file directly, and not when another file imports it. That lets a module be both importable and runnable.\n\nAs covered in the Python basics concepts, each project should live in its own virtual environment, a folder with its own Python and installed libraries. Pin your dependencies in requirements.txt or pyproject.toml so a colleague, or the customer's server, can rebuild exactly the same setup.\n\nYou will also see the with statement everywhere: with open(...) as f, with httpx.Client() as client, with engine.connect() as conn. An object used this way is a context manager. When the with block starts Python calls its __enter__ method, and whatever it returns goes into the name after as. When the block ends, Python calls __exit__, even if an error happened inside. That is where files get closed, connections returned and locks released, so you never leak them. You can write your own with a class that has __enter__ and __exit__, or more simply with the @contextmanager decorator from contextlib: the code before yield is the setup and the code after it, in a finally block, is the cleanup.",
+    "example": "The distributor integration becomes a package called orderflow: models.py holds the dataclasses, notify.py the notifier classes, suppliers.py one adapter class per supplier file format, and cli.py the entry point the nightly job calls. Tests import from orderflow, so the same code runs in tests and in production. A db.py module in the package offers open_db(), a context manager, so every job that touches the database closes its connection even when a bad row raises an error halfway.",
+    "code": "# Project layout\n# orderflow-project/\n#   pyproject.toml\n#   src/orderflow/__init__.py\n#   src/orderflow/models.py      (Order, Line)\n#   src/orderflow/notify.py      (Notifier classes)\n#   src/orderflow/cli.py         (entry point)\n#   tests/test_models.py\n\npython -m venv .venv                 # create the environment\nsource .venv/bin/activate            # Windows: .venv\\Scripts\\activate\npip install -e \".[dev]\"              # install your package in editable mode\npython -m orderflow.cli --date 2026-03-02\npytest -q                            # tests import orderflow like any library\npip freeze > requirements-lock.txt   # record exact versions\n\n# Context managers, runnable as-is:\npython - <<'EOF'\n# ---- Context managers: what \"with\" does ----\nimport sqlite3\nfrom contextlib import contextmanager\n\nclass Timer:\n    def __enter__(self):                  # runs when the with block starts\n        print(\"start\")\n        return self                       # this is what \"as t\" receives\n    def __exit__(self, exc_type, exc, tb):  # runs when it ends, even after an error\n        print(\"end, error:\", exc_type.__name__ if exc_type else None)\n        return False                      # False: do not hide the error\n\nwith Timer() as t:\n    print(\"working\")\n# start / working / end, error: None\n\n@contextmanager                           # the short way: code before yield = enter\ndef open_db(path):\n    conn = sqlite3.connect(path)\n    try:\n        yield conn                        # the with block runs here\n    finally:\n        conn.close()                      # always closed, error or not\n        print(\"connection closed\")\n\ntry:\n    with open_db(\":memory:\") as conn:\n        conn.execute(\"create table t (x int)\")\n        raise ValueError(\"bad row\")       # simulate a failure halfway\nexcept ValueError as err:\n    print(\"caught:\", err)\n# connection closed / caught: bad row\nEOF",
+    "lang": "bash",
+    "checklist": [
+     "One virtual environment per project, never the system Python",
+     "Each module has one clear job (models, client, transforms, cli)",
+     "Dataclasses for records, plain functions for pure transformations",
+     "Mutable defaults use field(default_factory=...)",
+     "Type hints on public functions and methods",
+     "Script entry points guarded by if __name__ == '__main__'",
+     "Dependencies pinned and tests run with pytest"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "@property",
+    "A decorator that lets a method be read like an attribute, without parentheses."
+   ],
+   [
+    "@classmethod",
+    "A method that receives the class (cls); often used as an alternative constructor."
+   ],
+   [
+    "@staticmethod",
+    "A plain function stored in a class; it receives neither self nor cls."
+   ],
+   [
+    "__repr__ versus __str__",
+    "The developer view of an object versus the human-friendly text print() shows."
+   ],
+   [
+    "Abstract base class (ABC)",
+    "A base class with @abstractmethod methods that children must write before they can be created."
+   ],
+   [
+    "Protocol",
+    "A typing description of the methods an object must have, checked by a type checker without inheritance."
+   ],
+   [
+    "Custom exception",
+    "Your own error class, usually inheriting from Exception, so callers can catch it by name."
+   ],
+   [
+    "Decimal",
+    "Python's exact decimal number type; use it for money."
+   ],
+   [
+    "TypedDict",
+    "A type hint that describes the keys and value types of a plain dict."
+   ],
+   [
+    "Context manager",
+    "An object used with 'with' that sets something up on entry and always cleans up on exit."
+   ]
+  ],
+  "add_practice": [
+   "Add a @classmethod from_dict to your Customer class that builds a customer from one row of a CSV export, and a @property order_count. Write __repr__ and __str__ and print both.",
+   "Turn Notifier into an ABC, create a child that forgets send(), and read the error. Then define IntegrationError, RetryableError and BadRecordError and write a loop that retries only the retryable ones.",
+   "Write a context manager with @contextmanager that prints 'open' and 'closed' around a block, and prove the 'closed' line still prints when the block raises an error."
+  ]
+ },
+ "asyncpy": {
+  "replace_subtopics": [
+   {
+    "title": "async, await and coroutines",
+    "body": "async def defines a coroutine function. Calling it does not run it; it returns a coroutine object, a paused piece of work waiting to be scheduled. You run it by awaiting it from another coroutine, by wrapping it in a task, or at the very top with asyncio.run().\n\nawait means 'pause me here until this finishes, and let other tasks run in the meantime'. You can only use await inside an async def. Anything you await must itself be awaitable, such as another coroutine, a task or asyncio.sleep.\n\nThe rule that trips beginners up: async is contagious. If a function awaits something, it must be async, and whoever calls it must await it. The chain ends at asyncio.run(main()), which you call once from ordinary code.\n\nOne place where the chain works differently is a Jupyter notebook. Jupyter already runs its own event loop, so asyncio.run(main()) in a cell fails with 'RuntimeError: asyncio.run() cannot be called from a running event loop'. In a notebook you simply write await main() at the top level of a cell, which Jupyter allows. When you move the code into a .py script, switch back to asyncio.run(main()).",
+    "example": "You write get_parcel_status(parcel_id) as an async function. Calling get_parcel_status('PX-4411') alone prints a warning that the coroutine was never awaited and returns nothing useful. Writing status = await get_parcel_status('PX-4411') inside main, and then asyncio.run(main()), actually performs the call. When you paste the same code into a notebook to explore the carrier API, you replace the last line with await main() in its own cell.",
+    "code": "import asyncio\n\nasync def get_parcel_status(parcel_id: str) -> dict:\n    await asyncio.sleep(0.4)            # stands in for a network call\n    return {\"id\": parcel_id, \"status\": \"in_transit\"}\n\nasync def main():\n    coro = get_parcel_status(\"PX-4411\")  # nothing has run yet\n    print(type(coro))                   # <class 'coroutine'>\n    status = await coro                 # now it runs, main pauses 0.4s\n    print(status)\n\n    # A task starts running as soon as the loop gets a chance\n    task = asyncio.create_task(get_parcel_status(\"PX-4412\"))\n    print(await task)\n\nasyncio.run(main())                     # the one sync-to-async bridge\n\n# In a Jupyter notebook the loop is already running, so asyncio.run(main()) raises:\n#   RuntimeError: asyncio.run() cannot be called from a running event loop\n# Write this in a cell instead:\n#   await main()",
+    "lang": "Python"
+   },
+   {
+    "title": "gather and httpx.AsyncClient for parallel API calls",
+    "body": "asyncio.gather(*coroutines) schedules every coroutine as a task and waits for all of them. The results come back as a list in the same order you passed them in, whatever order they actually finished in.\n\nBy default, the first exception raised by any task is passed to whoever awaits gather, and you lose the easy view of the other results. Passing return_exceptions=True puts exceptions into the result list instead, so you can count successes and failures.\n\nhttpx is a popular HTTP library with both sync and async clients. Create one httpx.AsyncClient and share it across all requests. It keeps a pool of open connections, which is much faster than opening a new connection per call. Always set a timeout so one stuck request cannot hang the job forever.\n\nPython 3.11 added three helpers worth knowing. asyncio.TaskGroup is a structured alternative to gather: you create tasks inside an async with block, the block waits for all of them, and if one fails the others are cancelled and the errors are raised together, so nothing keeps running in the background by accident. asyncio.as_completed hands you results in the order they finish, which is ideal for a progress counter on a long job. asyncio.timeout(seconds) puts one deadline around a whole block, for example 'the nightly enrichment must finish in 20 minutes'.\n\nThe same pattern works for LLM calls, which is the ticket-scoring job from the WHY section. The Anthropic and OpenAI SDKs both ship async clients (AsyncAnthropic, AsyncOpenAI). Create one client, limit concurrency with a semaphore, gather one coroutine per ticket, and join the text blocks of each response. Start with 20 tickets, check the labels and the cost, then run the full set.",
+    "example": "A property insurer wants 3,000 addresses geocoded through an internal API before a flood-risk analysis. You load the addresses, build one coroutine per address, and gather them through a shared AsyncClient. At the end you write 2,987 coordinates to a CSV and 13 failures (bad addresses returning 404) to a separate file for a human to fix. For a second job, a software company wants 10,000 support tickets labelled billing, bug or how-to. The same gather-plus-semaphore shape with AsyncAnthropic labels them with five calls in flight, printing progress every 500 tickets with as_completed.",
+    "code": "import asyncio, csv\nimport httpx\n\nAPI = \"https://geo.internal.example/v1/geocode\"\n\nasync def geocode(client: httpx.AsyncClient, addr: str) -> dict:\n    r = await client.get(API, params={\"q\": addr})\n    r.raise_for_status()                  # 4xx/5xx become exceptions\n    return r.json()\n\nasync def main(addresses: list[str]):\n    async with httpx.AsyncClient(timeout=10.0) as client:  # one shared client\n        results = await asyncio.gather(\n            *(geocode(client, a) for a in addresses),\n            return_exceptions=True)       # keep going on failures\n    ok = [(a, r) for a, r in zip(addresses, results) if not isinstance(r, Exception)]\n    bad = [(a, repr(r)) for a, r in zip(addresses, results) if isinstance(r, Exception)]\n    with open(\"failed.csv\", \"w\", newline=\"\") as f:\n        csv.writer(f).writerows(bad)\n    print(f\"{len(ok)} ok, {len(bad)} failed\")\n\n# asyncio.run(main(addresses))  # add a limit before running on 3,000 rows\n\n\n# ---- Modern helpers (Python 3.11+), shown with sleeps so you can run them ----\nimport asyncio, random\n\nasync def score(ticket_id: int) -> str:\n    await asyncio.sleep(random.uniform(0.1, 0.5))   # stands in for an API call\n    return f\"T{ticket_id}: ok\"\n\nasync def with_taskgroup():\n    async with asyncio.TaskGroup() as tg:           # structured: waits for all tasks\n        tasks = [tg.create_task(score(i)) for i in range(5)]\n    return [t.result() for t in tasks]              # if one fails, the rest are cancelled\n\nasync def with_progress(n: int):\n    done = 0\n    for next_done in asyncio.as_completed([score(i) for i in range(n)]):\n        await next_done                             # results arrive in finish order\n        done += 1\n        if done % 5 == 0:\n            print(f\"{done}/{n} done\")\n\nasync def with_deadline():\n    try:\n        async with asyncio.timeout(0.3):            # an overall deadline for the block\n            await asyncio.sleep(2)\n    except TimeoutError:\n        print(\"gave up after 0.3s\")\n\nasync def main():\n    print(await with_taskgroup())   # ['T0: ok', 'T1: ok', 'T2: ok', 'T3: ok', 'T4: ok']\n    await with_progress(10)         # 5/10 done, then 10/10 done\n    await with_deadline()           # gave up after 0.3s\n\nasyncio.run(main())\n\n\n# ---- The same pattern with an async LLM client: score support tickets ----\nimport asyncio, json\nfrom anthropic import AsyncAnthropic\n\nclient = AsyncAnthropic()          # reads ANTHROPIC_API_KEY from the environment\nsem = asyncio.Semaphore(5)         # stay well inside the account's rate limits\n\nasync def classify(ticket: dict) -> dict:\n    async with sem:\n        msg = await client.messages.create(\n            model=\"MODEL\",         # put your model id here\n            max_tokens=200,\n            messages=[{\"role\": \"user\", \"content\":\n                \"Classify this support ticket as billing, bug or how-to. \"\n                'Reply only with JSON like {\"label\": \"bug\"}.\\n\\n' + ticket[\"text\"]}],\n        )\n    text = \"\".join(b.text for b in msg.content if b.type == \"text\")\n    return {\"id\": ticket[\"id\"], **json.loads(text)}\n\nasync def main(tickets: list[dict]):\n    results = await asyncio.gather(*(classify(t) for t in tickets), return_exceptions=True)\n    ok = [r for r in results if not isinstance(r, Exception)]\n    print(f\"{len(ok)} labelled, {len(results) - len(ok)} failed\")\n\n# asyncio.run(main([{\"id\": 1, \"text\": \"I was charged twice in March\"}]))",
+    "lang": "Python"
+   },
+   {
+    "title": "Rate limiting with a semaphore, plus retries",
+    "body": "Gathering 3,000 requests with no limit opens thousands of connections at once. The customer's API will throttle you with HTTP 429 Too Many Requests, or worse, slow down for everyone else. You need to cap your concurrency.\n\nasyncio.Semaphore(n) is a counter with n slots. A task does async with sem: before its request. If a slot is free, it takes it and continues; if not, it waits. Leaving the block frees the slot. This limits how many requests are in flight at once.\n\nA semaphore limits concurrency, which differs from a rate in requests per second. If the API documents a per-second limit, also space out request starts, for example with a small limiter that sleeps between starts. Retry 429 and 5xx errors with exponential backoff (waiting 1, 2, 4 seconds and so on) and respect the Retry-After header when it is present.\n\nA careful retry helper handles three more cases. First, network failures: a timeout or a refused connection raises httpx.TimeoutException or httpx.ConnectError before there is any status code, so catch those and retry them too. Second, Retry-After can be a number of seconds ('5') or an HTTP date ('Wed, 01 Apr 2026 10:00:05 GMT'); float() on a date raises ValueError, so parse the date with email.utils.parsedate_to_datetime. Third, do not sleep after the final attempt: raise the real error at once so the caller can log it. For bigger projects the tenacity library, used in the resilient topic, gives you all of this with a decorator.",
+    "example": "The geocoding API allows 20 requests per second and at most 10 concurrent connections per client. You set Semaphore(10), space starts 0.05 seconds apart, and retry up to 4 times on 429 or 5xx. The 3,000 addresses finish in about 2.5 minutes with zero throttling alerts on the customer's side. During the run, two requests hit a network timeout and one 429 came back with an HTTP-date Retry-After; all three succeeded on retry, and an address that failed four times was raised straight away into failed.csv without a pointless final wait.",
+    "code": "import asyncio, random\nfrom email.utils import parsedate_to_datetime\nfrom datetime import datetime, timezone\nimport httpx\n\nclass RateLimiter:\n    \"\"\"Allow at most `per_second` request starts per second.\"\"\"\n    def __init__(self, per_second: float):\n        self.interval, self.next_at = 1 / per_second, 0.0\n        self.lock = asyncio.Lock()\n    async def wait(self):\n        async with self.lock:\n            now = asyncio.get_running_loop().time()\n            delay = max(0.0, self.next_at - now)\n            self.next_at = max(now, self.next_at) + self.interval\n        await asyncio.sleep(delay)\n\nRETRY_STATUS = {429, 500, 502, 503, 504}\n\ndef retry_after_seconds(value: str | None, default: float) -> float:\n    \"\"\"Retry-After is either a number of seconds or an HTTP date.\"\"\"\n    if not value:\n        return default\n    try:\n        return float(value)                       # \"5\"\n    except ValueError:\n        when = parsedate_to_datetime(value)       # \"Wed, 01 Apr 2026 10:00:05 GMT\"\n        return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())\n\nasync def get_with_retry(client, sem, limiter, url, tries=4):\n    for attempt in range(tries):\n        last_try = attempt == tries - 1\n        try:\n            async with sem:                      # cap in-flight requests\n                await limiter.wait()             # cap requests per second\n                r = await client.get(url)\n        except (httpx.TimeoutException, httpx.ConnectError):\n            if last_try:\n                raise                            # out of attempts: let the caller log it\n            wait = 2 ** attempt                  # network trouble: plain backoff\n        else:\n            if r.status_code not in RETRY_STATUS:\n                r.raise_for_status()             # other 4xx: retrying will not help\n                return r.json()\n            if last_try:\n                r.raise_for_status()             # give up with the real HTTP error\n            wait = retry_after_seconds(r.headers.get(\"Retry-After\"), 2 ** attempt)\n        await asyncio.sleep(wait + random.random())   # backoff with jitter, never after the last try",
+    "lang": "Python",
+    "checklist": [
+     "Read the API docs for rate limits and concurrency limits",
+     "One shared AsyncClient with a timeout",
+     "Semaphore sized at or below the concurrency limit",
+     "Request starts spaced to the per-second limit",
+     "Retries on 429 and 5xx with backoff and jitter; honor Retry-After",
+     "Failures written to a file for a rerun",
+     "Try 50 rows first, then the full set"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "asyncio.TaskGroup",
+    "A Python 3.11+ block that runs tasks together and cancels the rest if one fails."
+   ],
+   [
+    "asyncio.as_completed",
+    "Gives results in the order tasks finish, useful for progress counters."
+   ],
+   [
+    "asyncio.timeout",
+    "A Python 3.11+ block that cancels the work inside it after a deadline."
+   ],
+   [
+    "AsyncAnthropic",
+    "The async client in the Anthropic Python SDK; its calls are awaited."
+   ],
+   [
+    "Retry-After",
+    "A response header saying how long to wait before retrying: seconds or an HTTP date."
+   ],
+   [
+    "Top-level await",
+    "Writing await directly in a Jupyter cell, which notebooks allow because their loop is already running."
+   ]
+  ],
+  "add_practice": [
+   "Rewrite the gather example with asyncio.TaskGroup, add an as_completed progress print every 10 results and wrap the whole run in asyncio.timeout(30). Make one task raise an error and describe what happens to the others.",
+   "Test the retry helper with httpx.MockTransport: return a ConnectTimeout, then a 429 with an HTTP-date Retry-After, then a 200. Confirm it succeeds, then confirm it raises immediately on the final failed attempt.",
+   "In a Jupyter notebook, try asyncio.run(main()) and read the error, then run await main() instead."
+  ]
+ },
+ "pytooling": {
+  "add_subtopics": [
+   {
+    "title": "Jupyter notebooks and when to leave them",
+    "body": "A Jupyter notebook (.ipynb file) mixes code cells, their output (tables, charts) and notes in one document. You run cells one at a time and see results immediately, which makes notebooks excellent for the first days with customer data: loading an export, checking columns, trying a prompt on ten examples. You open them in JupyterLab in the browser or directly in VS Code.\n\nThe notebook needs a kernel, the Python process that runs the cells. Point it at the project's virtual environment, not a random global Python, by installing ipykernel into the project and registering it, as in the code below. Then imports match what your scripts use.\n\nThe big trap is hidden state. Cells can run in any order, and a variable defined in a cell you later deleted still lives in memory. A notebook can look correct and still fail for the next person. Before you share one, use Restart and Run All (or nbconvert --execute) to prove it runs top to bottom.\n\nOutputs are saved inside the file, including rows of customer data and sometimes secrets printed by accident. Clear outputs before committing: nbstripout installs a git filter that does it automatically. Add .ipynb_checkpoints to .gitignore.\n\nKnow when to leave. As soon as a function works and will be reused, move it into src/ as a normal module with a test, and import it in the notebook. Scheduled jobs and anything the customer will run should be scripts, never notebooks. In notebooks, write await main() instead of asyncio.run (see asyncpy).",
+    "example": "An FDE at Pennyrigg Insurance explored 18 months of claims in a notebook and found a date-parsing rule. A week later the notebook failed for a colleague because it depended on a cell that had been deleted. She moved clean_claims() into src/claimsync/transform.py with two tests, made the notebook import it, added nbstripout so claim rows stopped appearing in git diffs, and ran nbconvert --execute in CI.",
+    "code": "# 1. Use the project's own environment as the notebook kernel\nuv add --dev ipykernel\nuv run python -m ipykernel install --user --name claimsync --display-name \"Python (claimsync)\"\nuv run --with jupyter jupyter lab        # or open the .ipynb in VS Code and pick that kernel\n\n# 2. Strip outputs before they reach git (outputs can hold customer data)\nuv add --dev nbstripout\nuv run nbstripout --install              # adds a git filter for this repo\n\n# 3. Prove the notebook runs top to bottom (same as \"Restart and Run All\")\nuv run --with jupyter jupyter nbconvert --to notebook --execute notebooks/explore.ipynb\n\n# 4. First cell of the notebook: import tested code instead of copying it\n#   %load_ext autoreload\n#   %autoreload 2                        # pick up edits to src/ without restarting\n#   from claimsync.transform import clean_claims\n#   df = clean_claims(\"data/claims_sample.csv\")",
+    "lang": "bash",
+    "checklist": [
+     "Kernel is the project's own venv",
+     "Restart and Run All passes before sharing",
+     "Outputs stripped before commit (nbstripout)",
+     ".ipynb_checkpoints in .gitignore",
+     "Reusable functions live in src/ with tests",
+     "Scheduled jobs are scripts, not notebooks"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Virtual environments with uv or pip",
+    "body": "Every project should have its own virtual environment, a folder (by convention .venv) holding a Python interpreter link and that project's libraries. Without one, projects share the system Python and one upgrade can break another project.\n\npyproject.toml usually lists version ranges, such as httpx>=0.27. A lock file records the exact version of every library installed, including the libraries they depend on. Commit the lock file for applications, so every install matches what you tested; upgrade on purpose, one package at a time, and run the tests.\n\nuv creates the environment, installs Python versions, resolves and locks dependencies, and runs commands, and it is very fast. If the customer only allows standard tools, plain venv and pip work everywhere, and pip-tools or a pip freeze file gives you a lock. Poetry is another popular all-in-one tool you may find in existing repos. The table compares them. Whichever you use, a quick check of sys.executable tells you which Python is really running, which solves many 'module not found' mysteries.\n\nPin the Python version too, not only the libraries. requires-python = \">=3.12\" in pyproject.toml says which versions the code supports. uv python install 3.12 downloads that interpreter, and uv python pin 3.12 writes a .python-version file that uv (and tools such as pyenv) read, so everyone on the project uses the same version.\n\nMany customers block the public package index (PyPI). They run a private index or mirror, often Artifactory or Nexus. Point pip at it with the PIP_INDEX_URL environment variable, or uv with UV_DEFAULT_INDEX or an [[tool.uv.index]] entry in pyproject.toml; ask for the URL and credentials in the first week. Some servers have no internet at all. Then build a wheelhouse, a folder of downloaded package files, on a machine that has access, copy it over, and install with --no-index --find-links so nothing is fetched from the network. Download wheels for the server's operating system, CPU and Python version, not your laptop's.",
+    "example": "At Pennyrigg the nightly job fails with 'No module named pydantic' although the developer installed it. sys.executable shows the scheduler runs /usr/bin/python3, while the library went into a conda environment on his account. The fix is to run the job with uv run from the project folder, so it always uses the project's own .venv. On a later project the bank's servers had no internet. The FDE ran pip download on a Linux build box with the same Python 3.12, copied the wheelhouse folder over with the approved file transfer, and installed with --no-index. uv python pin 3.12 made sure the laptops matched the server.",
+    "code": "# Option A: uv (one fast tool for Python versions, venvs and locking)\nuv sync                          # create .venv and install from uv.lock\nuv run pytest                    # run a command inside the environment\nuv add \"pydantic>=2.7\"           # add a dependency and update uv.lock\nuv lock --upgrade-package httpx  # upgrade one library on purpose\n\n# Option B: plain pip and venv (always available)\npython -m venv .venv\nsource .venv/bin/activate        # Windows: .venv\\Scripts\\activate\npip install -e .                 # your package, editable\npip install pytest ruff mypy\npip freeze > requirements-lock.txt   # record exact versions\n\n# Which Python is running? Check before blaming the code.\npython -c \"import sys; print(sys.executable)\"\n\n# Pin the Python version itself\nuv python install 3.12\nuv python pin 3.12              # writes .python-version\n# pyproject.toml:  requires-python = \">=3.12\"\n\n# Customer's private package index (ask for the URL)\nexport PIP_INDEX_URL=https://pypi.bank.example/simple\nexport UV_DEFAULT_INDEX=https://pypi.bank.example/simple\n\n# No internet on the server: build a wheelhouse elsewhere, then install offline\npip download -r requirements-lock.txt -d wheelhouse \\\n  --platform manylinux2014_x86_64 --python-version 3.12 --only-binary=:all:\npip install --no-index --find-links wheelhouse -r requirements-lock.txt",
+    "lang": "bash",
+    "table": {
+     "headers": [
+      "Tool",
+      "What it does",
+      "Good for"
+     ],
+     "rows": [
+      [
+       "venv + pip",
+       "Built-in environment and installer",
+       "Locked-down machines, simple scripts"
+      ],
+      [
+       "pip-tools",
+       "Compiles a pinned requirements file",
+       "pip users who need a lock file"
+      ],
+      [
+       "uv",
+       "Python versions, venv, lock, run; very fast",
+       "New projects and fast CI"
+      ],
+      [
+       "Poetry",
+       "Dependency management and packaging",
+       "Existing repos that already use it"
+      ],
+      [
+       "Wheelhouse + --no-index",
+       "Offline install from a folder of files",
+       "Servers with no internet access"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Settings and logging configuration",
+    "body": "Settings are the values that change between environments: API URLs, tokens, batch sizes, log levels. Keep them out of the code. Read them from environment variables, check at start-up that the required ones exist, and exit with a clear message naming what is missing. Put fake examples in .env.example and keep the real .env out of git.\n\nA small typed Settings object, a dataclass or a pydantic-settings class, gives the rest of the program one clear place to read configuration from, with types and defaults.\n\nConfigure logging once, at the program's entry point, and take the level from settings, so the customer can switch to DEBUG without editing code. Library modules only call logging.getLogger(__name__). The observability lesson shows the logging module in depth, including dictConfig and JSON output. Two rules matter most here: never log secrets such as tokens, and log the settings that matter for debugging, such as the target URL and batch size, at start-up.\n\nFor local development you keep settings in a .env file of KEY=value lines. The python-dotenv package loads it: call load_dotenv() once at start-up and the values appear in os.environ; real environment variables win over the file. pydantic-settings goes further: you declare a class with typed fields, it reads the environment and the .env file, converts types ('250' becomes the int 250), and raises a clear error listing every missing field. SecretStr hides a token when the settings are printed or logged.\n\nKeep secrets and clutter out of git with a .gitignore at the repo root. A standard Python one lists .env, .venv/, __pycache__/, *.pyc, .ipynb_checkpoints/, .pytest_cache/, .mypy_cache/, .ruff_cache/ and dist/. Commit .env.example instead.",
+    "example": "Pennyrigg's first deployment fails silently on the customer's server because CLAIMS_API_URL was never set and the code quietly defaulted to a test URL. With load_settings, the job now stops immediately with 'Missing settings: CLAIMS_API_URL', and the platform engineer fixes the deployment config in five minutes. Later the team switched to the pydantic-settings version below: a missing CLAIMS_API_TOKEN now produces a validation error naming the field, and the token prints as asterisks in the start-up log.",
+    "code": "# src/claimsync/settings.py\nimport logging\nimport os\nfrom dataclasses import dataclass\n\n@dataclass(frozen=True)\nclass Settings:\n    api_url: str\n    api_token: str\n    log_level: str = \"INFO\"\n    batch_size: int = 500\n\ndef load_settings() -> Settings:\n    missing = [k for k in (\"CLAIMS_API_URL\", \"CLAIMS_API_TOKEN\") if not os.environ.get(k)]\n    if missing:                                  # fail fast and name what is missing\n        raise SystemExit(f\"Missing settings: {', '.join(missing)}\")\n    return Settings(\n        api_url=os.environ[\"CLAIMS_API_URL\"],\n        api_token=os.environ[\"CLAIMS_API_TOKEN\"],\n        log_level=os.environ.get(\"LOG_LEVEL\", \"INFO\").upper(),\n        batch_size=int(os.environ.get(\"BATCH_SIZE\", \"500\")),\n    )\n\ndef main() -> None:\n    settings = load_settings()\n    logging.basicConfig(level=settings.log_level,   # configured once, at the entry point\n                        format=\"%(asctime)s %(levelname)s %(name)s %(message)s\")\n    log = logging.getLogger(\"claimsync\")\n    log.info(\"start batch_size=%d url=%s\", settings.batch_size, settings.api_url)\n    # never log settings.api_token\n\n\n# src/claimsync/settings.py  (pydantic-settings version: pip install pydantic-settings)\nfrom pydantic import SecretStr\nfrom pydantic_settings import BaseSettings, SettingsConfigDict\n\nclass Settings(BaseSettings):\n    model_config = SettingsConfigDict(env_prefix=\"CLAIMS_\", env_file=\".env\")\n\n    api_url: str                      # required: CLAIMS_API_URL\n    api_token: SecretStr              # required, and hidden when printed\n    log_level: str = \"INFO\"           # optional: CLAIMS_LOG_LEVEL\n    batch_size: int = 500             # \"250\" in the env becomes the int 250\n\nsettings = Settings()                 # reads real env vars first, then .env\nprint(settings.batch_size, settings.api_token)   # 250 **********\n\n# Simplest option: pip install python-dotenv\n#   from dotenv import load_dotenv\n#   load_dotenv()      # copies .env into os.environ; real env vars win\n\n# .gitignore\n# .env\n# .venv/\n# __pycache__/\n# *.pyc\n# .ipynb_checkpoints/\n# .pytest_cache/\n# .mypy_cache/\n# .ruff_cache/\n# dist/",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Jupyter notebook",
+    "An .ipynb document of code cells, their outputs and notes, run one cell at a time."
+   ],
+   [
+    "Kernel",
+    "The Python process that runs a notebook's cells; it should be the project's own venv."
+   ],
+   [
+    "Hidden state",
+    "Variables left in a notebook's memory from cells run out of order or deleted."
+   ],
+   [
+    "nbstripout",
+    "A tool that removes notebook outputs before they are committed to git."
+   ],
+   [
+    "Private package index",
+    "A company's own package server or PyPI mirror, used instead of public PyPI."
+   ],
+   [
+    "Wheelhouse",
+    "A folder of downloaded package files used to install without internet access."
+   ],
+   [
+    ".python-version",
+    "A file that pins the Python version for tools such as uv and pyenv."
+   ],
+   [
+    "python-dotenv",
+    "A library that loads KEY=value lines from a .env file into environment variables."
+   ],
+   [
+    "pydantic-settings",
+    "A library that reads typed settings from environment variables and .env files and validates them."
+   ],
+   [
+    ".gitignore",
+    "A file listing paths git should never track, such as .env and .venv."
+   ]
+  ],
+  "add_practice": [
+   "Register your project's venv as a Jupyter kernel, explore a CSV in a notebook, move one cleaning function into src/ with a test, and confirm the notebook passes nbconvert --execute.",
+   "Build a wheelhouse for your project with pip download, then create a fresh venv and install from it with --no-index --find-links while your network is off.",
+   "Replace your settings module with pydantic-settings, delete one required variable and read the error, then add a standard .gitignore and check git status shows no .env."
+  ]
+ },
+ "stats": {
+  "add_subtopics": [
+   {
+    "title": "How sure is an eval score? Uncertainty on small AI eval sets",
+    "body": "FDEs report eval results to customers all the time: 'the new prompt scores 84%', 'model B is 3 points better'. On small eval sets those numbers are much shakier than they look, and this lesson's tools tell you how shaky.\n\nOne score is a proportion: 42 correct out of 50 items. Treat it like a conversion rate and put an interval around it. The Wilson interval works well for small sets and for scores near 0% or 100%. For 42 of 50 it runs from about 71% to 92%. So '84%' really means 'somewhere between the low 70s and the low 90s'. To halve that width you need about four times as many items.\n\nComparing two prompts or models is different from an A/B test on users, because both versions answer the SAME items. That pairing is useful: only the items where the two disagree carry information. Count the items only B got right and the items only A got right, and test whether that split is more lopsided than a coin flip. That is McNemar's test. A paired bootstrap does the same job more generally: resample the items thousands of times, keeping A and B together for each item, and look at the spread of the difference.\n\nIn the code, prompt B scores 81% against A's 78% on 100 items. B fixes 9 items and breaks 6. McNemar's p is 0.61 and the bootstrap interval for the difference runs from -5 to +11 points, so +3 points on 100 items is very likely noise. Say so before the customer changes their production prompt. For how to build the eval set itself, see evals.",
+    "example": "An FDE at Harbourline Legal compared two contract-review prompts on the firm's 100-clause eval set. The new one scored 81% versus 78% and the partner wanted to switch that day. The FDE showed that the new prompt fixed 9 clauses but broke 6 others, McNemar p = 0.61, and the paired bootstrap interval crossed zero. They added 300 more labelled clauses, reran both prompts and made the call on the larger set, where the gap held at 4 points with an interval of +1 to +7.",
+    "code": "import numpy as np\nfrom scipy import stats\nfrom statsmodels.stats.proportion import proportion_confint\n\n# 1. One score: 42 of 50 eval items correct\nk, n = 42, 50\nlow, high = proportion_confint(k, n, alpha=0.05, method=\"wilson\")\nprint(f\"accuracy {k/n:.0%}, 95% Wilson CI [{low:.0%}, {high:.0%}]\")\n# accuracy 84%, 95% Wilson CI [71%, 92%]\n\n# 2. Two prompts on the SAME 100 items: +3 points (78% -> 81%)\nrng = np.random.default_rng(5)\na = np.array([1] * 78 + [0] * 22)            # prompt A: 1 = correct\nb = a.copy()\nb[rng.choice(np.where(a == 1)[0], 6, replace=False)] = 0   # B breaks 6 items A got right\nb[rng.choice(np.where(a == 0)[0], 9, replace=False)] = 1   # B fixes 9 items A got wrong\nprint(a.mean(), b.mean())                    # 0.78 0.81\n\nonly_b = int(((b == 1) & (a == 0)).sum())    # items only B got right\nonly_a = int(((a == 1) & (b == 0)).sum())    # items only A got right\np = stats.binomtest(only_b, only_b + only_a, 0.5).pvalue   # exact McNemar test\nprint(f\"B-only {only_b}, A-only {only_a}, McNemar p = {p:.2f}\")\n# B-only 9, A-only 6, McNemar p = 0.61  -> could easily be noise\n\n# 3. Paired bootstrap: resample items, keep A and B together\ndiffs = []\nfor _ in range(10_000):\n    idx = rng.integers(0, len(a), len(a))\n    diffs.append(b[idx].mean() - a[idx].mean())\nprint(\"95% CI for B - A:\", np.percentile(diffs, [2.5, 97.5]).round(2))\n# [-0.05  0.11]: includes 0, so no proven difference",
+    "lang": "Python",
+    "checklist": [
+     "Report every eval score with an interval, not a bare percentage",
+     "Use the Wilson interval for small sets or scores near 0 or 100%",
+     "Compare two systems on the same items with a paired method",
+     "Count items fixed and items broken, not just the net change",
+     "Treat a few points on about 100 items as noise until shown otherwise",
+     "Grow the eval set before making a big decision"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Correlation versus causation",
+    "body": "Correlation measures how strongly two variables move together. Pearson's r runs from -1 (perfectly opposite) through 0 (no straight-line relationship) to +1 (perfectly together). Spearman's rho does the same on ranks and handles curved or outlier-heavy data better.\n\nCorrelation does not tell you which way the influence runs, or whether a third factor drives both. That third factor is called a confounder. Customers who use a new chatbot may spend more because they are your most engaged customers, and engagement drives both chatbot use and spending.\n\nThe cleanest way to show causation is a randomized experiment such as an A/B test. When you cannot randomize, compare before and after against a similar untouched group (difference-in-differences), control for known confounders, and be honest in the write-up about what the analysis can and cannot prove.\n\nSimpson's paradox is a confounder in its most surprising form: a rate that looks better overall can be worse inside every single group. It happens when the groups are mixed in different proportions. In the code below the new triage tool resolves 76% of tickets overall against 58% for the old one, yet it is worse at both sites. The new tool was mostly used at Leeds, where tickets are easy, and the old one mostly at Porto, where they are hard. Whenever you compare rates, split them by the obvious segments (site, channel, customer size) before you conclude anything.\n\nTwo biases come from which data you get to see. Survivorship bias means looking only at the cases that made it through: studying only customers who renewed tells you nothing about why others left. Selection bias means the people in your data chose, or were chosen, in a way linked to the outcome: pilot users who volunteered for a new AI tool are usually the keenest staff, so their results overstate what everyone else will get.",
+    "example": "A bank sees that branches with more ATMs have more fraud. Removing ATMs would not reduce fraud: busy city branches have both more ATMs and more transactions, and more transactions produce more fraud cases. When you divide fraud cases by transactions, the correlation with ATM count almost disappears. In a second case, a support team reported that its new AI triage tool resolved 76% of tickets against 58% for the old one. Split by site, the new tool was worse in both Leeds and Porto; it simply handled far more of the easy Leeds tickets.",
+    "code": "import numpy as np\nfrom scipy import stats\nrng = np.random.default_rng(0)\n\ntraffic = rng.uniform(1_000, 20_000, size=200)        # confounder\natms = np.round(traffic / 4_000 + rng.normal(0, 0.5, 200))\nfraud = 0.002 * traffic + rng.normal(0, 4, 200)       # driven by traffic only\n\nr, p = stats.pearsonr(atms, fraud)\nprint(f\"ATMs vs fraud: r = {r:.2f}\")                  # strong, but misleading\n\nrate = fraud / traffic * 10_000                       # fraud per 10k transactions\nr2, _ = stats.pearsonr(atms, rate)\nprint(f\"ATMs vs fraud rate: r = {r2:.2f}\")            # much weaker\nrho, _ = stats.spearmanr(atms, fraud)\nprint(f\"Spearman rho = {rho:.2f}\")\n\n\nimport pandas as pd\n\n# Simpson's paradox: resolution rate of an AI triage tool at two sites\ndf = pd.DataFrame({\n    \"site\":     [\"Leeds\", \"Leeds\", \"Porto\", \"Porto\"],\n    \"tool\":     [\"old\",   \"new\",   \"old\",   \"new\"],\n    \"tickets\":  [100,     400,     400,     100],\n    \"resolved\": [90,      340,     200,     40],\n})\npooled = df.groupby(\"tool\")[[\"resolved\", \"tickets\"]].sum()\nprint((pooled.resolved / pooled.tickets).round(2).to_dict())\n# {'new': 0.76, 'old': 0.58}   pooled: new looks far better\n\ndf[\"rate\"] = (df.resolved / df.tickets).round(2)\nprint(df.pivot(index=\"site\", columns=\"tool\", values=\"rate\"))\n# tool    new  old\n# site\n# Leeds  0.85  0.9\n# Porto  0.40  0.5     inside each site the new tool is WORSE",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Situation",
+      "What it can show",
+      "Typical method"
+     ],
+     "rows": [
+      [
+       "Randomized A/B test",
+       "Causation",
+       "z-test, t-test, CI"
+      ],
+      [
+       "Before/after with a control group",
+       "Likely causation",
+       "Difference-in-differences"
+      ],
+      [
+       "Before/after, no control",
+       "Weak evidence",
+       "Compare with seasonality"
+      ],
+      [
+       "Historical correlation",
+       "Association only",
+       "Pearson or Spearman"
+      ],
+      [
+       "Single anecdote",
+       "A hypothesis to test",
+       "Plan an experiment"
+      ],
+      [
+       "Pooled rate across segments",
+       "Can reverse inside each segment (Simpson's paradox)",
+       "Split by segment before comparing"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "A/B tests and statistical significance",
+    "body": "In an A/B test, each user is randomly assigned to A or B. Random assignment is the key idea: it makes the two groups alike in every way except the change you made, so a difference in results can be credited to that change.\n\nThe null hypothesis says the change has no effect. The p-value is the probability of seeing a difference at least as large as yours if the null hypothesis were true. A small p-value, conventionally below 0.05, means your result would be unusual under 'no effect', so you call it statistically significant. The 0.05 cut-off is a convention, so treat it as a guide.\n\nAlways report three things together: the observed difference, its confidence interval and the p-value. For conversion rates, a two-proportion z-test or a chi-square test is standard. For averages such as order value, use Welch's t-test, which does not assume both groups have equal variance.\n\nMany business metrics are heavily skewed: basket size, handle time, claim value. A few huge values make averages jumpy, and the t-test's assumptions get shaky with small samples. Two safer options: a bootstrap confidence interval of the difference (resample each group, compute B minus A, repeat thousands of times, take the 2.5th and 97.5th percentiles), or the Mann-Whitney U test, which compares the two whole distributions using ranks and does not need normal data. Mann-Whitney answers 'does B tend to produce larger values?', not 'is the mean larger?', so say which question you answered.\n\nRatio metrics such as revenue per visitor or tickets per agent need care too. The unit you randomized (the user) is not always the unit in the ratio (sessions, orders), and one user's many sessions are not independent. Compute the metric per randomized user first, or use a bootstrap that resamples whole users.",
+    "example": "A grocery delivery app tests a new checkout page. Control: 520 orders from 10,000 visitors (5.20%). Variant: 585 from 10,000 (5.85%). The lift is 0.65 points, p is about 0.044, and the 95% interval runs from roughly 0.02 to 1.28 points. The effect is probably real, but it might be tiny. Then you check average basket size with Welch's t-test to make sure the new page did not trade conversions for smaller orders. Because basket sizes are skewed, you confirm the basket result with a bootstrap interval and a Mann-Whitney test: both agree there is no clear difference.",
+    "code": "import numpy as np\nfrom scipy import stats\n\n# Conversion: chi-square test on a 2x2 table [converted, not converted]\ntable = np.array([[520, 10_000 - 520],\n                  [585, 10_000 - 585]])\nchi2, p_conv, dof, _ = stats.chi2_contingency(table, correction=False)\nprint(f\"conversion p = {p_conv:.3f}\")   # about 0.044, same as the z-test\n\n# Basket size: Welch's t-test (unequal variances)\nrng = np.random.default_rng(3)\nbasket_a = rng.gamma(4, 12.0, size=520)     # euros per order, group A\nbasket_b = rng.gamma(4, 11.8, size=585)     # group B\nt, p_basket = stats.ttest_ind(basket_b, basket_a, equal_var=False)\nprint(f\"basket A {basket_a.mean():.2f}, B {basket_b.mean():.2f}, p = {p_basket:.2f}\")\n\n# Skewed metrics (basket size): bootstrap CI of the difference, and Mann-Whitney U\ndiffs = [rng.choice(basket_b, len(basket_b)).mean() - rng.choice(basket_a, len(basket_a)).mean()\n         for _ in range(5_000)]\nprint(\"B - A basket, 95% CI:\", np.percentile(diffs, [2.5, 97.5]).round(2))\nu, p_mw = stats.mannwhitneyu(basket_b, basket_a)   # compares whole distributions, no normality needed\nprint(f\"Mann-Whitney p = {p_mw:.2f}\")\n# B - A basket, 95% CI: [-3.57  2.01]  -> includes 0\n# Mann-Whitney p = 0.76",
+    "lang": "Python",
+    "checklist": [
+     "Hypothesis and one primary metric written down before launch",
+     "Users (not page views) randomly assigned, and they stay in their group",
+     "Sample size and run length fixed in advance, covering full weeks",
+     "Group sizes checked for the expected split (sample ratio check)",
+     "Guardrail metrics watched, such as refunds or page errors",
+     "Result reported as lift, 95% CI and p-value",
+     "Decision recorded, including inconclusive results"
+    ]
+   },
+   {
+    "title": "Sample size, power and peeking",
+    "body": "Before a test starts, decide how many users you need. The inputs are the baseline rate, the minimum detectable effect (MDE, the smallest lift worth acting on), the significance level (usually 0.05) and the power, the chance of detecting the effect if it really exists (usually 0.8). Small effects on small rates need large samples.\n\nPeeking means checking the p-value repeatedly and stopping as soon as it dips below 0.05. Because the p-value wanders up and down by chance, checking daily gives many chances to cross the line, and the real false positive rate can climb well above 5%. Fix the sample size and look once, or use a method designed for continuous monitoring, such as a sequential test.\n\nTesting many metrics or many segments has the same problem. With 20 independent comparisons at 0.05, you expect about one false win by chance alone. Name one primary metric in advance and treat the rest as exploratory, or correct for multiple comparisons.\n\nBefore reading any result, check that the split itself worked. If you planned 50/50 but got 50,600 users in A and 49,100 in B, that is a sample ratio mismatch (SRM). A chi-square test against the planned split tells you whether the gap is bigger than chance. SRM almost always means a bug: a redirect that drops some users, a bot filter applied to one group, or a crash in one app version. The result cannot be trusted until you find the cause. Check SRM for each major segment too, because the bug often hits only one browser, device or country.",
+    "example": "A subscription meal-kit company converts 4% of trial users to paid. They want to detect an increase to 4.4% (a 10% relative lift). The formula below says they need roughly 39,500 trial users per group. With 6,000 new trials a week split in two, the test must run about 13 weeks, so you suggest testing a bolder change with a larger expected effect instead. When the test finally ran, group A had 50,600 users and group B 49,100. The SRM check gave p = 0.000002, and splitting by platform showed Android users were missing from B because of a crash in the new flow. The team fixed the crash and restarted the test.",
+    "code": "import numpy as np\nfrom scipy import stats\n\ndef sample_size_per_group(p1, p2, alpha=0.05, power=0.8):\n    \"\"\"Users per group for a two-sided test of two proportions.\"\"\"\n    z_a = stats.norm.ppf(1 - alpha / 2)     # 1.96 for alpha 0.05\n    z_b = stats.norm.ppf(power)             # 0.84 for power 0.8\n    p_bar = (p1 + p2) / 2\n    num = (z_a * np.sqrt(2 * p_bar * (1 - p_bar))\n           + z_b * np.sqrt(p1 * (1 - p1) + p2 * (1 - p2))) ** 2\n    return int(np.ceil(num / (p2 - p1) ** 2))\n\nn = sample_size_per_group(0.04, 0.044)\nprint(n)                                  # about 39,500 per group\nprint(f\"weeks at 3,000 per group per week: {n / 3_000:.1f}\")\nprint(sample_size_per_group(0.04, 0.05))  # a bigger lift needs far fewer\n\n# Sample ratio mismatch (SRM): did the 50/50 split really happen?\ncounts = [50_600, 49_100]                    # users actually in A and B\nchi2, p_srm = stats.chisquare(counts)        # expected: equal split\nprint(f\"A share {counts[0] / sum(counts):.1%}, SRM p = {p_srm:.6f}\")\n# A share 50.8%, SRM p = 0.000002  -> the split is broken, do not trust the result\n\n# Check each segment too: a bug often hits one browser or app version\nfor seg, a, b in [(\"web\", 30_100, 29_900), (\"ios\", 12_000, 12_050), (\"android\", 8_500, 7_150)]:\n    print(seg, round(stats.chisquare([a, b]).pvalue, 4))\n# web 0.4142\n# ios 0.7471\n# android 0.0      <- android users are missing from B",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Wilson interval",
+    "A confidence interval for a proportion that behaves well for small samples and rates near 0 or 100%."
+   ],
+   [
+    "Paired comparison",
+    "Comparing two systems on the same items, so only the items where they disagree carry information."
+   ],
+   [
+    "McNemar's test",
+    "A test for paired yes-or-no results that checks whether items fixed and items broken are more lopsided than chance."
+   ],
+   [
+    "Paired bootstrap",
+    "Resampling items with replacement while keeping both systems' results for each item together, to get an interval for their difference."
+   ],
+   [
+    "Simpson's paradox",
+    "A pattern where a comparison overall reverses inside every subgroup because the groups are mixed in different proportions."
+   ],
+   [
+    "Survivorship bias",
+    "Drawing conclusions only from cases that made it through a filter, ignoring those that dropped out."
+   ],
+   [
+    "Selection bias",
+    "Distortion caused when the people or items in the data were chosen in a way linked to the outcome."
+   ],
+   [
+    "Mann-Whitney U test",
+    "A rank-based test of whether one group tends to have larger values than another, without assuming normal data."
+   ],
+   [
+    "Sample ratio mismatch",
+    "When the actual split between test groups differs from the planned split by more than chance, usually a sign of a bug."
+   ]
+  ],
+  "add_practice": [
+   "Your eval set has 60 items and the model gets 51 right. Compute the Wilson interval with statsmodels, then work out roughly how many items you would need to make the interval half as wide.",
+   "Build a 100-item paired result for two prompts where B wins 10 items and loses 7. Run McNemar's test and a paired bootstrap, and write a two-sentence note to a customer on whether to switch prompts.",
+   "Create a small table of approval rates for two loan models across two regions where the pooled comparison reverses inside each region. Explain the reversal in plain words.",
+   "Simulate an A/B test where 10% of group B's Android users are silently dropped. Run an overall SRM check and a per-platform check and note which one finds the problem faster."
+  ]
+ },
+ "genesis": {
+  "add_subtopics": [
+   {
+    "title": "Palantir today: AIP bootcamps and the titles to search for",
+    "body": "The Echo and Delta story is Palantir's early history. Interviewers today often refer to its newer motion too, so know it.\n\nIn 2023 Palantir launched AIP, its Artificial Intelligence Platform. AIP lets customers put large language models to work on top of their own data and workflows in Foundry and Gotham, with controls on what the model can see and do. To sell it, Palantir ran AIP bootcamps: short, hands-on sessions, often one to five days, where the customer's own people sit with Palantir engineers and build working use cases on their real data. The customer leaves with something running instead of a slide deck, and the best use cases turn into paid deployments.\n\nThis is the FDE model compressed. The old version spent weeks on site before showing value; the bootcamp shows value in days, then the forward team stays to take it to production. Many AI companies copy the idea with pilot sprints and hackathons at the customer.\n\nWhen you look for these jobs, one title will not find them all. Search for each variant: Forward Deployed Engineer, Forward Deployed AI Engineer, Forward Deployed Software Engineer, Applied AI Engineer, AI Deployment Engineer and Deployment Strategist (the Echo side). At some AI labs, roles called Solutions Engineer or Solutions Architect are also hands-on builders. Read the verbs in the posting: 'build, ship, deploy' points to FDE work. The fderoles topic explains how each title differs by company type.",
+    "example": "A beginner searching only for 'Forward Deployed Engineer' found 12 openings. Adding 'Applied AI Engineer', 'AI Deployment Engineer' and 'Forward Deployed AI Engineer' raised it to 41. Reading the verbs removed 9 that were really pre-sales demo roles. In her interview at a logistics AI startup, she was asked how she would run a three-day build session with a customer, and she described the bootcamp format: agree one use case, connect real data on day one, demo a working flow on day three.",
+    "code": "Job search list (paste each into the job board, one at a time)\n----------------------------------------------------------------\n\"Forward Deployed Engineer\"\n\"Forward Deployed AI Engineer\"\n\"Forward Deployed Software Engineer\"\n\"Applied AI Engineer\"\n\"AI Deployment Engineer\"\n\"Deployment Strategist\"          (the Echo side of the pair)\n\"Solutions Engineer\" + \"production\" (check it is hands-on)\n\nBootcamp-style build session (3 days)\n-------------------------------------\nDay 1  agree one use case and metric; connect real data\nDay 2  build the first working flow with the users watching\nDay 3  demo on their data; list what production needs",
+    "lang": "Text"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "How FDEs differ from similar roles",
+    "body": "Several customer-facing technical roles sound alike. The short version: the difference comes down to who writes production code, and when they are involved.\n\nA Sales Engineer (also called a pre-sales Solutions Engineer) runs demos and small proofs before the sale, and does not ship production code. A Solutions Architect (SA) designs and advises, mostly before the sale. An Implementation or Professional Services engineer configures the product to match a statement of work (SOW) and rarely feeds the product roadmap. A Customer Success Engineer (CSE) helps customers adopt the product after the sale. A technology consultant bills hours and hands over documents or custom code that does not feed a product.\n\nAn FDE writes and ships production code inside the customer, on the vendor's platform, and feeds lessons back into the product. A commonly quoted, rough estimate is that FDEs spend 70 to 80 percent of their time on code and model work; it varies a lot by company and seniority.\n\nThis is only a summary. The fderoles topic compares these roles in depth: where each sits in the deal, a week in the life of an FDE, and how to move between them.",
+    "example": "A bank buys an AI document-processing product. The Sales Engineer ran the demo on sample loan forms. The SA drew the architecture diagram during the sales cycle. The FDE builds the connector to the bank's loan system and tunes extraction for 12 loan forms. An implementation engineer later sets up user roles and templates in a second business unit, following the SOW. Six months later the CSE runs quarterly reviews and training.",
+    "code": "Role           | Main output              | Writes prod code? | When\n---------------|--------------------------|-------------------|-------------------\nSales Engineer | demos, small proofs      | no (demo code)    | pre-sale\nSA             | designs, proposals       | rarely            | pre-sale\nImplementation | configured product to a  | config, scripts   | post-sale, per SOW\n/ Prof. Svcs   | SOW; rarely feeds roadmap|                   |\nCSE            | adoption, health checks  | rarely            | post-sale\nConsultant     | reports, bespoke builds  | sometimes         | per contract\nFDE            | working deployments +    | yes, most of time | pre and post-sale\n               | product feedback         |                   |\n\nDeeper comparison: see the fderoles topic.",
+    "lang": "Text"
+   }
+  ],
+  "concept_fix": [
+   [
+    "A typical FDE spends 70 to 80% of their time on code and model work.",
+    "A commonly quoted, rough estimate is that FDEs spend 70 to 80% of their time on code and model work; it varies a lot by company and seniority."
+   ]
+  ],
+  "add_glossary": [
+   [
+    "Palantir AIP",
+    "Palantir's Artificial Intelligence Platform (2023), which applies large language models to a customer's own data and workflows."
+   ],
+   [
+    "AIP bootcamp",
+    "A short hands-on session, often one to five days, where customer staff and Palantir engineers build working use cases on real data."
+   ],
+   [
+    "Sales Engineer",
+    "A pre-sales role that runs demos and small proofs to win the deal; it does not ship production code."
+   ],
+   [
+    "Implementation engineer",
+    "A post-sale role that configures the product to a statement of work and rarely shapes the product roadmap."
+   ],
+   [
+    "Applied AI Engineer",
+    "A common title at AI labs and startups for hands-on engineers who build AI systems with customers."
+   ]
+  ],
+  "add_practice": [
+   "Search a job board for each FDE title variant in this lesson. Record how many results each gives, remove the pre-sales roles by reading the verbs, and list the three postings closest to FDE work.",
+   "Plan a three-day, bootcamp-style build session for an invented hospital customer: the one use case, the data you need on day one, and what you would demo on day three."
+  ]
+ },
+ "slg": {
+  "add_subtopics": [
+   {
+    "title": "Paying for FDE time: services models",
+    "body": "Somebody has to pay for the FDE hours. How the vendor charges for them changes the company's reported numbers, so leadership argues about it often.\n\nOption one: bundle the FDE effort into the platform price. The customer sees one subscription. All FDE cost lands in COGS with no matching services revenue, so gross margin drops the most, but every dollar counts as recurring ARR and later NRR.\n\nOption two: bill the FDE work as professional services under a statement of work (SOW). A fixed fee means one price for a defined scope; if the work runs over, the vendor absorbs it. Time and materials (T&M) means the customer pays per hour, so overruns are billed. Services revenue is not recurring, so investors value it far less than ARR, and services margin is often near zero or even negative, because vendors price it low to win the software deal.\n\nA common middle path is a paid pilot: the customer pays a modest fee for the first weeks, and that fee is credited against year one if they sign. Paying anything filters out customers who are only curious.\n\nLeaders also watch the services attach rate: the share of deals that include a paid SOW. A high rate can mean the product is hard to use without help.\n\nThe code shows one deal three ways. The psa topic covers how services teams run these contracts day to day, and the roi topic covers how the customer's own pricing (seats, usage, outcomes) works.",
+    "example": "Tallowby, an AI claims vendor, sold a $600k platform deal needing 1,200 FDE hours. Bundled, the account's gross margin was 55 percent. As a $120k fixed-fee SOW it rose to 62 percent overall, with services margin at minus 25 percent. Billed as T&M at $175 per hour, it reached 67 percent. The CFO chose T&M for integration-heavy accounts, plus an $80k paid pilot credited against year one for new customers.",
+    "code": "# One $600k-a-year platform deal plus 1,200 hours of FDE work\n# (loaded cost $125 per hour). Three ways to charge for the FDE time.\nPLATFORM, HOURS, COST_PER_HOUR = 600_000, 1_200, 125\nSOFTWARE_COGS = 0.20 * PLATFORM            # hosting, model inference, support\nfde_cost = HOURS * COST_PER_HOUR           # 150,000\n\ndef show(name, services_revenue, platform_revenue=PLATFORM):\n    revenue = platform_revenue + services_revenue\n    cogs = SOFTWARE_COGS + fde_cost\n    total = (revenue - cogs) / revenue\n    svc = (services_revenue - fde_cost) / services_revenue if services_revenue else None\n    svc_txt = f\"{svc:.0%}\" if svc is not None else \"n/a\"\n    print(f\"{name:<26} revenue {revenue:>9,}  gross margin {total:.0%}  services margin {svc_txt}\")\n\nshow(\"Bundled into platform\", 0)\nshow(\"Fixed-fee SOW $120k\", 120_000)\nshow(\"T&M SOW at $175/hour\", HOURS * 175)\n# Bundled into platform      revenue   600,000  gross margin 55%  services margin n/a\n# Fixed-fee SOW $120k        revenue   720,000  gross margin 62%  services margin -25%\n# T&M SOW at $175/hour       revenue   810,000  gross margin 67%  services margin 29%\n\n# Paid pilot of $80k credited against year one: cash comes early,\n# but year-one platform revenue is only 600k - 80k new money.\npilot, year_one = 80_000, PLATFORM\nprint(\"new money in year one after credit:\", f\"{year_one - pilot:,}\")   # 520,000\n\n# Services attach rate: share of new deals that include a paid services SOW\ndeals_with_sow, deals = 14, 20\nprint(f\"attach rate {deals_with_sow / deals:.0%}\")                      # 70%",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Model",
+      "Who carries overrun risk",
+      "Effect on the numbers"
+     ],
+     "rows": [
+      [
+       "Bundled into platform",
+       "Vendor",
+       "All FDE cost in COGS; revenue counts as ARR"
+      ],
+      [
+       "Fixed-fee SOW",
+       "Vendor",
+       "Services revenue, often low or negative margin"
+      ],
+      [
+       "T&M SOW",
+       "Customer",
+       "Better services margin; not recurring"
+      ],
+      [
+       "Paid pilot, credited",
+       "Shared",
+       "Early cash and a serious buyer; reduces year-one new money"
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Unit economics and gross margin",
+    "body": "Revenue is the money customers pay. Cost of goods sold (COGS) is what it costs to deliver the product: cloud hosting, support, and for FDE companies, a share of engineer salaries. Gross margin is (revenue minus COGS) divided by revenue.\n\nPure software companies often have high gross margins because serving one more user costs very little. Putting engineers on customer projects raises COGS, so the margin drops.\n\nThis lower margin is the 'margin' side of the margin-for-moat trade. It is a real cost and you should not hide it. The question is what the company gets in return.\n\nAI companies carry one more cost that classic SaaS does not: model inference. Every request to a language model costs money, whether the vendor pays an API provider or runs its own GPUs, and that cost sits in COGS. So AI companies often start with gross margins below the classic SaaS level, which is often quoted at around 75 to 80 percent, before a single FDE is added. The margin-for-moat trade stacks on top of that lower starting point, which is why FDE teams at AI companies are pushed hard to turn repeated work into product.",
+    "example": "A company earns $10M in annual revenue. Hosting and support cost $1.5M. With no FDEs, gross margin is 85 percent. It then assigns 8 FDEs at a loaded cost of $250k each to customer work, adding $2M to COGS. Gross margin falls to 65 percent. If the same company is an AI vendor paying $1.2M a year for model inference, it starts at 73 percent before FDEs and falls to 53 percent with them.",
+    "code": "revenue = 10_000_000\nhosting_support = 1_500_000\nfde_count, fde_cost = 8, 250_000          # loaded cost per FDE per year\n\ndef gross_margin(rev, cogs):\n    return (rev - cogs) / rev\n\nprint(\"no FDEs:  \", round(gross_margin(revenue, hosting_support), 2))   # 0.85\ncogs_fde = hosting_support + fde_count * fde_cost\nprint(\"with FDEs:\", round(gross_margin(revenue, cogs_fde), 2))          # 0.65\n\n# An AI company also pays for model inference on every request\ninference = 1_200_000                     # model API or GPU cost per year\ncogs_ai = hosting_support + inference\nprint(\"AI, no FDEs:  \", round(gross_margin(revenue, cogs_ai), 2))                         # 0.73\nprint(\"AI with FDEs: \", round(gross_margin(revenue, cogs_ai + fde_count * fde_cost), 2))  # 0.53",
+    "lang": "Python"
+   },
+   {
+    "title": "Net Revenue Retention explained",
+    "body": "Net Revenue Retention (NRR) measures how revenue from a fixed group of existing customers changes over a period, usually a year. ARR means annual recurring revenue.\n\nThe formula is (starting ARR + expansion - contraction - churn) divided by starting ARR. Expansion is extra spending from upsells or new teams. Contraction is customers reducing spend. Churn is customers leaving.\n\nNRR above 100 percent means the existing customer base grows even if you sign no new customers. FDE-heavy companies aim to push this number up, because deep deployments tend to expand into more teams and use cases.\n\nAt AI vendors that charge by usage (tokens, documents, calls), expansion often arrives as consumption growth rather than a new contract. A team that starts sending twice as many documents doubles its spend without anyone signing anything. This makes NRR volatile: a busy quarter lifts it, a quiet month or a switch to a cheaper model lowers it. Leaders often look at a trailing average or at committed spend to smooth it out.\n\nKeep two kinds of churn apart. Logo churn counts customers lost, as a share of all customers. Revenue churn counts ARR lost, as a share of starting ARR. Losing two tiny customers out of four is 50 percent logo churn but may be only 5 percent revenue churn. Report both.",
+    "example": "A company starts the year with $20M ARR from 40 customers. During the year, those customers add $6M through expansion, two customers cut $1M, and three customers worth $1.5M leave. NRR = (20 + 6 - 1 - 1.5) / 20 = 117.5 percent. A usage-priced account that spent $100k in January and $205k in December grew its run-rate from $1.2M to $2.46M with no new contract. Separately, a cohort that loses two of four customers can show 50 percent logo churn but only 5 percent revenue churn if the lost customers were small.",
+    "code": "def nrr(start_arr, expansion, contraction, churn):\n    \"\"\"Net Revenue Retention for one cohort over one period.\"\"\"\n    return (start_arr + expansion - contraction - churn) / start_arr\n\n# Cohort: customers active on 1 Jan, measured on 31 Dec\nprint(f\"{nrr(20.0, 6.0, 1.0, 1.5):.1%}\")   # 117.5%\n\n# Gross Revenue Retention ignores expansion: shows pure leakage\ngrr = (20.0 - 1.0 - 1.5) / 20.0\nprint(f\"GRR {grr:.1%}\")                     # 87.5%\n\n# Usage-priced AI vendor: expansion arrives as consumption, month by month\nmonthly_spend = [100, 104, 112, 131, 118, 140, 165, 150, 172, 190, 176, 205]  # $k, one account\nprint(\"run-rate ARR Jan:\", monthly_spend[0] * 12, \" Dec:\", monthly_spend[-1] * 12)\n# run-rate ARR Jan: 1200  Dec: 2460   (but a quiet month can swing it by 10%)\n\n# Logo churn versus revenue churn for one year\ncustomers = {\"A\": 50, \"B\": 40, \"C\": 900, \"D\": 10}   # starting ARR in $k\nlost = [\"B\", \"D\"]                                    # two small customers left\nlogo_churn = len(lost) / len(customers)\nrevenue_churn = sum(customers[c] for c in lost) / sum(customers.values())\nprint(f\"logo churn {logo_churn:.0%}, revenue churn {revenue_churn:.0%}\")\n# logo churn 50%, revenue churn 5%",
+    "lang": "Python"
+   },
+   {
+    "title": "When SLG works and when it fails",
+    "body": "SLG works when field work turns into product. Over time, the same deployment should need fewer FDE hours, and gross margin should rise as a result.\n\nSLG fails when every deployment stays bespoke. Then margins never improve, and the company behaves like a consulting firm with a software licence attached.\n\nA simple health check is to track FDE hours per new deployment over time, alongside NRR. You want the first number going down and the second staying high.\n\nLeadership also judges FDE-heavy accounts with two companion metrics. CAC payback is how many months of gross profit from a customer it takes to repay the customer acquisition cost (CAC): the sales, pre-sales and early FDE spending needed to win the account. Many companies aim for well under 24 months. LTV:CAC compares the lifetime value of a customer (yearly gross profit divided by the yearly churn rate, in the simple version) with CAC; a ratio of about 3 or more is a commonly quoted healthy target. Heavy FDE work lowers the account's margin, which lengthens payback, so it has to be earned back through expansion and low churn.",
+    "example": "Company A's first 5 deployments took 3,000 FDE hours each. By deployments 16 to 20, the average was 1,100 hours because connectors and templates were productised. Company B's average stayed at 2,900 hours. Company A is running SLG well. Company B is at risk of becoming a consultancy. For one account, Company A spent $400k to win a $600k deal at 55 percent gross margin: payback is about 14.5 months and LTV:CAC about 8, so the FDE investment pays back.",
+    "code": "import statistics as st\n\n# FDE hours per deployment, in the order deployments started\ncompany_a = [3000, 2900, 2600, 2400, 2100, 1900, 1700, 1500, 1300, 1100]\ncompany_b = [3000, 2950, 3100, 2900, 2850, 3000, 2950, 2900, 2880, 2900]\n\ndef trend(hours):\n    first, last = st.mean(hours[:3]), st.mean(hours[-3:])\n    return round((last - first) / first, 2)   # negative = getting cheaper\n\nprint(\"A:\", trend(company_a))   # -0.54\nprint(\"B:\", trend(company_b))   # -0.04\n\n# Does an FDE-heavy account pay back? CAC payback and LTV:CAC\ncac = 400_000              # sales, SE and pre-sale FDE cost to win the account\narr = 600_000\ngm = 0.55                  # gross margin on this account, with FDE cost\npayback_months = cac / (arr * gm / 12)\nprint(f\"CAC payback: {payback_months:.1f} months\")     # 14.5 months\n\nannual_churn = 0.10        # 10% of such accounts lost per year\nltv = arr * gm / annual_churn                          # simple lifetime value\nprint(f\"LTV:CAC = {ltv / cac:.1f}\")                    # 8.2",
+    "lang": "Python"
+   }
+  ],
+  "fix": [
+   [
+    "The contract grows to $1.2M, all of which counts as expansion in that year's NRR.",
+    "The contract grows to $1.2M. Only the $900k increase ($1.2M minus the $300k starting ARR) counts as expansion in that year's NRR, and this account's own retention is 1.2 / 0.3 = 400 percent."
+   ]
+  ],
+  "add_glossary": [
+   [
+    "Statement of work (SOW)",
+    "A contract that defines the scope, deliverables, schedule and price of services work."
+   ],
+   [
+    "Fixed fee",
+    "A services price agreed in advance for a defined scope; the vendor absorbs overruns."
+   ],
+   [
+    "Time and materials (T&M)",
+    "A services price based on hours actually worked at an agreed rate; the customer pays for overruns."
+   ],
+   [
+    "Paid pilot",
+    "A short, paid trial whose fee is often credited against the first year if the customer signs."
+   ],
+   [
+    "Services attach rate",
+    "The share of deals that include a paid services contract."
+   ],
+   [
+    "Inference cost",
+    "The cost of running a model on each request, counted in COGS at AI companies."
+   ],
+   [
+    "Logo churn",
+    "The share of customers lost in a period, counted by customer rather than by revenue."
+   ],
+   [
+    "Revenue churn",
+    "The share of starting ARR lost to cancellations in a period."
+   ],
+   [
+    "CAC payback",
+    "Months of gross profit from a customer needed to repay the cost of acquiring it."
+   ],
+   [
+    "LTV:CAC",
+    "A customer's lifetime gross profit divided by the cost of acquiring it."
+   ]
+  ],
+  "add_practice": [
+   "For a $400k platform deal needing 800 FDE hours at a $120 loaded hourly cost, compute gross margin when the FDE time is bundled, sold as a $60k fixed fee, and billed T&M at $160 per hour. Recommend one and explain why in three sentences.",
+   "Take 12 invented months of usage spend for one account, compute the run-rate ARR each month, and show how much a single quiet month changes the year-end NRR.",
+   "Compute CAC payback and LTV:CAC for an account with $250k CAC, $300k ARR, 50 percent gross margin and 15 percent annual churn. Then find the gross margin needed to bring payback under 18 months."
+  ]
+ }
+}

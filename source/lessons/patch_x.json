@@ -1,0 +1,143 @@
+{
+ "slg": {
+  "add_subtopics": [
+   {
+    "title": "SLG vs product-led and sales-led growth",
+    "body": "Software companies grow through one of three main motions, and most mix them. In product-led growth (PLG), users find the product, sign up and get value on their own, and the product itself drives upgrades; a free tier or trial is common. In sales-led growth, account executives win deals through meetings, proposals and negotiation, and deals are larger and slower. Services-led growth, the subject of this lesson, adds engineers who deploy the product inside the customer, so value is proven in the customer's real workflows.\n\nA naming warning: some people abbreviate sales-led growth as SLG too. In FDE contexts SLG usually means services-led, but check what a speaker means.\n\nThe motions fit different situations. PLG suits products a single person can adopt in minutes, such as a note-taking tool or a developer API. Sales-led suits large purchases with many approvers but simple deployment. Services-led suits products whose value depends on messy integration with the customer's data and processes, such as enterprise AI platforms. Many companies layer them: PLG to attract developers, sales to close enterprise contracts, and FDEs to make the biggest accounts succeed and expand.",
+    "example": "Lanternfly Analytics sells a data-quality tool. Individual analysts sign up for its free tier (PLG). When a bank wants it for 2,000 users, an account executive runs the procurement (sales-led). The bank's value depends on connecting 30 legacy sources, so Lanternfly assigns two FDEs for a quarter (services-led). NRR on the FDE-supported accounts is tracked separately, to check that the extra engineering cost pays back through expansion.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "",
+      "Product-led",
+      "Sales-led",
+      "Services-led"
+     ],
+     "rows": [
+      [
+       "Who drives adoption",
+       "The product itself",
+       "Sales team",
+       "Engineers on site"
+      ],
+      [
+       "Typical first deal",
+       "Small, self-serve",
+       "Large, negotiated",
+       "Large, with deployment"
+      ],
+      [
+       "Time to value",
+       "Minutes to days",
+       "Weeks to months",
+       "Weeks, on real workflows"
+      ],
+      [
+       "Gross margin",
+       "Highest",
+       "High",
+       "Lower at first"
+      ],
+      [
+       "Best fit",
+       "Simple, individual use",
+       "Many approvers",
+       "Messy data and integration"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Sales-led growth",
+    "Growing revenue mainly through a sales team that wins and negotiates deals; sometimes also shortened to SLG."
+   ],
+   [
+    "Growth motion",
+    "The main way a company acquires and expands customers, such as product-led, sales-led or services-led."
+   ]
+  ]
+ },
+ "computers": {
+  "add_subtopics": [
+   {
+    "title": "Memory, disk and why your laptop runs out",
+    "body": "RAM and disk fill up in different ways, and the symptoms differ. When RAM runs short, the operating system moves idle data to a swap file on disk (macOS and Windows call it the page file or compressed memory). Disk is far slower than RAM, so everything becomes sluggish. If memory is still not enough, Linux's OOM killer (out of memory) ends a process, often the biggest one, which is why a script can die with only the word 'Killed'.\n\nData in memory is usually much larger than on disk. A 1 GB CSV can need several GB once loaded into pandas, because text is stored as Python objects and every column gets its own structures. Loading only the columns you need, choosing smaller types, or processing in chunks keeps it manageable.\n\nDisk fills up quietly. Common culprits for developers are Docker images and stopped containers, virtual environments and node_modules folders in every old project, downloaded model weights, logs that never rotate, and caches from pip, uv and browsers. When a disk is full, programs fail in odd ways: databases refuse writes, builds fail and even git can break. Check free space first when something strange happens.",
+    "example": "A junior analyst at Brackwater Dental Group loads a 1.2 GB appointment export on a 16 GB laptop and the notebook dies with 'Kernel died'. Measuring shows the DataFrame needs about 7 GB and the browser holds another 5 GB. Loading 8 of the 40 columns with usecols brings it to 1.4 GB. The same week, docker system df shows 38 GB of old images; pruning them frees a third of the disk.",
+    "code": "# Linux (most commands also work on macOS; see notes)\nfree -h                      # RAM and swap: total, used, available (Linux only)\ndf -h                        # free space on each disk\ndu -sh ~/* 2>/dev/null | sort -h | tail -n 10   # biggest folders in your home\n\nps aux --sort=-%mem | head -n 6   # top memory users (macOS: top -o mem)\ndocker system df             # space used by Docker images, containers, volumes\ndocker system prune          # remove stopped containers and unused data (asks first)\n\n# How much RAM does a pandas DataFrame really use?\npython3 - <<'EOF'\nimport numpy as np, pandas as pd\ndf = pd.DataFrame({\"id\": np.arange(1_000_000), \"city\": [\"Leeds\"] * 1_000_000})\nprint(round(df.memory_usage(deep=True).sum() / 1e6), \"MB\")   # text columns cost most\nEOF",
+    "lang": "bash"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Swap",
+    "Disk space the operating system uses as overflow when RAM is full, which is much slower than RAM."
+   ],
+   [
+    "OOM killer",
+    "The Linux mechanism that ends a process when the machine runs out of memory."
+   ],
+   [
+    "Disk usage",
+    "How much storage space files use; checked with df for whole disks and du for folders."
+   ]
+  ]
+ },
+ "tools": {
+  "add_subtopics": [
+   {
+    "title": "Computer-use and browser agents",
+    "body": "Some systems have no API. A supplier portal, an old desktop application or an internal web form may be the only way to do a task. Computer-use and browser agents let a model operate these interfaces like a person.\n\nThere are two main styles. In computer use, the model receives screenshots and replies with actions such as click at a position, type text or press a key; your code performs them in a virtual machine or container and sends back a new screenshot. Anthropic, OpenAI and others offer this as a tool type; check each provider's current documentation, as these features change quickly. In browser automation, your code drives a real browser with a library such as Playwright and exposes a few tools, like navigate, read_text, fill and click, that work on page elements instead of pixels. This is usually faster, cheaper and more reliable when the target is a website.\n\nBoth are slower and less predictable than an API, so use them when no API exists. The risks are serious. Web pages can contain text that tries to give the model instructions (prompt injection). Run the agent in an isolated environment, allow only listed sites, cap steps, log every action with screenshots, and require a human to approve anything that submits, pays or deletes.",
+    "example": "Ferrowick Components must download order confirmations from a supplier portal with no API, about 150 a week, which took a clerk three hours. A browser agent with four tools, one allowed host and a 20-step limit downloads and files them, and asks a human only when a page looks unfamiliar. In the first month it completes 91 percent of runs on its own, and each run's screenshots are kept for audit.",
+    "code": "from urllib.parse import urlparse\nfrom playwright.sync_api import Page\n\nALLOWED_HOSTS = {\"portal.supplier.example\"}   # the only site the agent may visit\nMAX_CHARS = 2000                               # cap what the model reads per call\n\ndef _check(url: str) -> None:\n    if urlparse(url).hostname not in ALLOWED_HOSTS:\n        raise PermissionError(f\"blocked navigation to {url}\")\n\n# Browser tools exposed to the model through the normal tool loop.\n# Each returns short text, never raw HTML, and every call is logged.\ndef navigate(page: Page, url: str) -> str:\n    _check(url)\n    page.goto(url)\n    return f\"Opened {page.url}, title: {page.title()}\"\n\ndef read_text(page: Page, selector: str) -> str:\n    return page.locator(selector).inner_text()[:MAX_CHARS]\n\ndef fill(page: Page, selector: str, value: str) -> str:\n    page.fill(selector, value)\n    return f\"Filled {selector}\"\n\ndef click(page: Page, selector: str, confirmed_by_human: bool = False) -> str:\n    label = page.locator(selector).inner_text().lower()\n    if any(w in label for w in (\"submit\", \"pay\", \"delete\")) and not confirmed_by_human:\n        return \"NEEDS_APPROVAL: ask the user before clicking \" + label   # write action\n    page.click(selector)\n    _check(page.url)                   # stop if a click led off the allowlist\n    return f\"Clicked {selector}, now at {page.url}\"",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Computer use",
+    "A tool type where the model sees screenshots and returns mouse and keyboard actions for your code to perform."
+   ],
+   [
+    "Browser automation",
+    "Controlling a real web browser from code, for example with Playwright, to click, type and read pages."
+   ],
+   [
+    "Prompt injection",
+    "Text in content the model reads, such as a web page, that tries to override its instructions."
+   ]
+  ]
+ },
+ "tdd": {
+  "add_subtopics": [
+   {
+    "title": "Project layout for take-home assignments",
+    "body": "Many FDE interview loops include a take-home: a small build, often a few hours of work, reviewed by engineers who read many submissions. They usually form an impression from the repo's shape and README before reading your logic, so layout is worth an hour of your time.\n\nKeep a clear structure: code in a package under src/, tests in tests/, and business logic separate from the HTTP or command-line layer so it is easy to test. Include a small sample input so the reviewer can run it at once. The Python project tooling lesson shows how to set up pyproject.toml, a lock file, ruff, mypy and a make check command; use them here, because a reviewer will try exactly those commands.\n\nThe README matters most. Say what the program does, how to install, run and test it in commands that work as written, the decisions you made and why, what you left out given the time, and what you would do next. Honest trade-offs read better than hidden gaps.\n\nFinally, commit in small, meaningful steps with clear messages. Reviewers often read the history to see how you work, and tests that grow with the code show the red-green habit from this lesson.",
+    "example": "Two candidates submit the same order-deduplication take-home. The first sends one 400-line script and a README that says 'run main.py'. The second has the layout below, 14 tests including edge cases, a make check that passes, and a README section noting that fuzzy matching was left out and how it would be added. The reviewer spends ten minutes running the second submission and moves it forward; the first needs a call to explain how to run it.",
+    "code": "take-home-orders/\n  README.md            # 1. what it does  2. how to run  3. how to test\n                       # 4. decisions and trade-offs  5. what I would do next\n  pyproject.toml       # dependencies + ruff/mypy/pytest settings\n  uv.lock\n  Makefile             # make install, make check, make run\n  src/orders/\n    __init__.py\n    api.py             # thin HTTP layer\n    service.py         # business logic, easy to test\n    models.py          # Pydantic models\n  tests/\n    test_service.py    # the important cases and edge cases\n    test_api.py        # one or two end-to-end checks\n  data/sample.csv      # small input so the reviewer can run it at once\n\n# README \"How to run\" should work exactly as written on a clean machine:\n#   uv sync\n#   make check\n#   uv run orders --input data/sample.csv",
+    "lang": "Text",
+    "checklist": [
+     "Clean clone, install and test with the README commands only",
+     "Code under src/, tests under tests/, logic separate from I/O",
+     "Tests cover the main cases and at least three edge cases",
+     "ruff and mypy pass; one make check runs everything",
+     "Sample input included; no secrets or large data committed",
+     "README lists decisions, trade-offs and next steps",
+     "Small, clear commits that show how the work progressed"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Take-home assignment",
+    "A small project done in your own time as part of an interview, then reviewed by engineers."
+   ],
+   [
+    "src layout",
+    "A project structure where the package lives under a src folder, separate from tests and config."
+   ]
+  ]
+ }
+}

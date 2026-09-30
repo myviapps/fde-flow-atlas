@@ -1,0 +1,386 @@
+{
+ "normalize": {
+  "plain": "Schema design is deciding which tables a database has, which columns go in each table, and how the tables point at each other. A table is a grid of rows (one per thing, such as one customer) and columns (one per attribute, such as email). A primary key is a column, or set of columns, whose value is unique for every row, so you can always point at exactly one row. A foreign key is a column that stores another table's primary key, which links a row to its related row, for example an order to its customer. Normalization is a step-by-step method for splitting a wide, repetitive table into smaller linked tables so that each fact is stored once.",
+  "analogy": "Think of a school office. Instead of writing a child's home address on every homework sheet, the office keeps one address card per child and each sheet only carries the child's student number. When a family moves, the office changes one card.",
+  "why": "Customers rarely hand an FDE a clean database. A typical first week is a regional retailer sending a 40,000-row order export where the same customer appears with three spellings and product prices disagree across rows. You need to turn that into a schema that analytics, pipelines and AI agents can trust, and explain the design to the customer's data team.",
+  "subtopics": [
+   {
+    "title": "Tables, primary keys and foreign keys",
+    "body": "A relational database stores data in tables. Each table should describe one kind of thing: customers, products, orders. Each row is one instance of that thing, and each column is one attribute of it.\n\nThe primary key is how you refer to a single row. It must be unique and never empty. Many teams use a surrogate key, a meaningless number the database generates, because natural values like email addresses or names can change. You can still enforce that email is unique with a separate UNIQUE constraint.\n\nA foreign key is a column that holds a primary key from another table. It is a promise the database checks for you: you cannot insert an order for customer 99 if customer 99 does not exist, and you cannot delete a customer who still has orders unless you say what should happen to them.",
+    "example": "Brightside Home, a homeware retailer, has customers and orders. The customers table has customer_id 1 for Ana Patel in Leeds. The orders table has order 5001 with customer_id = 1. If someone tries to insert order 5002 with customer_id = 77 and no customer 77 exists, PostgreSQL rejects the insert with a foreign key violation. The bad row never reaches the dashboard.",
+    "code": "-- one table per kind of thing\nCREATE TABLE customers (\n  customer_id SERIAL PRIMARY KEY,        -- surrogate key, generated\n  email       TEXT NOT NULL UNIQUE,      -- natural value, still unique\n  name        TEXT NOT NULL,\n  city        TEXT\n);\n\nCREATE TABLE orders (\n  order_id    INT PRIMARY KEY,\n  customer_id INT NOT NULL\n              REFERENCES customers (customer_id)  -- foreign key\n              ON DELETE RESTRICT,                 -- block orphaning\n  order_date  DATE NOT NULL\n);\n\nINSERT INTO customers (email, name, city)\nVALUES ('ana@example.com', 'Ana Patel', 'Leeds');   -- gets id 1\nINSERT INTO orders VALUES (5001, 1, '2026-09-01');   -- ok\nINSERT INTO orders VALUES (5002, 77, '2026-09-02');  -- fails: no customer 77",
+    "lang": "SQL"
+   },
+   {
+    "title": "The messy spreadsheet and 1NF",
+    "body": "Here is the kind of sheet a customer sends: one row per order, with customer details repeated on every row and all products listed in a single cell. It is easy for people to read and hard for software to use. You cannot sum quantities that live inside text like 'MUG-02 x4'.\n\nFirst normal form (1NF) has two rules. Each cell holds one value, never a list. And each row can be uniquely identified by a key. To reach 1NF you split the multi-value cell so that each product on an order gets its own row. The key becomes the pair (order_id, sku), a composite key, because neither column alone is unique any more.\n\n1NF fixes the list problem but makes the repetition worse. Ana's name and city now appear on every line of every order she places. The next two forms deal with that.",
+    "example": "Original row: 5001 | 2026-09-01 | ana@example.com | Ana Patel | Leeds | 'KET-01 x1; MUG-02 x4' | 'Kettle; Mug' | '29.00; 6.50'. After 1NF there are two rows: (5001, KET-01, qty 1, Kettle, 29.00, 2026-09-01, ana@example.com, Ana Patel, Leeds) and (5001, MUG-02, qty 4, Mug, 6.50, same order and customer columns). Now SUM(qty * unit_price) works: 29.00 + 26.00 = 55.00 for order 5001.",
+    "code": "# Turn the crammed cell into one row per order line (1NF)\nimport pandas as pd\n\nraw = pd.DataFrame([{\n    \"order_id\": 5001, \"order_date\": \"2026-09-01\",\n    \"email\": \"ana@example.com\", \"name\": \"Ana Patel\", \"city\": \"Leeds\",\n    \"items\": \"KET-01 x1; MUG-02 x4\",\n    \"item_names\": \"Kettle; Mug\", \"unit_prices\": \"29.00; 6.50\",\n}])\n\nrows = []\nfor _, r in raw.iterrows():\n    items  = [s.strip() for s in r[\"items\"].split(\";\")]\n    names  = [s.strip() for s in r[\"item_names\"].split(\";\")]\n    prices = [float(s) for s in r[\"unit_prices\"].split(\";\")]\n    for item, name, price in zip(items, names, prices):\n        sku, qty = item.split(\" x\")               # 'MUG-02 x4'\n        rows.append({**r.drop([\"items\", \"item_names\", \"unit_prices\"]),\n                     \"sku\": sku, \"qty\": int(qty),\n                     \"product_name\": name, \"unit_price\": price})\n\nlines = pd.DataFrame(rows)                        # key: (order_id, sku)\nprint(lines[[\"order_id\", \"sku\", \"qty\", \"unit_price\"]])\nprint((lines.qty * lines.unit_price).sum())       # 55.0",
+    "lang": "Python"
+   },
+   {
+    "title": "2NF and 3NF: one fact, one place",
+    "body": "A functional dependency means one column determines another. If you know the sku, you know the product name. If you know the order_id, you know the order date.\n\nSecond normal form (2NF) applies when the key has more than one column. Every non-key column must depend on the whole key. In the 1NF table the key is (order_id, sku), but product_name depends only on sku, and order_date depends only on order_id. Those are partial dependencies, so product columns move to a products table and order columns move to an orders table. What stays in order_lines is what truly needs both: the quantity, and the price charged on that line.\n\nThird normal form (3NF) removes transitive dependencies: a non-key column that depends on another non-key column. In the orders table, name and city depend on the customer's email, and email depends on order_id. That chain means Ana's city is still copied onto every order, so customer columns move to a customers table and orders keep only customer_id. A common summary is that every non-key column should depend on the key, the whole key, and nothing but the key.",
+    "example": "Before 3NF, Ana moves from Leeds to York. Her 38 past orders all carry 'Leeds', and an analyst updates 30 of them. Revenue by city is now split across two cities for one customer. After 3NF, city lives in one customers row and the change is a single UPDATE. Note the price: the products table keeps the current list price (6.50 for the mug), while order_lines keeps unit_price as charged. If the mug goes to 7.00 next month, past orders still show 6.50. That is correct, because the price paid is a fact about the sale.",
+    "code": "-- Result of 2NF + 3NF for the Brightside sheet\nCREATE TABLE products (             -- depends on sku only (2NF)\n  sku        TEXT PRIMARY KEY,\n  name       TEXT NOT NULL,\n  list_price NUMERIC(10,2) NOT NULL\n);\n\n-- orders and customers as in the first subtopic (3NF split)\n\nCREATE TABLE order_lines (          -- needs the whole key\n  order_id   INT  NOT NULL REFERENCES orders (order_id),\n  sku        TEXT NOT NULL REFERENCES products (sku),\n  qty        INT  NOT NULL CHECK (qty > 0),\n  unit_price NUMERIC(10,2) NOT NULL,   -- price charged on this sale\n  PRIMARY KEY (order_id, sku)          -- composite key\n);\n\n-- Ana moves: one row changes, every order sees it\nUPDATE customers SET city = 'York' WHERE email = 'ana@example.com';",
+    "lang": "SQL"
+   },
+   {
+    "title": "Joining the tables back together",
+    "body": "Normalized tables look scattered, so people ask how they get the wide view back. The answer is a join. A join matches rows across tables on their key columns and returns a combined result, without storing the combination.\n\nAn INNER JOIN keeps only rows that match on both sides. A LEFT JOIN keeps every row from the left table and fills missing matches with NULL, which is how you find customers with no orders. Joins on primary and foreign keys are fast when the foreign key columns are indexed. PostgreSQL indexes primary keys automatically but does not index foreign key columns for you.\n\nWrite joins from the most specific table outwards. Start from the fact you are counting (order lines), then join to what describes it (orders, customers, products).",
+    "example": "The Brightside operations lead asks for revenue by city for September. The query starts at order_lines, joins orders for the date and the customer id, joins customers for the city, filters September, and groups by city. Result: Leeds 18,420.50, York 9,310.00. A second query with a LEFT JOIN finds 212 customers who signed up but never ordered, a list marketing wants.",
+    "code": "-- Revenue by city for September\nSELECT c.city,\n       SUM(l.qty * l.unit_price) AS revenue,\n       COUNT(DISTINCT o.order_id) AS orders\nFROM order_lines l\nJOIN orders    o ON o.order_id    = l.order_id      -- line -> order\nJOIN customers c ON c.customer_id = o.customer_id   -- order -> customer\nWHERE o.order_date >= DATE '2026-09-01'\n  AND o.order_date <  DATE '2026-10-01'\nGROUP BY c.city\nORDER BY revenue DESC;\n\n-- Customers who never ordered: LEFT JOIN, keep the unmatched\nSELECT c.customer_id, c.email\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.customer_id\nWHERE o.order_id IS NULL;\n\n-- Foreign key columns are not indexed automatically in Postgres\nCREATE INDEX ON orders (customer_id);\nCREATE INDEX ON order_lines (sku);",
+    "lang": "SQL"
+   },
+   {
+    "title": "Star schema for analytics",
+    "body": "Normalized 3NF schemas suit transactional systems (OLTP), where many small writes happen every second. Analytics systems (OLAP) mostly read large amounts of history and aggregate it. For that, data teams usually reshape data into a star schema.\n\nA star schema has one fact table in the middle and several dimension tables around it. The fact table holds measurable events at a declared grain, such as one row per order line, with numeric measures (quantity, revenue) and foreign keys to dimensions. Dimension tables hold descriptive attributes used to filter and group: date (day, month, weekday, holiday flag), product (category, brand), store (region, format), customer (segment).\n\nDimensions are deliberately a little denormalized. The product dimension might hold category and department in one row even though a 3NF design would split them. This keeps queries to one join per dimension, which BI tools and people both find easy. Choosing the grain first is the most important step, because every measure in the fact table must be true at that grain.",
+    "example": "Brightside wants weekly revenue by product category and region across three years. The warehouse holds fact_sales at the grain of one order line, about 12 million rows, with date_key, product_key, store_key and measures qty and revenue. dim_date has one row per day, dim_product about 3,000 rows, dim_store 45 rows. The weekly report is a single query that joins the fact to three small dimensions and groups by week, category and region.",
+    "code": "-- Grain: one row per order line\nCREATE TABLE dim_date    (date_key INT PRIMARY KEY, day DATE,\n                          iso_week INT, month INT, year INT,\n                          is_holiday BOOLEAN);\nCREATE TABLE dim_product (product_key INT PRIMARY KEY, sku TEXT,\n                          name TEXT, category TEXT, department TEXT);\nCREATE TABLE dim_store   (store_key INT PRIMARY KEY, store_name TEXT,\n                          region TEXT, format TEXT);\n\nCREATE TABLE fact_sales (\n  date_key    INT REFERENCES dim_date,\n  product_key INT REFERENCES dim_product,\n  store_key   INT REFERENCES dim_store,\n  order_id    INT,                  -- degenerate dimension\n  qty         INT,\n  revenue     NUMERIC(12,2)         -- additive measure\n);\n\nSELECT d.year, d.iso_week, p.category, s.region,\n       SUM(f.revenue) AS revenue\nFROM fact_sales f\nJOIN dim_date d    USING (date_key)\nJOIN dim_product p USING (product_key)\nJOIN dim_store s   USING (store_key)\nGROUP BY 1, 2, 3, 4;",
+    "lang": "SQL"
+   },
+   {
+    "title": "When to denormalize",
+    "body": "Denormalizing means storing a copy of data somewhere it could be derived from, to make reads faster or simpler. It is a trade: reads get cheaper and writes get harder, because every copy must stay in sync.\n\nGood reasons include a dashboard that runs the same five-table join thousands of times a day, an API endpoint with a tight latency target, a search or vector index that needs text and metadata in one row, or a flat feature table for an ML model. Poor reasons include avoiding learning joins, or copying data because the schema was never designed.\n\nThe safe pattern is to keep the normalized tables as the single source of truth and generate the denormalized copy from them, with a known refresh schedule. In PostgreSQL a materialized view does this: it stores a query's result and you refresh it when you choose. Document how stale the copy may be, so no one treats it as live data.",
+    "example": "Brightside's customer-support agent needs a one-row summary per customer: name, city, lifetime orders, lifetime revenue and last order date. Computing it live on each chat message adds 300 ms. The FDE creates a materialized view refreshed every 15 minutes. Chat lookups become a primary key read of a few milliseconds, and the support lead agrees in writing that totals can lag by up to 15 minutes.",
+    "code": "-- Denormalized, read-optimized copy built FROM the source tables\nCREATE MATERIALIZED VIEW customer_summary AS\nSELECT c.customer_id, c.name, c.city,\n       COUNT(DISTINCT o.order_id)          AS lifetime_orders,\n       COALESCE(SUM(l.qty * l.unit_price), 0) AS lifetime_revenue,\n       MAX(o.order_date)                   AS last_order_date\nFROM customers c\nLEFT JOIN orders o      ON o.customer_id = c.customer_id\nLEFT JOIN order_lines l ON l.order_id    = o.order_id\nGROUP BY c.customer_id, c.name, c.city;\n\n-- A unique index allows refresh without blocking readers\nCREATE UNIQUE INDEX ON customer_summary (customer_id);\n\n-- Run every 15 minutes from a scheduler (cron, Airflow, pg_cron)\nREFRESH MATERIALIZED VIEW CONCURRENTLY customer_summary;",
+    "lang": "SQL"
+   }
+  ],
+  "glossary": [
+   [
+    "Primary key",
+    "A column or set of columns whose value uniquely identifies each row and is never empty."
+   ],
+   [
+    "Foreign key",
+    "A column that stores another table's primary key, and which the database checks so links always point at real rows."
+   ],
+   [
+    "Composite key",
+    "A primary key made of more than one column, such as (order_id, sku)."
+   ],
+   [
+    "Surrogate key",
+    "A generated identifier with no business meaning, used because natural values like emails can change."
+   ],
+   [
+    "Functional dependency",
+    "A relationship where knowing one column's value tells you another's, such as sku determining product name."
+   ],
+   [
+    "Normal forms (1NF, 2NF, 3NF)",
+    "Increasingly strict rules that remove lists in cells, partial dependencies and transitive dependencies."
+   ],
+   [
+    "Star schema",
+    "An analytics design with one fact table of events joined to several descriptive dimension tables."
+   ],
+   [
+    "Grain",
+    "The precise meaning of one row in a fact table, such as one order line."
+   ],
+   [
+    "Denormalization",
+    "Storing derived or copied data on purpose to speed up reads, at the cost of keeping copies in sync."
+   ],
+   [
+    "Materialized view",
+    "A stored query result in PostgreSQL that you refresh on a schedule."
+   ]
+  ],
+  "practice": [
+   "Take any spreadsheet you use (a budget, a reading list, a sports roster) and write down every column. Mark each one with the thing it describes. Deliverable: a list of 3 to 5 tables with their primary keys.",
+   "Normalize the Brightside example in PostgreSQL or SQLite: create customers, products, orders and order_lines, load 10 sample orders with at least 3 multi-item orders, and write the revenue-by-city query. Deliverable: a .sql file that runs top to bottom and prints the result.",
+   "Stretch: design a star schema for a hospital clinic's appointments (fact at the grain of one appointment; dimensions for date, clinician, department and patient age band). Write the CREATE TABLE statements, one reporting query, and a short paragraph explaining one place where you chose to denormalize and why."
+  ]
+ },
+ "embeddings": {
+  "plain": "An embedding is a list of numbers, called a vector, that represents the meaning of a piece of text. An embedding model is a neural network trained so that texts with similar meaning get vectors that point in similar directions, even when they share no words. Once text is turned into vectors, finding related text becomes a geometry problem: which stored vectors are closest to the question's vector? This is called vector search or semantic search, and it is the retrieval step in most retrieval-augmented generation (RAG) systems. A vector database, or an extension such as pgvector for PostgreSQL, stores these vectors and finds the nearest ones quickly.",
+  "analogy": "Imagine a huge library where every book is placed on the floor according to what it is about, so cookbooks cluster in one corner and car manuals in another. To find help with a question, you stand at the spot where your question belongs and pick up the books lying nearest to you.",
+  "why": "Almost every enterprise AI deployment an FDE works on needs to find the right internal document before the model answers. An insurer's claims assistant must pull the correct policy clause out of 80,000 pages, and when it pulls the wrong one, the FDE has to diagnose whether the embedding model, the similarity metric, the index settings or the filters are at fault.",
+  "subtopics": [
+   {
+    "title": "From text to vectors",
+    "body": "An embedding model takes text in and returns a fixed-length vector out. The length is called the dimension. Common models output a few hundred to a few thousand numbers per text. Every text gets the same dimension regardless of its length.\n\nNo single number means anything on its own. What matters is how vectors relate to each other. 'How do I reset my password?' and 'I forgot my login credentials' produce vectors that point in nearly the same direction. 'Quarterly revenue grew 4%' points somewhere else entirely.\n\nIn practice you split documents into chunks, often a few hundred tokens each, and embed each chunk separately. A whole 40-page manual squeezed into one vector would blur many topics together. You also embed each incoming question with the same model at query time.",
+    "example": "A home insurer has 12,000 policy documents. The FDE splits them into about 400,000 chunks of roughly 300 tokens and embeds each one with a 384-dimension model. The result is a 400,000 by 384 table of numbers. At 4 bytes per float that is about 614 MB of raw vectors, which fits in memory on one database server.",
+    "code": "# pip install sentence-transformers\nfrom sentence_transformers import SentenceTransformer\n\nmodel = SentenceTransformer(\"all-MiniLM-L6-v2\")   # 384-dimension model\n\nchunks = [\n    \"How do I reset my password?\",\n    \"I forgot my login credentials.\",\n    \"Quarterly revenue grew 4 percent.\",\n]\nvecs = model.encode(chunks, normalize_embeddings=True)  # unit length\nprint(vecs.shape)            # (3, 384)\n\n# on unit vectors, dot product equals cosine similarity\nsims = vecs @ vecs.T\nprint(sims.round(2))\n# the first two sentences score far higher with each other\n# than either does with the revenue sentence",
+    "lang": "Python"
+   },
+   {
+    "title": "Cosine, dot product and Euclidean",
+    "body": "There are three common ways to measure how close two vectors are. The dot product multiplies matching positions and adds them up. It grows when vectors point the same way and also when they are long. Cosine similarity is the dot product divided by both lengths, so it only measures the angle between vectors: 1 means same direction, 0 means unrelated, -1 means opposite. Euclidean distance (also called L2) is the straight-line distance between the two points, where smaller means closer.\n\nThese can disagree. A long vector pointing the same way as the query has a perfect cosine score but may be far away in Euclidean terms. A short vector at a slight angle may be closer in straight-line distance.\n\nIf you normalize every vector to length 1, the three metrics give the same ranking. Many embedding models are trained to be used with cosine similarity, and some return unit-length vectors already. Check the model card and use the metric it recommends.",
+    "example": "Take a tiny 3-dimension example. Query q = [1, 2, 2], length 3. Document A = [2, 4, 4], length 6, pointing exactly the same way. Document B = [2, 2, 1], length 3. Dot product: q.A = 2 + 8 + 8 = 18, q.B = 2 + 4 + 2 = 8, so A wins. Cosine: A = 18 / (3 x 6) = 1.0, B = 8 / (3 x 3) = 0.889, so A wins. Euclidean: q to A = length of [1, 2, 2] = 3.0, q to B = length of [1, 0, -1] = 1.414, so B wins. After normalizing, A becomes identical to q and wins on all three.",
+    "code": "import numpy as np\n\nq = np.array([1.0, 2.0, 2.0])\ndocs = {\"A\": np.array([2.0, 4.0, 4.0]),   # same direction, twice as long\n        \"B\": np.array([2.0, 2.0, 1.0])}   # similar length, other angle\n\ndef cosine(u, v):\n    return float(u @ v / (np.linalg.norm(u) * np.linalg.norm(v)))\n\nfor name, d in docs.items():\n    print(name,\n          \"dot=\", float(q @ d),                        # higher is closer\n          \"cos=\", round(cosine(q, d), 3),              # higher is closer\n          \"L2=\",  round(float(np.linalg.norm(q - d)), 3))  # lower is closer\n# A dot= 18.0 cos= 1.0   L2= 3.0\n# B dot= 8.0  cos= 0.889 L2= 1.414\n\nunit = lambda v: v / np.linalg.norm(v)\nfor name, d in docs.items():                     # after normalizing:\n    print(name, round(float(np.linalg.norm(unit(q) - unit(d))), 3))\n# A 0.0   B 0.471  -> all three metrics now agree: A",
+    "lang": "Python"
+   },
+   {
+    "title": "Exact nearest-neighbour search",
+    "body": "Nearest-neighbour search means: given a query vector, return the k stored vectors closest to it. The simplest method is brute force. Compute the similarity between the query and every stored vector, sort, and take the top k. This is called exact or flat search, and its results are perfect.\n\nThe cost grows with the number of vectors times the dimension. For a few thousand or even a hundred thousand vectors, brute force on a laptop is fast enough and needs no index at all. That makes it the right starting point for a prototype and the reference answer when you test faster methods.\n\nAt millions of vectors and many queries per second, brute force becomes the bottleneck. That is where approximate indexes come in.",
+    "example": "The insurer's pilot has 400,000 chunks of 384 dimensions. One brute-force query performs about 154 million multiply-adds. NumPy does that in tens of milliseconds on a modern CPU, which is fine for a pilot with ten users. The production target is 2 million chunks and 50 queries per second, about 38 billion multiply-adds every second, so the FDE plans an approximate index.",
+    "code": "import numpy as np\n\nrng = np.random.default_rng(0)\nN, D, K = 100_000, 384, 5\nstore = rng.normal(size=(N, D)).astype(np.float32)\nstore /= np.linalg.norm(store, axis=1, keepdims=True)   # unit length\n\ndef exact_top_k(query, store, k=K):\n    q = query / np.linalg.norm(query)\n    scores = store @ q                          # cosine for unit vectors\n    idx = np.argpartition(-scores, k)[:k]       # top k, unordered\n    return idx[np.argsort(-scores[idx])]        # sort just those k\n\nquery = rng.normal(size=D).astype(np.float32)\nprint(exact_top_k(query, store))   # ground truth for testing an ANN index",
+    "lang": "Python"
+   },
+   {
+    "title": "Approximate indexes and HNSW",
+    "body": "An approximate nearest-neighbour (ANN) index finds most of the true nearest neighbours while checking only a small fraction of the vectors. The share of true top-k results it returns is called recall. An index with 0.95 recall returns, on average, 95 of every 100 results exact search would.\n\nHNSW (Hierarchical Navigable Small World) is the most widely used ANN method. It builds a graph where each vector is linked to some of its near neighbours. The graph has layers: the top layers are sparse and allow long jumps across the space, and the bottom layer contains every vector with short local links. A search starts at the top, greedily moves toward the query, drops a layer, and repeats, finishing with a careful local search at the bottom.\n\nHNSW has a few knobs. m sets how many links each node keeps. ef_construction sets how hard the build works to find good links. ef_search sets how many candidates a query keeps in play; raising it improves recall and costs latency. HNSW indexes use a lot of memory and take time to build, and pgvector also offers IVFFlat, which clusters vectors and searches only nearby clusters. It builds faster but usually needs tuning to reach similar recall.",
+    "example": "With 2 million chunks, the FDE builds an HNSW index with the default m = 16 and ef_construction = 64. They measure recall at k = 10 against exact search on 500 sample queries: ef_search = 40 gives 0.93 recall at 6 ms, and ef_search = 100 gives 0.98 at 11 ms. The claims team cares more about finding the right clause than about 5 ms, so they choose 100. These numbers are illustrative; always measure on the customer's data.",
+    "code": "-- pgvector HNSW index; the ops class must match the query operator\nCREATE INDEX chunks_embedding_hnsw\n  ON chunks USING hnsw (embedding vector_cosine_ops)  -- for <=>\n  WITH (m = 16, ef_construction = 64);                -- build quality\n\n-- per-session search breadth: higher = better recall, slower\nSET hnsw.ef_search = 100;\n\n-- Alternative: IVFFlat (faster build; set lists, then probes)\n-- CREATE INDEX ON chunks USING ivfflat (embedding vector_cosine_ops)\n--   WITH (lists = 1000);\n-- SET ivfflat.probes = 10;\n\n-- Check the index is used\nEXPLAIN SELECT id FROM chunks\nORDER BY embedding <=> '[0.1, 0.2, 0.3]'::vector LIMIT 10;",
+    "lang": "SQL"
+   },
+   {
+    "title": "pgvector in practice",
+    "body": "pgvector is an open-source PostgreSQL extension. It adds a vector(n) column type, distance operators and index types. Its main attraction for an FDE is that vectors live in the customer's existing Postgres, next to ids, text, timestamps and permission columns, so one SQL query can combine similarity with ordinary filters and joins.\n\nThe three operators are <-> for Euclidean distance, <#> for negative inner product (negated so that smaller still means closer), and <=> for cosine distance, which is 1 minus cosine similarity. You order by the operator ascending and add LIMIT k. For the query to use an index, the ORDER BY must use the operator that matches the index's operator class.\n\nFrom Python, the pgvector package registers the vector type with psycopg so you can pass NumPy arrays as query parameters. Always filter by tenant or access rights in the same query, so a user can never retrieve a chunk they are not allowed to see.",
+    "example": "The insurer serves several brands from one database. A claims handler for brand 7 asks 'Is water damage from a burst pipe covered if the house was empty for 45 days?' The app embeds the question, then runs one SQL query that restricts to tenant_id = 7 and to documents the handler's role can see, orders by cosine distance and returns 5 chunks with their document titles, which go into the model's prompt with citations.",
+    "code": "# pip install \"psycopg[binary]\" pgvector sentence-transformers\nimport psycopg\nfrom pgvector.psycopg import register_vector\nfrom sentence_transformers import SentenceTransformer\n\nmodel = SentenceTransformer(\"all-MiniLM-L6-v2\")\nconn = psycopg.connect(\"dbname=claims\")\nconn.execute(\"CREATE EXTENSION IF NOT EXISTS vector\")\nregister_vector(conn)                         # numpy <-> vector type\nconn.execute('''CREATE TABLE IF NOT EXISTS chunks (\n    id bigserial PRIMARY KEY, tenant_id int, doc_title text,\n    body text, embedding vector(384))''')\n\nq = model.encode(\"Is burst pipe damage covered if the house \"\n                 \"was empty for 45 days?\", normalize_embeddings=True)\nrows = conn.execute('''\n    SELECT doc_title, body, embedding <=> %s AS distance\n    FROM chunks\n    WHERE tenant_id = %s                      -- access filter first\n    ORDER BY embedding <=> %s                 -- cosine distance\n    LIMIT 5''', (q, 7, q)).fetchall()\nfor title, body, dist in rows:\n    print(round(dist, 3), title, body[:60])",
+    "lang": "Python"
+   },
+   {
+    "title": "Pitfalls an FDE debugs",
+    "body": "Most vector search problems in the field are not exotic. The first is mixing models: documents embedded with one model and queries with another, or a newer version of the same model. Vectors from different models live in unrelated spaces, so results look random. Store the model name and version alongside each vector, and re-embed everything when you change models.\n\nThe second is metric and index mismatch. Building an index with vector_l2_ops and querying with <=> means Postgres cannot use the index and falls back to a slow scan. The third is filtering. With an approximate index, a very selective WHERE clause can leave fewer than k results, because the index finds candidates first and the filter removes most of them. Recent pgvector versions add iterative index scans to help, and partial indexes per large tenant are another option.\n\nThe fourth is expecting semantic search to handle exact identifiers. Policy numbers, SKUs and error codes are better matched with keyword search. Many production systems run both and merge the results, which is called hybrid search. Keep a small evaluation set of real questions with known correct chunks, and measure recall whenever you change anything.",
+    "example": "After a model upgrade, the insurer's assistant starts citing irrelevant clauses. The FDE checks the chunks table and finds 1.6 million rows tagged with the old model and 40,000 new rows tagged with the new one. Queries use the new model. They re-embed the corpus in batches overnight, rebuild the HNSW index, and rerun the 200-question evaluation set: recall at 5 returns from 0.41 to 0.88 before the change goes live.",
+    "code": "# A tiny retrieval eval: did the right chunk come back in the top k?\neval_set = [\n    {\"q\": \"Is burst pipe damage covered after 45 days vacant?\",\n     \"gold_id\": 18842},\n    {\"q\": \"What is the excess for subsidence claims?\",\n     \"gold_id\": 50317},\n]\n\ndef recall_at_k(search, eval_set, k=5):\n    hits = 0\n    for item in eval_set:\n        ids = [row_id for row_id, _ in search(item[\"q\"], k)]\n        hits += item[\"gold_id\"] in ids\n    return hits / len(eval_set)\n\n# search(q, k) embeds q with the SAME model version as the corpus\n# and returns [(id, distance), ...]. Run before and after any change\n# to the model, metric, index parameters or chunking.",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Embedding",
+    "A fixed-length vector of numbers that represents the meaning of a piece of text."
+   ],
+   [
+    "Dimension",
+    "The number of values in each embedding vector, fixed by the model."
+   ],
+   [
+    "Cosine similarity",
+    "The dot product of two vectors divided by their lengths, measuring only the angle between them."
+   ],
+   [
+    "Dot product",
+    "The sum of the products of matching positions in two vectors, affected by both angle and length."
+   ],
+   [
+    "Euclidean distance",
+    "The straight-line distance between two vectors; smaller means more similar."
+   ],
+   [
+    "Nearest-neighbour search",
+    "Finding the k stored vectors closest to a query vector."
+   ],
+   [
+    "ANN index",
+    "An approximate nearest-neighbour index that trades a little accuracy for much faster search."
+   ],
+   [
+    "HNSW",
+    "Hierarchical Navigable Small World, a layered graph index that searches by greedily walking toward the query."
+   ],
+   [
+    "Recall at k",
+    "The share of the true nearest neighbours, or known correct answers, that appear in the top k results."
+   ],
+   [
+    "pgvector",
+    "An open-source PostgreSQL extension that adds a vector type, distance operators and vector indexes."
+   ]
+  ],
+  "practice": [
+   "By hand or in Python, compute the dot product, cosine similarity and Euclidean distance between q = [3, 0, 4] and each of A = [6, 0, 8] and B = [3, 1, 3]. Deliverable: a small table of the six numbers and one sentence on which metric picks which document and why.",
+   "Embed 50 FAQ answers from any public help centre with a sentence-transformers model, write 10 test questions, and implement brute-force top-3 search in NumPy. Deliverable: a script that prints recall at 3 on your 10 questions.",
+   "Stretch: load the same 50 answers (or a larger set) into PostgreSQL with pgvector, create an HNSW index with vector_cosine_ops, and compare its top-10 results with your exact NumPy results for ef_search values of 10, 40 and 100. Deliverable: a chart or table of recall and query time per setting, plus the EXPLAIN output showing the index is used."
+  ]
+ },
+ "projectb": {
+  "plain": "Project B is a portfolio build: a coding agent that works on a real code repository and gets better with experience. An agent is a program where a large language model (LLM) decides which step to take next, such as searching files or running tests, instead of following a fixed script. LangGraph is a Python library that describes an agent as a graph: nodes are steps, edges are the allowed moves between them, and a shared state object carries data along. The agent uses ideas from Stanford's Agentic Context Engineering (ACE) work: a Generator does the task, a Reflector reviews what happened, and a Curator records lessons as small edits to a playbook, a list of tips the Generator reads next time. The name 'context compiler' reflects that the agent's prompt is assembled from controlled parts each run, the way a compiler builds a program from source files.",
+  "analogy": "Picture a new mechanic in a busy garage. They look up the right section of the manual instead of reading all of it, fix the car, and then a senior mechanic reviews the job and adds one short, specific tip to the shared notebook on the wall, without erasing anyone else's tips.",
+  "why": "FDEs increasingly deploy agents into customer codebases and workflows, and customers ask why the agent keeps making the same mistake. Project B shows you can build an agent that uses tools safely on unfamiliar code, learns from failures in a controlled and auditable way, and has numbers to prove it improves over time.",
+  "subtopics": [
+   {
+    "title": "What you are building and why",
+    "body": "The finished project takes a coding task, such as 'fix the failing test in billing/invoice.py', and returns a patch plus a test result. Along the way it searches the repository, reads only the relevant lines, edits code, runs tests, and then updates its playbook.\n\nThe playbook is the part that makes it more than a demo. It is a list of short, specific bullets, each with an id and counters for how often it helped or hurt. Examples: 'In this repo, run tests with pytest -q from the repo root' or 'Money values use Decimal, never float'. On every new task, the relevant bullets are placed into the Generator's context.\n\nThe word compiler is a mental model. Inputs (instructions, playbook bullets, the task, tool results) are assembled into a context under rules and a token budget, and the output is working code. If the output is wrong, you debug the inputs, the same way you debug a build.",
+    "example": "Your demo repo is a small invoicing service with 30 tests and 20 seeded bugs, each captured as a task. On round 1 with an empty playbook the agent fixes 11 of 20. The playbook gains bullets such as 'dates in fixtures are ISO strings; parse with date.fromisoformat'. On round 3, re-running the same tasks, it fixes 16 of 20 with fewer tool calls. Those numbers are hypothetical targets; your write-up reports whatever you measure.",
+    "code": "project-b/\n  agent/\n    graph.py          # StateGraph wiring (next subtopic)\n    nodes.py          # generator, reflector, curator, run_tests\n    tools.py          # grep_files, open_file, write_file\n    playbook.py       # load, select, apply_delta, save (versioned)\n  playbooks/\n    playbook.json     # itemized bullets with ids and counters\n    history/          # one file per applied delta, for audit\n  tasks/\n    tasks.jsonl       # {\"id\": \"T07\", \"repo\": \"...\", \"goal\": \"...\"}\n  eval/\n    run_rounds.py     # rounds x tasks -> pass rate, tokens, size\n  README.md           # results table, design choices, failure cases",
+    "lang": "Text"
+   },
+   {
+    "title": "The graph and its state",
+    "body": "In LangGraph you first define the state: a typed dictionary that every node can read and partially update. A node is a plain Python function that takes the state and returns a dictionary of the fields it changed. LangGraph merges that update into the state.\n\nSome fields need special merge rules. The message list should grow rather than be replaced, so it is declared with the add_messages reducer. Other fields, such as the retry counter, are simply overwritten.\n\nEdges connect nodes. A normal edge always goes from A to B. A conditional edge calls a small routing function that looks at the state and returns the name of the next node. That is how you express 'if the model asked for a tool, run the tool; otherwise run the tests', and 'if tests failed and we have retries left, go back to the Generator'. START and END are special markers for entry and exit.",
+    "example": "Task T07: 'test_invoice_total fails with a rounding error'. The state starts with the task text, the selected playbook bullets, an empty message list and attempts = 0. The Generator asks for a grep, the tools node runs it, the Generator asks to open a file, then writes a fix. run_tests reports one failure, so attempts becomes 1 and the route goes back to the Generator. The second fix passes, the route goes to the Reflector, then the Curator, then END.",
+    "code": "from typing import Annotated, TypedDict\nfrom langgraph.graph import StateGraph, START, END\nfrom langgraph.graph.message import add_messages\nfrom langgraph.prebuilt import ToolNode\n# generator, run_tests, reflector, curator and the tools live in agent/\nclass State(TypedDict):\n    task: str\n    playbook: list[dict]                     # selected bullets\n    messages: Annotated[list, add_messages]  # appended, not replaced\n    passed: bool\n    attempts: int\n    delta: list[dict]                        # Curator output\n\ndef wants_tool(s: State) -> str:             # did the LLM request a tool?\n    return \"tool\" if s[\"messages\"][-1].tool_calls else \"done\"\ndef after_tests(s: State) -> str:\n    return \"retry\" if not s[\"passed\"] and s[\"attempts\"] < 3 else \"reflect\"\ng = StateGraph(State)\ng.add_node(\"generator\", generator)\ng.add_node(\"tools\", ToolNode([grep_files, open_file, write_file]))\ng.add_node(\"run_tests\", run_tests)\ng.add_node(\"reflector\", reflector)\ng.add_node(\"curator\", curator)\ng.add_edge(START, \"generator\")\ng.add_conditional_edges(\"generator\", wants_tool, {\"tool\": \"tools\", \"done\": \"run_tests\"})\ng.add_edge(\"tools\", \"generator\")\ng.add_conditional_edges(\"run_tests\", after_tests, {\"retry\": \"generator\", \"reflect\": \"reflector\"})\ng.add_edge(\"reflector\", \"curator\")\ng.add_edge(\"curator\", END)\napp = g.compile()",
+    "lang": "Python"
+   },
+   {
+    "title": "File-system tools: search, then read",
+    "body": "A real repository is too large to paste into a prompt, and pasting it would waste tokens and bury the useful lines among irrelevant code. So the agent gets tools. grep_files searches for a pattern and returns matching file paths and line numbers. open_file returns a specific range of lines. write_file replaces a file's content inside the working copy.\n\nThis mirrors how Letta's Context-Bench evaluates agents: the model must decide what to search for and what to open, across several hops, instead of receiving everything up front. It also matches how a human engineer works in an unfamiliar codebase.\n\nTools need guardrails. Resolve every path and refuse anything outside the repository root. Cap the number of results and the number of lines returned, and say when output was truncated so the model can narrow its search. Each tool's docstring becomes the description the LLM sees, so write it clearly.",
+    "example": "For task T07 the Generator calls grep_files('def invoice_total') and gets 'billing/invoice.py:42'. It calls open_file('billing/invoice.py', 30, 70) and receives 41 lines, about 500 tokens. Opening the whole repository would have been around 60,000 tokens. It then greps for 'round(' to check how rounding is done elsewhere, finds a helper in billing/money.py, and reuses it in the fix.",
+    "code": "import subprocess\nfrom pathlib import Path\nfrom langchain_core.tools import tool\n\nROOT = Path(\"/work/repo\").resolve()\n\ndef _safe(path: str) -> Path:\n    p = (ROOT / path).resolve()\n    if not p.is_relative_to(ROOT):              # block ../../etc/passwd\n        raise ValueError(\"path outside repository\")\n    return p\n\n@tool\ndef grep_files(pattern: str, max_hits: int = 30) -> str:\n    \"\"\"Search the repo for a regex. Returns 'path:line: text' lines.\"\"\"\n    out = subprocess.run([\"grep\", \"-rnE\", pattern, \".\"], cwd=ROOT,\n                         capture_output=True, text=True).stdout.splitlines()\n    more = f\"\\n[{len(out) - max_hits} more hits, refine the pattern]\" if len(out) > max_hits else \"\"\n    return \"\\n\".join(out[:max_hits]) + more\n\n@tool\ndef open_file(path: str, start: int = 1, end: int = 80) -> str:\n    \"\"\"Return numbered lines start..end (max 200) of one file.\"\"\"\n    lines = _safe(path).read_text().splitlines()\n    end = min(end, start + 199, len(lines))\n    return \"\\n\".join(f\"{i}: {lines[i-1]}\" for i in range(start, end + 1))",
+    "lang": "Python"
+   },
+   {
+    "title": "Generator, Reflector and Curator nodes",
+    "body": "Each ACE role is one node with its own focused prompt. The Generator solves the task. Its context is the instructions, the selected playbook bullets and the task, and it has the file tools bound so it can request calls.\n\nThe Reflector runs after the attempt is finished. It receives the trajectory (the tool calls, the edits, the test log and the final result) and answers: what worked, what failed, and what specific lesson would have helped. Specific means tied to this codebase or task type, such as 'tests assume TZ=UTC', never generic advice like 'be careful'.\n\nThe Curator turns those lessons into a list of delta operations in JSON: add a new bullet, increment the helpful or harmful counter of an existing bullet, or mark two bullets as duplicates. It sees the current playbook so it can avoid adding a bullet that already exists. Crucially, the Curator's output is data, and plain Python code applies it. The LLM never writes the playbook file directly.",
+    "example": "Trajectory for T07: the first fix used round(x, 2), and a test failed on 2.675 because of floating point. The second fix used the existing money.quantize() helper with Decimal and passed. Reflector lesson: 'Use billing.money.quantize for currency rounding; float round() fails on half-cent cases.' Curator output: add bullet b-031 with that text in section 'conventions', and mark b-007 ('prefer built-ins over helpers') harmful += 1.",
+    "code": "# Curator output: structured deltas only\n{\n  \"ops\": [\n    {\"op\": \"add\",\n     \"id\": \"b-031\",\n     \"section\": \"conventions\",\n     \"text\": \"Use billing.money.quantize for currency rounding; float round() fails on half-cent cases.\"},\n    {\"op\": \"count\", \"id\": \"b-007\", \"field\": \"harmful\", \"by\": 1},\n    {\"op\": \"count\", \"id\": \"b-012\", \"field\": \"helpful\", \"by\": 1},\n    {\"op\": \"merge\", \"keep\": \"b-012\", \"drop\": \"b-019\",\n     \"reason\": \"both say run pytest from repo root\"}\n  ]\n}",
+    "lang": "JSON"
+   },
+   {
+    "title": "Preventing context collapse",
+    "body": "Context collapse is what the ACE authors observed when an LLM is asked to rewrite its whole accumulated context each round: it tends to compress it, and specific, hard-won details disappear. A related problem, brevity bias, is the tendency of prompt optimizers to converge on short, generic instructions.\n\nProject B prevents collapse with a few mechanical rules. The Curator only emits deltas. A deterministic function applies them, checks for near-duplicates, and never deletes a bullet unless its harmful count clearly exceeds its helpful count. Every applied delta is saved to a history folder, so you can see exactly when a bullet appeared and roll back.\n\nThe playbook will grow, so selection matters. Do not paste all bullets into every prompt. Pick the bullets relevant to the task, for example by section, by keyword match with the task, or by embedding similarity, and cap the token budget. The full playbook stays on disk; only a compiled subset enters the window.",
+    "example": "After 10 rounds over 20 tasks the playbook has 64 bullets and about 3,800 tokens. A baseline variant that asks the LLM to 'rewrite the playbook incorporating new lessons' each round ends at 9 generic bullets and about 400 tokens, and its pass rate drifts down. The delta version keeps specifics such as the TZ variable and the Decimal rule, and injects only the 12 most relevant bullets (about 700 tokens) per task.",
+    "code": "import json, time\nfrom difflib import SequenceMatcher\n\ndef similar(a: str, b: str) -> float:\n    return SequenceMatcher(None, a.lower(), b.lower()).ratio()\n\ndef apply_delta(book: dict, ops: list[dict]) -> dict:\n    items = {b[\"id\"]: b for b in book[\"bullets\"]}\n    for op in ops:\n        if op[\"op\"] == \"add\":\n            if any(similar(op[\"text\"], b[\"text\"]) > 0.85 for b in items.values()):\n                continue                               # skip near-duplicate\n            items[op[\"id\"]] = {\"id\": op[\"id\"], \"section\": op[\"section\"],\n                               \"text\": op[\"text\"], \"helpful\": 0, \"harmful\": 0}\n        elif op[\"op\"] == \"count\" and op[\"id\"] in items:\n            items[op[\"id\"]][op[\"field\"]] += op[\"by\"]\n        elif op[\"op\"] == \"merge\" and op[\"drop\"] in items and op[\"keep\"] in items:\n            d = items.pop(op[\"drop\"])\n            items[op[\"keep\"]][\"helpful\"] += d[\"helpful\"]\n    # prune only clearly harmful bullets\n    book[\"bullets\"] = [b for b in items.values()\n                       if not (b[\"harmful\"] >= 3 and b[\"harmful\"] > 2 * b[\"helpful\"])]\n    book[\"version\"] += 1\n    with open(f\"playbooks/history/v{book['version']}_{int(time.time())}.json\", \"w\") as f:\n        json.dump(ops, f)                              # audit trail\n    return book",
+    "lang": "Python"
+   },
+   {
+    "title": "Evaluating and presenting the project",
+    "body": "A portfolio project is judged on evidence. Fix a task set, and run it for several rounds, updating the playbook between rounds. For each round record pass rate, average tool calls, input and output tokens per task, playbook size in bullets and tokens, and how many bullets were later marked harmful.\n\nCompare at least three variants: no playbook, the ACE-style delta playbook, and a full-rewrite playbook. The comparison is what shows you understand context collapse, rather than only having read about it. Hold out a few tasks that never feed the playbook, so you can show the lessons generalize beyond the tasks they came from.\n\nIn the README, show one trajectory end to end, the playbook diff it produced, the results table, and two honest failure cases. Interviewers for FDE roles care about how you debug and how you would deploy it at a customer: sandboxing, cost, and who approves playbook changes.",
+    "example": "Your results table might have columns Round, Variant, Pass rate, Tokens per task, Playbook bullets. You might find the delta variant rising from 55% to 75% over five rounds while the rewrite variant peaks early and then declines, and the held-out tasks improving by a smaller margin. Report the numbers you actually get, including if the effect is small, and explain why.",
+    "code": "import json, statistics as st\n\nVARIANTS = [\"none\", \"delta\", \"rewrite\"]\ntasks = [json.loads(l) for l in open(\"tasks/tasks.jsonl\")]\ntrain, held_out = tasks[:16], tasks[16:]\n\nresults = []\nfor variant in VARIANTS:\n    book = {\"version\": 0, \"bullets\": []}\n    for rnd in range(1, 6):\n        for t in train + held_out:\n            out = run_task(t, book, variant)          # invokes app, returns metrics\n            if variant != \"none\" and t in train:\n                book = update_playbook(book, out, variant)  # delta or rewrite\n            results.append({\"variant\": variant, \"round\": rnd, \"task\": t[\"id\"],\n                            \"held_out\": t in held_out, \"passed\": out[\"passed\"],\n                            \"tokens\": out[\"tokens\"], \"bullets\": len(book[\"bullets\"])})\n\nfor v in VARIANTS:\n    last = [r for r in results if r[\"variant\"] == v and r[\"round\"] == 5]\n    print(v, \"pass\", st.mean(r[\"passed\"] for r in last),\n          \"tokens\", st.mean(r[\"tokens\"] for r in last))",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Agent",
+    "A program in which an LLM chooses the next action, such as calling a tool, based on what it has seen so far."
+   ],
+   [
+    "LangGraph",
+    "A Python library for building agents as graphs of nodes and edges over a shared, typed state."
+   ],
+   [
+    "StateGraph",
+    "The LangGraph class you add nodes and edges to, then compile into a runnable app."
+   ],
+   [
+    "Reducer",
+    "A rule that says how a node's update merges into a state field, such as appending messages."
+   ],
+   [
+    "Generator",
+    "The ACE role that attempts the task using the current playbook as context."
+   ],
+   [
+    "Reflector",
+    "The ACE role that reviews a finished attempt and extracts specific lessons."
+   ],
+   [
+    "Curator",
+    "The ACE role that turns lessons into small, structured edits to the playbook."
+   ],
+   [
+    "Playbook",
+    "An itemized, versioned list of strategy bullets with ids and helpful or harmful counters."
+   ],
+   [
+    "Delta update",
+    "A small edit such as adding one bullet or changing one counter, applied instead of rewriting the whole context."
+   ],
+   [
+    "Context collapse",
+    "The loss of detail that happens when an LLM repeatedly rewrites its own accumulated context."
+   ]
+  ],
+  "practice": [
+   "Build a two-node LangGraph app (a Generator that calls an LLM and a run_tests node that runs pytest) on a toy repo with one failing test, with a conditional edge that retries up to 3 times. Deliverable: a script that prints the final test result and the number of attempts.",
+   "Add grep_files and open_file tools with path checks and output caps, and log every tool call with its arguments and output size. Deliverable: a trajectory log for 5 tasks showing tokens saved compared with pasting the full files.",
+   "Stretch: add the Reflector and Curator, apply JSON deltas with apply_delta, and run 5 rounds over 10 tasks for the no-playbook, delta and full-rewrite variants. Deliverable: a README with a results table, one playbook diff, and a paragraph on whether you observed context collapse."
+  ]
+ },
+ "fluency": {
+  "plain": "A learning path is a planned sequence of courses and practice that takes you from what you know now to what a target job needs. For an FDE, that usually means machine learning foundations, hands-on deep learning, practical generative AI skills, and some exposure to the enterprise platforms customers run. AI fluency is the ability to use AI tools well on real work: knowing when to use them, how to instruct them, how to check what they produce, and how to use them responsibly. Frameworks such as Anthropic's 4Ds (Delegation, Description, Discernment, Diligence) and the AI fluency levels Zapier has published give you a vocabulary to practise and describe that ability.",
+  "analogy": "Learning to cook combines recipes you study with meals you actually make for other people. The courses are the recipe book; fluency is knowing which dish to cook for which guest, tasting as you go, and not serving something you have not checked.",
+  "why": "FDEs are expected to learn a customer's domain and tools fast, and to model good AI habits for the customer's own staff. When a bank's operations manager asks 'can we trust the AI's draft of this report?', an FDE who can explain how they delegated, described, checked and disclosed their own AI use earns trust that a certificate alone does not.",
+  "subtopics": [
+   {
+    "title": "Designing a route that fits the role",
+    "body": "Start from the job, not from the course catalogue. Collect five FDE job posts and list the recurring skills: Python, SQL, data pipelines, LLM applications, evaluation, cloud deployment, customer communication. Mark each as strong, partial or missing for you.\n\nThen choose at most one or two resources per gap and run them in overlapping blocks, with a project that uses what you learn. A course you finish with nothing built tends to fade quickly. A short project turns the course into something you can show and talk about.\n\nBudget realistically. Six focused hours a week for 16 weeks is about 100 hours. That is enough for one foundations course, a few targeted short courses, part of a deep learning course and one platform trail, if each feeds the same portfolio project.",
+    "example": "Priya is a backend developer with strong Python and SQL, no ML, and some ChatGPT use. Her gap list: ML fundamentals (missing), LLM apps and RAG (partial), evaluation (missing), enterprise agent platforms (missing). Her route: the ML Specialization in weeks 1 to 6, two DeepLearning.AI short courses on RAG and evaluation in weeks 3 to 8, Fast.ai lessons in weeks 7 to 12, an Agentforce trail in weeks 11 to 14, and one RAG project that grows through all of it.",
+    "code": "role: Forward Deployed Engineer (AI)\nhours_per_week: 6\nweeks: 16\ngaps:\n  ml_fundamentals:   missing\n  llm_apps_rag:      partial\n  evaluation:        missing\n  agent_platforms:   missing\nroute:\n  - {weeks: \"1-6\",   resource: \"Andrew Ng ML Specialization\", closes: ml_fundamentals}\n  - {weeks: \"3-8\",   resource: \"DeepLearning.AI short courses: RAG, evals\", closes: [llm_apps_rag, evaluation]}\n  - {weeks: \"7-12\",  resource: \"Fast.ai Practical Deep Learning\", closes: ml_fundamentals}\n  - {weeks: \"11-14\", resource: \"Trailhead Agentforce trails\", closes: agent_platforms}\nproject: \"RAG assistant over public insurance docs, with eval numbers\"\nweekly_review: \"What did I build? What can I now explain? What is next?\"",
+    "lang": "YAML"
+   },
+   {
+    "title": "Foundations: Andrew Ng and DeepLearning.AI",
+    "body": "Andrew Ng co-founded Coursera and founded DeepLearning.AI, an education company. His Machine Learning Specialization, offered on Coursera with Stanford Online, is a beginner-friendly series of three courses. It covers supervised learning (linear and logistic regression), advanced algorithms (neural networks and decision trees), and unsupervised learning, recommender systems and an introduction to reinforcement learning, with practical advice on diagnosing and improving models. Labs use Python.\n\nWhy this matters for an FDE: customers will ask why a model is wrong, and the answers usually involve training data, overfitting, evaluation splits or thresholds. Those ideas come from classical ML and carry straight over to LLM systems.\n\nDeepLearning.AI also publishes many short courses, often an hour or two each, frequently built with companies whose tools they teach. They are useful for targeted skills such as RAG, agents, evaluation or fine-tuning. Choose the ones that match what you are building now.",
+    "example": "Week 2 of the Specialization covers gradient descent for linear regression. Priya reimplements it in 15 lines of NumPy on a toy dataset of house sizes and prices, then explains to a friend in plain words why the learning rate matters: too large and the cost bounces around, too small and it barely moves. She adds the notebook to her portfolio repo.",
+    "code": "import numpy as np\n\n# toy data: house size (100 m2 units) -> price (100k units)\nx = np.array([0.8, 1.0, 1.2, 1.5, 2.0])\ny = np.array([1.6, 2.0, 2.3, 2.9, 3.8])\n\nw, b, lr = 0.0, 0.0, 0.1                 # weight, bias, learning rate\nfor step in range(2000):\n    pred = w * x + b\n    err = pred - y\n    cost = (err ** 2).mean() / 2        # mean squared error / 2\n    dw = (err * x).mean()               # gradient w.r.t. w\n    db = err.mean()                     # gradient w.r.t. b\n    w, b = w - lr * dw, b - lr * db     # one gradient descent step\n    if step % 500 == 0:\n        print(step, round(cost, 4))\nprint(\"w\", round(w, 3), \"b\", round(b, 3))   # try lr=1.0 and lr=0.001",
+    "lang": "Python"
+   },
+   {
+    "title": "Fast.ai: learning deep learning top-down",
+    "body": "Fast.ai, founded by Jeremy Howard and Rachel Thomas, offers a free course called Practical Deep Learning for Coders. Its teaching style is top-down: in the first lesson you train a working image classifier with a few lines of code, and later lessons open up each part to explain how it works. It uses PyTorch and the fastai library built on top of it.\n\nThis suits engineers who learn best by building. It also teaches habits that matter in the field: start from a pretrained model and fine-tune it, look at the examples your model gets most wrong, and clean data based on what you see.\n\nPair it with the Ng Specialization rather than choosing one. Ng's course gives you the maths and vocabulary; Fast.ai gives you the instinct of getting a model working quickly and improving it by inspecting errors.",
+    "example": "In the first Fast.ai lesson you fine-tune a pretrained ResNet to tell cats from dogs in the Oxford-IIIT Pets dataset. A single epoch of fine-tuning typically brings the error rate to a low single-digit percentage. The FDE lesson is the workflow: pretrained model, quick baseline, inspect the worst errors, then decide whether you need more data or a different model.",
+    "code": "# Fast.ai lesson 1 style: pip install fastai\nfrom fastai.vision.all import *\n\npath = untar_data(URLs.PETS) / \"images\"\n\ndef is_cat(fname):                 # in this dataset, cat breeds are capitalized\n    return fname[0].isupper()\n\ndls = ImageDataLoaders.from_name_func(\n    path, get_image_files(path), valid_pct=0.2, seed=42,\n    label_func=is_cat, item_tfms=Resize(224))\n\nlearn = vision_learner(dls, resnet34, metrics=error_rate)  # pretrained\nlearn.fine_tune(1)                                          # one epoch\n\ninterp = ClassificationInterpretation.from_learner(learn)\ninterp.plot_top_losses(9)          # look at what it gets most wrong",
+    "lang": "Python"
+   },
+   {
+    "title": "Salesforce Trailhead and Agentforce",
+    "body": "Many FDE customers already run Salesforce, so it helps to understand how AI agents are built inside a large enterprise platform. Trailhead is Salesforce's free online learning site. Content is organised as modules and trails, with hands-on exercises in a practice org, and you earn badges as you complete them.\n\nAgentforce is Salesforce's platform for building AI agents that work with a company's Salesforce data and processes, for example answering customer service questions or helping sales reps. Agentforce Builder is the tool for configuring those agents, including what topics an agent handles, the instructions it follows and the actions it can take. Salesforce also runs an Agentblazer learning programme with progressive levels, the highest named Legend. Programme details change, so check Trailhead for current requirements.\n\nThe transferable lesson is the shape of an enterprise agent: a narrow scope, clear instructions, a fixed set of permitted actions tied to existing business logic, and guardrails around data access. You will design custom agents the same way.",
+    "example": "A telecom customer asks whether they should build a support agent themselves or use Agentforce, which they already license. Having done the trails, the FDE can compare concretely: Agentforce gives native access to case and account records and existing flows, while a custom build gives more control over retrieval and evaluation. They sketch both options with the same agent spec template before the meeting.",
+    "code": "AGENT SPEC TEMPLATE (platform-neutral planning sheet)\n\nAgent name:     Billing Support Agent\nUsers:          Retail customers via web chat\nScope (topics): 1. explain a bill   2. update payment date\nOut of scope:   refunds over 50 GBP, contract changes -> human\n\nInstructions:\n  - Always confirm the account before discussing a bill.\n  - Quote amounts from the billing record, never estimate.\n\nActions (each maps to existing business logic):\n  get_account(customer_id)          read\n  get_latest_bill(account_id)       read\n  change_payment_date(account_id, day)  write, needs confirmation\n\nGuardrails:     no card numbers in chat; log every write action\nSuccess metric: resolved without handoff, CSAT, wrong-answer rate",
+    "lang": "Text"
+   },
+   {
+    "title": "AI fluency frameworks: Zapier and the 4Ds",
+    "body": "Courses teach concepts. Fluency is about behaviour on real tasks. Two frameworks help you think about it.\n\nZapier has publicly described how it assesses AI fluency, using a four-level scale that runs roughly from people who resist or do not use AI, through capable and then regular adoption, to people who redesign how work gets done around AI. The exact wording and criteria are Zapier's own, so read their published version. The useful idea is that fluency is a scale you can place yourself on, backed by examples, rather than a yes or no.\n\nAnthropic's AI Fluency framework, developed with educators Rick Dakan and Joseph Feller, names four competencies. Delegation is deciding what work should be done by you, by AI, or together, based on your goals and on what the tool can do. Description is communicating clearly with AI: the result you want, the process to follow, and how it should behave. Discernment is evaluating what AI produces and how it produced it, with a critical eye. Diligence is taking responsibility: using AI ethically and safely, being transparent about its use, and standing behind the final work.",
+    "example": "Priya rates herself with a simple sheet. Delegation: she uses AI for drafts but has never decided deliberately what not to hand over. Description: she writes one-line prompts. Discernment: she rarely checks numbers. Diligence: she has pasted work data into a personal account once. Her plan for the month targets Description and Discernment first, and she stops using personal accounts for work data immediately.",
+    "code": "AI FLUENCY SELF-CHECK (score 1-4, with one real example each)\n\nScale: 1 not using  2 occasional, simple  3 regular, reliable\n       4 redesigning workflows around AI\n\nDELEGATION   Do I decide what to hand over, and what to keep?\n             Example: ______________________   Score: _\nDESCRIPTION  Do I give goal, context, format, examples, constraints?\n             Example: ______________________   Score: _\nDISCERNMENT  Do I verify facts, numbers, code and reasoning?\n             Example: ______________________   Score: _\nDILIGENCE    Do I use approved tools, disclose AI use, own the result?\n             Example: ______________________   Score: _\n\nLowest score -> this month's focus. Re-rate monthly.",
+    "lang": "Text"
+   },
+   {
+    "title": "Applying the 4Ds to a real work task",
+    "body": "Frameworks only help if you apply them to real work. Choose one task a week and walk through the four Ds deliberately, then write a short note on what happened.\n\nDelegation comes first: break the task into parts and decide which parts AI does well (first drafts, reformatting, summarising, boilerplate code) and which you keep (judgement calls, final numbers, anything you cannot check). Description: give the tool the goal, the audience, the relevant context, the format, and an example if you have one. Discernment: check outputs against the source, rerun calculations, run code, and ask the tool to explain its reasoning when that helps you spot errors. Diligence: use only tools approved for the data involved, say where AI contributed when that matters to the reader, and take ownership of what you send.\n\nThe written note becomes interview material. 'Here is a task, here is what I delegated, here is the error I caught and how' is a strong, specific answer.",
+    "example": "An FDE at an insurer must send a weekly data-quality report to the claims director. Delegation: AI drafts the narrative from the query results and suggests a chart layout; the FDE computes all figures in SQL and decides which issues to escalate. Description: the prompt includes the audience (a non-technical director), the three metrics, last week's report as an example and a 200-word limit. Discernment: the FDE finds the draft says 'nulls fell 40%' when the true drop was 4%, and fixes it. Diligence: data stays in the company's approved AI tool, and the report footer notes that the summary was drafted with AI and checked by the FDE.",
+    "code": "4Ds CHECKLIST - weekly data-quality report\n\n[ ] DELEGATION\n    AI: draft summary, suggest chart layout, tidy wording\n    Me: run SQL for every number, choose what to escalate\n[ ] DESCRIPTION\n    Goal: director decides whether to pause the claims model\n    Context: 3 metrics + last week's report as example\n    Format: 200 words, 3 bullets, one chart\n[ ] DISCERNMENT\n    Every number in the draft matches the SQL output?\n    Any claim not supported by the data? Removed?\n    Tone right for a non-technical reader?\n[ ] DILIGENCE\n    Only approved tool used for claims data?\n    AI assistance noted in footer?\n    I have read the final version end to end and own it.\n\nNote to self (2-3 lines): what the AI got wrong, how I caught it.",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "Learning path",
+    "A planned sequence of courses and practice aimed at the skills a specific role needs."
+   ],
+   [
+    "Machine Learning Specialization",
+    "Andrew Ng's beginner three-course ML series on Coursera, covering supervised, advanced and unsupervised learning."
+   ],
+   [
+    "DeepLearning.AI",
+    "An AI education company founded by Andrew Ng that offers specializations and short practical courses."
+   ],
+   [
+    "Fast.ai",
+    "A free, top-down deep learning course and library that starts with working models and explains them afterwards."
+   ],
+   [
+    "Trailhead",
+    "Salesforce's free learning platform organised into modules and trails with hands-on exercises and badges."
+   ],
+   [
+    "Agentforce",
+    "Salesforce's platform for building AI agents that act on a company's Salesforce data and processes."
+   ],
+   [
+    "AI fluency",
+    "The ability to use AI effectively, efficiently, ethically and safely on real work."
+   ],
+   [
+    "Delegation",
+    "Deciding which parts of a task AI should do, which you should do, and which you do together."
+   ],
+   [
+    "Discernment",
+    "Critically evaluating AI outputs and the process behind them before relying on them."
+   ],
+   [
+    "Diligence",
+    "Taking responsibility for AI use: approved tools, transparency, and ownership of the final result."
+   ]
+  ],
+  "practice": [
+   "Collect five FDE job posts, list the skills that appear in at least three, and rate yourself strong, partial or missing on each. Deliverable: a one-page gap list and a 12 to 16 week route using the YAML template, with one project named.",
+   "Fill in the AI fluency self-check with a real example for each of the four Ds. Deliverable: the completed sheet and one concrete habit you will change this month for your lowest-scoring D.",
+   "Stretch: pick a real task from your job or study (a report, a code change, a customer email) and complete it using the 4Ds checklist. Deliverable: a half-page write-up covering what you delegated, your prompt, one error or weakness you caught, and what you disclosed, written as a 2-minute interview answer."
+  ]
+ }
+}

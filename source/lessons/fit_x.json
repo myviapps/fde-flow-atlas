@@ -1,0 +1,30 @@
+{
+ "dataformats": {
+  "best": [
+   "interactive",
+   "practice"
+  ],
+  "why": "Testing regexes and date conversions on real strings builds the instinct faster than reading rules."
+ },
+ "pytooling": {
+  "best": [
+   "practice",
+   "reading"
+  ],
+  "why": "Tooling sticks once you set up a real repo yourself; short explanations say why each tool exists."
+ },
+ "entnetwork": {
+  "best": [
+   "interactive",
+   "flowchart"
+  ],
+  "why": "Network failures are diagnosed by answering questions in order, which a decision tree tool lets you practise."
+ },
+ "poc": {
+  "best": [
+   "document",
+   "reading"
+  ],
+  "why": "POC work is mostly written agreements: success criteria, scope, estimates and RFP answers you fill in."
+ }
+}

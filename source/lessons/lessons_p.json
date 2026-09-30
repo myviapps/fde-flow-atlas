@@ -1,0 +1,1230 @@
+{
+ "change": {
+  "plain": "Change management is the work of helping people move from the old way of doing a task to a new one. Adoption means people actually use the new tool for their real work, regularly, without being chased. A rollout is the period when a tool is released to its users. An FDE can build a tool that works perfectly in a demo and still see it fail if users keep their old spreadsheet, so adoption needs its own plan, owners and numbers.",
+  "analogy": "It is like a town building a new footbridge. If nobody puts up signs, the old muddy path stays open and the bridge starts somewhere inconvenient, people keep walking the path they know. Someone has to tell them, show them, and make the new route the easy one.",
+  "why": "FDEs are judged on whether the customer gets value, and value only appears when people use the system. A typical case: a claims team gets an AI summarizer, but team leads still ask for the old manual notes, so handlers do both jobs and quietly stop using the tool. Spotting and fixing that is part of the FDE role.",
+  "subtopics": [
+   {
+    "title": "Why good tools still fail",
+    "body": "A tool fails to be adopted when using it costs the user more than it gives them. The cost can be extra clicks, a missing field they need, fear of making a mistake, or simply having to learn something new while under time pressure.\n\nCommon root causes repeat across projects: users were not involved in the design, the old way is still available and still expected by managers, training was generic, or nobody owns adoption after go-live.\n\nThe first step in fixing adoption is to treat it as a problem with causes, the same way you would debug code. Look at usage data, then talk to users who stopped.",
+    "example": "A logistics firm rolled out an AI tool that drafts replies to delivery complaints. After six weeks only 18 of 60 agents used it. Interviews showed two causes: the drafts lacked the tracking link agents always paste in, and team leads still scored agents on a checklist designed for manually written replies. Adding the link and updating the checklist were both small fixes.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Root cause",
+      "What you see",
+      "Typical fix"
+     ],
+     "rows": [
+      [
+       "Users not involved",
+       "Tool misses a step they need",
+       "Shadow users, add the step"
+      ],
+      [
+       "Old way still expected",
+       "People do both, then drop the tool",
+       "Sponsor retires the old report"
+      ],
+      [
+       "Generic training",
+       "Users call it 'confusing'",
+       "Role-based training on real tasks"
+      ],
+      [
+       "No owner after go-live",
+       "Bugs linger, trust drops",
+       "Named owner and weekly review"
+      ],
+      [
+       "Fear of mistakes",
+       "Users double-check everything",
+       "Show accuracy data, clear escalation"
+      ],
+      [
+       "Slow or unreliable",
+       "Usage drops after incidents",
+       "Fix performance first"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Stakeholders and champions",
+    "body": "A sponsor is the senior person who owns the outcome and can change rules, for example retiring an old report. Without an active sponsor, adoption problems that need a decision stay stuck.\n\nA champion is a regular user who is respected by their peers and agrees to try the tool early, help colleagues and report problems. Champions are more persuasive than an outside engineer because they do the same job.\n\nA champion network is one or two champions per team or shift, a short regular call with the FDE, and a simple way to log issues. Give champions early access, recognition in front of their managers, and quick fixes to the problems they raise so they keep their credibility.",
+    "example": "At a hospital pharmacy with four shifts, the FDE asked each shift lead to name one pharmacist who was good at the job and open to new tools. The four champions tested the stock-forecast screen two weeks before launch, found that it used product codes nobody memorized, and got product names added. On launch day each champion spent the first hour of their shift helping colleagues.",
+    "code": "CHAMPION NETWORK PLAN - Stock forecast tool\nSponsor:        Head of Pharmacy (decides on old-report retirement)\nChampions:      1 per shift x 4 shifts (named by shift leads)\nTime asked:     2 hours/week for 6 weeks, agreed with their managers\n\nWeek -2  Early access, 30-min walkthrough with FDE\nWeek -1  Champions test on real orders, log issues in shared sheet\nWeek  0  Go-live: champions on the floor first hour of each shift\nWeek 1-4 Weekly 20-min champion call: top 3 issues, fixes shipped\nWeek  6  Sponsor thanks champions in the all-staff meeting\n\nIssue log columns: date | champion | problem | user quote | status",
+    "lang": "Text"
+   },
+   {
+    "title": "Training plans that stick",
+    "body": "Training works best when it is about the user's own tasks, uses realistic data, and happens close to when they will need it. People forget most of a demo within days if they do not practice.\n\nSplit training by role. A manager needs to read the dashboard and know what to expect from the team. A daily user needs to do their three most common tasks and know what to do when the tool is wrong.\n\nKeep training short, add a one-page quick reference, and plan for new starters. A recording of a live session is useful as a backup, but hands-on practice is what builds confidence.",
+    "example": "For an insurer's claims summarizer, the FDE planned a 45-minute hands-on session per team of 10 handlers, held two days before their go-live. Each handler summarized three real past claims, compared them to the file, and practiced flagging a wrong summary. Team leads got a separate 20-minute session on the quality dashboard.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Audience",
+      "Format",
+      "Length",
+      "Goal"
+     ],
+     "rows": [
+      [
+       "Daily users",
+       "Hands-on, real past cases",
+       "45 min",
+       "Do top 3 tasks alone"
+      ],
+      [
+       "Team leads",
+       "Walkthrough plus dashboard",
+       "20 min",
+       "Coach and spot misuse"
+      ],
+      [
+       "Champions",
+       "Early access and Q&A",
+       "2 x 30 min",
+       "Help others, report issues"
+      ],
+      [
+       "New starters",
+       "Recording plus buddy",
+       "30 min",
+       "Same as daily users"
+      ],
+      [
+       "Executives",
+       "5-minute demo in a meeting",
+       "5 min",
+       "Know what changed and why"
+      ]
+     ]
+    },
+    "checklist": [
+     "Training split by role",
+     "Uses the user's real tasks and realistic data",
+     "Held within a few days of go-live",
+     "One-page quick reference handed out",
+     "Users practice what to do when the tool is wrong",
+     "Plan for new starters written down"
+    ]
+   },
+   {
+    "title": "Communication plans",
+    "body": "A communication plan lists who needs to hear what, from whom, when, and through which channel. It prevents surprises, which are a major source of resistance.\n\nEvery message should answer the user's questions: what is changing, why, what it means for me, when, and where to get help. The sender matters. People listen to their own manager more than to a project email.\n\nPlan several touches: an early heads-up, a go-live message, and follow-ups that share early results and fixes. Sharing 'you told us X, we changed Y' shows that feedback works and encourages more of it.",
+    "example": "Two weeks before go-live at a distribution company, the operations director told team leads in their weekly meeting why the new order-check tool was coming. One week before, each team lead sent a short email to their team. On go-live day the champions posted in the team chat. Three weeks after, the director shared that order errors had dropped and listed two fixes that came from user feedback.",
+    "code": "COMMUNICATION PLAN\nwhen       audience      sender           channel        message\nT-14 days  Team leads    Ops director     Weekly meeting Why, timeline, their role\nT-7 days   All users     Own team lead    Email          What changes, training date\nT-0        All users     Champions        Team chat      Live today, where to get help\nT+7 days   All users     FDE + team lead  Email          Top questions answered\nT+21 days  All staff     Ops director     Newsletter     Early results, fixes made\n\nEMAIL TEMPLATE (from team lead)\nSubject: New order-check tool from Monday 9 March\nWhat:  Orders will be checked by the new tool before release.\nWhy:   Last quarter 3% of orders had errors that reached customers.\nYou:   You review flagged orders only, about 1 in 10.\nHelp:  Training Thursday 10:00. Champion on our team: Priya.",
+    "lang": "Text"
+   },
+   {
+    "title": "Measuring adoption",
+    "body": "Adoption needs numbers, the same as model accuracy. Three levels are useful. Breadth is the share of intended users who used the tool in a period, for example weekly active users divided by licensed users. Depth is the share of the relevant work that goes through the tool. Outcome is the business number the project was meant to move, such as handle time.\n\nLogins alone mislead: people can log in and then do the work elsewhere. Depth catches that. Collect usage events from the start, since adding them later means you have no baseline.\n\nLook at the data by team and by person. A low average often hides one team at 90 percent and another at 5 percent, and the fixes differ.",
+    "example": "A support tool has 6 licensed agents. In one week, 3 of them used it at least once (breadth 50 percent), and 4 of the 8 relevant tasks were done in the tool (depth 50 percent). The three non-users get a short conversation with their champion before the next weekly review.",
+    "code": "from datetime import date\n\n# One row per time a user did the target task: (user, day, done_with_tool?)\nevents = [\n    (\"ana\", date(2026, 3, 2), True),  (\"ana\", date(2026, 3, 3), True),\n    (\"ben\", date(2026, 3, 2), False), (\"ben\", date(2026, 3, 4), True),\n    (\"cara\", date(2026, 3, 3), True), (\"dev\", date(2026, 3, 5), False),\n    (\"eli\", date(2026, 3, 5), False), (\"eli\", date(2026, 3, 6), False),\n]\nlicensed_users = [\"ana\", \"ben\", \"cara\", \"dev\", \"eli\", \"fay\"]\n\nactive = {u for u, d, used in events if used}             # used the tool at least once\nreach = len(active) / len(licensed_users)                  # breadth: who uses it\ntasks = [used for _, _, used in events]\ndepth = sum(tasks) / len(tasks)                            # depth: share of tasks done in the tool\nnot_started = [u for u in licensed_users if u not in active]\n\nprint(f\"Weekly active: {len(active)}/{len(licensed_users)} = {reach:.0%}\")\nprint(f\"Tasks done in tool: {sum(tasks)}/{len(tasks)} = {depth:.0%}\")\nprint(\"Follow up with:\", not_started)\n# Weekly active: 3/6 = 50%\n# Tasks done in tool: 4/8 = 50%\n# Follow up with: ['dev', 'eli', 'fay']",
+    "lang": "Python"
+   },
+   {
+    "title": "Handling resistance",
+    "body": "Resistance is any behavior that slows the change: complaints, workarounds, quiet non-use. It usually has a reason. The tool may add work, threaten someone's status or expertise, or have failed them once in front of a customer.\n\nOne widely used model, Prosci's ADKAR, says a person needs Awareness of why, Desire to take part, Knowledge of how, Ability to do it in practice, and Reinforcement so it lasts. Asking which of these is missing helps you pick the right fix: more explanation, a better reason, training, practice or follow-up.\n\nListen first. Ask the resistant person to show you where the tool gets in the way. Some complaints reveal real bugs. When the concern is about jobs or status, be honest about what you know, and bring the sponsor in for decisions you cannot make.",
+    "example": "A senior underwriter refused to use a risk-scoring assistant and told colleagues it was 'a black box'. The FDE sat with her for an hour. She showed two cases where the score ignored a clause she always checks. The team added that clause to the model's inputs and showed the reasoning for each score. She later became the team's champion.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Ask the person to show you, on screen, where it gets in the way",
+     "Identify which ADKAR element is missing",
+     "Separate real product gaps from habit or fear",
+     "Fix and tell them what changed because of their feedback",
+     "Bring the sponsor in for policy or job questions",
+     "Check back after two weeks"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Adoption",
+    "Users regularly doing their real work with the new tool without being chased."
+   ],
+   [
+    "Change management",
+    "Planned work to help people move from an old way of working to a new one."
+   ],
+   [
+    "Sponsor",
+    "A senior person who owns the outcome and can change rules and priorities."
+   ],
+   [
+    "Champion",
+    "A respected user who tries the tool early, helps peers and reports problems."
+   ],
+   [
+    "Communication plan",
+    "A schedule of who hears what, from whom, when and through which channel."
+   ],
+   [
+    "Breadth",
+    "Share of intended users who use the tool in a period, such as weekly active users."
+   ],
+   [
+    "Depth",
+    "Share of the relevant tasks that actually go through the tool."
+   ],
+   [
+    "ADKAR",
+    "A change model: Awareness, Desire, Knowledge, Ability, Reinforcement."
+   ],
+   [
+    "Workaround",
+    "An unofficial way users avoid a tool or process, often a spreadsheet."
+   ]
+  ],
+  "practice": [
+   "Think of a tool your school or workplace introduced. Write five sentences: what it was, who used it, one reason it was or was not adopted, and one thing you would have done differently.",
+   "Write a one-page adoption plan for an AI email-drafting tool for 40 support agents in three teams: sponsor, champions, training table by role, and a communication plan with at least four messages.",
+   "Extend the Python adoption script to compute breadth and depth per team from a list of (user, team, day, used) events, and print which team needs attention first."
+  ]
+ },
+ "pm": {
+  "plain": "Project delivery is how a team turns an agreed goal into working software on a date the customer can plan around. Agile is a family of working methods that deliver in small pieces and adjust based on feedback, instead of writing a big plan once and following it for months. A sprint is a fixed period, often two weeks, in which the team builds a chosen set of items. Around the build, a few simple tools keep everyone aligned: a backlog of user stories, a prioritization method, a log of risks and dependencies, and a weekly status report.",
+  "analogy": "It is like renovating a kitchen room by room while the family still lives in the house. You agree which jobs matter most, finish one area at a time so they can use it, check in every week, and keep a list of things you are waiting on, such as the plumber or the tiles.",
+  "why": "FDEs often run delivery themselves, with no project manager, inside a customer organization they do not control. A typical case is a six-week pilot at a bank where the build takes two weeks and the rest is waiting for data access, security review and user time. Clear backlogs, honest status and tracked dependencies are what keep such a pilot on schedule.",
+  "subtopics": [
+   {
+    "title": "Agile and sprints in practice",
+    "body": "Agile means delivering in small, working increments and using feedback to decide what comes next. Scrum is a popular agile framework built around sprints and a few regular meetings, sometimes called ceremonies.\n\nA sprint starts with planning, where the team picks work that fits. Each day a short standup covers progress and blockers. The sprint ends with a review, where working software is demoed, and a retrospective, where the team improves its own process.\n\nFDE teams usually keep the rhythm and drop the heavy parts. A two-person team may skip formal story points but still plan every two weeks, demo to the customer at the end of each sprint and write down blockers daily.",
+    "example": "A two-person FDE team runs a six-week pilot at a regional insurer, split into three two-week sprints. Sprint 1 ends with a demo of claims summaries on 50 historical claims. Sprint 2 adds the handler review screen. Sprint 3 runs live with one team of eight handlers and ends with a results readout to the sponsor.",
+    "code": "SPRINT CALENDAR - 2-week sprint\nMon wk1  10:00  Sprint planning (60 min): team + customer product owner\nDaily    09:30  Standup (15 min): done / next / blocked\nThu wk1  14:00  Backlog refinement (30 min): split and clarify next items\nThu wk2  15:00  Sprint review (45 min): demo working software to users\nFri wk2  11:00  Retrospective (30 min): keep / stop / try\nFri wk2  16:00  Weekly status report sent to sponsor",
+    "lang": "Text"
+   },
+   {
+    "title": "Backlog and user stories",
+    "body": "The backlog is the single ordered list of all the work the team might do. The top items are small and well understood. Items further down can be rough ideas.\n\nA user story describes a need from the user's point of view: As a [type of user], I want [something], so that [benefit]. It keeps the team focused on the person and the reason, which helps when you need to cut scope.\n\nAcceptance criteria are the testable conditions that make a story done. A common format is Given (the situation), When (the action), Then (the expected result). A story that is too big to finish in one sprint gets split, for example by user type or by one path through the workflow.",
+    "example": "At an insurer, the story 'claims summaries' is too big. It is split into: show a summary for a single claim, let the handler flag a wrong summary, and show summaries for all claims in the handler's queue. The first story is done when a handler opens a claim and sees a summary within five seconds, with each fact linked to its source document.",
+    "code": "STORY  CLM-12  (Must)\nAs a claims handler,\nI want a short summary of each new claim's documents,\nso that I can decide the next action without reading every page.\n\nAcceptance criteria\n  Given a claim with up to 40 pages of documents\n  When I open the claim in the review screen\n  Then a summary of at most 150 words appears within 5 seconds\n  And every fact in the summary links to the page it came from\n  And a 'Flag as wrong' button records my user id and a reason\n\nNotes: needs read access to DocStore (dependency D-3)",
+    "lang": "Text"
+   },
+   {
+    "title": "MoSCoW prioritization",
+    "body": "MoSCoW is a simple way to agree scope with a customer. Each item is labeled Must have, Should have, Could have or Won't have this time. The lowercase letters just make the word readable.\n\nMust haves are the minimum that makes the release useful and measurable. If one is missing, the release is not worth doing. Should haves are important but the release still works without them. Could haves are nice extras. Won't haves are explicitly out of scope for now, which prevents arguments later.\n\nA common guideline is to keep Musts to roughly 60 percent of the planned effort, so there is room to absorb surprises by dropping Coulds and Shoulds instead of missing the date.",
+    "example": "For a six-week claims pilot, the team and sponsor sort eight items. The Musts are summaries, source links and the flag button, because without them handlers cannot use or trust the tool. Export to PDF is a Could, and mobile access is a Won't for the pilot.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Item",
+      "Label",
+      "Reason"
+     ],
+     "rows": [
+      [
+       "Claim summary per claim",
+       "Must",
+       "Core value of the pilot"
+      ],
+      [
+       "Source link for each fact",
+       "Must",
+       "Handlers will not trust it otherwise"
+      ],
+      [
+       "Flag wrong summary",
+       "Must",
+       "Needed to measure accuracy"
+      ],
+      [
+       "Queue view of all claims",
+       "Should",
+       "Saves clicks, not essential"
+      ],
+      [
+       "Usage dashboard for team leads",
+       "Should",
+       "Helps adoption"
+      ],
+      [
+       "Export summary to PDF",
+       "Could",
+       "Requested by one user"
+      ],
+      [
+       "Mobile access",
+       "Won't (this time)",
+       "Security review would add weeks"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "RAID logs",
+    "body": "A RAID log is one shared table of Risks, Assumptions, Issues and Dependencies. A risk is something that might go wrong. An assumption is something you are treating as true without proof. An issue is a problem happening now. A dependency is something you need from someone else before you can proceed.\n\nEvery row needs an owner, a date and a status. Without an owner, nothing happens. Review the log every week and bring the top items into the status report.\n\nAssumptions deserve special care: write them down early and test them, because a wrong assumption, such as 'the data has a clean customer id', often turns into an issue weeks later.",
+    "example": "In week 1 of a bank pilot, the FDE logs a dependency on the bank's IT team to open a firewall rule by 14 March, owned by the bank's infrastructure lead. By 12 March it has not started, so the FDE moves it to red in the status report and asks the sponsor to intervene. The rule opens on 17 March and the plan shifts by three days, which everyone saw coming.",
+    "code": "ID   Type        Description                              Owner (org)          Due     Status\nR-1  Risk        OCR quality poor on scanned faxes        FDE Maya (vendor)    03-20   Open, testing 50 samples\nA-1  Assumption  Claim ids match between DocStore and CRM FDE Tom (vendor)     03-10   Confirmed 03-09\nI-1  Issue       Test environment down since Monday       IT ops (customer)    03-12   In progress\nD-1  Dependency  Firewall rule to DocStore API            Infra lead (customer) 03-14  Late, escalated\nD-2  Dependency  8 handlers for 1-hour training           Claims mgr (customer) 03-24  Booked\nD-3  Dependency  Read-only service account for DocStore   IAM team (customer)  03-14   Not started",
+    "lang": "Text"
+   },
+   {
+    "title": "The weekly status report",
+    "body": "A weekly status report tells the sponsor and stakeholders where the project stands in under two minutes of reading. It uses RAG status: red means the goal or date is at risk without help, amber means there is a problem the team is handling, green means on track.\n\nA good report includes the overall color with one reason, what was done this week, what is planned next week, the top risks and issues, and a short list of asks with owners and dates. The asks section is the most useful part, because it turns the report into action.\n\nBe honest about color. Moving to amber early, with a plan, builds trust. Staying green until the last week and then jumping to red destroys it.",
+    "example": "In week 3 of the claims pilot, the model is ready but only 3 of 8 handlers have accounts. The FDE marks the project amber, explains that live use will start two days late unless accounts are created by Wednesday, and names the IAM team lead as the owner of that ask.",
+    "code": "STATUS - Claims summary pilot - week 3 of 6          Overall: AMBER\nReason: live start at risk, 5 of 8 handler accounts missing\n\nDone this week\n  - Summaries on 200 past claims, 91% rated correct by 2 handlers\n  - Flag button and source links shipped\nNext week\n  - Live use with team A (8 handlers) from Monday\n  - Daily accuracy review with team lead\nRisks / issues\n  - D-3 service account late (owner: IAM team, due Wed)\nAsks\n  1. Create 5 handler accounts by Wed 19 Mar (IAM team lead)\n  2. Confirm 30-min slot for week-4 review (Claims director)",
+    "lang": "Text"
+   },
+   {
+    "title": "Managing dependencies on the customer",
+    "body": "On FDE projects, most delays come from waiting for the customer: data extracts, credentials, security approvals, access to users, or decisions. The customer is usually busy with other work, so your request is not their priority unless you make it easy and visible.\n\nList these dependencies in the first week, before you need them. For each, find the actual person who can do it, explain exactly what you need and why, and agree a date. Put them in the RAID log and the status report.\n\nWhen something slips, escalate politely and early through the sponsor, with the impact stated in days or money. Meanwhile keep the team moving with sample or synthetic data, work that does not need the blocked item, or a changed order of the backlog.",
+    "example": "Before kickoff at a hospital group, the FDE sent a dependency list: a de-identified extract of 10,000 discharge notes, a VPN account, a security review slot and two hours of a nurse's time per week. The security review had a four-week queue, so it was booked on day one. The team built against synthetic notes until the extract arrived in week 2.",
+    "code": "Subject: Pilot needs from your side - 3 items, first due Friday\n\nHi Priya,\nTo keep the pilot on track for the 4 April readout, we need three things:\n\n1. Read-only service account for DocStore - IAM team - by Fri 14 Mar\n   Without it we cannot run on live claims; each week of delay moves the readout a week.\n2. Firewall rule from our VPC to DocStore API - Infra - by Fri 14 Mar\n3. 8 handlers for a 1-hour training - Claims manager - by Mon 24 Mar\n\nAll three are in the shared RAID log (D-1 to D-3). Could you confirm owners,\nor tell me who I should ask directly?\n\nThanks, Maya",
+    "lang": "Text",
+    "checklist": [
+     "List every customer dependency in week 1",
+     "Name a real person as owner for each, not a team",
+     "Agree a date and explain the impact of missing it",
+     "Add each to the RAID log and the status report asks",
+     "Escalate through the sponsor at the first slip, with impact in days",
+     "Keep the team busy with work that does not need the blocked item"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Agile",
+    "A way of working that delivers in small pieces and adjusts plans based on feedback."
+   ],
+   [
+    "Sprint",
+    "A fixed time box, often two weeks, in which a team builds a chosen set of items."
+   ],
+   [
+    "Backlog",
+    "The single ordered list of all work the team might do."
+   ],
+   [
+    "User story",
+    "A short description of a need: as a user, I want something, so that I get a benefit."
+   ],
+   [
+    "Acceptance criteria",
+    "Testable conditions a story must meet to count as done."
+   ],
+   [
+    "MoSCoW",
+    "Prioritization into Must, Should, Could and Won't have this time."
+   ],
+   [
+    "RAID log",
+    "A shared table of Risks, Assumptions, Issues and Dependencies with owners and dates."
+   ],
+   [
+    "RAG status",
+    "Red, amber or green rating of whether a project is on track."
+   ],
+   [
+    "Product owner",
+    "The person who decides the order of the backlog, often on the customer side."
+   ],
+   [
+    "Dependency",
+    "Something you need from someone else before your work can proceed."
+   ]
+  ],
+  "practice": [
+   "Write three user stories with Given/When/Then acceptance criteria for a tool that lets a school secretary search past parent emails.",
+   "Take a 10-item wish list for an internal HR chatbot and sort it with MoSCoW for a four-week pilot. Write one line of reasoning per item, keeping Musts to about 60 percent of the effort.",
+   "Write a RAID log with at least six rows and a week-2 status report for an imagined pilot where the customer's data extract is one week late. Choose the RAG color and justify it."
+  ]
+ },
+ "roi": {
+  "plain": "A business case is a short document that argues a project is worth its cost, in money terms. ROI, or return on investment, compares what you gain with what you spend: an ROI of 100 percent means you got back twice what you spent. Payback period is how long it takes for the benefits to cover the upfront cost. Sensitivity analysis checks how much the answer changes when your assumptions are wrong. Together they let a CFO, the chief financial officer who controls the budget, compare your AI project with other ways to spend the same money.",
+  "analogy": "It is like deciding whether to buy a dishwasher. You estimate the hours of washing it saves, what your time is worth, the price of the machine, the extra water and electricity each month, and how many months until it has paid for itself. Then you ask what happens if you use it less than you expect.",
+  "why": "FDE pilots end with a question from the customer's leadership: should we pay to roll this out? An FDE who can say 'with 70 percent adoption this pays back in under five months, and it still breaks even at about 25 percent' gets a decision. One who only says 'users like it' often gets a delay.",
+  "subtopics": [
+   {
+    "title": "What a business case contains",
+    "body": "A business case answers five questions: what problem costs money today, what the solution changes, what it costs, what the return is, and what the risks are. It ends with a clear ask, such as funding for a rollout to three more teams.\n\nKeep it short. One page of text plus a one-page calculation is enough for most decisions. Every number should have a source: the customer's data, a pilot measurement, or a clearly labeled assumption.\n\nWrite the assumptions in a separate list. It makes the case easy to challenge and easy to update when the pilot produces real measurements.",
+    "example": "An insurer's claims team of 120 handlers spends a large share of the day reading claim documents. A pilot of an AI summarizer suggests about 3 hours saved per handler per week. The business case states the baseline, the measured saving, the rollout cost, the running cost, the return, the risks and a request to fund rollout to all claims teams.",
+    "code": "BUSINESS CASE - Claims document summarizer (one page)\nProblem:     Handlers spend ~40% of time reading claim documents (time study, Feb)\nSolution:    AI summary with source links in the review screen\nScope:       120 handlers, 3 claims teams, 3-year horizon\nBenefit:     3 h/handler/week saved (pilot, 8 handlers, 4 weeks)\nCosts:       Build 180k one-time; run 154k/year (API, hosting, 0.5 FTE support)\nReturn:      3-year ROI, payback, NPV (see calculation)\nRisks:       Adoption below 50%; token prices; accuracy on new claim types\nAsk:         Approve rollout budget; name an adoption owner per team\n\nASSUMPTIONS (label source for each)\n  A1 Loaded cost 55/hour (finance)     A2 46 working weeks/year (HR)\n  A3 Adoption 70% by month 3 (pilot)   A4 Run cost grows with claim volume",
+    "lang": "Text",
+    "checklist": [
+     "Problem stated with a measured baseline",
+     "Benefit per task from a pilot or small test",
+     "Adoption assumption stated separately",
+     "Full one-time and recurring costs",
+     "ROI, payback and NPV over a stated horizon",
+     "Low, base and high cases",
+     "Risks with mitigations",
+     "A specific ask and owner"
+    ]
+   },
+   {
+    "title": "Estimating value from a baseline",
+    "body": "Value starts with a baseline, the measured state before the change: how many times the task happens, how long it takes, how often it goes wrong, and what that costs. Get these from the customer's systems where possible, since people's estimates of their own time are often off.\n\nThe basic formula is volume times improvement per unit times adoption times cost per unit. Adoption is the share of the work that will actually go through the new tool. The cost per hour should be the loaded cost, meaning salary plus benefits, taxes and overheads, which finance teams can provide.\n\nSeparate hard savings from soft ones. Hard savings reduce spending, such as less overtime or fewer contractors. Soft savings free up capacity or improve quality. Both matter, but a CFO will weigh them differently.",
+    "example": "For the insurer: 120 handlers x 70 percent adoption x 3 hours saved per week x 46 working weeks = 11,592 hours a year. At a loaded cost of 55 per hour, that is 637,560 per year of freed capacity. If the team currently pays for contractors during peak season, the part that replaces contractor spend is a hard saving; the rest is capacity.",
+    "code": "users          = 120      # handlers in scope\nadoption       = 0.70     # share of work done with the tool\nhours_saved    = 3        # per user per week, from the pilot\nweeks          = 46       # working weeks per year\nhourly_cost    = 55       # loaded cost from finance\n\nhours_per_year = users * adoption * hours_saved * weeks\nvalue          = hours_per_year * hourly_cost\nprint(f\"{hours_per_year:,.0f} hours/year, value {value:,.0f}\")\n# 11,592 hours/year, value 637,560",
+    "lang": "Python"
+   },
+   {
+    "title": "The full cost of an AI system",
+    "body": "Costs come in two kinds. One-time costs happen once, such as building, integrating and the initial security review. Recurring costs repeat every year, such as model or API usage, hosting, monitoring and the people who maintain the system.\n\nAI systems have costs that normal software often does not. LLM usage is priced per token and grows with volume and prompt size. Evaluation and monitoring need ongoing work because model behavior can change when you update prompts or models. Someone has to review flagged outputs.\n\nInclude the customer's own internal costs too: their staff time for data access, testing and training. Leaving these out makes the case look better on paper and damages trust when the CFO notices.",
+    "example": "For the claims summarizer, the one-time build is 180,000, covering integration with the document store, the review screen, evaluation and security review. The recurring cost is 154,000 a year: 60,000 of LLM API usage for about 400,000 documents, 24,000 of hosting and monitoring, and 70,000 for half a full-time engineer to maintain prompts, evals and integrations.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Cost line",
+      "Type",
+      "Example amount",
+      "Driver"
+     ],
+     "rows": [
+      [
+       "Build and integration",
+       "One-time",
+       "180,000",
+       "Team weeks"
+      ],
+      [
+       "LLM API usage",
+       "Recurring",
+       "60,000 / year",
+       "Documents x tokens"
+      ],
+      [
+       "Hosting and monitoring",
+       "Recurring",
+       "24,000 / year",
+       "Uptime needs"
+      ],
+      [
+       "Maintenance (0.5 FTE)",
+       "Recurring",
+       "70,000 / year",
+       "Prompts, evals, fixes"
+      ],
+      [
+       "User training",
+       "One-time + new starters",
+       "Staff hours",
+       "Headcount"
+      ],
+      [
+       "Customer staff time",
+       "One-time",
+       "Staff hours",
+       "Data access, testing"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "ROI, payback and NPV",
+    "body": "ROI over a period is total value minus total cost, divided by total cost. It tells you how much you get back per unit spent. Always say the time period, since an ROI over three years is not comparable with one over one year.\n\nPayback period is the upfront cost divided by the net benefit per month. A short payback reduces risk, because the project earns back its money before much can change.\n\nNPV, net present value, adds up future net benefits after discounting them, because money next year is worth less than money today. The discount rate, often around 8 to 12 percent, comes from the customer's finance team. A positive NPV means the project creates value at that rate. The calculator below keeps it simple and assumes a flat benefit each year; a real case often adds a ramp-up in the first months.",
+    "example": "With the insurer's numbers, annual value is 637,560 and annual net benefit after running costs is 483,560. The 3-year ROI is 198 percent, the payback is about 4.5 months, and the NPV at 10 percent is 1,022,542.",
+    "code": "def business_case(users, hours_saved_per_week, adoption, hourly_cost,\n                  build_cost, annual_run_cost, years=3, weeks_per_year=46,\n                  discount_rate=0.10):\n    # Value: hours saved by the people who actually use the tool, priced at loaded cost\n    annual_value = users * adoption * hours_saved_per_week * weeks_per_year * hourly_cost\n    annual_net = annual_value - annual_run_cost          # benefit after running costs\n    total_cost = build_cost + annual_run_cost * years\n    total_value = annual_value * years\n    roi = (total_value - total_cost) / total_cost          # return per 1 unit spent\n    payback_months = build_cost / (annual_net / 12) if annual_net > 0 else float(\"inf\")\n    npv = -build_cost + sum(annual_net / (1 + discount_rate) ** t for t in range(1, years + 1))\n    return {\"annual_value\": annual_value, \"annual_net\": annual_net,\n            \"roi\": roi, \"payback_months\": payback_months, \"npv\": npv}\n\ncase = business_case(users=120, hours_saved_per_week=3, adoption=0.70,\n                     hourly_cost=55, build_cost=180_000, annual_run_cost=154_000)\nfor k, v in case.items():\n    print(f\"{k:15} {v:,.2f}\")\n\n# Output\n# annual_value    637,560.00\n# annual_net      483,560.00\n# roi             1.98\n# payback_months  4.47\n# npv             1,022,542.15",
+    "lang": "Python"
+   },
+   {
+    "title": "Sensitivity: what if we are wrong?",
+    "body": "Every business case rests on assumptions. Sensitivity analysis changes them one at a time, or together in scenarios, to show which ones matter most. A tornado chart is a common way to show one-at-a-time results: the input with the widest swing goes on top.\n\nScenarios combine assumptions: a pessimistic case where adoption and savings are both low and costs are higher, a base case, and an optimistic case. Showing the pessimistic case openly makes the whole case more believable.\n\nThe break-even point is especially useful: the value of an assumption at which the project just pays for itself. If break-even adoption is 25 percent and the pilot reached 80 percent, the decision is easy.\n\nNotice in the output below that adoption, hours saved and hourly cost swing NPV by exactly the same amount. They all multiply into value, so a 30 percent change in any of them has the same effect. What differs is how sure you are of each one: the hourly cost comes from finance, while adoption is a guess until the rollout, so adoption deserves the most attention.",
+    "example": "Running the calculator for five scenarios shows the case stays positive unless adoption and savings both fall sharply. In the pessimistic case, with 40 percent adoption, 1.5 hours saved and higher running costs, the project loses money over three years (NPV -174,628). Break-even adoption with the base-case savings is 25%, so the rollout plan focuses on adoption.",
+    "code": "# Reuses business_case() from the previous section\nbase = dict(users=120, hours_saved_per_week=3, adoption=0.70, hourly_cost=55,\n            build_cost=180_000, annual_run_cost=154_000)\n\n# One-at-a-time: move each input +/- 30% and see how far 3-year NPV moves\nfor name in [\"adoption\", \"hours_saved_per_week\", \"hourly_cost\", \"annual_run_cost\", \"build_cost\"]:\n    lo = business_case(**{**base, name: base[name] * 0.7})[\"npv\"]\n    hi = business_case(**{**base, name: base[name] * 1.3})[\"npv\"]\n    print(f\"{name:22} NPV {lo:>12,.0f} to {hi:>12,.0f}  swing {abs(hi - lo):>10,.0f}\")\n\n# Break-even: lowest adoption where the 3-year NPV is still positive\na = 0.0\nwhile business_case(**{**base, \"adoption\": a})[\"npv\"] < 0:\n    a += 0.01\nprint(f\"Break-even adoption: {a:.0%}\")\n\n# Output\n# adoption               NPV      546,887 to    1,498,197  swing    951,310\n# hours_saved_per_week   NPV      546,887 to    1,498,197  swing    951,310\n# hourly_cost            NPV      546,887 to    1,498,197  swing    951,310\n# annual_run_cost        NPV    1,137,435 to      907,650  swing    229,785\n# build_cost             NPV    1,076,542 to      968,542  swing    108,000\n# Break-even adoption: 25%",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Scenario",
+      "Annual net",
+      "3-yr ROI",
+      "Payback (months)"
+     ],
+     "rows": [
+      [
+       "Pessimistic",
+       "2,160",
+       "-24%",
+       "beyond 36"
+      ],
+      [
+       "Low adoption only",
+       "210,320",
+       "70%",
+       "10.3"
+      ],
+      [
+       "Base case",
+       "483,560",
+       "198%",
+       "4.5"
+      ],
+      [
+       "Higher LLM cost (+50% run)",
+       "406,560",
+       "119%",
+       "5.3"
+      ],
+      [
+       "Optimistic",
+       "938,960",
+       "411%",
+       "2.3"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Presenting the case to a CFO",
+    "body": "A CFO reads many business cases and looks for the same things: is the baseline real, are the costs complete, which benefits are hard cash, what is the downside, and what exactly is being asked for.\n\nLead with the answer: the ask, the return and the payback in one sentence. Then show the calculation on one slide and the assumptions with their sources. Put the pessimistic case on the same slide as the base case.\n\nPropose a staged decision where possible: fund the next phase, set a measurable gate, and release the rest of the budget only if the gate is met. This lowers the CFO's risk and often gets a faster yes.",
+    "example": "The FDE opens: 'We are asking for 180,000 to roll the summarizer out to all 120 handlers. Based on the pilot, it pays back in under five months. Even at half the pilot's adoption it more than pays for itself within three years. We propose a gate at month 3: if weekly adoption is below 50 percent, we pause spending.'",
+    "code": "ONE-SLIDE SUMMARY FOR THE CFO\nAsk:        180k one-time + 154k/year to roll out to 120 handlers\nAnswer:     Base case 3-yr ROI ~198%, payback ~4.5 months, NPV ~1.0M at 10%\nHard cash:  Contractor spend in peak season (finance to confirm amount)\nCapacity:   ~11,600 handler hours/year absorbs 2 years of claim growth\nDownside:   Pessimistic case loses money; break-even adoption ~25%\nGate:       Month 3, weekly adoption >= 50% and accuracy >= 90%, else pause\nSources:    Time study (Feb), 4-week pilot (8 handlers), finance cost rates",
+    "lang": "Text",
+    "checklist": [
+     "Open with the ask, return and payback in one sentence",
+     "Separate hard savings from capacity",
+     "Show all cost lines, including customer staff time",
+     "Put the pessimistic case next to the base case",
+     "State break-even for the weakest assumption",
+     "Offer a staged decision with a measurable gate"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Business case",
+    "A short argument that a project is worth its cost, in money terms."
+   ],
+   [
+    "Baseline",
+    "The measured cost, time or error rate before the change."
+   ],
+   [
+    "Loaded cost",
+    "Salary plus benefits, taxes and overheads per hour of an employee's time."
+   ],
+   [
+    "ROI",
+    "Return on investment: (total value minus total cost) divided by total cost, over a stated period."
+   ],
+   [
+    "Payback period",
+    "Time until cumulative net benefit covers the upfront cost."
+   ],
+   [
+    "NPV",
+    "Net present value: future net benefits discounted to today, minus the upfront cost."
+   ],
+   [
+    "Discount rate",
+    "The yearly rate used to value future money less than money today."
+   ],
+   [
+    "Hard savings",
+    "Benefits that reduce actual spending, such as contractor or overtime costs."
+   ],
+   [
+    "Sensitivity analysis",
+    "Changing assumptions to see how much the result depends on each one."
+   ],
+   [
+    "Break-even",
+    "The value of an assumption at which the project exactly pays for itself."
+   ]
+  ],
+  "practice": [
+   "Estimate the annual value of a tool that saves a 12-person accounts team 20 minutes per invoice exception, with 300 exceptions a month and a loaded cost of 45 per hour. State every assumption.",
+   "Run the business_case calculator with your own numbers for an AI support-reply assistant. Add a first-year ramp where adoption is 30 percent in months 1 to 3 and 70 percent after, and see how payback changes.",
+   "Write the one-slide CFO summary for your case, including a pessimistic scenario, the break-even adoption and a staged funding gate."
+  ]
+ },
+ "casebank": {
+  "plain": "A case interview is a conversation where the interviewer describes a customer situation and asks how you would handle it. For FDE roles, the cases are usually about deploying software or AI for a customer: a hospital, a bank, a factory. There is no single right answer. The interviewer is watching how you structure a messy problem, what questions you ask, and whether your plan is practical. This page is a practice bank: eight prompts with the questions to ask, an outline of a strong answer, and the mistakes that cost candidates points. The concept 'case' in this atlas teaches the method; here you apply it.",
+  "analogy": "It is like a driving test on unfamiliar roads. You cannot memorize the route, but if you have practiced mirrors, signals and speed on many different streets, the habits carry you through whatever road you are given.",
+  "why": "Most FDE interview loops include at least one customer scenario round, and on the job every new customer starts with a similar conversation. Practicing across industries teaches you to spot the common shape quickly: a user, a slow step, some messy data, a number to move and a risk to manage.",
+  "subtopics": [
+   {
+    "title": "How to use this bank",
+    "body": "Each case takes about 25 minutes when practiced properly. Read only the prompt, start a timer, and answer out loud as if an interviewer were listening. Ask your clarifying questions aloud, then pick the answers you think are most likely and say them as assumptions.\n\nFollow the same shape each time, shown in the flow below. Restate the goal, ask three to five clarifying questions, identify the users and the workflow step you will change, check what data exists, choose a metric with a baseline, propose a first slice you could ship in a few weeks, name the risks, and close with a summary.\n\nOnly after you have finished, compare your answer with the outline and the common mistakes. Score yourself with the rubric in the last section and practice the weakest part on the next case.",
+    "example": "Monday: case 1 (retail), score 11 out of 18, weak on metrics. Wednesday: case 2 (healthcare), focus on stating a baseline and target, score 14. Friday: case 3 with a friend playing a difficult interviewer who withholds numbers.",
+    "code": "",
+    "lang": "Text",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "restate",
+       90,
+       70,
+       "Restate goal",
+       "1 sentence"
+      ],
+      [
+       "clarify",
+       265,
+       70,
+       "Clarify",
+       "3-5 questions"
+      ],
+      [
+       "users",
+       440,
+       70,
+       "Users, workflow",
+       "who, which step"
+      ],
+      [
+       "data",
+       615,
+       70,
+       "Data reality",
+       "sources, access"
+      ],
+      [
+       "metric",
+       615,
+       220,
+       "Metric",
+       "baseline, target"
+      ],
+      [
+       "slice",
+       440,
+       220,
+       "First slice",
+       "weeks, human check"
+      ],
+      [
+       "risks",
+       265,
+       220,
+       "Risks",
+       "errors, security"
+      ],
+      [
+       "close",
+       90,
+       220,
+       "Close",
+       "summary, next week"
+      ]
+     ],
+     "edges": [
+      [
+       "restate",
+       "clarify"
+      ],
+      [
+       "clarify",
+       "users"
+      ],
+      [
+       "users",
+       "data"
+      ],
+      [
+       "data",
+       "metric"
+      ],
+      [
+       "metric",
+       "slice"
+      ],
+      [
+       "slice",
+       "risks"
+      ],
+      [
+       "risks",
+       "close"
+      ]
+     ]
+    },
+    "checklist": [
+     "Timer set for 25 minutes",
+     "Answering out loud, ideally recorded",
+     "Clarifying questions asked before any solution",
+     "Assumptions stated in round numbers",
+     "Metric has a baseline and a target",
+     "First slice fits in 2 to 6 weeks",
+     "At least two risks with mitigations",
+     "One-minute summary at the end"
+    ]
+   },
+   {
+    "title": "Cases 1 and 2: retail and healthcare",
+    "body": "Case 1, retail. 'An online home-goods retailer with 30,000 products says its product pages are poor: descriptions are thin and inconsistent, and search often returns the wrong items. The head of e-commerce wants to use LLMs to fix the catalog. How would you approach it?' This tests whether you tie content quality to a business metric such as search conversion, and whether you plan for review at scale.\n\nCase 2, healthcare. 'A regional hospital group says nurses spend too long on shift handover notes. The chief nursing officer wants an AI tool to draft handovers from the patient record. How would you approach this?' This tests patient safety thinking, privacy, and respect for clinical workflow.\n\nClarifying questions for both are in the table. Strong outlines are in the code block. Common mistakes are in the checklist: tick each one you avoided.",
+    "example": "Sample opening for case 1: 'So the goal is to sell more by making products easier to find and understand. Before I propose anything, can I ask where the product data comes from today and how you measure search quality? I will assume about 30,000 active products and that suppliers send data in spreadsheets.'",
+    "code": "CASE 1 - RETAIL CATALOG, STRONG OUTLINE\n1. Goal: raise search conversion and cut returns due to 'not as described'.\n2. Users: shoppers (outcome), catalog team of ~6 (does the work).\n3. Data: supplier feeds, current descriptions, search logs, returns reasons.\n4. Metric: search-to-cart rate on changed categories vs untouched ones (A/B).\n5. First slice: one category of ~1,500 products; LLM extracts attributes\n   (size, material, color) from supplier data, drafts descriptions in a\n   style guide; catalog team approves in a review queue.\n6. Risks: invented attributes (validate against source fields), brand voice,\n   supplier data gaps (flag, do not guess). Cost per product estimated.\n7. Close: 4-week pilot, then roll out by category if conversion rises.\n\nCASE 2 - NURSE HANDOVER, STRONG OUTLINE\n1. Goal: cut handover writing time without losing safety-critical detail.\n2. Users: ward nurses; also the incoming nurse who reads the note.\n3. Data: EHR vitals, meds, recent notes; access via existing EHR APIs only.\n4. Metric: minutes per handover (shadowed baseline) + missed-item rate\n   from a nurse audit; guardrail: zero increase in incidents.\n5. First slice: one ward, draft in a standard format (e.g. SBAR),\n   nurse edits and signs; nothing sent without sign-off.\n6. Risks: omitted allergy or med change, privacy, hosting rules;\n   clinical safety sign-off, audit logging, clinical lead as owner.\n7. Close: 6-week pilot on one ward with weekly audit of 20 handovers.",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Case",
+      "Clarifying question",
+      "Why it matters"
+     ],
+     "rows": [
+      [
+       "1 Retail",
+       "Where does product data come from today?",
+       "Supplier feeds may lack the facts you need"
+      ],
+      [
+       "1 Retail",
+       "How do you measure search quality now?",
+       "Gives you a baseline metric"
+      ],
+      [
+       "1 Retail",
+       "Who approves content before it goes live?",
+       "Sets the review workflow"
+      ],
+      [
+       "1 Retail",
+       "Top reasons for returns?",
+       "Links content to money"
+      ],
+      [
+       "2 Health",
+       "Which wards and which handover format?",
+       "Scope and structure"
+      ],
+      [
+       "2 Health",
+       "How are handovers done now: verbal, written?",
+       "Defines the workflow step"
+      ],
+      [
+       "2 Health",
+       "What are the rules on patient data and hosting?",
+       "May limit model choice"
+      ],
+      [
+       "2 Health",
+       "Who signs off clinical safety?",
+       "Needed before any live use"
+      ]
+     ]
+    },
+    "checklist": [
+     "Case 1: did not jump to 'generate all 30,000 descriptions'",
+     "Case 1: planned a human review queue",
+     "Case 1: linked the work to conversion or returns",
+     "Case 2: kept the nurse as the author who signs off",
+     "Case 2: named a safety guardrail metric",
+     "Case 2: raised privacy and hosting early"
+    ]
+   },
+   {
+    "title": "Cases 3 and 4: insurance and banking",
+    "body": "Case 3, insurance. 'A mid-size insurer receives about 2,000 claim emails a day with attachments. They are sorted by hand into queues, which takes a team of 12 people and causes delays of up to two days. They want AI triage. How would you approach it?' This tests classification with confidence thresholds, routing, and measurement against the current manual process.\n\nCase 4, banking. 'A bank's financial crime team has a backlog of 12,000 anti-money-laundering alerts. Most turn out to be false positives, but each needs an analyst to review it. The head of compliance asks if AI can help.' This tests regulated-industry judgment: the analyst stays the decision maker, everything is explainable and logged, and the regulator's view matters.\n\nNote how both cases have a large volume of similar items and a human decision at the end. The strong answer keeps the human decision and uses AI to prepare, sort or prioritize.",
+    "example": "Rough math aloud for case 3: '2,000 emails a day, and if sorting takes about 3 minutes each, that is 100 hours a day, which fits a team of 12. If the model routes 70 percent with high confidence and people check a sample, we free up roughly 60 to 70 hours a day, which the team can spend on the harder claims.'",
+    "code": "CASE 3 - INSURANCE CLAIM TRIAGE, STRONG OUTLINE\n1. Goal: cut time from email arrival to correct queue; baseline up to 2 days.\n2. Users: triage team (12), queue owners downstream.\n3. Data: 6-12 months of emails with the queue they ended in = labels.\n4. Metric: routing accuracy vs final queue; median time to queue;\n   misroute rate as guardrail.\n5. First slice: classifier on top 5 claim types; auto-route when\n   confidence is high, else human queue; extract policy number.\n6. Risks: urgent claims misrouted (rules first for keywords like injury),\n   attachments unreadable (OCR fallback), drift with new products.\n7. Close: shadow mode for 2 weeks comparing to humans, then go live.\n\nCASE 4 - AML ALERT BACKLOG, STRONG OUTLINE\n1. Goal: clear backlog faster with no drop in detection quality.\n2. Users: AML analysts; compliance head; model risk team; regulator.\n3. Data: alerts, customer and transaction history, past analyst decisions.\n4. Metric: alerts reviewed per analyst-day; quality: sample QA by seniors.\n5. First slice: AI prepares a case summary (who, what, pattern, prior\n   alerts) and a suggested priority; analyst decides and records reason.\n6. Risks: model risk governance, explainability, audit trail of every\n   suggestion, data residency. Never auto-close without human decision.\n7. Close: pilot with 3 analysts, compare throughput and QA scores.",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Case",
+      "Clarifying question",
+      "Why it matters"
+     ],
+     "rows": [
+      [
+       "3 Insurance",
+       "How many queues, and how are they defined?",
+       "Sets the classes to predict"
+      ],
+      [
+       "3 Insurance",
+       "Do we have history of where emails ended up?",
+       "Free training and test labels"
+      ],
+      [
+       "3 Insurance",
+       "What does a misroute cost?",
+       "Sets the confidence threshold"
+      ],
+      [
+       "4 Banking",
+       "Who is accountable for closing an alert?",
+       "Keeps the analyst as decision maker"
+      ],
+      [
+       "4 Banking",
+       "What does model risk governance require?",
+       "Approval path and timeline"
+      ],
+      [
+       "4 Banking",
+       "What share of alerts become reports?",
+       "Baseline for false positives"
+      ],
+      [
+       "4 Banking",
+       "Can data leave the bank's environment?",
+       "Hosting and model choice"
+      ]
+     ]
+    },
+    "checklist": [
+     "Case 3: used historical routing as labels",
+     "Case 3: had a low-confidence path to humans",
+     "Case 3: proposed shadow mode before go-live",
+     "Case 4: did not propose auto-closing alerts",
+     "Case 4: mentioned audit trail and model governance",
+     "Case 4: measured quality as well as speed"
+    ]
+   },
+   {
+    "title": "Cases 5 and 6: manufacturing and logistics",
+    "body": "Case 5, manufacturing. 'A food packaging plant has 40 machines and about 300 technicians across sites. When a machine fails, technicians search thick PDF manuals and old maintenance tickets. Downtime is expensive. The plant director wants an AI assistant.' This tests retrieval over documents, working in noisy shop-floor conditions, and a clear downtime metric.\n\nCase 6, logistics. 'A parcel delivery company's customer service team handles 15,000 contacts a day, and 40 percent are \"where is my parcel?\". The COO wants to reduce contact volume with AI.' This tests whether you look at the root cause (poor tracking information) as well as at automation, and whether you measure deflection honestly.\n\nIn case 6, the best candidates notice that a better proactive notification may remove more contacts than a chatbot answers. Suggesting the simpler fix first is a sign of good judgment.",
+    "example": "Sample clarifying exchange for case 5: 'When a machine stops, what does the technician do in the first ten minutes today?' Interviewer: 'They check the error code on the screen, then call a senior colleague or search the shared drive.' 'So the error code is a good entry point. Do past tickets record the error code and the fix?'",
+    "code": "CASE 5 - MAINTENANCE ASSISTANT, STRONG OUTLINE\n1. Goal: reduce mean time to repair (MTTR) on unplanned stops.\n2. Users: technicians on the floor (gloves, noise, tablets or phones).\n3. Data: manuals (PDF), past tickets with error codes and fixes, parts list.\n4. Metric: MTTR per machine type vs last 6 months; answer usefulness rating.\n5. First slice: 2 machine types that cause most downtime; search by error\n   code, answer with cited manual pages and similar past fixes.\n6. Risks: unsafe advice (always show safety sections, lockout steps),\n   poor scans (OCR check), offline areas, languages across sites.\n7. Close: 4 weeks at one site, champion technician per shift.\n\nCASE 6 - WHERE IS MY PARCEL, STRONG OUTLINE\n1. Goal: fewer 'where is my parcel' contacts, same or better satisfaction.\n2. Users: recipients; service agents; operations for tracking data.\n3. Data: contact reasons, tracking events, delay causes by depot.\n4. Metric: WISMO contacts per 1,000 parcels; repeat contact rate.\n5. First slice: analyze contacts, fix the top trigger (e.g. 'out for\n   delivery' with no time window), proactive delay messages; then a\n   self-service answer from tracking data for what remains.\n6. Risks: wrong status from stale data, customers unable to reach a human.\n7. Close: A/B by region; report contacts avoided and satisfaction.",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Case",
+      "Clarifying question",
+      "Why it matters"
+     ],
+     "rows": [
+      [
+       "5 Manufacturing",
+       "Which machines cause most downtime?",
+       "Focus the first slice"
+      ],
+      [
+       "5 Manufacturing",
+       "Do tickets record error codes and fixes?",
+       "Best knowledge source"
+      ],
+      [
+       "5 Manufacturing",
+       "What devices and connectivity are on the floor?",
+       "Shapes the interface"
+      ],
+      [
+       "6 Logistics",
+       "Why do customers contact: breakdown of reasons?",
+       "Finds the real trigger"
+      ],
+      [
+       "6 Logistics",
+       "How accurate and fresh is tracking data?",
+       "The answer depends on it"
+      ],
+      [
+       "6 Logistics",
+       "How is satisfaction measured today?",
+       "Guardrail against bad deflection"
+      ]
+     ]
+    },
+    "checklist": [
+     "Case 5: used error codes as an entry point",
+     "Case 5: cited sources and showed safety steps",
+     "Case 5: measured MTTR, not only usage",
+     "Case 6: looked at root cause before a chatbot",
+     "Case 6: kept a path to a human",
+     "Case 6: measured repeat contacts, not only deflection"
+    ]
+   },
+   {
+    "title": "Cases 7 and 8: public sector and a stalled pilot",
+    "body": "Case 7, public sector. 'A city council receives 8,000 planning permit applications a year. Officers spend hours checking each one for missing documents before the real review can start, and applicants wait weeks to hear something is missing. The council wants to speed this up.' This tests fairness, transparency, accessibility, and procurement or data rules that apply to government.\n\nCase 8, a rescue. 'Six months ago a vendor deployed an AI assistant at an energy utility's call center. Usage is 15 percent and the sponsor is thinking of cancelling. You are the new FDE. What do you do in your first two weeks?' This tests diagnosis, adoption and stakeholder management more than technology.\n\nCase 8 is common in real interviews because it shows how you behave when things are going badly. Stay calm, gather facts, and avoid blaming the previous team.",
+    "example": "Sample first-week plan for case 8, said aloud: 'Day one I meet the sponsor to hear what success was supposed to be. Days two and three I look at usage data by team and sit with five agents, including two who stopped using it. By Friday I want a list of the top three reasons for low use, each with a proposed fix and an owner.'",
+    "code": "CASE 7 - PERMIT COMPLETENESS CHECK, STRONG OUTLINE\n1. Goal: tell applicants within days what is missing; free officer time.\n2. Users: planning officers; applicants (incl. non-experts); managers.\n3. Data: past applications, checklists per permit type, outcome letters.\n4. Metric: days from submission to completeness decision; officer hours.\n5. First slice: completeness check against the official checklist for the\n   2 most common permit types; officer confirms before the letter goes out.\n6. Risks: fairness and transparency (explain every flag with the rule),\n   accessibility, data protection, records retention, public procurement.\n7. Close: pilot on new applications, publish how the check works.\n\nCASE 8 - STALLED PILOT RESCUE, STRONG OUTLINE\n1. Goal: decide within 2-4 weeks whether and how the assistant can succeed.\n2. Users: agents by team; team leads; sponsor; original vendor team.\n3. Data: usage logs by agent/team, call types, quality scores, feedback.\n4. Metric: weekly active agents, share of calls using the assistant,\n   handle time on those calls vs others.\n5. First slice: shadow 5 agents, find top 3 blockers, fix the biggest one\n   for one team, add champions, retire any conflicting old process.\n6. Risks: sponsor loses patience (weekly updates), accuracy issues\n   (targeted evals), team leads not bought in (involve them).\n7. Close: go/no-go recommendation with data, either path is acceptable.",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Case",
+      "Clarifying question",
+      "Why it matters"
+     ],
+     "rows": [
+      [
+       "7 Public",
+       "Is there an official checklist per permit type?",
+       "Rules are the ground truth"
+      ],
+      [
+       "7 Public",
+       "What are the rules on automated decisions?",
+       "Keeps a human in charge"
+      ],
+      [
+       "7 Public",
+       "How do applicants submit: portal, email, paper?",
+       "Input formats"
+      ],
+      [
+       "8 Rescue",
+       "What was success supposed to look like?",
+       "Resets the goal"
+      ],
+      [
+       "8 Rescue",
+       "Who uses it, and who stopped?",
+       "Where to look first"
+      ],
+      [
+       "8 Rescue",
+       "What changed for agents when it launched?",
+       "Finds process conflicts"
+      ]
+     ]
+    },
+    "checklist": [
+     "Case 7: officer confirms before any letter",
+     "Case 7: every flag explained with the rule",
+     "Case 7: mentioned accessibility for applicants",
+     "Case 8: diagnosed before proposing new features",
+     "Case 8: talked to users who stopped",
+     "Case 8: gave the sponsor a dated decision point"
+    ]
+   },
+   {
+    "title": "Scoring yourself and common mistakes",
+    "body": "Use a simple rubric after every practice case. Score each dimension 0, 1 or 2: 0 means missing, 1 means present but vague, 2 means specific and convincing. A total of 14 or more out of 18 is a strong answer.\n\nThe mistakes that cost most points repeat across candidates: solutions before questions, no metric or a metric with no baseline, a plan too big to ship in weeks, forgetting the human decision maker in regulated settings, and running out of time before the summary.\n\nInterviewers also watch how you react to pushback. When they challenge an assumption, thank them, adjust the plan, and say what changes. Defending a weak assumption for several minutes is a worse signal than changing it.",
+    "example": "A candidate answers case 3. Clarifying questions were good (2), users and workflow clear (2), data used historical labels (2), metric was 'accuracy' with no baseline (1), first slice sensible (2), risks mentioned only in passing (1), no summary (0), handled pushback well (2), communication clear (2). Total 14 out of 18. Next time: state baseline numbers and save one minute for the close.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Dimension",
+      "0 = missing",
+      "2 = strong"
+     ],
+     "rows": [
+      [
+       "Clarifying questions",
+       "Jumps to solution",
+       "3-5 sharp questions that change the plan"
+      ],
+      [
+       "Users and workflow",
+       "Talks about 'the company'",
+       "Names the user and the exact step"
+      ],
+      [
+       "Data",
+       "Assumes clean data",
+       "Names sources, labels, access, gaps"
+      ],
+      [
+       "Metric",
+       "None",
+       "Metric with baseline, target, guardrail"
+      ],
+      [
+       "First slice",
+       "Full platform",
+       "Shippable in weeks, human in the loop"
+      ],
+      [
+       "Risks",
+       "None",
+       "Top risks with mitigations"
+      ],
+      [
+       "Close",
+       "Runs out of time",
+       "One-minute summary and first week"
+      ],
+      [
+       "Pushback",
+       "Defends weak points",
+       "Adjusts and explains the change"
+      ],
+      [
+       "Communication",
+       "Rambling",
+       "Signposted, calm, checks in"
+      ]
+     ]
+    }
+   }
+  ],
+  "glossary": [
+   [
+    "Case interview",
+    "An interview where you work through a realistic customer scenario out loud."
+   ],
+   [
+    "Clarifying question",
+    "A question asked before proposing a solution, to learn goals, users, data or constraints."
+   ],
+   [
+    "Thin slice",
+    "A narrow first version that delivers value end to end and can ship in weeks."
+   ],
+   [
+    "Baseline",
+    "The measured value of a metric before your change, used for comparison."
+   ],
+   [
+    "Guardrail metric",
+    "A metric that must not get worse while you improve the main one."
+   ],
+   [
+    "Shadow mode",
+    "Running a system alongside humans without acting on its output, to compare results."
+   ],
+   [
+    "Human in the loop",
+    "A design where a person reviews or approves the system's output before it takes effect."
+   ],
+   [
+    "Deflection",
+    "Customer contacts resolved without reaching a human agent."
+   ],
+   [
+    "MTTR",
+    "Mean time to repair: average time from failure to the machine working again."
+   ]
+  ],
+  "practice": [
+   "Pick case 1 or case 6, set a 25-minute timer and answer out loud. Record yourself and score it with the rubric table.",
+   "Write your own clarifying questions for case 8 before reading the table, then compare. Add two questions the table missed.",
+   "Write a ninth case from an industry you know (for example education or agriculture) in the same format: prompt, clarifying questions table, strong outline and a mistakes checklist. Ask a friend to answer it while you play the interviewer."
+  ]
+ },
+ "sqlbank": {
+  "plain": "This page is a set of ten SQL exercises, graded from easy to hard, on one small schema that runs in SQLite. SQL, or Structured Query Language, is the language for asking questions of data stored in tables. SQLite is a small database engine that ships with Python, so you can practice without installing a server. Each exercise gives the question, a hint and a solution query that has been run on the data below, with its result. The concept 'sql' in this atlas explains the ideas; this page is for practice.",
+  "analogy": "It is like scales practice for a musician. The same few patterns, played slowly and correctly many times, make the real piece in the interview feel familiar.",
+  "why": "Most FDE interview loops include SQL, and on the job the first days at a customer are often spent querying their data to check a baseline or find why a number looks wrong. A typical request: 'the dashboard says 120 orders last month but finance says 95, which is right?' The patterns here, especially joins and double counting, answer that kind of question.",
+  "subtopics": [
+   {
+    "title": "The practice schema",
+    "body": "The schema is a small food-service wholesaler. customers holds one row per business customer, with a region that is sometimes unknown (NULL). products holds one row per product with a category and a list price. orders holds one row per order with a status of completed or cancelled. order_items holds one row per product within an order, with the quantity and the price actually charged, which can differ from the list price.\n\nThe grain of a table is what one row represents. Say it for each table before writing any query: one customer, one product, one order, one order line.\n\nTo run everything: save the block below as schema.sql, then in Python run sqlite3.connect(':memory:') and executescript on the file, or use the sqlite3 command-line tool with '.read schema.sql'. The data is small enough that you can check every answer by hand.",
+    "example": "Order 106 from Dunmore Grocers has three lines: 6 bags of flour at 30, 3 packs of yeast at 12 and 2 bags of coffee at 18. Its total is 180 + 36 + 36 = 252. Order 110 charged 29 for flour instead of the list price of 30, a discount that only order_items shows.",
+    "code": "CREATE TABLE customers (\n  customer_id INTEGER PRIMARY KEY, name TEXT NOT NULL,\n  region TEXT,                      -- NULL = unknown\n  signup_date TEXT NOT NULL         -- ISO date 'YYYY-MM-DD'\n);\nCREATE TABLE products (\n  product_id INTEGER PRIMARY KEY, name TEXT NOT NULL,\n  category TEXT NOT NULL, list_price REAL NOT NULL\n);\nCREATE TABLE orders (\n  order_id INTEGER PRIMARY KEY,\n  customer_id INTEGER NOT NULL REFERENCES customers(customer_id),\n  order_date TEXT NOT NULL,\n  status TEXT NOT NULL CHECK (status IN ('completed', 'cancelled'))\n);\nCREATE TABLE order_items (\n  order_id INTEGER NOT NULL REFERENCES orders(order_id),\n  product_id INTEGER NOT NULL REFERENCES products(product_id),\n  quantity INTEGER NOT NULL, unit_price REAL NOT NULL,  -- price actually charged\n  PRIMARY KEY (order_id, product_id)\n);\n\nINSERT INTO customers VALUES\n (1,'Arden Bakery','North','2024-01-05'), (2,'Bluefin Cafe','South','2024-01-12'),\n (3,'Cobalt Deli','North','2024-02-02'),  (4,'Dunmore Grocers','East','2024-02-20'),\n (5,'Elmstead Market','South','2024-03-01'), (6,'Fairlow Kitchen',NULL,'2024-03-15'),\n (7,'Gorsey Foods','East','2024-03-28');\nINSERT INTO products VALUES\n (1,'Flour 25kg','Baking',30), (2,'Yeast 1kg','Baking',12),\n (3,'Coffee beans 1kg','Beverages',18), (4,'Oat milk 12x1L','Beverages',24),\n (5,'Paper cups x500','Packaging',40), (6,'Takeaway boxes x200','Packaging',35);\nINSERT INTO orders VALUES\n (101,1,'2024-01-10','completed'), (102,2,'2024-01-15','completed'),\n (103,1,'2024-01-28','completed'), (104,3,'2024-02-05','cancelled'),\n (105,3,'2024-02-18','completed'), (106,4,'2024-02-25','completed'),\n (107,2,'2024-03-03','completed'), (108,1,'2024-03-09','completed'),\n (109,5,'2024-03-20','cancelled'), (110,4,'2024-03-30','completed'),\n (111,5,'2024-04-02','completed'), (112,2,'2024-04-15','completed');\nINSERT INTO order_items VALUES\n (101,1,4,30),(101,2,2,12), (102,3,5,18),(102,5,1,40), (103,1,2,30),(103,6,1,35),\n (104,3,2,18), (105,4,3,24),(105,5,2,40), (106,1,6,30),(106,2,3,12),(106,3,2,18),\n (107,3,4,18),(107,4,2,24), (108,1,3,30),(108,5,1,40), (109,6,2,35),\n (110,1,5,29),(110,4,1,24), (111,3,6,18),(111,6,2,35), (112,5,3,40),(112,4,2,24);",
+    "lang": "SQL",
+    "table": {
+     "headers": [
+      "Table",
+      "One row is",
+      "Rows"
+     ],
+     "rows": [
+      [
+       "customers",
+       "one business customer",
+       "7"
+      ],
+      [
+       "products",
+       "one product",
+       "6"
+      ],
+      [
+       "orders",
+       "one order",
+       "12"
+      ],
+      [
+       "order_items",
+       "one product line in an order",
+       "23"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Easy: exercises 1 to 3",
+    "body": "Exercise 1 (Easy, Filter and sort). List the name and signup date of customers in the North region, oldest signup first.\nHint: WHERE filters rows, ORDER BY sorts. Dates stored as 'YYYY-MM-DD' text sort correctly.\n\nExercise 2 (Easy, Group and count). How many orders are there in each status? Show the status and the count, largest first.\nHint: GROUP BY status, then COUNT(*) counts rows in each group.\n\nExercise 3 (Easy, Handling NULL). Count customers per region. Customers with no region should appear as 'Unknown'.\nHint: GROUP BY puts NULLs in their own group, but you still need to label it. COALESCE returns the first non-NULL value.\n\nTry each one before looking at the solution. For exercise 3, notice that GROUP BY region alone would give a group labeled NULL, which is easy to miss in a report.",
+    "example": "Exercise 2 is a common opening question. The answer here is 10 completed and 2 cancelled orders. A good habit is to check that the counts add up to the table total of 12 before moving on.",
+    "code": "-- Exercise 1 (Easy): Filter and sort\nSELECT name, signup_date\nFROM customers\nWHERE region = 'North'\nORDER BY signup_date;\n-- Result:\n-- name         | signup_date\n-- Arden Bakery | 2024-01-05\n-- Cobalt Deli  | 2024-02-02\n\n-- Exercise 2 (Easy): Group and count\nSELECT status, COUNT(*) AS n_orders\nFROM orders\nGROUP BY status\nORDER BY n_orders DESC;\n-- Result:\n-- status    | n_orders\n-- completed | 10\n-- cancelled | 2\n\n-- Exercise 3 (Easy): Handling NULL\nSELECT COALESCE(region, 'Unknown') AS region, COUNT(*) AS n_customers\nFROM customers\nGROUP BY COALESCE(region, 'Unknown')\nORDER BY n_customers DESC, region;\n-- Result:\n-- region  | n_customers\n-- East    | 2\n-- North   | 2\n-- South   | 2\n-- Unknown | 1",
+    "lang": "SQL",
+    "table": {
+     "headers": [
+      "Exercise",
+      "Level",
+      "Skill",
+      "Rows returned"
+     ],
+     "rows": [
+      [
+       "1",
+       "Easy",
+       "Filter and sort",
+       "2"
+      ],
+      [
+       "2",
+       "Easy",
+       "Group and count",
+       "2"
+      ],
+      [
+       "3",
+       "Easy",
+       "Handling NULL",
+       "4"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Medium: exercises 4 to 6",
+    "body": "Exercise 4 (Medium, Joining three tables). Total revenue per product category from completed orders only. Revenue is quantity times the unit price charged. Sort by revenue, highest first.\nHint: Join order_items to orders (for status) and to products (for category). Filter status before grouping.\n\nExercise 5 (Medium, Finding what is missing). Which customers have never placed an order of any status?\nHint: A LEFT JOIN keeps every customer. Customers with no match have NULL in the order columns.\n\nExercise 6 (Medium, Monthly totals and the fan-out trap). For completed orders, show each month (YYYY-MM), the number of orders and the revenue.\nHint: strftime('%Y-%m', date) gives the month. After joining to order_items each order appears once per item, so COUNT(*) would overcount. Use COUNT(DISTINCT ...).\n\nExercise 6 contains the most common SQL bug in real work. After joining orders to order_items, an order with three lines appears three times.",
+    "example": "If you write COUNT(*) in exercise 6, January shows 6 orders instead of 3, because the three January orders have 6 lines between them. The full wrong counts by month are 2024-01: 6, 2024-02: 5, 2024-03: 6, 2024-04: 4. Always ask what one row of your joined result represents.",
+    "code": "-- Exercise 4 (Medium): Joining three tables\nSELECT p.category,\n       SUM(oi.quantity * oi.unit_price) AS revenue\nFROM order_items AS oi\nJOIN orders   AS o ON o.order_id = oi.order_id\nJOIN products AS p ON p.product_id = oi.product_id\nWHERE o.status = 'completed'\nGROUP BY p.category\nORDER BY revenue DESC;\n-- Result:\n-- category  | revenue\n-- Baking    | 655\n-- Beverages | 498\n-- Packaging | 385\n\n-- Exercise 5 (Medium): Finding what is missing\nSELECT c.customer_id, c.name\nFROM customers AS c\nLEFT JOIN orders AS o ON o.customer_id = c.customer_id\nWHERE o.order_id IS NULL\nORDER BY c.customer_id;\n-- Result:\n-- customer_id | name\n-- 6           | Fairlow Kitchen\n-- 7           | Gorsey Foods\n\n-- Exercise 6 (Medium): Monthly totals and the fan-out trap\nSELECT strftime('%Y-%m', o.order_date) AS month,\n       COUNT(DISTINCT o.order_id)         AS n_orders,   -- not COUNT(*)\n       SUM(oi.quantity * oi.unit_price)   AS revenue\nFROM orders AS o\nJOIN order_items AS oi ON oi.order_id = o.order_id\nWHERE o.status = 'completed'\nGROUP BY month\nORDER BY month;\n-- Result:\n-- month   | n_orders | revenue\n-- 2024-01 | 3        | 369\n-- 2024-02 | 2        | 404\n-- 2024-03 | 3        | 419\n-- 2024-04 | 2        | 346",
+    "lang": "SQL",
+    "table": {
+     "headers": [
+      "Exercise",
+      "Level",
+      "Skill",
+      "Rows returned"
+     ],
+     "rows": [
+      [
+       "4",
+       "Medium",
+       "Joining three tables",
+       "3"
+      ],
+      [
+       "5",
+       "Medium",
+       "Finding what is missing",
+       "2"
+      ],
+      [
+       "6",
+       "Medium",
+       "Monthly totals and the fan-out trap",
+       "4"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Harder: exercises 7 and 8",
+    "body": "Exercise 7 (Harder, CTE and HAVING). Find customers whose total completed revenue is over 300. Show the number of completed orders, total revenue and average order value.\nHint: First build a CTE with one row per order and its total. Then group by customer and filter groups with HAVING.\n\nExercise 8 (Harder, Date arithmetic with LEFT JOIN). For every customer, show the date of their first completed order and the number of days between signup and that order. Customers without one should still appear, with NULLs.\nHint: julianday(a) - julianday(b) gives days between two dates. Put the status filter in the ON clause, or the LEFT JOIN turns into an inner join.\n\nBoth exercises use a two-step approach. In exercise 7 you first build one row per order, then summarize per customer. In exercise 8 the position of the status filter decides whether customers without completed orders stay in the result.",
+    "example": "In exercise 8, Elmstead Market's only order before April was cancelled, so its first completed order is 2 April. If you move the status filter from ON into WHERE, Fairlow Kitchen and Gorsey Foods disappear from the output, because their NULL status fails the WHERE test.",
+    "code": "-- Exercise 7 (Harder): CTE and HAVING\nWITH order_totals AS (\n  SELECT o.order_id, o.customer_id,\n         SUM(oi.quantity * oi.unit_price) AS order_total\n  FROM orders AS o\n  JOIN order_items AS oi ON oi.order_id = o.order_id\n  WHERE o.status = 'completed'\n  GROUP BY o.order_id, o.customer_id\n)\nSELECT c.name, COUNT(*) AS n_orders,\n       SUM(t.order_total) AS revenue,\n       ROUND(AVG(t.order_total), 2) AS avg_order_value\nFROM order_totals AS t\nJOIN customers AS c ON c.customer_id = t.customer_id\nGROUP BY c.customer_id, c.name\nHAVING SUM(t.order_total) > 300\nORDER BY revenue DESC;\n-- Result:\n-- name            | n_orders | revenue | avg_order_value\n-- Dunmore Grocers | 2        | 421     | 210.5\n-- Bluefin Cafe    | 3        | 418     | 139.33\n-- Arden Bakery    | 3        | 369     | 123\n\n-- Exercise 8 (Harder): Date arithmetic with LEFT JOIN\nSELECT c.name, c.signup_date,\n       MIN(o.order_date) AS first_order,\n       CAST(julianday(MIN(o.order_date)) - julianday(c.signup_date) AS INTEGER)\n         AS days_to_first_order\nFROM customers AS c\nLEFT JOIN orders AS o\n  ON o.customer_id = c.customer_id\n AND o.status = 'completed'          -- filter here, not in WHERE\nGROUP BY c.customer_id, c.name, c.signup_date\nORDER BY c.customer_id;\n-- Result:\n-- name            | signup_date | first_order | days_to_first_order\n-- Arden Bakery    | 2024-01-05  | 2024-01-10  | 5\n-- Bluefin Cafe    | 2024-01-12  | 2024-01-15  | 3\n-- Cobalt Deli     | 2024-02-02  | 2024-02-18  | 16\n-- Dunmore Grocers | 2024-02-20  | 2024-02-25  | 5\n-- Elmstead Market | 2024-03-01  | 2024-04-02  | 32\n-- Fairlow Kitchen | 2024-03-15  | NULL        | NULL\n-- Gorsey Foods    | 2024-03-28  | NULL        | NULL",
+    "lang": "SQL",
+    "table": {
+     "headers": [
+      "Exercise",
+      "Level",
+      "Skill",
+      "Rows returned"
+     ],
+     "rows": [
+      [
+       "7",
+       "Harder",
+       "CTE and HAVING",
+       "3"
+      ],
+      [
+       "8",
+       "Harder",
+       "Date arithmetic with LEFT JOIN",
+       "7"
+      ]
+     ]
+    },
+    "checklist": [
+     "Said the grain of each CTE out loud",
+     "Used HAVING for conditions on aggregates",
+     "Kept LEFT JOIN filters in the ON clause",
+     "Checked that NULL rows appear where expected"
+    ]
+   },
+   {
+    "title": "Hard: exercises 9 and 10",
+    "body": "Exercise 9 (Hard, Top item per group with a window function). For each category, find the product with the highest completed revenue. If two products tie, show both.\nHint: Compute revenue per product in a CTE, then RANK() OVER (PARTITION BY category ORDER BY revenue DESC) and keep rank 1. RANK keeps ties, ROW_NUMBER would not.\n\nExercise 10 (Hard, Gaps between events with LAG). For each completed order, show the customer, the order date, the previous completed order date for the same customer, and the gap in days. Flag gaps of 30 days or less as 'repeat within 30d'.\nHint: LAG(order_date) OVER (PARTITION BY customer_id ORDER BY order_date) returns the previous row's date for the same customer. The first order has no previous one, so the gap is NULL.\n\nWindow functions add a value to each row based on other rows in the same partition, a group defined by PARTITION BY, without collapsing rows the way GROUP BY does. SQLite has supported them since version 3.25.",
+    "example": "In exercise 10, Arden Bakery ordered on 10 January, 28 January and 9 March. LAG gives 28 January a previous date of 10 January, a gap of 18 days, which is flagged. The 9 March order has a gap of 41 days and is not flagged.",
+    "code": "-- Exercise 9 (Hard): Top item per group with a window function\nWITH product_rev AS (\n  SELECT p.category, p.name,\n         SUM(oi.quantity * oi.unit_price) AS revenue\n  FROM order_items AS oi\n  JOIN orders   AS o ON o.order_id = oi.order_id AND o.status = 'completed'\n  JOIN products AS p ON p.product_id = oi.product_id\n  GROUP BY p.product_id, p.category, p.name\n), ranked AS (\n  SELECT *, RANK() OVER (PARTITION BY category ORDER BY revenue DESC) AS rnk\n  FROM product_rev\n)\nSELECT category, name, revenue\nFROM ranked\nWHERE rnk = 1\nORDER BY category;\n-- Result:\n-- category  | name             | revenue\n-- Baking    | Flour 25kg       | 595\n-- Beverages | Coffee beans 1kg | 306\n-- Packaging | Paper cups x500  | 280\n\n-- Exercise 10 (Hard): Gaps between events with LAG\nWITH seq AS (\n  SELECT o.customer_id, o.order_id, o.order_date,\n         LAG(o.order_date) OVER (\n           PARTITION BY o.customer_id ORDER BY o.order_date) AS prev_date\n  FROM orders AS o\n  WHERE o.status = 'completed'\n)\nSELECT c.name, s.order_date, s.prev_date,\n       CAST(julianday(s.order_date) - julianday(s.prev_date) AS INTEGER) AS gap_days,\n       CASE WHEN julianday(s.order_date) - julianday(s.prev_date) <= 30\n            THEN 'repeat within 30d' END AS flag\nFROM seq AS s\nJOIN customers AS c ON c.customer_id = s.customer_id\nWHERE s.prev_date IS NOT NULL\nORDER BY c.name, s.order_date;\n-- Result:\n-- name            | order_date | prev_date  | gap_days | flag\n-- Arden Bakery    | 2024-01-28 | 2024-01-10 | 18       | repeat within 30d\n-- Arden Bakery    | 2024-03-09 | 2024-01-28 | 41       | NULL\n-- Bluefin Cafe    | 2024-03-03 | 2024-01-15 | 48       | NULL\n-- Bluefin Cafe    | 2024-04-15 | 2024-03-03 | 43       | NULL\n-- Dunmore Grocers | 2024-03-30 | 2024-02-25 | 34       | NULL",
+    "lang": "SQL",
+    "table": {
+     "headers": [
+      "Exercise",
+      "Level",
+      "Skill",
+      "Rows returned"
+     ],
+     "rows": [
+      [
+       "9",
+       "Hard",
+       "Top item per group with a window function",
+       "3"
+      ],
+      [
+       "10",
+       "Hard",
+       "Gaps between events with LAG",
+       "5"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "How to answer SQL questions in interviews",
+    "body": "Interviewers care about how you get to the answer as much as the answer. Talk through your plan before typing: which tables, how they join, what one row of the result means, and which filters apply.\n\nWrite the query in steps. Start with the FROM and JOIN, look at a few rows, then add WHERE, GROUP BY and the select list. On a whiteboard, write CTEs as named steps so the interviewer can follow.\n\nFinish with checks: compare a total with a simple count on the base table, test an edge case such as a customer with no orders, and mention how NULLs and ties are handled. If the interviewer asks about performance, talk about indexes on join and filter columns and about filtering early.",
+    "example": "Asked for revenue per region, a strong candidate says: 'I will join customers to orders to order_items. One row after the join is one order line, so I sum quantity times unit_price. I will filter to completed orders and label NULL regions as Unknown. Then I will check that the regional totals add up to total completed revenue.'",
+    "code": "-- A quick check pattern: do the parts add up to the whole?\nWITH by_region AS (\n  SELECT COALESCE(c.region, 'Unknown') AS region,\n         SUM(oi.quantity * oi.unit_price) AS revenue\n  FROM customers c\n  JOIN orders o       ON o.customer_id = c.customer_id AND o.status = 'completed'\n  JOIN order_items oi ON oi.order_id = o.order_id\n  GROUP BY 1\n)\nSELECT (SELECT SUM(revenue) FROM by_region) AS sum_of_regions,\n       (SELECT SUM(oi.quantity * oi.unit_price)\n        FROM order_items oi JOIN orders o ON o.order_id = oi.order_id\n        WHERE o.status = 'completed') AS total_revenue;   -- should match",
+    "lang": "SQL",
+    "checklist": [
+     "Restated the question and the grain of the result",
+     "Named the tables and join keys before typing",
+     "Built the query step by step",
+     "Handled NULLs explicitly",
+     "Avoided double counting after one-to-many joins",
+     "Checked a total or an edge case at the end",
+     "Mentioned indexes if asked about speed"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Grain",
+    "What one row of a table or query result represents."
+   ],
+   [
+    "JOIN",
+    "Combines rows from two tables where a condition, usually matching keys, is true."
+   ],
+   [
+    "LEFT JOIN",
+    "Keeps every row of the left table, with NULLs where the right table has no match."
+   ],
+   [
+    "GROUP BY",
+    "Collapses rows into one row per group so aggregates like SUM can be computed."
+   ],
+   [
+    "HAVING",
+    "Filters groups after aggregation, where WHERE filters rows before."
+   ],
+   [
+    "CTE",
+    "A named temporary result defined with WITH, used to write a query in steps."
+   ],
+   [
+    "Fan-out",
+    "Rows repeating after a one-to-many join, which inflates counts and sums."
+   ],
+   [
+    "Window function",
+    "A function such as RANK or LAG that computes a value per row over a partition without collapsing rows."
+   ],
+   [
+    "COALESCE",
+    "Returns the first non-NULL value from its arguments."
+   ],
+   [
+    "julianday",
+    "An SQLite function that turns a date into a day number, so dates can be subtracted."
+   ]
+  ],
+  "practice": [
+   "Load the schema into SQLite from Python and solve exercises 1 to 5 without looking at the solutions. Compare your results to the result comments.",
+   "Write a query for revenue per region per month for completed orders, with NULL regions as 'Unknown'. Then check that the grand total equals the total from exercise 4.",
+   "Stretch: write a query that shows each customer's running total of completed revenue by order date using SUM(...) OVER (PARTITION BY ... ORDER BY ...), and explain how it differs from exercise 7."
+  ]
+ }
+}

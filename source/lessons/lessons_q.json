@@ -1,0 +1,435 @@
+{
+ "pandas": {
+  "plain": "pandas is a Python library for working with tables of data, like a spreadsheet you control with code. Its main object is a DataFrame: rows and named columns, where each column is a Series (one column of values with a single data type, or dtype, such as whole numbers, decimals, text or dates). You read a file into a DataFrame, clean it, combine it with other tables, summarise it and write it out again. Because every step is code, you can rerun the whole cleaning job next month on a new export in seconds.",
+  "analogy": "pandas is like a well-organised kitchen prep station. Deliveries arrive messy (unwashed, mislabelled, some items missing); you wash, sort and check them in the same order every time before anything goes into a dish, and you can hand the recipe card to the next cook.",
+  "why": "Almost every customer engagement starts with someone emailing a CSV or Excel export that is messier than they think. An FDE at a retailer might get 40,000 order rows with two date formats, amounts stored as text and a customer list with duplicate IDs, and must turn it into numbers the finance team trusts before any model or dashboard is built.",
+  "subtopics": [
+   {
+    "title": "Reading and inspecting a messy file",
+    "body": "Start every job the same way: load the file and look before you change anything. pd.read_csv reads a CSV (comma separated values) file; pd.read_excel reads a sheet from an .xlsx file (it needs the openpyxl package), and pd.read_json reads JSON. In lessons and tests you can pass io.StringIO(text), which makes a string behave like a file, so the example runs without any file on disk.\n\nThen ask four questions. How big is it? df.shape gives (rows, columns). What types did pandas guess? df.dtypes shows each column's dtype; a column you expect to be numbers but shows as str (or object in pandas 2) contains at least one value that is not a number. What does it look like? df.head() shows the first rows. What is missing? df.isna().sum() counts empty cells per column.\n\nThese checks take a minute and usually reveal most of the cleaning work. Write down what you find, because the customer will ask why a number changed.",
+    "example": "A homeware retailer, Brambleton Outfitters (made up), sends six order rows as a test. read_csv loads them fine, but dtypes shows amount as text. head() explains why: one amount is \"1,250.00\" with a thousands separator, and one is empty. The order_date column is also text, and one row says 03/04/2026 while others use 2026-03-02. Order 1004 appears twice. Before cleaning, the FDE lists these four issues in the kickoff notes: text amounts, a missing amount, mixed date formats and a duplicate order.",
+    "code": "import io\nimport pandas as pd\n\n# A small messy export, as a customer might email it\nraw = \"\"\"order_id,customer,order_date,region,amount\n1001,Ana Ruiz,2026-03-02,North,120.50\n1002,Ben Okafor,03/04/2026,south,\n1003,Ana Ruiz,2026-03-05, North ,\"1,250.00\"\n1004,Chen Wei,2026-03-05,East,80\n1004,Chen Wei,2026-03-05,East,80\n1005,Dara Singh,not recorded,North,45.00\n\"\"\"\n\ndf = pd.read_csv(io.StringIO(raw))   # same call works with a file path\nprint(df.shape)       # (6, 5)  -> 6 rows, 5 columns\nprint(df.dtypes)\n# order_id    int64\n# customer      str   <- pandas 3 prints str; pandas 2 prints object\n# order_date    str   <- dates arrive as text\n# region        str\n# amount        str   <- \"1,250.00\" made the whole column text\nprint(df.head(3))\n#    order_id    customer  order_date   region    amount\n# 0      1001    Ana Ruiz  2026-03-02    North    120.50\n# 1      1002  Ben Okafor  03/04/2026    south       NaN\n# 2      1003    Ana Ruiz  2026-03-05   North   1,250.00",
+    "lang": "Python"
+   },
+   {
+    "title": "Selecting, filtering and assigning",
+    "body": "To read one column use df[\"amount\"], which gives a Series. A list of names, df[[\"order_id\", \"amount\"]], gives a smaller DataFrame. To choose rows, build a mask: a Series of True and False, one per row, such as df[\"region\"] == \"North\". Putting a mask inside df[...] keeps only the True rows. Combine masks with & (and), | (or) and ~ (not), and wrap each condition in brackets, because Python's operator order would otherwise mix them up.\n\n.loc selects by labels: df.loc[rows, columns], where rows can be a mask. .iloc selects by position number, like the first row or the third column. Use .loc when you also want to change values: df.loc[mask, \"region\"] = \"West\" updates only the matching rows. Chained indexing such as df[mask][\"region\"] = \"West\" may change a temporary copy and leave the real table untouched.\n\nNew columns are made by assigning to a new name. Keep the rule readable, for example a needs_review flag for large orders.",
+    "example": "Brambleton's finance lead wants every order of 1,000 or more checked by hand. The FDE adds needs_review = amount >= 1000, which flags order 1003. The sales team also says Chen Wei moved to the West region, so df.loc[df[\"customer\"] == \"Chen Wei\", \"region\"] = \"West\" updates just his rows. Filtering North orders over 100 returns orders 1001 and 1003, and the North total is 1,370.50.",
+    "code": "import io\nimport pandas as pd\n\nraw = \"\"\"order_id,customer,region,amount\n1001,Ana Ruiz,North,120.50\n1002,Ben Okafor,South,60.00\n1003,Ana Ruiz,North,1250.00\n1004,Chen Wei,East,80.00\n\"\"\"\ndf = pd.read_csv(io.StringIO(raw))\n\nprint(df[\"customer\"].tolist())             # one column is a Series\n# ['Ana Ruiz', 'Ben Okafor', 'Ana Ruiz', 'Chen Wei']\nprint(df[[\"order_id\", \"amount\"]].shape)    # a list of columns is a DataFrame: (4, 2)\nprint(df.iloc[0][\"customer\"])              # iloc: by position -> Ana Ruiz\nprint(df.loc[df[\"region\"] == \"North\", \"amount\"].sum())   # loc: mask + column -> 1370.5\n\nbig_north = df[(df[\"region\"] == \"North\") & (df[\"amount\"] > 100)]   # & needs brackets\nprint(big_north[\"order_id\"].tolist())      # [1001, 1003]\n\ndf[\"needs_review\"] = df[\"amount\"] >= 1000          # new column from a rule\ndf.loc[df[\"customer\"] == \"Chen Wei\", \"region\"] = \"West\"   # fix matching rows only\nprint(df[[\"order_id\", \"region\", \"needs_review\"]])\n#    order_id region  needs_review\n# 0      1001  North         False\n# 1      1002  South         False\n# 2      1003  North          True\n# 3      1004   West         False",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "You want",
+      "Write",
+      "Returns"
+     ],
+     "rows": [
+      [
+       "One column",
+       "df[\"amount\"]",
+       "Series"
+      ],
+      [
+       "Several columns",
+       "df[[\"a\", \"b\"]]",
+       "DataFrame"
+      ],
+      [
+       "Rows matching a rule",
+       "df[df[\"amount\"] > 100]",
+       "DataFrame"
+      ],
+      [
+       "Rows and columns by name",
+       "df.loc[mask, \"amount\"]",
+       "Series or DataFrame"
+      ],
+      [
+       "By position",
+       "df.iloc[0, 2]",
+       "Single value"
+      ],
+      [
+       "Change some rows",
+       "df.loc[mask, \"col\"] = value",
+       "Updates df"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Missing data, dtypes and dates",
+    "body": "Missing values show as NaN (not a number) for numbers and NaT (not a time) for dates. df.isna() marks them. You have three honest options: leave them and report them, drop the rows with dropna, or fill them with fillna. Filling a missing amount with 0 changes totals and averages, so only do it when the customer agrees that blank really means zero. A safe habit is to add a flag column first, so the gap stays visible.\n\nFix dtypes on purpose. Tidy text with .str methods such as str.strip() (remove spaces) and str.title(). Turn text into numbers with pd.to_numeric; errors=\"coerce\" turns anything unreadable into NaN instead of crashing, so count the NaN values afterwards to see what failed.\n\nDates need an explicit format. 03/04/2026 is 4 March in the US and 3 April in the UK, and pandas cannot know which one the customer meant. Ask, then parse with format=\"%m/%d/%Y\" or \"%d/%m/%Y\". If a column mixes formats, parse each format separately with errors=\"coerce\" and combine the results. Once a column is a datetime, .dt gives parts such as month and day name.",
+    "example": "Brambleton confirms their store system writes US dates. The FDE strips spaces from \" North \", title-cases \"south\", removes commas and converts amount to float64, then flags the one missing amount instead of filling it. Dates are parsed twice (ISO format and US format) and combined. The row that says \"not recorded\" stays NaT, and the FDE asks the store manager whether that order date can be recovered.",
+    "code": "import io\nimport pandas as pd\n\nraw = \"\"\"order_id,customer,order_date,region,amount\n1001,Ana Ruiz,2026-03-02,North,120.50\n1002,Ben Okafor,03/04/2026,south,\n1003,Ana Ruiz,2026-03-05, North ,\"1,250.00\"\n1005,Dara Singh,not recorded,North,45.00\n\"\"\"\ndf = pd.read_csv(io.StringIO(raw))\n\nprint(df.isna().sum()[\"amount\"])                     # 1 missing amount\ndf[\"region\"] = df[\"region\"].str.strip().str.title()  # \" North \" and \"south\" -> tidy\ndf[\"amount\"] = pd.to_numeric(df[\"amount\"].str.replace(\",\", \"\"), errors=\"coerce\")\ndf[\"amount_missing\"] = df[\"amount\"].isna()           # flag it; do not guess a value\n\n# Two date formats in one column: parse each, then combine\niso = pd.to_datetime(df[\"order_date\"], format=\"%Y-%m-%d\", errors=\"coerce\")\nus = pd.to_datetime(df[\"order_date\"], format=\"%m/%d/%Y\", errors=\"coerce\")\ndf[\"order_date\"] = iso.fillna(us)                    # \"not recorded\" stays NaT\n\nprint(df.dtypes[\"amount\"], df.dtypes[\"order_date\"])  # float64 datetime64[us] (pandas 2: [ns])\nprint(df[[\"region\", \"amount\", \"amount_missing\", \"order_date\"]])\n#   region  amount  amount_missing order_date\n# 0  North   120.5           False 2026-03-02\n# 1  South     NaN            True 2026-03-04\n# 2  North  1250.0           False 2026-03-05\n# 3  North    45.0           False        NaT\nprint(df[\"order_date\"].dt.day_name().tolist())      # .dt gives date parts\n# ['Monday', 'Wednesday', 'Thursday', nan]",
+    "lang": "Python"
+   },
+   {
+    "title": "groupby, aggregation and pivot tables",
+    "body": "Most customer questions are summaries: revenue by region, orders per month, average basket by channel. groupby does this in three steps, often called split, apply, combine. It splits rows into groups by a column, applies a calculation such as sum or mean to each group, and combines the results into a new table with one row per group.\n\nNamed aggregation, as in .agg(revenue=(\"amount\", \"sum\")), lets you compute several summaries at once and choose clear column names. A pivot table (pivot_table) spreads one grouping down the side and another across the top, which is what business users know from Excel.\n\nTwo details matter. sum and mean skip NaN values silently, so a group whose amounts are all missing shows 0.0 revenue, which looks like a real zero. And to group by month, convert a datetime with .dt.to_period(\"M\") so 2 March and 29 March land in the same group.",
+    "example": "Brambleton's operations director asks: which region brings the most revenue, and is web growing against stores? groupby on region shows North with 3 orders and 1,415.50 in revenue, but an average order of 471.83 driven by one large order. The pivot shows web at 120.50 in March and 1,250.00 in April. The FDE points out that April web is one order, so it is too early to call a trend.",
+    "code": "import io\nimport pandas as pd\n\nraw = \"\"\"order_id,customer,order_date,region,channel,amount\n1001,Ana Ruiz,2026-03-02,North,web,120.50\n1002,Ben Okafor,2026-03-04,South,store,60.00\n1003,Ana Ruiz,2026-04-05,North,web,1250.00\n1004,Chen Wei,2026-04-05,East,store,80.00\n1005,Dara Singh,2026-04-09,North,store,45.00\n\"\"\"\ndf = pd.read_csv(io.StringIO(raw), parse_dates=[\"order_date\"])\n\n# One row per region, several summaries at once (named aggregation)\nby_region = df.groupby(\"region\").agg(\n    orders=(\"order_id\", \"count\"),\n    revenue=(\"amount\", \"sum\"),\n    avg_order=(\"amount\", \"mean\"),\n).round(2)\nprint(by_region)\n#         orders  revenue  avg_order\n# region\n# East         1     80.0      80.00\n# North        3   1415.5     471.83\n# South        1     60.0      60.00\n\n# Months down the side, channels across the top\ndf[\"month\"] = df[\"order_date\"].dt.to_period(\"M\")\npivot = df.pivot_table(index=\"month\", columns=\"channel\", values=\"amount\",\n                       aggfunc=\"sum\", fill_value=0)\nprint(pivot)\n# channel  store     web\n# month\n# 2026-03   60.0   120.5\n# 2026-04  125.0  1250.0",
+    "lang": "Python"
+   },
+   {
+    "title": "Joining tables with merge and spotting fan-out",
+    "body": "merge combines two tables on a key column, like a SQL join. how=\"left\" keeps every row of the left table and adds matching columns from the right; how=\"inner\" keeps only rows found in both. indicator=True adds a _merge column saying whether each row matched (both), or was found only on one side.\n\nFan-out is the classic trap. If the key appears twice in the right table, each matching left row is copied twice. The row count grows and every sum goes up, with no error. Customer lookup tables often have duplicates: the same customer entered twice in a CRM, or a clinic with an old and a new name.\n\nProtect yourself in two ways. Compare len() before and after every merge. And pass validate=\"many_to_one\" (or \"one_to_one\"), which makes pandas raise a MergeError if the right-side keys are not unique. Then decide with the customer which duplicate is correct, remove the other, and merge again.",
+    "example": "Brambleton's CRM export lists customer C2 twice, once as Trade and once as Retail. A plain left merge turns 4 orders into 5 rows and total revenue grows from 1,510.50 to 1,570.50, a 60.00 overstatement that nobody would notice in a big file. indicator=True also shows order 1004 belongs to C9, who is not in the CRM at all. With validate=\"many_to_one\" the same merge stops with a clear error, and the FDE asks the sales team which segment C2 really belongs to.",
+    "code": "import io\nimport pandas as pd\n\norders = pd.read_csv(io.StringIO(\"\"\"order_id,customer_id,amount\n1001,C1,120.50\n1002,C2,60.00\n1003,C1,1250.00\n1004,C9,80.00\n\"\"\"))\ncustomers = pd.read_csv(io.StringIO(\"\"\"customer_id,name,segment\nC1,Ana Ruiz,Retail\nC2,Ben Okafor,Trade\nC2,Ben Okafor,Retail\n\"\"\"))   # C2 appears twice: a duplicate in the customer's CRM export\n\njoined = orders.merge(customers, on=\"customer_id\", how=\"left\", indicator=True)\nprint(len(orders), \"->\", len(joined))              # 4 -> 5   rows grew: fan-out\nprint(joined[\"amount\"].sum(), \"vs\", orders[\"amount\"].sum())   # 1570.5 vs 1510.5\nprint(joined[\"_merge\"].value_counts().to_dict())\n# {'both': 4, 'left_only': 1, 'right_only': 0}     <- C9 found no match\n\ntry:\n    orders.merge(customers, on=\"customer_id\", how=\"left\", validate=\"many_to_one\")\nexcept pd.errors.MergeError as err:\n    print(\"Blocked:\", str(err).splitlines()[0])\n# Blocked: Merge keys are not unique in right dataset; not a many-to-one merge",
+    "lang": "Python",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "left",
+       90,
+       70,
+       "Orders table",
+       "4 rows"
+      ],
+      [
+       "right",
+       265,
+       70,
+       "Customer table",
+       "C2 listed twice"
+      ],
+      [
+       "merge",
+       440,
+       70,
+       "merge()",
+       "how=left"
+      ],
+      [
+       "count",
+       615,
+       70,
+       "Compare counts",
+       "4 in, 5 out?"
+      ],
+      [
+       "dup",
+       615,
+       220,
+       "Find dup keys",
+       "duplicated()"
+      ],
+      [
+       "ask",
+       440,
+       220,
+       "Ask customer",
+       "which C2 is right"
+      ],
+      [
+       "fixed",
+       265,
+       220,
+       "Merge again",
+       "validate=m:1"
+      ],
+      [
+       "ok",
+       90,
+       220,
+       "Totals match",
+       "1,510.50"
+      ]
+     ],
+     "edges": [
+      [
+       "left",
+       "merge",
+       80
+      ],
+      [
+       "right",
+       "merge"
+      ],
+      [
+       "merge",
+       "count"
+      ],
+      [
+       "count",
+       "dup",
+       0,
+       "grew"
+      ],
+      [
+       "dup",
+       "ask"
+      ],
+      [
+       "ask",
+       "fixed"
+      ],
+      [
+       "fixed",
+       "ok"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Validating before you hand data over",
+    "body": "Cleaned data leaves your laptop and becomes someone else's truth: a dashboard, a model's training set, a finance report. Before handing it over, run checks in code, so they run again every time the data is refreshed.\n\nGood checks are simple rules the business agrees with. Keys are unique. Required columns have no missing values, or the missing ones are counted and explained. Numbers sit in a sensible range (no negative prices). Categories come from a known list. Row counts and totals reconcile with the source system, for example the export's row count and the finance ledger's monthly total. A small function that returns a list of problems is enough to start; libraries such as pandera or Great Expectations do the same at larger scale.\n\nFinish with a short handoff note: what you changed, how many rows were dropped or flagged and why, and the totals the receiver should see. That note is what lets the customer trust the file.",
+    "example": "Before sending Brambleton's cleaned orders to their BI analyst, the FDE runs check(). It finds duplicate order 1004 and one missing amount. drop_duplicates removes the exact duplicate row, and the missing amount stays flagged because the store manager is still looking it up. The handoff note says: 5 rows in, 4 out, 1 duplicate removed, 1 amount missing (order 1002), total 1,450.50 excluding order 1002.",
+    "code": "import io\nimport pandas as pd\n\nclean = pd.read_csv(io.StringIO(\"\"\"order_id,order_date,region,amount\n1001,2026-03-02,North,120.50\n1002,2026-03-04,South,\n1003,2026-03-05,North,1250.00\n1004,2026-03-05,East,80.00\n1004,2026-03-05,East,80.00\n\"\"\"), parse_dates=[\"order_date\"])\n\ndef check(df):\n    problems = []\n    dup = df[\"order_id\"].duplicated()\n    if dup.any():\n        problems.append(f\"duplicate order_id: {df.loc[dup, 'order_id'].tolist()}\")\n    if df[\"amount\"].isna().any():\n        problems.append(f\"missing amount: {int(df['amount'].isna().sum())} row(s)\")\n    if (df[\"amount\"] < 0).any():\n        problems.append(\"negative amount\")\n    if not df[\"region\"].isin([\"North\", \"South\", \"East\", \"West\"]).all():\n        problems.append(\"unknown region\")\n    return problems\n\nprint(check(clean))   # ['duplicate order_id: [1004]', 'missing amount: 1 row(s)']\nfixed = clean.drop_duplicates()             # exact duplicate rows only\nprint(len(clean), \"->\", len(fixed), check(fixed))   # 5 -> 4 ['missing amount: 1 row(s)']\nprint(f\"rows={len(fixed)} total={fixed['amount'].sum():.2f}\")   # rows=4 total=1450.50",
+    "lang": "Python",
+    "checklist": [
+     "Row count in equals the source export (or every difference is explained)",
+     "Key column is unique (no duplicate IDs)",
+     "Every column has the dtype you expect (numbers, dates, text)",
+     "Missing values are counted, and each fill or drop is agreed with the customer",
+     "Dates were parsed with an explicit format the customer confirmed",
+     "Row count did not change after each merge (or you know why)",
+     "Totals reconcile with a number the customer already trusts",
+     "A short handoff note lists every change and the final totals"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "DataFrame",
+    "A pandas table of rows and named columns, each column with its own data type."
+   ],
+   [
+    "Series",
+    "A single column of values in pandas, with an index labelling each row."
+   ],
+   [
+    "dtype",
+    "The data type of a column, such as int64, float64, str or datetime64."
+   ],
+   [
+    "NaN / NaT",
+    "Markers for a missing number (not a number) and a missing date (not a time)."
+   ],
+   [
+    "Boolean mask",
+    "A column of True and False values used to keep only the matching rows."
+   ],
+   [
+    ".loc / .iloc",
+    "Ways to select rows and columns by label (.loc) or by position number (.iloc)."
+   ],
+   [
+    "groupby",
+    "Split rows into groups, calculate something per group, and combine the results."
+   ],
+   [
+    "Pivot table",
+    "A summary with one grouping down the side and another across the top."
+   ],
+   [
+    "merge",
+    "Combine two tables on a shared key column, like a SQL join."
+   ],
+   [
+    "Fan-out",
+    "Rows multiplying after a join because a key appears more than once on one side."
+   ]
+  ],
+  "practice": [
+   "Copy the messy six-row CSV from the first subtopic into a script. Clean it fully (region text, amount as a number, dates, the duplicate) and print the final dtypes and total. Deliverable: a script that runs top to bottom and prints the total.",
+   "Invent a customer lookup with one duplicated key, merge it with your orders, and show the fan-out in numbers (row count and total before and after). Then make the merge fail with validate=\"many_to_one\" and fix the lookup. Deliverable: the script plus two sentences explaining the difference.",
+   "Stretch: write a check(df) function with at least five rules for an orders table, run it on a 1,000-row fake dataset you generate with a few planted errors, and write a five-line handoff note. Deliverable: script, printed problems, and the note."
+  ]
+ },
+ "debugging": {
+  "plain": "Debugging is finding out why a program does something different from what you expected, and then fixing it. A bug can be a crash with an error message, a wrong number with no error at all, or something that only fails sometimes. Good debugging is a method, much like a doctor's diagnosis: reproduce the problem, gather evidence, form one testable guess (a hypothesis), check it, and fix the cause with a test that proves it. Tools such as tracebacks, logs, debuggers and git bisect make each step faster.",
+  "analogy": "Debugging is like finding a leak in a house. You first make it drip on demand (run the tap), follow the water marks upstream instead of mopping downstream, close off pipes one at a time until you find the section that leaks, and only then replace that pipe and run the tap again to check.",
+  "why": "FDEs are often dropped into a customer's codebase they have never seen, where an integration broke at night and a manager wants an answer by lunch. A calm, repeatable method, plus the skill to find your way around a stranger's repo, is what lets you fix the real cause instead of adding a retry that hides it.",
+  "subtopics": [
+   {
+    "title": "A method: reproduce, isolate, hypothesise, verify",
+    "body": "Beginners often read the code, guess, change something and rerun, again and again. That works for tiny bugs and wastes hours on real ones. A method is faster.\n\nReproduce: make the bug happen on demand, ideally on your machine, with the same input, version and settings. If you cannot reproduce it, collect more evidence first (logs, the exact input, the time it happened). Isolate: shrink the problem. Which input, which function, which commit? Hypothesise: write down one specific, testable guess, such as \"the total is wrong because amounts with a comma are skipped\". Test it: add a print or log, or pause in a debugger, and check. If the guess is wrong, cross it out and make a new one; that is progress too. Fix and verify: change the cause, rerun the original repro, and add a test so the bug cannot quietly return.\n\nKeep a short bug log as you go. It stops you repeating experiments, and it becomes your write-up later.",
+    "example": "A freight company's weekly invoice total is 1,250.00 lower than their ledger. The FDE reproduces it with one week's data, notices the gap equals exactly one invoice, and guesses that invoice is skipped. Logging each parsed total confirms the invoice with \"1,250.00\" never gets parsed. The fix strips the comma, and a unit test with that exact value is added.",
+    "code": "BUG LOG: invoice total wrong for Tamsel Freight (made up)\n\nSymptom      Weekly total 2,340.10, customer's ledger says 3,590.10\nRepro        python sync.py --week 2026-W11   (fails every time on my laptop)\nFacts        Diff is exactly 1,250.00. One invoice in that week is 1,250.00.\nHypothesis 1 That invoice is skipped because its total has a comma.\nTest         Log each parsed total for W11            -> RESULT: confirmed\nFix          Strip thousands separators before float()\nVerify       W11 total now 3,590.10; new unit test passes; W10 unchanged",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Step",
+      "Question to ask",
+      "Output"
+     ],
+     "rows": [
+      [
+       "Reproduce",
+       "Can I make it fail on demand?",
+       "A command that fails every time"
+      ],
+      [
+       "Isolate",
+       "Which input, function or commit?",
+       "The smallest failing case"
+      ],
+      [
+       "Hypothesise",
+       "What exactly do I think is wrong?",
+       "One written, testable guess"
+      ],
+      [
+       "Test",
+       "Does the evidence agree?",
+       "Confirmed or crossed out"
+      ],
+      [
+       "Fix and verify",
+       "Does the original repro pass now?",
+       "Fix plus a regression test"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Reading tracebacks and logs",
+    "body": "When Python crashes it prints a traceback: the chain of function calls that were running, oldest at the top and the one that failed at the bottom. Read it from the bottom up. The last line gives the exception type (ValueError, KeyError, TypeError) and a message that often includes the bad value. The frame just above shows the file, line number and code where it broke. Then walk up until you reach the first frame in code you or the customer wrote; frames inside libraries are usually where the error surfaced, not where the mistake was made.\n\nIf you see \"During handling of the above exception, another exception occurred\", there are two tracebacks. The first one is usually the real cause.\n\nLogs work the same way. In a noisy log, search for the first ERROR or Traceback around the time of the failure, not the last one, because later errors are often consequences. If requests carry an ID (an order number, a request ID), grep for that ID to follow one request through many services.",
+    "example": "A claims integration crashes overnight and the log shows 300 errors. The FDE runs grep for ERROR and looks at the first hit: a single ValueError about a date \"31/02/2026\" at 01:12. Every later error is \"record not found\", caused by the first failure stopping the batch. Fixing date validation removes all 300.",
+    "code": "Traceback (most recent call last):          <- read from the BOTTOM up\n  File \"invoices.py\", line 10, in <module>   <- outermost call (where it started)\n    print(load(payload))\n  File \"invoices.py\", line 8, in load\n    return sum(parse_total(r) for r in rows)\n  File \"invoices.py\", line 8, in <genexpr>\n    return sum(parse_total(r) for r in rows)\n  File \"invoices.py\", line 4, in parse_total  <- last frame: where it broke\n    return float(line[\"total\"])\nValueError: could not convert string to float: '1,250.00'\n^ exception type    ^ message, often with the bad value\n\n# In logs, find the FIRST error, not the loudest or the last one:\n$ grep -n -E \"ERROR|Traceback\" app.log | head -3\n$ grep -n \"order 88213\" app.log            # follow one request by its id",
+    "lang": "Text"
+   },
+   {
+    "title": "Breakpoints: pdb and the VS Code debugger",
+    "body": "Print statements are fine, but a debugger lets you pause a running program and look around. In Python, put breakpoint() on a line; when execution reaches it, the program stops and opens pdb, the built-in debugger, in your terminal. You can print any variable, run small expressions, see the call stack and step line by line. A conditional breakpoint, such as if \",\" in value: breakpoint(), stops only on the interesting row out of thousands.\n\npython -m pdb script.py starts a script under the debugger, and if it crashes you land at the failing line with everything still in memory (called post-mortem debugging). Setting the environment variable PYTHONBREAKPOINT=0 turns every breakpoint() off, and you should still remove them before committing.\n\nThe VS Code debugger does the same with a mouse. Click left of a line number to set a red-dot breakpoint, press F5 and choose Python, then use the Variables panel, the Call Stack, a Watch list for expressions and the Debug Console to run code while paused. Right-click a breakpoint to add a condition.",
+    "example": "An invoice loader handles 5,000 rows and only one fails. The FDE adds a conditional breakpoint for totals containing a comma, reruns, and pdb stops on exactly that row. p line shows {'total': '1,250.00'} and w shows the call path from load() to parse_total(). The cause is confirmed in two minutes without reading 5,000 lines of output.",
+    "code": "$ python invoices.py\n> invoices.py(6)parse_total()\n-> return float(line[\"total\"])\n(Pdb) p line                      # print a variable\n{'total': '1,250.00'}\n(Pdb) pp line[\"total\"]            # pretty-print an expression\n'1,250.00'\n(Pdb) w                           # where: the call stack, like a live traceback\n  invoices.py(13)<module>()\n  invoices.py(10)load()\n  invoices.py(10)<genexpr>()\n> invoices.py(6)parse_total()\n(Pdb) q                           # quit (c would continue running)\n\n# Start pdb only after a crash:   python -m pdb invoices.py   then press c\n# Turn every breakpoint() off:    PYTHONBREAKPOINT=0 python invoices.py",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "pdb command",
+      "What it does"
+     ],
+     "rows": [
+      [
+       "p x / pp x",
+       "Print (or pretty-print) a variable or expression"
+      ],
+      [
+       "n",
+       "Next: run the current line, stay in this function"
+      ],
+      [
+       "s",
+       "Step: go into the function called on this line"
+      ],
+      [
+       "c",
+       "Continue until the next breakpoint"
+      ],
+      [
+       "l",
+       "List the code around the current line"
+      ],
+      [
+       "w",
+       "Where: show the call stack"
+      ],
+      [
+       "u / d",
+       "Move up or down the call stack to inspect callers"
+      ],
+      [
+       "q",
+       "Quit the debugger and the program"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Minimal reproductions and git bisect",
+    "body": "A minimal reproduction (minimal repro) is the smallest program and input that still shows the bug. You get there by removing things: fewer rows, fewer steps, fake data in place of the real API, until removing anything else makes the bug disappear. Small repros are fast to run, easy to share with another team, and they often point straight at the cause.\n\nWhen a bug appeared at some point (\"it worked last month\"), git bisect finds the commit that introduced it. You tell git one commit that is bad and one that is good, and it checks out the commit halfway between. You test and mark it good or bad, and git halves the range again. 40 commits take about 6 tests, 1,000 commits about 10. If your repro script exits with 0 when things are fine and 1 when broken, git bisect run does all the testing for you (exit code 125 means skip this commit).\n\nRun git bisect reset at the end to return to your branch, then read the diff of the first bad commit.",
+    "example": "An insurer's nightly sync started losing a few claims three weeks ago, with no errors in the log. The FDE writes a 20-line repro with a fake API of 250 claims, which receives only 200. git bisect run with that script checks 6 of 40 commits and names a refactor that computes the page count as total // page_size, which drops the last partial page.",
+    "code": "# 1. Save a tiny script that exits 0 when good and non-zero when bad\n#    (repro_pages.py: fake API with 250 claims, checks all 250 arrive)\npython repro_pages.py            # expected 250, got 200   (exit code 1)\n\n# 2. Let git find the first bad commit by binary search\ngit bisect start\ngit bisect bad                   # current commit is broken\ngit bisect good v2.3.0           # this release was fine\ngit bisect run python repro_pages.py\n# ... git checks out ~6 commits out of 40 and prints:\n# a1c9e42 is the first bad commit\n#     refactor: compute page count up front\n\ngit bisect reset                 # back to where you started\ngit show a1c9e42                 # read the small diff that caused it",
+    "lang": "bash"
+   },
+   {
+    "title": "Finding your way around an unfamiliar repo",
+    "body": "You rarely need to understand a whole codebase. You need to find the path your bug travels through. Start with the edges: the README and any docs for how to run it, the dependency file (pyproject.toml, requirements.txt, package.json), and the entry points, meaning the places execution starts: a main file, a CLI command declared in pyproject.toml, a web route, or a scheduled job definition.\n\nThen search. grep -rn (or the faster ripgrep, rg) finds where a function is defined, who calls it, and which line produces an error message you saw in the logs. Searching for the exact error text is often the fastest way in. git log shows recent changes, and git blame shows which commit last touched each line, often with a message explaining why.\n\nThe tests are a map of intended behaviour. Run them first (pytest -x stops at the first failure) so you know what was already broken before you touched anything, and read the tests for the module you care about to see how it is supposed to be called. An editor's \"Go to definition\" and \"Find all references\" do the same jumps with a click.",
+    "example": "On day one at a logistics customer, an FDE must fix a sync job in a 60,000-line repo. The log says \"Could not match policy\". grep finds that message in app/matching.py, grep for the function name shows it is called from one scheduled job, and git log shows that file changed last week. The FDE runs the tests, sees two already failing, notes that before changing anything, and reads test_matching.py to learn the expected input.",
+    "code": "git log --oneline -15                    # what changed recently, and in what style\nls; cat README.md                        # layout, how to run it\ngrep -n \"scripts\" -A5 pyproject.toml     # declared entry points (CLI commands)\ngrep -rn \"if __name__ == .__main__.\" --include=*.py .   # files meant to be run\ngrep -rn \"def sync_claims\" .             # where is this function defined?\ngrep -rn \"sync_claims(\" .                # who calls it?\ngrep -rn \"Could not match policy\" .      # find the code behind an error message\npython -m pytest -x -q                   # run the tests; stop at first failure\npython -m pytest -q -k sync              # only tests with \"sync\" in the name\ngit blame -L 40,60 app/sync.py           # who changed these lines and in which commit",
+    "lang": "bash",
+    "checklist": [
+     "Read the README and find how to run it locally",
+     "Find the entry points: main files, CLI scripts, routes, scheduled jobs",
+     "Grep for the exact error message from the logs",
+     "Trace the function: where it is defined and who calls it",
+     "Check git log and git blame for recent changes to those files",
+     "Run the test suite before changing anything and note what already fails",
+     "Read the tests for the module you are working in",
+     "Write down the path of the bug (file, function, line) as you go"
+    ]
+   },
+   {
+    "title": "Writing a bug report someone else can act on",
+    "body": "Often the fix belongs to another team: the customer's platform team, a vendor, or your own product engineers. A good bug report lets them reproduce the problem in minutes without a meeting.\n\nPut the impact first, in business terms: who is affected, how much, since when. Then give the environment (versions, where it runs), exact steps to reproduce, what you expected and what actually happened, with numbers. Attach evidence: the minimal repro, the relevant log lines with timestamps, and the bisect result if you have one. Separate facts from your theory of the cause, and label the theory as such. Finish with a clear ask: who should do what, by when.\n\nKeep secrets and personal data out: redact tokens, customer names and patient or policy details from logs before pasting them into a ticket.",
+    "example": "The FDE at the insurer files one ticket with the claims platform team. The title names the symptom and scale. It lists the staging command that reproduces it, 4,812 expected against 4,800 synced for one window, attaches repro_pages.py and the bisect result, suggests math.ceil as the fix, and asks for review of a pull request by Thursday. The team merges it the same day.",
+    "code": "Title: Nightly claims sync drops the last partial page (1-99 claims per night)\n\nEnvironment  claims-sync v2.4.1, Python 3.12, prod and staging\nImpact       About 1-2% of new claims never reach triage. Started 2026-03-03.\nSteps        1. Run: python -m sync --since 2026-03-10 --until 2026-03-11 on staging\n             2. Compare count with the policy system report for the same window\nExpected     4,812 claims synced\nActual       4,800 claims synced, no errors in the log\nEvidence     repro_pages.py attached (fake API, 250 items -> 200 arrive)\n             git bisect: first bad commit a1c9e42 \"compute page count up front\"\nCause        pages = total // page_size drops the final partial page\nSuggested    Use math.ceil, add tests for 0, 200 and 250 items, backfill since 03-03\nOwner / ask  Claims platform team: review PR #412 by Thursday",
+    "lang": "Text",
+    "checklist": [
+     "Title names the symptom and the scale",
+     "Impact: who, how many, since when",
+     "Environment: versions, where it runs",
+     "Exact steps to reproduce",
+     "Expected versus actual, with numbers",
+     "Evidence attached: repro, log lines, bisect result",
+     "Facts kept separate from your theory of the cause",
+     "Secrets and personal data removed",
+     "A clear ask: who, what, by when"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Bug",
+    "Any difference between what a program does and what it should do."
+   ],
+   [
+    "Reproduce",
+    "Make a bug happen again on demand, with known inputs and settings."
+   ],
+   [
+    "Traceback",
+    "Python's printout of the chain of function calls that led to an error, newest at the bottom."
+   ],
+   [
+    "Exception",
+    "An error object Python raises when something goes wrong, such as ValueError or KeyError."
+   ],
+   [
+    "Breakpoint",
+    "A marked line where a debugger pauses the program so you can inspect it."
+   ],
+   [
+    "pdb",
+    "Python's built-in command-line debugger, opened by breakpoint() or python -m pdb."
+   ],
+   [
+    "Minimal repro",
+    "The smallest program and input that still shows the bug."
+   ],
+   [
+    "git bisect",
+    "A git command that binary-searches commit history to find the first bad commit."
+   ],
+   [
+    "Regression test",
+    "A test added with a fix so the same bug fails the build if it ever returns."
+   ],
+   [
+    "Entry point",
+    "A place where a program starts running, such as a main file, CLI command or web route."
+   ]
+  ],
+  "practice": [
+   "Take the invoice loader from this lesson, run it to get the traceback, and write the bug log (symptom, repro, hypothesis, test, fix, verify). Then fix it and add the regression test. Deliverable: the fixed file, a passing pytest test and your bug log.",
+   "Make a git repo with 20 small commits where commit 13 introduces an off-by-one bug. Write a repro script that exits 1 when broken, and find the commit with git bisect run. Deliverable: the terminal output naming the first bad commit.",
+   "Stretch: clone an open-source Python project you have never seen, pick one error message from its source, and trace how a user could trigger it (entry point, calls, file and line). Deliverable: a one-page map of the path plus a sample bug report in the template from this lesson."
+  ]
+ }
+}

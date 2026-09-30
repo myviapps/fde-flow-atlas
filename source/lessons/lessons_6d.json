@@ -1,0 +1,1165 @@
+{
+ "dataquality": {
+  "plain": "Data quality means how fit a dataset is for the job you want to do with it. You measure it along a few dimensions, such as how many values are missing (completeness) or repeated (uniqueness). Matching, also called entity resolution, means finding records in different systems that describe the same customer or company even when their names are spelled differently. Reconciliation means proving, with counts and totals, that the data that arrived in the new system is the same as the data that left the old one.",
+  "analogy": "It is like taking over a shop's stockroom. First you count what is on the shelves and note what is damaged, then you notice that 'tin tomatoes' and 'tomatoes, tinned' are the same product on two shelves, and at the end you check that the stock sheet and the shelves agree before you sign.",
+  "why": "Almost every FDE project starts with a customer's data, and it is almost never clean. An AI assistant that answers questions from a CRM full of duplicates gives wrong answers with confidence, and a migration that loses 2 percent of invoices will cost you the customer's trust. Being able to measure, fix and prove data quality is what lets you say 'the numbers are right' in front of the finance director.",
+  "subtopics": [
+   {
+    "title": "The five quality dimensions",
+    "body": "When people say data is 'bad', they usually mean one of five things. Naming them turns a vague complaint into something you can measure.\n\nCompleteness asks whether the values are there: what share of rows have an email? Validity asks whether each value has the right shape or range: is the email shaped like an email, is the age between 0 and 120? Uniqueness asks whether each real thing appears once: does customer 102 appear twice? Consistency asks whether the same fact is written the same way everywhere: is the United Kingdom 'GB' in one table and 'UK' in another? Timeliness asks whether the data is fresh enough for the job: was this record updated this month, or two years ago?\n\nEach dimension becomes a score between 0 and 100 percent. You measure it per column, write it down, and agree with the customer what score is good enough. A marketing list might accept 80 percent valid emails; an invoice table needs 100 percent valid amounts.\n\nEdge cases matter. An empty string is not the same as a missing value (null) to most tools, so a column can look complete while holding blanks. A value can be valid and still wrong: 'jo@ferro.example' is a well-shaped email for the wrong person. Accuracy, meaning the value matches the real world, is the hardest dimension and usually needs a second source to check against. The etl topic shows where these checks sit in a pipeline; this topic is about doing them well.",
+    "example": "An FDE at a made-up kelp-farming supplier checks a 5-row CRM extract. One email is missing (completeness 80%), one is 'not-an-email' (validity 60% once the missing one is also counted as not valid), customer 102 appears twice (uniqueness 80%), one row says 'UK' when the agreed list uses 'GB' (consistency 80%), and one row was last touched in January 2025 (timeliness 80%). She reports five numbers instead of 'the data looks messy'.",
+    "table": {
+     "headers": [
+      "Dimension",
+      "Question it answers",
+      "Typical check"
+     ],
+     "rows": [
+      [
+       "Completeness",
+       "Is the value there?",
+       "Share of non-null, non-blank cells"
+      ],
+      [
+       "Validity",
+       "Is it the right shape or range?",
+       "Regex, allowed list, min and max"
+      ],
+      [
+       "Uniqueness",
+       "Does each thing appear once?",
+       "Duplicate keys"
+      ],
+      [
+       "Consistency",
+       "Is it written the same everywhere?",
+       "Codes match the agreed list"
+      ],
+      [
+       "Timeliness",
+       "Is it fresh enough?",
+       "Last update within N days"
+      ],
+      [
+       "Accuracy",
+       "Does it match reality?",
+       "Compare with a trusted source"
+      ]
+     ]
+    },
+    "code": "import pandas as pd\n\n# A small customer extract from a CRM (made-up data)\ndf = pd.DataFrame({\n    \"customer_id\": [101, 102, 102, 104, 105],\n    \"email\": [\"a@kelp.example\", None, \"b@kelp.example\", \"not-an-email\", \"e@kelp.example\"],\n    \"country\": [\"GB\", \"GB\", \"UK\", \"FR\", \"GB\"],\n    \"updated_at\": pd.to_datetime([\"2026-09-27\", \"2026-09-26\", \"2026-09-26\",\n                                  \"2025-01-03\", \"2026-09-27\"]),\n})\n\ncompleteness = df[\"email\"].notna().mean()                     # share of rows with a value\nvalidity = df[\"email\"].str.contains(r\"^[^@\\s]+@[^@\\s]+\\.[a-z]+$\", na=False).mean()\nuniqueness = 1 - df[\"customer_id\"].duplicated().mean()        # share not repeated\nconsistency = df[\"country\"].isin([\"GB\", \"FR\", \"DE\"]).mean()   # uses the agreed code list\ntimeliness = (df[\"updated_at\"] >= \"2026-09-01\").mean()        # touched this month\n\nfor name, score in [(\"completeness\", completeness), (\"validity\", validity),\n                    (\"uniqueness\", uniqueness), (\"consistency\", consistency),\n                    (\"timeliness\", timeliness)]:\n    print(f\"{name:<13} {score:.0%}\")\n# completeness  80%\n# validity      60%\n# uniqueness    80%\n# consistency   80%\n# timeliness    80%",
+    "lang": "Python"
+   },
+   {
+    "title": "Profiling a new source in 15 minutes",
+    "body": "Profiling means describing a dataset with numbers before you use it. It is the fastest way to find the problems that will hurt you later, and it gives you specific questions for the data owner.\n\nA quick profile has a fixed routine. First, the shape: how many rows and columns, and does the row count match what the owner expected? Second, per column: how many nulls, how many blanks, how many distinct values, and one example value. Third, types: does a 'spend' column hold numbers, or text like '1,200.50' and 'n/a' that will break a sum? Fourth, ranges: the minimum and maximum of every number and date, because a spend of 999999 or a date in 1900 is often a placeholder someone typed. Fifth, keys: does the column that should identify a row have duplicates?\n\nWrite the findings as a short list, each with a count, and a question. 'One supplier id, S3, appears twice. Which row is current?' is far more useful than 'there are duplicates'.\n\nTools help but are optional. pandas gives you most of it in a few lines. Libraries such as ydata-profiling produce a full HTML report in one call, which is handy for a first look but slow on very large tables. In a warehouse, the same checks are plain SQL: COUNT(*), COUNT(column), COUNT(DISTINCT column), MIN and MAX. The pandas topic covers reading messy files; here you only measure.",
+    "example": "A logistics customer, Pellmoor Freight (made up), sends a 6-column supplier file. The profile shows one blank VAT number, one null name, one supplier id repeated, 'n/a' inside the spend column and a maximum spend of 999,999. The FDE sends four questions to the finance analyst the same morning, and learns 999,999 means 'unknown' in the old system.",
+    "checklist": [
+     "Row and column count matches what the owner expected",
+     "Nulls and blank strings counted per column",
+     "Distinct values per column, and the top values for low-cardinality columns",
+     "Numbers and dates parse; unparseable values counted",
+     "Min and max checked for placeholders (0, 999999, 1900-01-01)",
+     "Key columns checked for duplicates",
+     "Findings written as count plus question and sent to the owner"
+    ],
+    "code": "import pandas as pd\n\n# A new supplier file lands (made-up rows; in real life: pd.read_csv(\"suppliers.csv\"))\ndf = pd.DataFrame({\n    \"supplier_id\": [\"S1\", \"S2\", \"S3\", \"S3\", \"S5\", \"S6\"],\n    \"name\": [\"Brightwell Ltd\", \"brightwell limited\", \"Orla Foods\", \"Orla Foods\", None, \"Tamsin & Co\"],\n    \"vat_no\": [\"GB123\", \"GB123\", \"GB456\", \"GB456\", \"GB789\", \"\"],\n    \"spend\": [\"1,200.50\", \"80\", \"n/a\", \"3400\", \"15\", \"999999\"],\n})\n\nprint(df.shape)                        # rows, columns\nprofile = pd.DataFrame({\n    \"nulls\": df.isna().sum(),          # truly empty cells\n    \"blanks\": (df == \"\").sum(),        # empty strings hide from isna()\n    \"distinct\": df.nunique(),\n    \"example\": df.iloc[0],\n})\nprint(profile)\nspend = pd.to_numeric(df[\"spend\"].str.replace(\",\", \"\"), errors=\"coerce\")\nprint(\"unparseable spend:\", spend.isna().sum(), \"| max:\", spend.max())\nprint(\"duplicate ids:\", df[\"supplier_id\"].duplicated().sum())\n# (6, 4)\n#              nulls  blanks  distinct         example\n# supplier_id      0       0         5              S1\n# name             1       0         4  Brightwell Ltd\n# vat_no           0       1         4           GB123\n# spend            0       0         6        1,200.50\n# unparseable spend: 1 | max: 999999.0\n# duplicate ids: 1",
+    "lang": "Python"
+   },
+   {
+    "title": "Expectation suites: pandera, Great Expectations, dbt",
+    "body": "An expectation is a rule about your data written as code: 'order_id is unique', 'status is one of open, shipped, cancelled', 'amount is between 0 and 50,000'. A group of expectations for one table is called an expectation suite or a schema. It runs every time new data arrives, so problems are caught on the day they appear instead of when a report looks wrong.\n\nThree tools are common. pandera checks pandas (and some other) DataFrames inside Python code, which suits scripts and notebooks. Great Expectations (GX) is a larger framework: it stores suites, runs them against files or databases, and produces readable reports called Data Docs. dbt tests live next to SQL models in a warehouse; unique, not_null, accepted_values and relationships are built in, and you add your own as SQL queries that return failing rows.\n\nTwo design choices matter more than the tool. First, run all checks and collect every failure (pandera calls this lazy validation) so you fix everything in one pass. Second, decide the action for each rule: stop the load, quarantine the failing rows, or only warn. A missing primary key should stop the load. A slightly odd phone number should only warn.\n\nWatch the edge cases: case differences ('SHIPPED' versus 'shipped'), nulls that a rule should allow, and rules that are too strict for real life, which cause alert fatigue until people ignore them.",
+    "example": "Ferro Home Goods (made up) sends a daily orders file. The suite finds four problems in one pass: order 2 appears twice, one status is upper-case 'SHIPPED', one amount is -5.00 (a refund stored as an order), and one email is malformed. The FDE quarantines the refund row, asks for a lower-case status list, and keeps loading the rest.",
+    "table": {
+     "headers": [
+      "Tool",
+      "Where it runs",
+      "Good for"
+     ],
+     "rows": [
+      [
+       "pandera",
+       "Python, on DataFrames",
+       "Scripts, notebooks, API inputs"
+      ],
+      [
+       "Great Expectations",
+       "Python, files and databases",
+       "Shared suites with HTML reports"
+      ],
+      [
+       "dbt tests",
+       "SQL in the warehouse",
+       "Checks next to each model"
+      ],
+      [
+       "Plain SQL or asserts",
+       "Anywhere",
+       "A first check before any tool"
+      ]
+     ]
+    },
+    "code": "import pandas as pd\nimport pandera.pandas as pa   # pip install pandera\n\n# The expectation suite: one place that says what \"good\" looks like\norders_schema = pa.DataFrameSchema({\n    \"order_id\": pa.Column(int, unique=True),\n    \"status\": pa.Column(str, pa.Check.isin([\"open\", \"shipped\", \"cancelled\"])),\n    \"amount\": pa.Column(float, pa.Check.in_range(0, 50_000)),\n    \"email\": pa.Column(str, pa.Check.str_matches(r\"^[^@\\s]+@[^@\\s]+$\"), nullable=True),\n})\n\norders = pd.DataFrame({\n    \"order_id\": [1, 2, 2, 4],\n    \"status\": [\"open\", \"shipped\", \"SHIPPED\", \"open\"],\n    \"amount\": [120.0, -5.0, 60.0, 75.5],\n    \"email\": [\"li@ferro.example\", None, \"bad-address\", \"jo@ferro.example\"],\n})\n\ntry:\n    orders_schema.validate(orders, lazy=True)   # lazy=True collects every failure\nexcept pa.errors.SchemaErrors as err:\n    fails = err.failure_cases[[\"column\", \"check\", \"failure_case\"]]\n    print(fails.to_string(index=False))\n#   column                                  check failure_case\n# order_id                       field_uniqueness            2\n# order_id                       field_uniqueness            2\n#   status isin(['open', 'shipped', 'cancelled'])      SHIPPED\n#   amount                     in_range(0, 50000)         -5.0\n#    email       str_matches('^[^@\\s]+@[^@\\s]+$')  bad-address",
+    "lang": "Python"
+   },
+   {
+    "title": "Entity resolution: normalise, block, match, review",
+    "body": "Entity resolution, also called record linkage or deduplication, means finding records that describe the same real-world thing when they do not share an id. 'HARROWGATE PLUMBING LIMITED' in billing and 'Harrowgate Plumbing Ltd' in the CRM are one company, but a simple join will not see it.\n\nThe method has four steps. Normalise: lower-case, turn '&' into 'and', remove punctuation and legal suffixes such as Ltd, LLP and Inc, and collapse spaces. Block: compare only records that share something cheap, such as the first letter, a postcode or a VAT prefix. Without blocking, 50,000 records against 50,000 is 2.5 billion comparisons. Match: give each remaining pair a similarity score from 0 to 100. token_sort_ratio in the rapidfuzz library ignores word order, so 'Finch and Bramble' still scores well. Review: above a high threshold, merge automatically; below a low one, keep apart; everything in between goes to a person who knows the customers.\n\nKeep a mapping table from every original id to the merged id, with the score and who approved it. That makes every merge explainable and reversible.\n\nEdge cases are where it goes wrong. Blocking on the first letter misses 'The Harrowgate Group'. Stripping words like 'care' or 'group' can make different companies look identical. Short names like 'ABC' get high scores by chance. Always read a sample of matches at each score band before you pick thresholds.",
+    "example": "Four CRM names against four billing names: three pairs score 100 after normalising and merge. 'Kestrel Motors' against 'Kestral Motor Group' scores 88.9, a spelling slip plus an extra word, so it goes to the review queue. 'Kestrel Dental Care' and 'Kestrel Motors' share a block but score too low to show up, which is correct.",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "raw",
+       90,
+       70,
+       "Two lists",
+       "CRM and billing"
+      ],
+      [
+       "nm",
+       265,
+       70,
+       "Normalise",
+       "lower, no suffix"
+      ],
+      [
+       "bl",
+       440,
+       70,
+       "Block",
+       "same first letter"
+      ],
+      [
+       "sc",
+       615,
+       70,
+       "Score pairs",
+       "token sort ratio"
+      ],
+      [
+       "band",
+       615,
+       220,
+       "Pick a band",
+       "by threshold"
+      ],
+      [
+       "rev",
+       440,
+       220,
+       "Review 75 to 89",
+       "a person decides"
+      ],
+      [
+       "mg",
+       265,
+       220,
+       "Merge",
+       "90+ or approved"
+      ],
+      [
+       "map",
+       90,
+       220,
+       "Id map table",
+       "old id to new id"
+      ]
+     ],
+     "edges": [
+      [
+       "raw",
+       "nm"
+      ],
+      [
+       "nm",
+       "bl"
+      ],
+      [
+       "bl",
+       "sc",
+       0,
+       "pairs"
+      ],
+      [
+       "sc",
+       "band"
+      ],
+      [
+       "band",
+       "rev",
+       0,
+       "grey zone"
+      ],
+      [
+       "rev",
+       "mg",
+       0,
+       "approve"
+      ],
+      [
+       "mg",
+       "map",
+       0,
+       "record"
+      ]
+     ]
+    },
+    "code": "import re\nfrom rapidfuzz import fuzz   # pip install rapidfuzz\n\ncrm = [\"Harrowgate Plumbing Ltd\", \"Kestrel Dental Care\", \"Bramble & Finch LLP\", \"Kestrel Motors\"]\nbilling = [\"HARROWGATE PLUMBING LIMITED\", \"Kestrel Dental\", \"Bramble and Finch\", \"Kestral Motor Group\"]\n\nSUFFIXES = r\"\\b(ltd|limited|llp|inc|group|care)\\b\"\ndef normalise(name):\n    n = name.lower().replace(\"&\", \"and\")\n    n = re.sub(SUFFIXES, \"\", n)            # drop legal suffixes and filler words\n    n = re.sub(r\"[^a-z0-9 ]\", \" \", n)      # punctuation to spaces\n    return \" \".join(n.split())             # collapse spaces\n\nfor a in crm:\n    for b in billing:\n        if normalise(a)[0] != normalise(b)[0]:   # blocking: only compare same first letter\n            continue\n        score = fuzz.token_sort_ratio(normalise(a), normalise(b))\n        verdict = \"match\" if score >= 90 else \"review\" if score >= 75 else \"no\"\n        if verdict != \"no\":\n            print(f\"{score:5.1f} {verdict:<6} {a} <-> {b}\")\n# 100.0 match  Harrowgate Plumbing Ltd <-> HARROWGATE PLUMBING LIMITED\n# 100.0 match  Kestrel Dental Care <-> Kestrel Dental\n# 100.0 match  Bramble & Finch LLP <-> Bramble and Finch\n#  88.9 review Kestrel Motors <-> Kestral Motor Group",
+    "lang": "Python"
+   },
+   {
+    "title": "Reconciling source and target",
+    "body": "Reconciliation means proving that what arrived in the target matches what left the source. You do it after every migration, backfill or new pipeline, and you keep doing it on a schedule. It is how you answer 'are you sure nothing was lost?' with evidence.\n\nWork in three levels, from cheap to precise. Level one is counts: rows per table, and per day or per month, in source and target. Level two is control totals: sums of important numbers such as invoice amounts, and counts of distinct keys. Accountants have used control totals for decades, so finance teams trust them. Level three is row checksums: build a hash (a short fingerprint) from the key fields of each row on both sides and compare. Counts tell you something is wrong; checksums tell you which rows.\n\nEvery source row should end up in one of three places: loaded, merged into another record, or quarantined with a reason. Write that as an equation in the report, for example 10,000 in equals 9,812 loaded plus 150 merged plus 38 quarantined.\n\nEdge cases: floating-point sums can differ in the last decimal, so round money to cents before hashing or comparing. Time zones shift rows between days, so compare daily counts in the same zone. Deliberate transformations, like currency conversion, need the same conversion applied before you compare.",
+    "example": "A clinic group, Arden Vale Health (made up), moves 4 invoices to a new warehouse. Counts say 4 against 3 and the totals differ by 75.70. The checksum comparison names the two problems: invoice A3 never arrived, and A2 was loaded as 250.05 instead of 250.50, a typo in a manual fix. Without level three, the FDE would only know 'something is off'.",
+    "table": {
+     "headers": [
+      "Level",
+      "What you compare",
+      "Finds"
+     ],
+     "rows": [
+      [
+       "1. Counts",
+       "Rows per table, per day",
+       "Missing or doubled batches"
+      ],
+      [
+       "2. Control totals",
+       "Sums and distinct key counts",
+       "Wrong values in aggregate"
+      ],
+      [
+       "3. Row checksums",
+       "A hash of key fields per row",
+       "The exact rows that differ"
+      ]
+     ]
+    },
+    "code": "import hashlib\nimport pandas as pd\n\n# Source: the customer's old system. Target: what landed in the new warehouse.\nsource = pd.DataFrame({\"invoice\": [\"A1\", \"A2\", \"A3\", \"A4\"],\n                       \"amount\": [100.00, 250.50, 75.25, 40.00]})\ntarget = pd.DataFrame({\"invoice\": [\"A1\", \"A2\", \"A4\"],\n                       \"amount\": [100.00, 250.05, 40.00]})\n\n# Level 1 and 2: counts and control totals\nprint(\"rows  \", len(source), \"vs\", len(target))\nprint(\"total \", source[\"amount\"].sum(), \"vs\", target[\"amount\"].sum())\n\n# Level 3: a checksum per row finds exactly which rows differ\ndef row_hash(df):\n    text = df[\"invoice\"] + \"|\" + df[\"amount\"].map(\"{:.2f}\".format)\n    return text.map(lambda t: hashlib.md5(t.encode()).hexdigest()[:8])\n\ns = source.assign(h=row_hash(source))\nt = target.assign(h=row_hash(target))\ndiff = s.merge(t, on=\"invoice\", how=\"outer\", suffixes=(\"_src\", \"_tgt\"), indicator=True)\nbad = diff[(diff[\"_merge\"] != \"both\") | (diff[\"h_src\"] != diff[\"h_tgt\"])]\nprint(bad[[\"invoice\", \"amount_src\", \"amount_tgt\", \"_merge\"]].to_string(index=False))\n# rows   4 vs 3\n# total  465.75 vs 390.05\n# invoice  amount_src  amount_tgt    _merge\n#      A2      250.50      250.05      both\n#      A3       75.25         NaN left_only",
+    "lang": "Python"
+   },
+   {
+    "title": "Data contracts with the owning team",
+    "body": "A data contract is a written agreement between the team that produces a dataset and the team that uses it. It says what the data looks like, when it arrives, what quality it has, and what happens when either side wants to change it. It can be a YAML file in a repository, a page in the customer's wiki, or both.\n\nWhy you need one: without it, you become the unpaid cleaner of someone else's data. Every Monday you fix the same broken dates by hand, and when the CRM team renames a column, your pipeline breaks with no warning. A contract moves the fix to the source, where it is cheapest.\n\nA useful contract has six parts: owner and consumer (named teams, not people who may leave), delivery (where, when and in which format), schema (columns, types, required, unique, allowed values), quality rules (the same expectations you already wrote as code), a change policy (for example 30 days notice for removed columns), and what happens on a breach (the load stops, the owner is alerted).\n\nGetting it signed is a people task. Start from the profile findings, show the cost in hours or in wrong reports, and ask for small commitments first. The owning team often has no idea anyone depends on their export. Keep the contract short, version it, and run its rules automatically so it is enforced, not just filed away.",
+    "example": "At a made-up retailer, the CRM export broke the FDE's matching job three times in a month. She wrote a one-page contract with the CRM platform team: daily file by 06:00 UTC, four allowed country codes, 30 days notice for column changes, and a shared channel for breaches. The next rename arrived with notice and a test file.",
+    "checklist": [
+     "Owner and consumer named as teams",
+     "Delivery location, schedule and format written down",
+     "Every column with type, required, unique and allowed values",
+     "Quality rules copied from the expectation suite",
+     "Change policy with a notice period",
+     "Breach action: stop, alert, who responds",
+     "Version number and a date of the last review"
+    ],
+    "code": "# Data contract: CRM customer export -> FDE matching pipeline\ncontract: crm_customers_daily\nversion: 1.2.0\nowner: crm-platform-team          # who fixes it when it breaks\nconsumer: fde-dedup-pipeline\ndelivery:\n  where: sftp://drop/crm/customers_YYYYMMDD.csv\n  when: \"daily by 06:00 UTC\"      # freshness promise\n  encoding: UTF-8\nschema:\n  - {name: customer_id, type: string, required: true, unique: true}\n  - {name: email, type: string, required: false, format: email}\n  - {name: country, type: string, required: true, allowed: [GB, IE, FR, DE]}\n  - {name: updated_at, type: timestamp, required: true, timezone: UTC}\nquality:\n  - \"row count within 10% of yesterday\"\n  - \"no more than 2% of emails invalid\"\nchange_policy: \"30 days notice for renamed or removed columns\"\non_breach: \"pipeline stops, owner paged in #crm-data, FDE notified\"",
+    "lang": "YAML"
+   }
+  ],
+  "glossary": [
+   [
+    "Data quality dimension",
+    "One named way data can be good or bad, such as completeness, validity, uniqueness, consistency or timeliness."
+   ],
+   [
+    "Profiling",
+    "Describing a dataset with numbers (counts, nulls, distinct values, ranges) before you use it."
+   ],
+   [
+    "Expectation",
+    "A rule about data written as code, such as 'this column is unique', that runs on every load."
+   ],
+   [
+    "Quarantine",
+    "A holding table for rows that failed a check, stored with the reason so they can be fixed and reloaded."
+   ],
+   [
+    "Entity resolution",
+    "Finding records that refer to the same real-world thing without a shared id; also called record linkage."
+   ],
+   [
+    "Normalisation (of text)",
+    "Making values comparable by lower-casing, removing punctuation and removing words like Ltd."
+   ],
+   [
+    "Blocking",
+    "Only comparing records that share a cheap feature, so matching does not compare every pair."
+   ],
+   [
+    "Similarity score",
+    "A number, often 0 to 100, saying how alike two strings are."
+   ],
+   [
+    "Control total",
+    "A sum or count calculated in both source and target to check they agree."
+   ],
+   [
+    "Checksum (row hash)",
+    "A short fingerprint computed from a row's fields; different fingerprints mean the rows differ."
+   ],
+   [
+    "Data contract",
+    "A written, versioned agreement between the team that owns data and the teams that use it."
+   ]
+  ],
+  "practice": [
+   "Take any public CSV with at least 1,000 rows and write a profile: shape, nulls, blanks, distinct counts, min and max, duplicate keys. Write three findings as 'count plus question'.",
+   "Write a pandera schema with at least five checks for that file, run it with lazy=True, and save the failing rows to a quarantine CSV with the reason.",
+   "Make two lists of 20 company names with typos, suffixes and word-order changes. Match them with normalise, block and rapidfuzz, then try thresholds of 80, 85 and 90 and count true and false matches at each.",
+   "Load a CSV into SQLite, deliberately change two values and delete one row, then write a reconciliation that reports counts, a control total and the exact differing rows.",
+   "Stretch: write a one-page data contract for a dataset you use, including a change policy and a breach action, and list which of its rules your code already checks."
+  ]
+ },
+ "spreadsheets": {
+  "plain": "A spreadsheet is a grid of cells where people type data and formulas; Microsoft Excel and Google Sheets are the two most common. Spreadsheet automation means using code to read those files, calculate from them and write new ones, so nobody has to copy and paste by hand. Python libraries such as pandas, openpyxl and xlsxwriter read and write Excel files, and gspread talks to Google Sheets through its web API. The skill also includes knowing the formulas business users rely on and when their data has outgrown a spreadsheet.",
+  "analogy": "It is like taking over the paperwork of a busy office. You do not throw away everyone's paper forms on day one; you learn how they fill them in, then build a machine that reads the forms, adds up the totals and prints the report in the layout the manager already knows.",
+  "why": "The people who decide whether your AI project succeeded often live in Excel: finance, operations and sales. Their inputs arrive as workbooks and they judge your output in one. An FDE who can read their messy files, match their SUMIFS to the cent and hand back a report in their format earns trust fast, and one who can retire a fragile macro solves a real pain the customer has had for years.",
+  "subtopics": [
+   {
+    "title": "Reading messy workbooks",
+    "body": "A workbook is an Excel file (.xlsx). It holds several sheets (the tabs at the bottom), and each sheet is a grid of cells. People build workbooks for human eyes, not for code, so they add title rows, merge cells across two columns, stack two header rows, insert TOTAL lines and hide rows they do not want to see. Your job is to turn that into one clean table: one header row, one row per record.\n\nWork in steps. First list the sheet names, because the data you need may be split across 'North' and 'South' tabs. Then look at the first 10 rows of each sheet with header=None so you see the real layout. Use skiprows to jump over title rows, and set the column names yourself instead of trusting merged headers. Drop rows that are totals or notes. Finally stack the sheets with pd.concat and add a column saying where each row came from.\n\nEdge cases trip people up. Hidden rows and hidden sheets are still in the file, and pandas reads them, so a hidden TOTAL row will double your sums. Merged cells keep the value only in the top-left cell; the rest read as empty. Dates can arrive as numbers (Excel counts days from 1900), and numbers can arrive as text with commas. Files ending .xls are the older format and need a different reader (xlrd), and .xlsm files contain macros but read the same way. The pandas topic covers general cleaning; this is the Excel-specific part.",
+    "example": "A regional bakery chain sends 'Weekly sales' with a North and a South tab. North has a title row, a merged 'Q3' header over Units and Revenue, and a hidden TOTAL row. Reading it with skiprows=2, renaming columns and dropping TOTAL gives three clean rows; a naive read would have counted Leeds twice through the hidden total.",
+    "checklist": [
+     "List all sheet names, including hidden ones",
+     "Look at the first 10 rows of each sheet with header=None",
+     "Skip title rows and set column names yourself",
+     "Drop total, subtotal and note rows",
+     "Convert text numbers and Excel date numbers",
+     "Add a source column (sheet or file name) before combining"
+    ],
+    "code": "import pandas as pd\nfrom openpyxl import Workbook\n\n# Build a messy workbook like the ones customers send (so this runs anywhere)\nwb = Workbook(); ws = wb.active; ws.title = \"North\"\nws.append([\"Weekly sales - North region\", None, None])     # a title row\nws.append([\"Store\", \"Q3\", None]); ws.merge_cells(\"B2:C2\")  # merged header\nws.append([None, \"Units\", \"Revenue\"])                       # second header row\nfor row in [[\"Leeds\", 120, 2400], [\"TOTAL\", 120, 2400], [\"York\", 80, 1650]]:\n    ws.append(row)\nws.row_dimensions[5].hidden = True                          # someone hid the TOTAL row\nwb.create_sheet(\"South\").append([\"Store\", \"Units\", \"Revenue\"])\nwb[\"South\"].append([\"Bath\", 95, 1900])\nwb.save(\"sales.xlsx\")\n\nprint(pd.ExcelFile(\"sales.xlsx\").sheet_names)\nnorth = pd.read_excel(\"sales.xlsx\", sheet_name=\"North\", skiprows=2)  # skip title + merged row\nnorth.columns = [\"store\", \"units\", \"revenue\"]\nnorth = north[north[\"store\"] != \"TOTAL\"]      # hidden rows are still read: drop totals\nsouth = pd.read_excel(\"sales.xlsx\", sheet_name=\"South\")\nsouth.columns = [\"store\", \"units\", \"revenue\"]\nallsales = pd.concat([north.assign(region=\"North\"), south.assign(region=\"South\")])\nprint(allsales.to_string(index=False))\n# ['North', 'South']\n# store  units  revenue region\n# Leeds    120     2400  North\n#  York     80     1650  North\n#  Bath     95     1900  South",
+    "lang": "Python"
+   },
+   {
+    "title": "Writing formatted reports",
+    "body": "Business users judge a report in the first five seconds. If the money has no currency sign, the header scrolls away and the bad numbers are not highlighted, they will copy your data into their own template by hand, and your automation has saved nobody time. So the last step of many FDE scripts is writing an Excel file that looks finished.\n\nTwo Python libraries do this. openpyxl reads and writes .xlsx files and can edit an existing workbook, for example filling the data sheet of a template the finance team already likes. xlsxwriter only writes new files, but it is fast and has simple calls for formats, charts and conditional formatting. pandas can use either as its engine through pd.ExcelWriter.\n\nThe key idea is to separate value and display. Write the number 2400 and apply the number format '£#,##0' so it shows as £2,400; never write the text '£2,400', because Excel then treats it as words and sums fail. Other finishing touches users expect: a bold title, sensible column widths, frozen header rows (freeze panes), a filter button on the header (autofilter), and conditional formatting that colours cells red when a rule is met.\n\nEdge cases: xlsxwriter cannot open an existing file, so use openpyxl for templates. Formats are per cell or per column, and a column format does not override a cell format. Colours are the one place you choose hex values; pick pairs with enough contrast and do not rely on colour alone.",
+    "example": "A furniture retailer's area managers want the Monday sales pack with revenue in pounds, change versus target as a percentage, the header frozen and any store more than 10 percent below target in red. The script writes exactly that; Hull at -22 percent turns red and the managers can still sort by revenue because it is stored as a number.",
+    "table": {
+     "headers": [
+      "Need",
+      "openpyxl",
+      "xlsxwriter"
+     ],
+     "rows": [
+      [
+       "Create a new report",
+       "Yes",
+       "Yes, and faster"
+      ],
+      [
+       "Edit an existing template",
+       "Yes",
+       "No"
+      ],
+      [
+       "Read cell values",
+       "Yes",
+       "No"
+      ],
+      [
+       "Charts and conditional formats",
+       "Yes",
+       "Yes, simpler calls"
+      ],
+      [
+       "Used as pandas engine",
+       "Yes",
+       "Yes"
+      ]
+     ]
+    },
+    "code": "import pandas as pd\n\nsales = pd.DataFrame({\"store\": [\"Leeds\", \"York\", \"Bath\", \"Hull\"],\n                      \"revenue\": [2400.0, 1650.0, 1900.0, 700.0],\n                      \"vs_target\": [0.12, -0.04, 0.03, -0.22]})\n\nwith pd.ExcelWriter(\"weekly_report.xlsx\", engine=\"xlsxwriter\") as xw:   # pip install xlsxwriter\n    sales.to_excel(xw, sheet_name=\"Summary\", index=False, startrow=1)\n    book, sheet = xw.book, xw.sheets[\"Summary\"]\n    money = book.add_format({\"num_format\": \"£#,##0\"})\n    pct = book.add_format({\"num_format\": \"0%\"})\n    red = book.add_format({\"font_color\": \"#9C0006\", \"bg_color\": \"#FFC7CE\"})\n    sheet.write(\"A1\", \"Weekly sales, week 39\", book.add_format({\"bold\": True, \"font_size\": 14}))\n    sheet.set_column(\"A:A\", 12)\n    sheet.set_column(\"B:B\", 12, money)          # the value stays a number; only the display changes\n    sheet.set_column(\"C:C\", 10, pct)\n    sheet.freeze_panes(2, 0)                    # keep the header visible when scrolling\n    sheet.autofilter(1, 0, len(sales) + 1, 2)\n    sheet.conditional_format(2, 2, len(sales) + 1, 2,\n                             {\"type\": \"cell\", \"criteria\": \"<\", \"value\": -0.1, \"format\": red})\n\ncheck = pd.read_excel(\"weekly_report.xlsx\", skiprows=1)\nprint(\"revenue total:\", check[\"revenue\"].sum())   # still numbers, so sums work\nprint(\"stores below -10%:\", list(check.loc[check[\"vs_target\"] < -0.1, \"store\"]))\n# revenue total: 6650\n# stores below -10%: ['Hull']",
+    "lang": "Python"
+   },
+   {
+    "title": "The formulas business users know",
+    "body": "To work with business users you need to speak their language. Three tools cover most of their daily work, and each maps to something you already know from pandas or SQL.\n\nXLOOKUP finds a value in one table and brings back a matching value from another, like looking up a price by product code. It replaced the older VLOOKUP, which breaks when someone inserts a column and can only look to the right. In code, XLOOKUP is a left join: pandas merge with how='left', or LEFT JOIN in SQL. SUMIFS adds up a column only for rows that meet several conditions, such as revenue where region is South and product is P2. In code, that is filter then sum. A pivot table groups rows and summarises them, with one field down the side and another across the top. In pandas, that is pivot_table.\n\nWhy this matters: when a user says 'the number in your report does not match my SUMIFS', you can rebuild their formula in code, find the difference and explain it in their words. Often the cause is a hidden row, a trailing space in a code, or text that looks like a number.\n\nYou can also write live formulas into cells so users can see how a number is built. openpyxl stores the formula text but does not calculate it; Excel calculates it when the file opens. Newer functions such as XLOOKUP must be written with the prefix _xlfn. in the file, or Excel shows a #NAME? error.",
+    "example": "A stationery wholesaler's sales lead says South sold 45 pounds of product P2. The FDE reproduces it: merge orders with prices (the XLOOKUP), multiply, filter to South and P2 (the SUMIFS) and gets 45.0. The pivot shows P3 had no North sales at all, which the lead had not noticed.",
+    "table": {
+     "headers": [
+      "Excel",
+      "What it does",
+      "pandas",
+      "SQL"
+     ],
+     "rows": [
+      [
+       "XLOOKUP",
+       "Find a match, return a value",
+       "merge(how='left')",
+       "LEFT JOIN"
+      ],
+      [
+       "SUMIFS",
+       "Sum rows meeting conditions",
+       "df.loc[cond, col].sum()",
+       "SUM with WHERE"
+      ],
+      [
+       "COUNTIFS",
+       "Count rows meeting conditions",
+       "cond.sum()",
+       "COUNT with WHERE"
+      ],
+      [
+       "Pivot table",
+       "Group and summarise",
+       "pivot_table",
+       "GROUP BY"
+      ],
+      [
+       "Remove duplicates",
+       "Keep one of each",
+       "drop_duplicates",
+       "DISTINCT"
+      ]
+     ]
+    },
+    "code": "import pandas as pd\nfrom openpyxl import Workbook\n\norders = pd.DataFrame({\"sku\": [\"P1\", \"P2\", \"P1\", \"P3\", \"P2\"],\n                       \"region\": [\"North\", \"North\", \"South\", \"South\", \"South\"],\n                       \"qty\": [10, 4, 7, 3, 5]})\nprices = pd.DataFrame({\"sku\": [\"P1\", \"P2\", \"P3\"], \"price\": [2.5, 9.0, 4.0]})\n\n# XLOOKUP(sku, prices[sku], prices[price])  ->  a left merge\norders = orders.merge(prices, on=\"sku\", how=\"left\")\norders[\"value\"] = orders[\"qty\"] * orders[\"price\"]\n# SUMIFS(value, region, \"South\", sku, \"P2\")  ->  filter, then sum\nprint(\"SUMIFS:\", orders.loc[(orders.region == \"South\") & (orders.sku == \"P2\"), \"value\"].sum())\n# A pivot table: rows = sku, columns = region, values = sum of value\nprint(orders.pivot_table(index=\"sku\", columns=\"region\", values=\"value\",\n                         aggfunc=\"sum\", fill_value=0))\n\n# Writing a live formula for business users: newer functions need the _xlfn. prefix\nwb = Workbook(); ws = wb.active\nws.append([\"sku\", \"price\"]); ws.append([\"P1\", 2.5]); ws.append([\"P2\", 9.0])\nws[\"D1\"] = \"P2\"\nws[\"E1\"] = '=_xlfn.XLOOKUP(D1,A2:A3,B2:B3,\"not found\")'\nwb.save(\"lookup.xlsx\")   # openpyxl stores the formula; Excel calculates it on open\n# SUMIFS: 45.0\n# region  North  South\n# sku\n# P1       25.0   17.5\n# P2       36.0   45.0\n# P3        0.0   12.0",
+    "lang": "Python"
+   },
+   {
+    "title": "Google Sheets through its API",
+    "body": "Many teams use Google Sheets instead of Excel because several people can edit the same sheet at once in a browser. Your code can read and write those sheets through the Google Sheets API, a web API that Google provides. The gspread library wraps it in simple Python calls.\n\nSetting up access takes four steps. One: in a Google Cloud project, enable the Google Sheets API. Two: create a service account, which is a robot user for programs, and download its JSON key file. Three: share the spreadsheet with the service account's email address, exactly as you would share it with a colleague. Four: in code, load the key, open the sheet by its id (the long string in the URL) and pick a worksheet (a tab) by name.\n\nThen reading and writing is short. get_all_records returns each row as a dictionary keyed by the header row. update writes a whole range in one call, and append_rows adds rows at the bottom. The value_input_option setting USER_ENTERED makes Sheets treat your values as if a person typed them, so '2026-09-28' becomes a real date.\n\nEdge cases: the API has per-minute request quotas, so write many cells in one call instead of a loop of single-cell updates. The key file is a secret; keep it out of git and in a secret store. Header names must be unique for get_all_records to work. Someone can rename a tab or column at any time, so check what you need exists before you write.",
+    "example": "A catering company, Quillon Events (made up), tracks sales leads in a shared Google Sheet. The FDE's script reads 412 leads each morning, counts 9 marked hot with no owner, writes that number to the Summary tab and appends new web enquiries. The sales manager sees the number when she opens the sheet, with no new tool to learn.",
+    "checklist": [
+     "Google Sheets API enabled in a Cloud project",
+     "Service account created; JSON key stored as a secret",
+     "Sheet shared with the service account email",
+     "Open by id, pick worksheet by name",
+     "Batch writes into one update call",
+     "Check expected tabs and columns exist before writing"
+    ],
+    "code": "import gspread   # pip install gspread\n\n# A service account is a robot Google user. Share the sheet with its email\n# (for example sheets-bot@my-project.iam.gserviceaccount.com) as Editor.\ngc = gspread.service_account(filename=\"service_account.json\")   # key file: keep out of git\nsheet = gc.open_by_key(\"SPREADSHEET_ID\")      # the long id in the sheet's URL\nleads = sheet.worksheet(\"Leads\")\n\nrows = leads.get_all_records()                # list of dicts, keyed by the header row\nhot = [r for r in rows if r[\"status\"] == \"hot\" and not r[\"owner\"]]\nprint(len(rows), \"leads,\", len(hot), \"hot with no owner\")\n\nsummary = sheet.worksheet(\"Summary\")\nsummary.update([[\"Hot, unassigned\", len(hot)]], \"A2:B2\")   # one call writes a whole range\nleads.append_rows([[\"Quillon Bakery\", \"new\", \"\", \"2026-09-28\"]],\n                  value_input_option=\"USER_ENTERED\")       # Sheets parses the date like typing\nleads.format(\"A1:D1\", {\"textFormat\": {\"bold\": True}})",
+    "lang": "Python"
+   },
+   {
+    "title": "Replacing a fragile macro with a script",
+    "body": "A macro is a small program saved inside a workbook, written in VBA (Visual Basic for Applications). Many businesses depend on one: every Monday someone opens the file, clicks a button, and the macro combines branch files into a report. It works until the person who wrote it leaves, a branch renames a column, or the company blocks macros for security reasons.\n\nReplacing it is a small project with clear steps. First, read the macro and write down every step in plain words, including the hidden ones like 'deletes rows where quantity is zero'. Second, write a Python script that does the same steps. Third, add what the macro lacked: check that required columns exist, skip bad files with a clear warning instead of crashing halfway, log what happened, and exit with an error code when nothing usable was found, so the scheduler can alert someone. Fourth, run the old macro and the new script on the same inputs for two or three cycles and compare the outputs row by row. Fifth, schedule the script: cron on Linux, Task Scheduler on Windows, or the customer's own job runner.\n\nEdge cases: files may still be open or half-copied when the job starts, so run after the drop time and ignore temporary files like '~$report.xlsx'. Keep the output file name dated so you never overwrite last week's report. Tell the business owner before you switch the macro off; they own the process, you only automate it.",
+    "example": "A builders' merchant, Tarrant Supplies (made up), combined 14 branch order files with a macro written in 2016. When one branch used 'Branch' and 'SKU' instead of lower-case names, the macro stopped halfway and the pack went out late. The new script skips that file with a warning, writes the pack from the other 13 at 06:30, and the log shows which branch to chase.",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "read",
+       90,
+       70,
+       "Read the macro",
+       "list every step"
+      ],
+      [
+       "port",
+       265,
+       70,
+       "Write script",
+       "same steps"
+      ],
+      [
+       "guard",
+       440,
+       70,
+       "Add guards",
+       "checks, logging"
+      ],
+      [
+       "par",
+       615,
+       70,
+       "Run in parallel",
+       "2 to 3 cycles"
+      ],
+      [
+       "diff",
+       615,
+       220,
+       "Compare outputs",
+       "row by row"
+      ],
+      [
+       "sched",
+       440,
+       220,
+       "Schedule it",
+       "cron or Task Sched."
+      ],
+      [
+       "sign",
+       265,
+       220,
+       "Owner signs off",
+       "business owner"
+      ],
+      [
+       "off",
+       90,
+       220,
+       "Retire macro",
+       "keep a copy"
+      ]
+     ],
+     "edges": [
+      [
+       "read",
+       "port"
+      ],
+      [
+       "port",
+       "guard"
+      ],
+      [
+       "guard",
+       "par"
+      ],
+      [
+       "par",
+       "diff"
+      ],
+      [
+       "diff",
+       "sched",
+       0,
+       "match"
+      ],
+      [
+       "sched",
+       "sign"
+      ],
+      [
+       "sign",
+       "off"
+      ]
+     ]
+    },
+    "code": "\"\"\"build_pack.py: replaces the 'Combine branches' VBA macro.\nSchedule (cron, Linux): 30 6 * * 1-5  cd /srv/pack && python build_pack.py >> pack.log 2>&1\"\"\"\nimport logging, sys\nfrom datetime import date\nfrom pathlib import Path\nimport pandas as pd\n\nlogging.basicConfig(level=logging.INFO, format=\"%(levelname)s %(message)s\", stream=sys.stdout)\nREQUIRED = {\"branch\", \"sku\", \"qty\"}\n\nframes = []\nfor f in sorted(Path(\"inbox\").glob(\"*.xlsx\")):\n    df = pd.read_excel(f)\n    missing = REQUIRED - set(df.columns)\n    if missing:                                   # the macro crashed here; we skip and say why\n        logging.warning(\"%s skipped, missing columns %s\", f.name, sorted(missing))\n        continue\n    frames.append(df.assign(source_file=f.name))\n\nif not frames:\n    sys.exit(\"no usable files: nothing written\")  # non-zero exit so the scheduler alerts\npack = pd.concat(frames).drop_duplicates([\"branch\", \"sku\"], keep=\"last\")\nout = Path(\"out\") / f\"pack_{date.today():%Y%m%d}.xlsx\"\nout.parent.mkdir(exist_ok=True)\npack.to_excel(out, index=False)\nlogging.info(\"wrote %s: %d rows from %d files\", out.name, len(pack), len(frames))\n# Output on 28 Sep 2026 with three files in inbox/ (hull.xlsx used 'Branch' and 'SKU'):\n# WARNING hull.xlsx skipped, missing columns ['branch', 'sku']\n# INFO wrote pack_20260928.xlsx: 3 rows from 2 files",
+    "lang": "Python"
+   },
+   {
+    "title": "When a spreadsheet should become a database",
+    "body": "Spreadsheets are the right tool more often than engineers admit: they are flexible, everyone knows them, and changes take seconds. But some sheets quietly turn into databases without the protections a database gives. Part of an FDE's judgment is spotting that moment and moving the data with as little disruption as possible.\n\nWatch for these signals. Several people edit at the same time and overwrite each other. Rules must never break, like 'a room cannot be booked twice' or 'every order has a customer'. The sheet needs history: who changed this price and when. Other systems need to read or write the data automatically. It has grown to tens of thousands of rows and many tabs that are copies of each other. Or a mistake in it has already cost money.\n\nA database gives you constraints: rules the database enforces on every write. A primary key means no duplicate ids. NOT NULL means a value is required. CHECK limits values to an allowed list. UNIQUE across two columns stops double bookings. A spreadsheet can only suggest these with data validation, which users can paste over.\n\nMove carefully. Keep the same column names so users recognise their data. Start with SQLite for one user or Postgres for many (see dbbasics and sql). Give users a familiar front: a simple form, a read-only sheet that refreshes from the database, or a BI dashboard. Often the best first step is the sheet as input and the database as the checked system of record.",
+    "example": "A shared-clinic landlord tracked room bookings in a 40-tab sheet edited by three receptionists. Two clients were booked into room A at 09:00 on the same morning. After moving to a database with UNIQUE (room, start), the second booking is rejected on entry, with a clear message, while the receptionists still see a familiar weekly grid.",
+    "table": {
+     "headers": [
+      "Signal",
+      "Keep the spreadsheet",
+      "Move to a database"
+     ],
+     "rows": [
+      [
+       "Editors",
+       "One or two",
+       "Many at once"
+      ],
+      [
+       "Rules",
+       "Nice to have",
+       "Must never break"
+      ],
+      [
+       "History",
+       "Not needed",
+       "Who changed what, when"
+      ],
+      [
+       "Other systems",
+       "Read it by hand",
+       "Read and write automatically"
+      ],
+      [
+       "Size",
+       "Hundreds to a few thousand rows",
+       "Tens of thousands and growing"
+      ]
+     ]
+    },
+    "code": "import sqlite3\nimport pandas as pd\n\n# The 'Bookings' tracker had grown to 40 tabs, 3 editors and a weekly copy-paste.\nbookings = pd.DataFrame({\n    \"booking_id\": [1, 2, 3, 4],\n    \"client\": [\"Marlow Dental\", \"Ivybridge Vets\", \"Marlow Dental\", \"Corran Opticians\"],\n    \"room\": [\"A\", \"B\", \"A\", \"A\"],\n    \"start\": [\"2026-10-01 09:00\", \"2026-10-01 09:00\", \"2026-10-01 09:30\", \"2026-10-02 14:00\"],\n})\n\ncon = sqlite3.connect(\"bookings.db\")           # one file; Postgres for many users\ncon.execute(\"DROP TABLE IF EXISTS bookings\")\ncon.execute(\"\"\"CREATE TABLE bookings (\n    booking_id INTEGER PRIMARY KEY,            -- no duplicate ids, ever\n    client TEXT NOT NULL,                      -- a rule a spreadsheet cannot enforce\n    room TEXT NOT NULL CHECK (room IN ('A', 'B')),\n    start TEXT NOT NULL,\n    UNIQUE (room, start))\"\"\")                  # no double-booking of a room\nbookings.to_sql(\"bookings\", con, if_exists=\"append\", index=False)\n\ntry:\n    con.execute(\"INSERT INTO bookings VALUES (5, 'Tolland Physio', 'A', '2026-10-01 09:00')\")\nexcept sqlite3.IntegrityError as e:\n    print(\"rejected:\", e)\nprint(con.execute(\"SELECT room, COUNT(*) FROM bookings GROUP BY room\").fetchall())\n# rejected: UNIQUE constraint failed: bookings.room, bookings.start\n# [('A', 3), ('B', 1)]",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Workbook",
+    "An Excel file (.xlsx); it contains one or more sheets."
+   ],
+   [
+    "Sheet (worksheet)",
+    "One tab inside a workbook, holding a grid of cells."
+   ],
+   [
+    "Merged cell",
+    "Several cells joined into one; only the top-left cell keeps the value."
+   ],
+   [
+    "Number format",
+    "A display rule such as '£#,##0' that changes how a number looks without changing its value."
+   ],
+   [
+    "XLOOKUP",
+    "An Excel function that finds a match in one range and returns the value next to it; the code equivalent is a left join."
+   ],
+   [
+    "SUMIFS",
+    "An Excel function that sums a column only for rows meeting several conditions."
+   ],
+   [
+    "Pivot table",
+    "A summary that groups rows by one field and spreads another across columns."
+   ],
+   [
+    "Macro (VBA)",
+    "A small program stored inside a workbook, written in Visual Basic for Applications."
+   ],
+   [
+    "Service account",
+    "A non-human account a program uses to call an API, such as Google Sheets."
+   ],
+   [
+    "Constraint",
+    "A rule a database enforces on every write, such as a unique key or a required value."
+   ]
+  ],
+  "practice": [
+   "Build a messy workbook by hand in Excel or LibreOffice: two tabs, a title row, a merged header and a hidden total row. Write a script that reads it into one clean table and prints the correct totals.",
+   "Write a formatted weekly report with xlsxwriter: currency and percentage formats, frozen header, autofilter and a red highlight rule. Open it and check that sorting and summing still work.",
+   "Reproduce a real XLOOKUP, SUMIFS and pivot table from a sheet you have in pandas, and show the numbers match to the cent.",
+   "Pick a repetitive spreadsheet task you know. Write the steps in plain words, script them with checks and logging, and schedule it with cron or Task Scheduler.",
+   "Stretch: move a shared tracker into SQLite with at least three constraints, then write a script that exports a read-only weekly view back to Excel."
+  ]
+ },
+ "webauto": {
+  "plain": "Browser automation means writing a program that uses a website the way a person would: it opens pages, signs in, clicks and reads what appears. Scraping means pulling data out of web pages into rows you can use. FDEs need both because many customer and supplier systems are old web portals with no API. The best approach is usually to find the data calls the page already makes, and only drive the browser when there are none.",
+  "analogy": "It is like getting information from a shop. You could send someone to walk the aisles and write down every price (browser automation), but first ask whether the shop will just email you the price list (the hidden JSON call or an export). And before sending anyone, check the shop is happy for you to do it (the terms).",
+  "why": "On site, the data an AI project needs is often locked in a portal: supplier invoices, carrier tracking, insurer claims, government filings. If you can reliably get it out, legally and without locking anyone's account, you unblock projects that would otherwise wait months for an integration. If you do it carelessly, you create a fragile script, a security incident or a legal problem.",
+  "subtopics": [
+   {
+    "title": "API first: finding hidden JSON calls",
+    "body": "Before you automate clicks, check whether the page already fetches its data as JSON. Most modern portals are built this way: the browser loads an empty page, then JavaScript calls an internal endpoint such as /api/orders?page=1 and draws the table from the answer. If you call that endpoint yourself, you get clean data with no HTML to parse and nothing that breaks when a button moves.\n\nHow to find it. Open the portal in Chrome or Firefox and press F12 to open developer tools (DevTools). Choose the Network tab, tick the Fetch/XHR filter so you only see data calls, then reload the page or click to the next page of results. Click each request and look at its Response or Preview tab. When you see your rows as JSON, right-click the request and choose Copy as cURL. That gives you the exact URL, query parameters, headers and cookies.\n\nThen rebuild the call in Python with requests. Keep only the headers that matter, usually the cookie or an Authorization token. Look for pagination fields such as page, offset, cursor or has_more, and loop until there is no more.\n\nEdge cases. Internal endpoints are not a promised interface: they can change without notice, so check the shape of every response. Tokens copied from the browser expire, often within an hour. Some sites sign each request, which makes the JSON route hard; then fall back to Playwright. And an internal API is still covered by the site's terms, so the permission check in subtopic 5 comes first. The http and integration topics cover requests and authentication in general.",
+    "example": "An FDE needs 7 orders from a supplier portal. In the Network tab she spots GET /api/orders?page=1 returning three orders and has_more: true. Her script loops pages 1 to 3 in about a second and finds the two held orders, where clicking through the table would have taken a Playwright script and a minute per run.",
+    "checklist": [
+     "DevTools open, Network tab, Fetch/XHR filter on",
+     "Page reloaded or paged so the data calls appear",
+     "Request with your rows found; Copy as cURL saved",
+     "Only the needed headers kept (cookie or token)",
+     "Pagination field found and looped",
+     "Response shape checked on every call",
+     "Plan for the token or cookie expiring"
+    ],
+    "code": "import json, threading\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\nfrom urllib.parse import urlparse, parse_qs\nimport requests\n\n# Stand-in for the customer's portal so this runs offline. On a real job the\n# URL, parameters and cookie come from DevTools > Network > Fetch/XHR.\nORDERS = [{\"id\": i, \"status\": \"held\" if i % 3 == 0 else \"shipped\"} for i in range(1, 8)]\n\nclass Portal(BaseHTTPRequestHandler):\n    def do_GET(self):\n        if self.headers.get(\"Cookie\") != \"session=abc123\":\n            self.send_response(401); self.end_headers(); return\n        page = int(parse_qs(urlparse(self.path).query)[\"page\"][0])\n        body = {\"items\": ORDERS[(page - 1) * 3: page * 3], \"has_more\": page * 3 < len(ORDERS)}\n        self.send_response(200); self.send_header(\"Content-Type\", \"application/json\"); self.end_headers()\n        self.wfile.write(json.dumps(body).encode())\n    def log_message(self, *args): pass\n\nsrv = HTTPServer((\"127.0.0.1\", 0), Portal)\nthreading.Thread(target=srv.serve_forever, daemon=True).start()\nBASE = f\"http://127.0.0.1:{srv.server_port}\"\n\n# ---- the part you would really write ----\ns = requests.Session()\ns.cookies.set(\"session\", \"abc123\")        # copied from the browser; it will expire\nrows, page = [], 1\nwhile True:\n    r = s.get(f\"{BASE}/api/orders\", params={\"page\": page}, timeout=10)\n    r.raise_for_status()                  # a 401 here means the session expired\n    data = r.json()\n    rows += data[\"items\"]\n    if not data[\"has_more\"]:\n        break\n    page += 1\nprint(len(rows), \"orders in\", page, \"calls\")\nprint(\"held:\", [o[\"id\"] for o in rows if o[\"status\"] == \"held\"])\n# 7 orders in 3 calls\n# held: [3, 6]",
+    "lang": "Python"
+   },
+   {
+    "title": "Playwright basics: locators, waits, logins",
+    "body": "Playwright is a library from Microsoft that drives a real browser (Chromium, Firefox or WebKit) from Python, JavaScript and other languages. You install it with pip install playwright, then run playwright install chromium once to download the browser. Headless mode runs the browser without a window, which is what a server needs.\n\nThe key idea is the locator: a description of how to find an element. Prefer locators a person would use. get_by_role(\"button\", name=\"Sign in\") finds a button by its visible name, get_by_label(\"User\") finds the input next to that label, and get_by_text finds visible text. These survive redesigns far better than long CSS paths like div > div:nth-child(3) > span, which break when a developer adds one wrapper.\n\nPlaywright waits for you. Before a click it waits until the element is visible, enabled and not moving. For data that arrives late, use expect(locator).to_have_count(n) or to_be_visible(), which retry for up to five seconds by default. Avoid time.sleep: it is too short on a slow day and wastes time on a fast one.\n\nLogging in is just filling a form: fill the user and password, click the button, then wait for something that only appears after login. Read the password from an environment variable or a secret store, never from the code. Two tools help while you build: playwright codegen URL opens a browser that writes locator code as you click, and the trace viewer replays a failed run step by step with screenshots.\n\nEdge cases: pop-ups and cookie banners that cover buttons, pages inside iframes (use frame_locator), and downloads (use page.expect_download).",
+    "example": "A finance team at a made-up distributor downloads invoice status from a portal that shows its table 1.5 seconds after sign-in. The script signs in with a service user, waits for exactly two rows with expect, and prints each row's cells. It never sleeps, so it runs as fast as the page allows.",
+    "table": {
+     "headers": [
+      "Locator",
+      "Finds",
+      "Robustness"
+     ],
+     "rows": [
+      [
+       "get_by_role('button', name='Sign in')",
+       "A button by its visible name",
+       "High"
+      ],
+      [
+       "get_by_label('User')",
+       "The input tied to a label",
+       "High"
+      ],
+      [
+       "get_by_text('Overdue')",
+       "Any element with that text",
+       "Medium"
+      ],
+      [
+       "locator('#invoice-table')",
+       "An element by id",
+       "Medium"
+      ],
+      [
+       "locator('div > div:nth-child(3)')",
+       "A position in the page",
+       "Low"
+      ]
+     ]
+    },
+    "code": "import os\nfrom playwright.sync_api import sync_playwright, expect\n\n# A tiny fake portal: the table appears 1.5 seconds after you sign in.\nPORTAL = \"\"\"<form id=\"login\"><label>User <input name=\"user\"></label>\n<label>Password <input name=\"pw\" type=\"password\"></label><button>Sign in</button></form>\n<div id=\"app\" hidden><h2>Invoices</h2><table><tbody></tbody></table></div>\n<script>\ndocument.querySelector('#login').onsubmit = e => {\n  e.preventDefault(); e.target.hidden = true;\n  setTimeout(() => {\n    document.querySelector('#app').hidden = false;\n    document.querySelector('tbody').innerHTML =\n      '<tr><td>INV-101</td><td>Paid</td></tr><tr><td>INV-102</td><td>Overdue</td></tr>';\n  }, 1500);\n};\n</script>\"\"\"\n\nwith sync_playwright() as p:\n    browser = p.chromium.launch(headless=True)\n    page = browser.new_page()\n    page.set_content(PORTAL)              # real script: page.goto(\"https://portal.example/login\")\n    page.get_by_label(\"User\").fill(\"svc-reports\")\n    page.get_by_label(\"Password\").fill(os.environ.get(\"PORTAL_PW\", \"demo-only\"))\n    page.get_by_role(\"button\", name=\"Sign in\").click()\n    rows = page.get_by_role(\"row\")\n    expect(rows).to_have_count(2)         # waits up to 5 s for the rows; no sleep()\n    for row in rows.all():\n        print(row.get_by_role(\"cell\").all_inner_texts())\n    browser.close()\n# ['INV-101', 'Paid']\n# ['INV-102', 'Overdue']",
+    "lang": "Python"
+   },
+   {
+    "title": "Parsing HTML with BeautifulSoup",
+    "body": "When the data only exists as HTML, you need to turn the page into rows. BeautifulSoup (pip install beautifulsoup4) reads HTML into a tree and lets you search it. You can feed it HTML from requests, from page.content() in Playwright, or from a saved file.\n\nThe main tools are few. soup.select_one(\"table#shipments\") returns the first element matching a CSS selector, and select returns all matches. get_text(strip=True) returns the visible text with spaces trimmed. Square brackets read attributes, such as link[\"href\"]. A common pattern is to read the header cells into a list, then zip each row's cells with the headers to get a dictionary per row.\n\nParsing is really data cleaning, so apply the same care as in the pandas and dataquality topics. Numbers arrive as text with commas and currency signs. Blank cells should become missing values (None), not zero, or your totals will be wrong. Total and subtotal rows look like records, so skip them by class or by their text. Merged cells use colspan, which shifts columns. Dates arrive in local formats like 03/04/2026, which means different days in the UK and the US.\n\nFor simple, well-formed tables, pandas.read_html can read every table on a page in one line, which is worth trying first. For large pages, the lxml parser is faster than the built-in html.parser.\n\nFinally, pages change. Check that the headers you expect are present, count the rows, and fail loudly when the layout changes rather than saving a half-empty file.",
+    "example": "A shipping page lists SH-1 to Galway at 1,250 kg, SH-2 to Cork with a blank weight, and a Total row. The parser returns two records, turns '1,250' into 1250.0, keeps the blank as None, skips the total, and reads the Next link so the caller can fetch page 2.",
+    "checklist": [
+     "Expected headers present, or stop with an error",
+     "Text trimmed with get_text(strip=True)",
+     "Numbers cleaned of commas and currency signs",
+     "Blanks kept as None, not 0",
+     "Total and subtotal rows skipped",
+     "Dates parsed with an explicit format",
+     "Row count logged and compared with the page's own count",
+     "Next-page link followed until there is none"
+    ],
+    "code": "from bs4 import BeautifulSoup\n\nhtml = \"\"\"<table id=\"shipments\">\n<tr><th>Ref</th><th>Destination</th><th>Weight (kg)</th></tr>\n<tr><td>SH-1</td><td>Galway</td><td>1,250</td></tr>\n<tr><td>SH-2</td><td>  Cork </td><td></td></tr>\n<tr class=\"total\"><td colspan=\"2\">Total</td><td>1,250</td></tr>\n</table>\n<a class=\"next\" href=\"/shipments?page=2\">Next</a>\"\"\"\n\nsoup = BeautifulSoup(html, \"html.parser\")\ntable = soup.select_one(\"table#shipments\")\nheaders = [th.get_text(strip=True) for th in table.select(\"th\")]\nrows = []\nfor tr in table.select(\"tr\")[1:]:            # skip the header row\n    if \"total\" in tr.get(\"class\", []):       # a summary row, not a record\n        continue\n    rec = dict(zip(headers, (td.get_text(strip=True) for td in tr.select(\"td\"))))\n    kg = rec[\"Weight (kg)\"].replace(\",\", \"\")\n    rec[\"Weight (kg)\"] = float(kg) if kg else None   # blank stays missing, not 0\n    rows.append(rec)\nprint(rows)\nlink = soup.select_one(\"a.next\")\nprint(\"next page:\", link[\"href\"] if link else None)\n# [{'Ref': 'SH-1', 'Destination': 'Galway', 'Weight (kg)': 1250.0}, {'Ref': 'SH-2', 'Destination': 'Cork', 'Weight (kg)': None}]\n# next page: /shipments?page=2",
+    "lang": "Python"
+   },
+   {
+    "title": "Sessions, MFA and service accounts",
+    "body": "Logging in is usually the hardest part of automating a portal. Three ideas keep it reliable and safe.\n\nFirst, use the right identity. A scheduled job should not run as a named person, because it breaks when that person changes their password, goes on leave or leaves the company, and every action looks like theirs in the audit log. Ask the customer for a service account: a login meant for a program, with only the permissions the job needs. Many portals offer an API key or a read-only user for exactly this.\n\nSecond, reuse sessions. After a login, the site gives the browser a session cookie. Playwright can save cookies and local storage to a file with context.storage_state(path=...) and load them into a new context later. The script then logs in once a day or once a week instead of every run, which is faster and triggers fewer security alerts. That file is as sensitive as a password: keep it out of git and store it with restricted permissions.\n\nThird, handle MFA (multi-factor authentication) honestly. MFA exists to prove a person is present, so never try to defeat it or a CAPTCHA. Acceptable options, agreed with the customer's security team: an account exempted from MFA but limited by IP address, an authenticator secret issued to the service account and kept in a secret store, or a person who completes MFA once and the job reusing that session until it expires.\n\nWhen a session expires, stop and alert a person. Retrying a failed login in a loop is how accounts get locked.",
+    "example": "A job saves its session to state.json on the first run. On later runs it loads the file, opens the reports page and checks the heading. If the page says 'Please sign in', it exits with a clear message for the on-call person instead of trying to log in again.",
+    "table": {
+     "headers": [
+      "Option",
+      "When it fits",
+      "Watch out for"
+     ],
+     "rows": [
+      [
+       "API key or partner API",
+       "The portal offers one",
+       "Key rotation and scope"
+      ],
+      [
+       "Service account, no MFA, IP-limited",
+       "Security team approves",
+       "Least privilege, audit logs"
+      ],
+      [
+       "Service account with stored TOTP secret",
+       "MFA required for all users",
+       "Secret store, approval in writing"
+      ],
+      [
+       "Person logs in, session reused",
+       "No service accounts allowed",
+       "Expiry alerts, a named backup"
+      ],
+      [
+       "A staff member's own login",
+       "Never for a scheduled job",
+       "Breaks and blurs the audit trail"
+      ]
+     ]
+    },
+    "code": "import threading\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\nfrom pathlib import Path\nfrom playwright.sync_api import sync_playwright\n\n# Stand-in portal: /login sets a session cookie, /reports needs it.\nclass Portal(BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(200)\n        if self.path == \"/login\":\n            self.send_header(\"Set-Cookie\", \"sid=ok; Path=/\")\n            body = \"<p>Signed in</p>\"\n        else:\n            ok = \"sid=ok\" in (self.headers.get(\"Cookie\") or \"\")\n            body = \"<h1>Reports</h1>\" if ok else \"<h1>Please sign in</h1>\"\n        self.send_header(\"Content-Type\", \"text/html\"); self.end_headers()\n        self.wfile.write(body.encode())\n    def log_message(self, *args): pass\n\nsrv = HTTPServer((\"127.0.0.1\", 0), Portal)\nthreading.Thread(target=srv.serve_forever, daemon=True).start()\nBASE = f\"http://127.0.0.1:{srv.server_port}\"\nSTATE = Path(\"state.json\")                 # holds cookies: treat it like a password\n\nwith sync_playwright() as p:\n    browser = p.chromium.launch()\n    if not STATE.exists():                 # first run: log in once (a person may do MFA here)\n        ctx = browser.new_context()\n        ctx.new_page().goto(f\"{BASE}/login\")\n        ctx.storage_state(path=STATE)\n        ctx.close()\n    ctx = browser.new_context(storage_state=STATE)   # later runs: reuse the session\n    page = ctx.new_page()\n    page.goto(f\"{BASE}/reports\")\n    heading = page.locator(\"h1\").inner_text()\n    if heading == \"Please sign in\":        # session expired: alert a person, do not loop\n        raise SystemExit(\"session expired, re-run the login step\")\n    print(\"heading:\", heading)\n    browser.close()\nSTATE.unlink()                             # tidy up for this demo\n# heading: Reports",
+    "lang": "Python"
+   },
+   {
+    "title": "Terms of service, robots.txt and legal limits",
+    "body": "Being able to automate a site does not mean you are allowed to. Check before you build, and write down what you checked.\n\nStart with who owns the data and who owns the site. Automating your customer's own internal portal is usually a matter of their IT policy. Automating a third party's site, such as a supplier or a government portal, is governed by that site's terms of service (ToS). Many ToS ban automated access or scraping; breaking them can get the customer's account closed and can create legal risk. The safest route is written permission, or asking the third party for an export or API.\n\nrobots.txt is a text file at the root of a site, such as /robots.txt, that tells automated clients which paths to avoid and sometimes how long to wait between requests (Crawl-delay). It is a convention rather than a law, but ignoring it is a sign of bad faith. Python's urllib.robotparser reads it for you.\n\nPersonal data adds another layer. If the pages contain names, emails or health details, data protection law such as GDPR still applies to what you collect and store: take only the fields you need, and agree retention with the customer. The compliance topic covers this in depth.\n\nBe polite at the network level too: identify your client with a clear user agent, keep to one request every few seconds unless agreed otherwise, run outside business hours, and back off on errors like 429 Too Many Requests. Rules differ by country and change, so for anything beyond the customer's own systems, involve their legal team. This lesson is not legal advice.",
+    "example": "Before scraping a carrier's tracking pages, an FDE reads the carrier's robots.txt: tracking pages are allowed, /search and /admin are not, and it asks for 5 seconds between requests. She also finds the carrier offers a partner API, and the customer's account manager gets them access within two weeks, so the scraper is only a stopgap.",
+    "checklist": [
+     "Who owns the site and the data, written down",
+     "Terms of service read; automated access allowed or permission in writing",
+     "Export, report email or partner API asked for first",
+     "robots.txt read and followed, including Crawl-delay",
+     "Personal data minimised; retention agreed",
+     "Clear user agent and a contact address",
+     "Rate limit and back-off on 429 and 5xx errors",
+     "Customer's legal or security team signed off"
+    ],
+    "code": "from urllib import robotparser\n\n# The site's robots.txt, as you would read it from https://portal.example/robots.txt\nrobots = \"\"\"User-agent: *\nDisallow: /admin/\nDisallow: /search\nCrawl-delay: 5\"\"\"\n\nrp = robotparser.RobotFileParser()\nrp.parse(robots.splitlines())\nfor path in [\"/tracking/SH-1\", \"/search?q=cork\", \"/admin/users\"]:\n    print(path, \"allowed\" if rp.can_fetch(\"DunlinBot\", path) else \"disallowed\")\nprint(\"wait between requests:\", rp.crawl_delay(\"DunlinBot\"), \"seconds\")\n# /tracking/SH-1 allowed\n# /search?q=cork disallowed\n# /admin/users disallowed\n# wait between requests: 5 seconds",
+    "lang": "Python"
+   },
+   {
+    "title": "When to hand the task to a browser agent",
+    "body": "A browser agent is an AI model that looks at a web page (as a screenshot, the page's text, or both), decides the next click or keystroke, and repeats until the task is done. Examples include computer-use features from model providers and open-source libraries that connect a model to Playwright. The tools and agents topics explain how such loops work.\n\nAgents shine where scripts struggle: tasks where every page is different, such as filling in a new supplier's onboarding form each week, or navigating a site you have never seen. A script needs a developer to write locators for each layout; an agent can read the labels and work it out.\n\nThey also have real costs. Each step is a model call, so a job of 30 clicks can take minutes and cost far more than a script that runs in seconds. Results vary between runs, so the same input can produce a different path. Agents can be misled by text on the page itself (prompt injection), for example a hidden line telling them to open another site. And they make mistakes a person would not, such as clicking Submit on the wrong form.\n\nA sensible rule: script the fixed, frequent path; use an agent for the rare, varied long tail; and keep a person in the loop for anything that submits, pays or deletes. Give the agent a limited account, an allow-list of sites, a maximum number of steps, and a log with screenshots of every action. Often the best design mixes both: a script handles the 90 percent of known layouts and hands only the unknown ones to the agent.",
+    "example": "A made-up wholesaler registers with about 12 new supplier portals a month, each with a different form. A browser agent fills each form from a checklist but stops before Submit so a buyer can check it. The daily order download from their two big suppliers stays a plain Playwright script.",
+    "table": {
+     "headers": [
+      "Question",
+      "Script",
+      "Browser agent"
+     ],
+     "rows": [
+      [
+       "Pages the same every run?",
+       "Yes, best fit",
+       "Wasteful"
+      ],
+      [
+       "Speed per task",
+       "Seconds",
+       "Often minutes"
+      ],
+      [
+       "Cost per run",
+       "Almost nothing",
+       "A model call per step"
+      ],
+      [
+       "Same result every time?",
+       "Yes",
+       "Not guaranteed"
+      ],
+      [
+       "Copes with a new layout?",
+       "No, needs new code",
+       "Often"
+      ],
+      [
+       "Needs a person to check?",
+       "Only on alerts",
+       "Yes, before anything is submitted"
+      ]
+     ]
+    },
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "task",
+       90,
+       70,
+       "New task",
+       "a portal job"
+      ],
+      [
+       "freq",
+       265,
+       70,
+       "Runs often?",
+       "daily or weekly"
+      ],
+      [
+       "same",
+       440,
+       70,
+       "Same pages?",
+       "fixed layout"
+      ],
+      [
+       "script",
+       615,
+       70,
+       "Write a script",
+       "Playwright"
+      ],
+      [
+       "mix",
+       615,
+       220,
+       "Script + agent",
+       "agent for unknowns"
+      ],
+      [
+       "agent",
+       440,
+       220,
+       "Browser agent",
+       "step limit, logs"
+      ],
+      [
+       "human",
+       265,
+       220,
+       "Person approves",
+       "before submit"
+      ],
+      [
+       "manual",
+       90,
+       220,
+       "Do it by hand",
+       "rare and simple"
+      ]
+     ],
+     "edges": [
+      [
+       "task",
+       "freq"
+      ],
+      [
+       "freq",
+       "same",
+       0,
+       "yes"
+      ],
+      [
+       "same",
+       "script",
+       0,
+       "yes"
+      ],
+      [
+       "script",
+       "mix",
+       0,
+       "some vary"
+      ],
+      [
+       "same",
+       "agent",
+       0,
+       "no"
+      ],
+      [
+       "agent",
+       "human"
+      ],
+      [
+       "freq",
+       "manual",
+       0,
+       "rarely"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "DevTools",
+    "The developer tools built into a browser, opened with F12, including the Network tab that lists every request a page makes."
+   ],
+   [
+    "Endpoint",
+    "A URL on a server that returns data, such as /api/orders."
+   ],
+   [
+    "Playwright",
+    "A library that drives a real browser from code, used for testing and automation."
+   ],
+   [
+    "Headless",
+    "Running a browser without a visible window, as servers do."
+   ],
+   [
+    "Locator",
+    "Playwright's description of how to find an element, such as a button by its name."
+   ],
+   [
+    "Auto-waiting",
+    "Playwright's habit of waiting until an element is ready before acting on it."
+   ],
+   [
+    "BeautifulSoup",
+    "A Python library that parses HTML into a searchable tree."
+   ],
+   [
+    "CSS selector",
+    "A pattern such as table#shipments tr that picks elements from a page."
+   ],
+   [
+    "Session cookie",
+    "A small value the site gives the browser after login that proves who you are on later requests."
+   ],
+   [
+    "Storage state",
+    "A saved file of cookies and local storage that lets Playwright reuse a login."
+   ],
+   [
+    "Service account",
+    "A login meant for a program rather than a person, with only the permissions it needs."
+   ],
+   [
+    "robots.txt",
+    "A file at a site's root that tells automated clients which paths to avoid and how fast to go."
+   ],
+   [
+    "Browser agent",
+    "An AI model that decides each click and keystroke by looking at the page."
+   ]
+  ],
+  "practice": [
+   "Open any public site you use that shows a list (for example a store or a timetable). In DevTools, find the Fetch/XHR request that returns the list as JSON, copy it as cURL and rebuild it with requests.",
+   "Use playwright codegen on a public demo site made for practice, record a login and a search, then rewrite the recorded code to use only get_by_role and get_by_label locators.",
+   "Save a public HTML table to a file and parse it with BeautifulSoup into a list of dictionaries. Make blanks None, strip commas from numbers, and compare your result with pandas.read_html.",
+   "Read the robots.txt of three sites you know and write, for each, one path you may fetch, one you may not and the crawl delay if any.",
+   "Stretch: write a one-page automation plan for an imaginary supplier portal: the permission you need, the identity it runs as, how it handles expired sessions, its rate limit and who gets the alert."
+  ]
+ },
+ "typescript": {
+  "plain": "JavaScript is the language of web pages, and with Node it also runs on servers. TypeScript is JavaScript plus type labels, such as 'this is a number', that a checker reads before the code runs to catch mistakes. Together they are the most common languages in customer web teams and in AI lab SDK examples, so an FDE needs to read, run, change and test a small TypeScript service.",
+  "analogy": "TypeScript is like a spell checker for code: it underlines mistakes while you write, but once the letter is posted it has no power. That is why you still check what comes back in the post (validation with zod) and proofread with tests.",
+  "why": "Many customers build their products in TypeScript, and they want AI features delivered in a form their own engineers can own. If you can only offer Python, your work may be rewritten or abandoned after you leave. Enough TypeScript to ship a validated, tested Node service lets you work inside their codebase, their CI and their review process.",
+  "subtopics": [
+   {
+    "title": "Node, npm and package.json",
+    "body": "JavaScript started in the browser. Node.js (usually just Node) is a program that runs JavaScript on a computer or server, so you can write command-line tools and web APIs in the same language. Check it with node --version; use a long-term support (LTS) version such as 22 or 24.\n\nnpm is Node's package manager. It comes with Node and downloads libraries from the npm registry. Every project has a package.json file at its root that records the project's name, its dependencies and its scripts. The key commands:\n\nnpm init -y creates a package.json. npm install zod adds a library to dependencies (needed when the app runs). npm install -D vitest adds it to devDependencies (needed only while developing, such as test tools). npm install with no name installs everything listed, which is what a teammate does after cloning. npm run test runs the command stored under scripts.test. npx vitest runs a tool from the project without installing it globally.\n\nInstalling creates two things. node_modules is a folder holding the downloaded code; it can be huge, so it goes in .gitignore and is never committed. package-lock.json records the exact version of every package, so everyone gets the same code; it is committed. In a version range, ^4.0.0 means any 4.x version, which is why the lockfile matters. Use npm ci in CI: it installs exactly what the lockfile says.\n\n\"type\": \"module\" tells Node to use modern import and export syntax. Recent Node versions (22.18 and later) can run .ts files directly by stripping the types, which is handy for small tools; tsc still does the type checking. Some teams use pnpm or yarn instead of npm; follow whatever the customer uses.",
+    "example": "Cloning a customer's repo, an FDE runs npm ci, then npm run check and npm test before changing anything. Both pass, so any later failure is hers. She adds zod with npm install zod, and the diff shows exactly two changed files: package.json and package-lock.json.",
+    "table": {
+     "headers": [
+      "Command",
+      "What it does"
+     ],
+     "rows": [
+      [
+       "npm init -y",
+       "Create package.json with defaults"
+      ],
+      [
+       "npm install zod",
+       "Add a runtime dependency"
+      ],
+      [
+       "npm install -D vitest",
+       "Add a development-only dependency"
+      ],
+      [
+       "npm ci",
+       "Install exactly what the lockfile says (use in CI)"
+      ],
+      [
+       "npm run check",
+       "Run the 'check' script from package.json"
+      ],
+      [
+       "npx tsc --noEmit",
+       "Run the project's TypeScript checker"
+      ]
+     ]
+    },
+    "code": "{\n  \"name\": \"ticket-summariser\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"start\": \"node src/server.ts\",\n    \"check\": \"tsc --noEmit\",\n    \"test\": \"vitest run\"\n  },\n  \"dependencies\": {\n    \"@anthropic-ai/sdk\": \"^0.129.0\",\n    \"zod\": \"^4.0.0\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.0.0\",\n    \"typescript\": \"^6.0.0\",\n    \"vitest\": \"^5.0.0\"\n  },\n  \"engines\": { \"node\": \">=22.18\" }\n}",
+    "lang": "JSON"
+   },
+   {
+    "title": "Types, interfaces and unions",
+    "body": "A type says what shape a value has. You write it after a colon: id: number, subject: string. The TypeScript compiler, tsc, reads your code, checks every use against the types, and reports mistakes before anything runs. The frontend topic introduced this idea; here you use the parts you will meet in real services.\n\nAn interface (or a type alias, which works almost the same) names an object shape, such as a Ticket with an id, a subject and a priority. A question mark makes a field optional: assignee?: string means it may be missing, and TypeScript makes you handle that case, often with ?? to supply a default.\n\nA union means 'one of these'. \"low\" | \"normal\" | \"urgent\" allows exactly those three strings, so a typo like \"urgnet\" is caught at once. A discriminated union goes further: every variant has a shared field, such as ok: true or ok: false, and when you check r.ok, TypeScript narrows the type so it knows r.ticket exists in one branch and r.error in the other. This is a clean way to return success or failure without throwing.\n\nNarrowing is the idea behind all of this: after an if check, TypeScript knows more about the value. Use unknown, not any, for data you have not checked yet; unknown forces you to check before use, while any switches type checking off. Turn on \"strict\": true in tsconfig.json so null and undefined are checked too.\n\nThe big limit: types are erased when the code runs. They check your code, not the data that arrives, which is why the zod subtopic exists.",
+    "example": "A helpdesk integration receives priorities like ' URGENT ' from email subjects. parsePriority trims and lower-cases the text and returns one of the three allowed values, defaulting to 'normal'. An empty subject returns { ok: false } instead of throwing, and the caller must handle both branches or tsc complains.",
+    "code": "// Types describe the shape of data; tsc checks them before the code runs.\ntype Priority = \"low\" | \"normal\" | \"urgent\";            // a union of exact strings\n\ninterface Ticket {\n  id: number;\n  subject: string;\n  priority: Priority;\n  assignee?: string;                                     // optional: may be missing\n}\n\ntype Result =\n  | { ok: true; ticket: Ticket }\n  | { ok: false; error: string };                        // a discriminated union\n\nfunction parsePriority(text: string): Priority {\n  const p = text.trim().toLowerCase();\n  if (p === \"low\" || p === \"normal\" || p === \"urgent\") return p;   // narrowed to Priority\n  return \"normal\";\n}\n\nfunction makeTicket(id: number, subject: string, prio: string): Result {\n  if (subject.length === 0) return { ok: false, error: \"subject is empty\" };\n  return { ok: true, ticket: { id, subject, priority: parsePriority(prio) } };\n}\n\nfor (const r of [makeTicket(1, \"Refund not received\", \" URGENT \"), makeTicket(2, \"\", \"low\")]) {\n  if (r.ok) {                                            // TypeScript now knows r.ticket exists\n    const who = r.ticket.assignee ?? \"unassigned\";       // handle the missing case\n    console.log(r.ticket.id, r.ticket.priority, who);\n  } else {\n    console.log(\"rejected:\", r.error);\n  }\n}\n// Output (node src/types.ts):\n// 1 urgent unassigned\n// rejected: subject is empty",
+    "lang": "TypeScript"
+   },
+   {
+    "title": "Promises and async/await",
+    "body": "JavaScript runs your code on a single thread, so it never blocks while waiting for a network call, a file or a timer. Instead, a slow operation returns a Promise: an object that will later be fulfilled with a value or rejected with an error. fetch, database drivers and LLM SDKs all return Promises. The asyncpy topic covers the same idea in Python.\n\nasync and await make this readable. Mark a function async and it always returns a Promise. Inside it, await somePromise pauses that function until the Promise settles, then gives you the value, or throws the error so an ordinary try/catch can handle it. Other work carries on meanwhile.\n\nThe common mistake is running independent calls one after another. Two awaits in a row take the sum of both times. If the calls do not depend on each other, start them together and await Promise.all([...]); the total is about the slowest one. Promise.all rejects as soon as any call fails. If you want every result whatever happens, use Promise.allSettled, which returns a status for each.\n\nEdge cases. Forgetting await gives you a Promise instead of the value, and the log shows Promise { <pending> }. A rejected Promise that nobody catches crashes a Node process, so always attach error handling at the top level, as main().catch does below. Starting 500 calls with Promise.all at once can hit a rate limit; send them in batches or use a small concurrency limiter. And add timeouts: fetch accepts signal: AbortSignal.timeout(10000) so a stuck call fails after 10 seconds.",
+    "example": "A dashboard needs three unrelated lookups of about 300 ms each. Awaited one by one they take about 900 ms; with Promise.all about 300 ms. When one lookup can fail without ruining the page, the FDE switches to Promise.allSettled and shows the other two.",
+    "code": "type Order = { id: number; total: number };\n\n// A fake API call: answers after `ms` milliseconds, fails for id 3.\nfunction fetchOrder(id: number, ms: number): Promise<Order> {\n  return new Promise((resolve, reject) => {\n    setTimeout(() => {\n      if (id === 3) reject(new Error(`order ${id} not found`));\n      else resolve({ id, total: id * 10 });\n    }, ms);\n  });\n}\n\nconst roughMs = (start: number) => Math.round((Date.now() - start) / 100) * 100;\n\nasync function main(): Promise<void> {\n  let t = Date.now();\n  const a = await fetchOrder(1, 300);                     // one after the other\n  const b = await fetchOrder(2, 300);\n  console.log(\"sequential:\", a.total + b.total, \"in about\", roughMs(t), \"ms\");\n\n  t = Date.now();\n  const both = await Promise.all([fetchOrder(1, 300), fetchOrder(2, 300)]);   // at the same time\n  console.log(\"parallel:\", both.map((o) => o.total), \"in about\", roughMs(t), \"ms\");\n\n  try {\n    await fetchOrder(3, 100);\n  } catch (err) {\n    console.log(\"caught:\", (err as Error).message);\n  }\n\n  const settled = await Promise.allSettled([1, 3].map((id) => fetchOrder(id, 100)));\n  console.log(\"allSettled:\", settled.map((r) => r.status));\n}\n\nmain().catch((err) => { console.error(err); process.exit(1); });\n// Output:\n// sequential: 30 in about 600 ms\n// parallel: [ 10, 20 ] in about 300 ms\n// caught: order 3 not found\n// allSettled: [ 'fulfilled', 'rejected' ]",
+    "lang": "TypeScript"
+   },
+   {
+    "title": "Validating input with zod",
+    "body": "Types disappear at runtime, but data from outside your code can be anything: a request body, a CSV row, a webhook from a customer's system, or JSON written by an LLM. zod is a popular TypeScript library that describes the expected shape once, checks real values against it at runtime, and gives you the matching TypeScript type for free.\n\nYou build a schema from small pieces: z.string().min(1), z.email(), z.number().int().positive(), z.enum([...]) and z.object({...}) to combine them. .optional() allows a missing field and .default(\"starter\") fills one in. z.coerce.number() turns the string \"12\" from a form into the number 12. type Lead = z.infer<typeof Lead> produces the type, so the schema and the type can never drift apart.\n\nTwo ways to check. schema.parse(data) returns clean data or throws. schema.safeParse(data) never throws; it returns { success: true, data } or { success: false, error }, and error.issues lists every problem with a path (which field) and a message. safeParse suits APIs, where you turn the issues into a 400 response.\n\nThe same idea works for model output. Ask the model for JSON, then safeParse its reply; if it fails, log the issues and retry once with the error in the prompt, or fall back to a person. Many LLM SDKs and frameworks accept a zod schema directly for structured output.\n\nVersion note: zod 4 moved some helpers, for example z.email() instead of z.string().email(), and changed error messages. Check which major version the customer's code uses before copying examples. Python's equivalent is pydantic, covered in the fastapi topic.",
+    "example": "A sign-up form posts { company, email, seats: \"12\" }. The good lead passes, with seats turned into 12 and plan defaulted to 'starter'. A bad one returns four issues in one pass: empty company, malformed email, negative seats and an unknown plan, which the form can show next to each field.",
+    "code": "import { z } from \"zod\";\n\nconst Lead = z.object({\n  company: z.string().min(1),\n  email: z.email(),                                   // zod 3 wrote z.string().email()\n  seats: z.coerce.number().int().positive(),          // \"12\" from a form becomes 12\n  plan: z.enum([\"starter\", \"team\", \"enterprise\"]).default(\"starter\"),\n});\ntype Lead = z.infer<typeof Lead>;                     // the TypeScript type, for free\n\nconst inputs: unknown[] = [                           // unknown: we trust nothing yet\n  { company: \"Quillon Bakery\", email: \"ops@quillon.example\", seats: \"12\" },\n  { company: \"\", email: \"not-an-email\", seats: -3, plan: \"gold\" },\n];\n\nfor (const input of inputs) {\n  const r = Lead.safeParse(input);                    // never throws; check r.success\n  if (r.success) {\n    const lead: Lead = r.data;\n    console.log(\"ok:\", JSON.stringify(lead));\n  } else {\n    for (const issue of r.error.issues) {\n      console.log(\"bad:\", issue.path.join(\".\"), \"-\", issue.message);\n    }\n  }\n}\n// Output:\n// ok: {\"company\":\"Quillon Bakery\",\"email\":\"ops@quillon.example\",\"seats\":12,\"plan\":\"starter\"}\n// bad: company - Too small: expected string to have >=1 characters\n// bad: email - Invalid email address\n// bad: seats - Too small: expected number to be >0\n// bad: plan - Invalid option: expected one of \"starter\"|\"team\"|\"enterprise\"",
+    "lang": "TypeScript"
+   },
+   {
+    "title": "A small API with an LLM SDK call",
+    "body": "A typical FDE deliverable in a TypeScript shop is a small HTTP service: the customer's app posts some text, your service calls a model and returns a result. Keeping this on a server matters. If the browser called the model directly, the API key would be visible to anyone who opens developer tools.\n\nThe pieces, in order. Read secrets from environment variables: the Anthropic SDK reads ANTHROPIC_API_KEY on its own, and the model id comes from a variable too, so you can change it without a code change. Parse and validate the request body with zod before anything else, so a bad request costs no tokens and gets a clear 400 answer. Call the model with messages.create, passing model, max_tokens, an optional system prompt and the messages. Read the reply by joining the text blocks: the response content is a list of blocks, and the first block is not always text. Wrap the call in try/catch and return a generic 502 to the caller, while the full error goes to the server log.\n\nThe example uses Node's built-in http module so there is nothing extra to learn. In real projects most teams use a framework such as Express, Fastify or Hono, or a route handler in Next.js; the steps stay the same. The llmapi topic covers the request fields and errors in depth, and fastapi shows the Python version.\n\nBefore going live, add a timeout, a limit on body size, authentication for callers, and logging of latency and token usage. If the model must return structured data, ask for JSON and validate it with a second zod schema.",
+    "example": "The support team's app posts a ticket to /summarise. A 5-character body is rejected with a 400 and a clear message, without any model call. A real ticket returns a one-line summary; if the model API is down, the app gets a 502 with 'model call failed' and the details stay in the server log.",
+    "checklist": [
+     "API key and model id read from environment variables",
+     "Model called only from the server",
+     "Request body validated before any model call",
+     "Reply read by joining text blocks",
+     "Errors caught: generic message out, details in the log",
+     "max_tokens set; body size and timeout limited",
+     "Callers authenticated before going live"
+    ],
+    "code": "import { createServer } from \"node:http\";\nimport Anthropic from \"@anthropic-ai/sdk\";\nimport { z } from \"zod\";\n\nconst MODEL = process.env.MODEL ?? \"MODEL\";          // put a current model id in the environment\nconst client = new Anthropic();                      // reads ANTHROPIC_API_KEY from the environment\nconst Body = z.object({ ticket: z.string().min(10).max(5000) });\n\nasync function summarise(ticket: string): Promise<string> {\n  const msg = await client.messages.create({\n    model: MODEL,\n    max_tokens: 300,\n    system: \"Summarise the customer's support ticket in one sentence for a support agent.\",\n    messages: [{ role: \"user\", content: ticket }],\n  });\n  // A reply is a list of content blocks; join the text ones.\n  return msg.content.filter((b) => b.type === \"text\").map((b) => b.text).join(\"\");\n}\n\ncreateServer(async (req, res) => {\n  if (req.method !== \"POST\" || req.url !== \"/summarise\") {\n    res.writeHead(404).end();\n    return;\n  }\n  let raw = \"\";\n  for await (const chunk of req) raw += chunk;\n  let json: unknown = null;\n  try { json = JSON.parse(raw); } catch { /* leave json as null */ }\n\n  const parsed = Body.safeParse(json);               // validate before spending tokens\n  if (!parsed.success) {\n    res.writeHead(400, { \"Content-Type\": \"application/json\" });\n    res.end(JSON.stringify({ error: parsed.error.issues.map((i) => `${i.path.join(\".\")}: ${i.message}`) }));\n    return;\n  }\n  try {\n    const summary = await summarise(parsed.data.ticket);\n    res.writeHead(200, { \"Content-Type\": \"application/json\" }).end(JSON.stringify({ summary }));\n  } catch (err) {\n    console.error(\"model call failed:\", err);        // full detail in the server log only\n    res.writeHead(502, { \"Content-Type\": \"application/json\" }).end(JSON.stringify({ error: \"model call failed\" }));\n  }\n}).listen(3000, () => console.log(\"listening on http://localhost:3000\"));\n\n// Try it (bad input is rejected before any model call):\n// $ curl -s -X POST localhost:3000/summarise -d '{\"ticket\":\"short\"}'\n// {\"error\":[\"ticket: Too small: expected string to have >=10 characters\"]}",
+    "lang": "TypeScript"
+   },
+   {
+    "title": "Testing with vitest and reading TS errors",
+    "body": "vitest is a fast test runner for JavaScript and TypeScript. Install it with npm install -D vitest, put tests in files ending .test.ts, and run npx vitest run once or npx vitest to rerun on every save. A test file groups cases with describe, writes each case with it (or test), and checks results with expect(value).toBe(...), toEqual for objects, toBeNull, or toThrow. it.each runs the same test over a list of inputs, which is ideal for edge cases. The tdd topic explains why writing tests first pays off.\n\nTest the plain functions, such as parsing, validation and prompt building, rather than the live model. For code that calls a model or an API, pass the client in as a parameter, or use vi.mock to replace it with a fake that returns a recorded reply. That keeps tests fast, free and repeatable.\n\nReading tsc errors is a skill of its own. Each error gives the file, line and column, a code such as TS2322, and a message. Fix them from the top: one early mistake can cause several later errors. Read the message backwards: 'Type number | null is not assignable to type number' means you promised a number but might have null, so handle the null. Resist fixing errors with 'as any' or // @ts-ignore; that hides the problem rather than solving it.\n\nEdge cases worth a test: empty strings, spaces, currency signs, and different decimal styles. For example, the parser below turns '12,5' into 125, because it treats the comma as a thousands separator. Whether that is right depends on the customer's locale, which is exactly the kind of question a test makes you ask.",
+    "example": "An FDE adds five tests for parseAmount, including '', 'n/a' and '12,5O' with a letter O. All pass in under a second. Later, tsc flags const total: number = parseAmount('£40') with TS2322, and she adds a null check instead of casting.",
+    "table": {
+     "headers": [
+      "Error",
+      "Plain meaning",
+      "Usual fix"
+     ],
+     "rows": [
+      [
+       "TS2322 not assignable to type",
+       "Value does not fit the declared type",
+       "Handle the extra case, such as null"
+      ],
+      [
+       "TS2345 argument not assignable",
+       "Wrong type passed to a function",
+       "Convert it or fix the call"
+      ],
+      [
+       "TS2551 or TS2339 property does not exist",
+       "Typo or field not on the type",
+       "Fix the name or the type"
+      ],
+      [
+       "TS7006 implicitly has an 'any' type",
+       "A parameter has no type in strict mode",
+       "Add a type annotation"
+      ],
+      [
+       "TS18048 possibly 'undefined'",
+       "An optional value used as if present",
+       "Check it or use ?? default"
+      ]
+     ]
+    },
+    "code": "// src/money.ts\n// Turns \"£1,250.50\", \"1250\" or \" 12.5 \" into a number; returns null when it cannot.\nexport function parseAmount(text: string): number | null {\n  const cleaned = text.trim().replace(/^[£$€]/, \"\").replaceAll(\",\", \"\");\n  if (cleaned === \"\" || !/^-?\\d+(\\.\\d+)?$/.test(cleaned)) return null;\n  return Math.round(Number(cleaned) * 100) / 100;     // money: keep two decimals\n}\n\n// src/money.test.ts\nimport { describe, expect, it } from \"vitest\";\nimport { parseAmount } from \"./money.ts\";\n\ndescribe(\"parseAmount\", () => {\n  it(\"reads currency and thousands separators\", () => {\n    expect(parseAmount(\"£1,250.50\")).toBe(1250.5);\n  });\n  it(\"trims spaces\", () => {\n    expect(parseAmount(\" 12.5 \")).toBe(12.5);\n  });\n  it.each([\"\", \"n/a\", \"12,5O\"])(\"returns null for %j\", (bad) => {\n    expect(parseAmount(bad)).toBeNull();\n  });\n});\n// $ npx vitest run\n//  Test Files  1 passed (1)\n//       Tests  5 passed (5)",
+    "lang": "TypeScript"
+   }
+  ],
+  "glossary": [
+   [
+    "Node.js",
+    "A program that runs JavaScript outside the browser, used for servers and tools."
+   ],
+   [
+    "npm",
+    "Node's package manager; it installs libraries and runs project scripts."
+   ],
+   [
+    "package.json",
+    "The file listing a project's name, dependencies and scripts."
+   ],
+   [
+    "Lockfile",
+    "package-lock.json: the exact version of every installed package, committed to git."
+   ],
+   [
+    "tsc",
+    "The TypeScript compiler; it checks types and can output plain JavaScript."
+   ],
+   [
+    "Interface",
+    "A named description of an object's fields and their types."
+   ],
+   [
+    "Union type",
+    "A type that allows one of several options, such as \"low\" | \"high\"."
+   ],
+   [
+    "Narrowing",
+    "TypeScript learning a more exact type after a check such as if (r.ok)."
+   ],
+   [
+    "Promise",
+    "An object for a result that will arrive later, or an error."
+   ],
+   [
+    "async/await",
+    "Syntax for writing Promise-based code that reads top to bottom."
+   ],
+   [
+    "zod",
+    "A library that checks data against a schema at runtime and gives the matching type."
+   ],
+   [
+    "vitest",
+    "A test runner for JavaScript and TypeScript projects."
+   ]
+  ],
+  "practice": [
+   "Create a new project with npm init -y, add \"type\": \"module\", install typescript and zod, and add check and start scripts. Commit it with the lockfile and a .gitignore that excludes node_modules.",
+   "Write types for an Invoice with a status union of three values and an optional paidAt date, plus a function that returns a discriminated union for success or failure. Make tsc report at least three different errors on purpose, then fix them.",
+   "Write a function that fetches three public JSON URLs one after another, then with Promise.all, and print both timings. Add a timeout with AbortSignal.timeout.",
+   "Write a zod schema for a webhook your customer might send, test it with safeParse on five good and five bad payloads, and print every issue path.",
+   "Stretch: build the /summarise service, ask the model for JSON with a summary and a category, validate the reply with a second zod schema, and write vitest tests with a fake client."
+  ]
+ }
+}

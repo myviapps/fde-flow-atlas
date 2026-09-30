@@ -1,0 +1,116 @@
+{
+ "pandas": [
+  {
+   "q": "In pandas, what is a DataFrame?",
+   "options": [
+    "A single column of values with one data type",
+    "A table of rows and named columns, each column with its own type",
+    "A chart drawn from a CSV file",
+    "A connection to a SQL database"
+   ],
+   "answer": 1,
+   "why": "A DataFrame is the whole table. A single column is a Series."
+  },
+  {
+   "q": "You load a CSV and the amount column shows dtype str (or object). What does that most likely mean?",
+   "options": [
+    "pandas always loads numbers as text",
+    "The file is too large to parse",
+    "At least one value is not a clean number, such as \"1,250.00\"",
+    "The column has no missing values"
+   ],
+   "answer": 2,
+   "why": "One non-numeric value makes pandas keep the whole column as text. Find and fix those values, then convert with pd.to_numeric."
+  },
+  {
+   "q": "A UK customer's export has dates like 03/04/2026. What should you do before parsing?",
+   "options": [
+    "Let pandas guess the format automatically",
+    "Confirm it is day first, then parse with format=\"%d/%m/%Y\"",
+    "Drop the date column since it is ambiguous",
+    "Parse with the US format because it is the default"
+   ],
+   "answer": 1,
+   "why": "03/04 is 3 April day-first and 4 March month-first. Ask, then give an explicit format so every row is read the same way."
+  },
+  {
+   "q": "After merging orders with a customer lookup, your row count goes from 10,000 to 10,240 and revenue rises. What is the likely cause?",
+   "options": [
+    "Some customer IDs appear more than once in the lookup",
+    "The merge used how=\"left\"",
+    "Some orders had missing amounts",
+    "The orders file was sorted differently"
+   ],
+   "answer": 0,
+   "why": "Duplicate keys on the right side copy matching left rows: fan-out. Use validate=\"many_to_one\" and fix the lookup."
+  },
+  {
+   "q": "A teammate fills every missing amount with 0 so the totals look complete. What is the problem?",
+   "options": [
+    "fillna does not work on numeric columns",
+    "It makes the file larger",
+    "pandas cannot sum a column that was filled",
+    "It changes sums and averages and hides that data is missing"
+   ],
+   "answer": 3,
+   "why": "A blank is not a zero unless the customer says so. Flag missing values and report them instead of guessing."
+  }
+ ],
+ "debugging": [
+  {
+   "q": "How should you read a Python traceback?",
+   "options": [
+    "Top down, the first line shows the error",
+    "Bottom up, the last line shows the exception and message",
+    "Only the middle frames matter",
+    "Ignore it and add print statements"
+   ],
+   "answer": 1,
+   "why": "The bottom line gives the exception type and message, and the frame above shows where it broke. Then walk up to the first frame in your own code."
+  },
+  {
+   "q": "What does git bisect do?",
+   "options": [
+    "Splits a large commit into two smaller ones",
+    "Merges two branches halfway",
+    "Binary-searches commit history to find the first bad commit",
+    "Reverts the last half of your commits"
+   ],
+   "answer": 2,
+   "why": "You mark a good and a bad commit and git halves the range each test. With a repro script, git bisect run automates it."
+  },
+  {
+   "q": "A customer's nightly job failed in a repo you have never seen. What is your first step?",
+   "options": [
+    "Get the logs and input of the failed run and reproduce it",
+    "Rewrite the job in a style you know better",
+    "Add retries around every external call",
+    "Upgrade all dependencies to their latest versions"
+   ],
+   "answer": 0,
+   "why": "Reproducing with the real input gives you a test for every later step. Rewrites and upgrades change many things before you know the cause."
+  },
+  {
+   "q": "A log shows 300 errors from last night's run. Which one do you look at first?",
+   "options": [
+    "The last error, since it is the most recent",
+    "The most frequent error message",
+    "A random sample of ten errors",
+    "The first error around the time things went wrong"
+   ],
+   "answer": 3,
+   "why": "Later errors are often consequences of the first failure. Fixing the first one frequently removes all the others."
+  },
+  {
+   "q": "A sync job loses a few records with no error, and someone wraps it in try/except and adds retries. What is the mistake?",
+   "options": [
+    "try/except is slower than if statements",
+    "It hides the cause, and retries cannot fix code that thinks it succeeded",
+    "Retries should only be added in tests",
+    "Exceptions must always be re-raised twice"
+   ],
+   "answer": 1,
+   "why": "Nothing was failing, so retries change nothing and broad excepts hide future errors. Reproduce, find the cause, fix it with a test."
+  }
+ ]
+}

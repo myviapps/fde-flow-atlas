@@ -1,0 +1,645 @@
+{
+ "genesis": {
+  "plain": "A Forward Deployed Engineer (FDE) is a software engineer who works directly with one customer, often on site, to make a product solve that customer's real problem. The role was popularised by Palantir, a data software company whose platforms are Gotham (built first for government and defense) and Foundry (for commercial companies). Palantir paired a Deployment Strategist, nicknamed an Echo, who owns the problem and the relationship, with Forward Deployed Software Engineers, nicknamed Deltas, who write and ship the code. The idea spread to many software and AI companies, which now hire FDEs to get their products working inside large customers.",
+  "analogy": "Think of a builder who sends a small crew to live next to a construction site. The site manager (the Echo) talks to the family about what they need, and the carpenters (the Deltas) build it using the company's prefabricated parts. Every time the carpenters invent a clever fix on site, the factory turns it into a new standard part.",
+  "why": "Customers with hard problems rarely hand you a clean specification. A hospital might say 'we want fewer missed follow-up appointments' and nothing more. An FDE has to turn that vague goal into working software on the vendor's platform, and understanding where the role came from helps you explain it clearly in interviews and behave the way the job expects.",
+  "subtopics": [
+   {
+    "title": "Why the role was invented",
+    "body": "Most software teams build one feature and sell it to thousands of customers. That works when customers' needs look alike. Palantir's early customers were intelligence and defense agencies whose data lived in dozens of disconnected systems and whose questions changed week to week.\n\nNobody could write a full requirements document in advance. So Palantir sent engineers to sit with the users, learn the mission and build on the spot. The software platform stayed shared, while the configuration, data integration and workflows were built per customer.\n\nThe lesson for you: the FDE role exists because some problems are too messy and too specific to solve from a distance.",
+    "example": "A regional police department wants to link incident reports, licence plate reads and case files. Each lives in a different system with different IDs. A remote team would spend months trading emails about field formats. An FDE on site opens the databases, maps the fields in a week, and shows detectives a first linked view by the end of the second week.",
+    "code": "Traditional product team            Forward deployed team\n-------------------------            ----------------------\nInput:  written spec                 Input:  a mission or goal\nWhere:  company office               Where:  with the customer\nOutput: one feature, many users      Output: many capabilities, one customer\nLoop:   quarterly releases           Loop:   daily feedback from real users\nRisk:   builds the wrong thing       Risk:   builds a one-off that never\n        for everyone                         reaches the product",
+    "lang": "Text"
+   },
+   {
+    "title": "Echoes and Deltas: two jobs",
+    "body": "Palantir split the forward team into two roles because framing a problem and building a solution are different full-time jobs.\n\nThe Echo, or Deployment Strategist, learns how the customer's organisation works, who has authority, which problem matters most, and what success looks like. They manage the relationship and protect the engineers from meetings that do not move the work forward.\n\nThe Deltas are the engineers. They connect data sources, write pipelines and applications, fix bugs and deploy. At many companies today one person, the FDE, does a mix of both jobs, so you should be comfortable doing each.",
+    "example": "At an insurer, the Echo discovers that the claims director cares most about reducing time-to-first-contact from 4 days to 1 day. The Deltas then build a pipeline that pulls new claims every 15 minutes, scores urgency, and pushes a prioritised queue to the adjusters' screen. The Echo tracks the metric weekly and reports it to the director.",
+    "code": "# Weekly split of responsibilities on one deployment\nECHO (strategist)                 DELTA (engineer)\n- run stakeholder interviews      - map claims DB schema\n- define success metric           - build 15-min ingestion job\n  (time-to-first-contact)         - write urgency scoring\n- prioritise backlog              - deploy queue UI to adjusters\n- weekly exec update              - fix data quality issues\n- log product gaps                - log product gaps",
+    "lang": "Text"
+   },
+   {
+    "title": "The FDE as a human API",
+    "body": "An API (application programming interface) is a defined way for two programs to talk. It accepts messy inputs in a known format and returns structured outputs. Calling the FDE a 'human API' means the FDE sits between the customer's messy world and the vendor's clean product.\n\nOn one side, the FDE takes in unclear requests, tribal knowledge and odd data. On the other side, the FDE returns working software to the customer and structured feedback to the product team.\n\nA human API does more than relay messages. It translates, filters and builds. If you only pass requests along, you are acting as a ticket router.",
+    "example": "A logistics customer says 'the dashboard is useless'. A relay would forward that complaint to the product team. The FDE watches three dispatchers use it and learns they need to see late trucks grouped by depot instead of by driver. The FDE builds that view in two days and files a product request: 'allow grouping by any column in the fleet view'.",
+    "code": "def human_api(customer_request: str, observations: list[str]) -> dict:\n    \"\"\"Toy model of what an FDE returns for one request.\"\"\"\n    # 1. Translate: find the real need behind the words\n    real_need = \"late trucks grouped by depot\"\n    # 2. Build: ship something the customer can use now\n    delivered = {\"view\": \"late_trucks_by_depot\", \"days_to_ship\": 2}\n    # 3. Feed back: generalise the gap for the product team\n    product_ticket = {\n        \"title\": \"Group fleet view by any column\",\n        \"evidence\": observations,\n        \"customers_affected\": 1,\n    }\n    return {\"need\": real_need, \"delivered\": delivered, \"feedback\": product_ticket}\n\nprint(human_api(\"the dashboard is useless\", [\"3 dispatchers sort by depot by hand\"]))",
+    "lang": "Python"
+   },
+   {
+    "title": "How FDEs differ from similar roles",
+    "body": "Several customer-facing technical roles sound alike. The differences come down to who writes production code and when they are involved.\n\nA Solutions Architect (SA) designs solutions and advises, mostly before the sale. A Customer Success Engineer (CSE) helps customers adopt the product after the sale and keeps accounts healthy, usually with configuration and troubleshooting. A technology consultant bills hours and hands over documents or custom code, and their work does not feed a product.\n\nAn FDE writes and ships production code inside the customer, on the vendor's platform, and feeds lessons back into the product. The course material describes FDEs spending around 70 to 80 percent of their time on code and model work.",
+    "example": "A bank buys an AI document-processing product. The SA drew the architecture diagram during the sales cycle. The FDE builds the connector to the bank's loan system and tunes extraction for 12 loan forms. Six months later the CSE runs quarterly reviews and training. A consultant from another firm writes the bank's internal process documentation.",
+    "code": "Role         | Main output              | Writes prod code? | When\n-------------|--------------------------|-------------------|-------------------\nSA           | designs, proposals       | rarely            | pre-sale\nCSE          | adoption, health checks  | rarely            | post-sale\nConsultant   | reports, bespoke builds  | sometimes         | per contract\nFDE          | working deployments +    | yes, most of time | pre and post-sale\n             | product feedback         |                   |",
+    "lang": "Text"
+   },
+   {
+    "title": "Closing the loop into the product",
+    "body": "The FDE model only pays off when field work flows back into the core product. If every deployment stays custom, the company becomes a consultancy with software attached.\n\nGood FDEs keep a running log of what they had to build by hand: a missing connector, a repeated data cleaning step, a workflow the product could not express. When the same gap appears at several customers, it becomes a product feature.\n\nThe effect is that each new deployment needs less custom work than the last. You can explain this in an interview as 'the FDE team is paid discovery for the roadmap'.",
+    "example": "Across three retail customers, an FDE team writes nearly the same script to clean store IDs from point-of-sale exports. The fourth time, they propose a built-in 'store ID normaliser'. The product team ships it. The fifth retail deployment takes 3 weeks instead of 6 because that step is now a checkbox.",
+    "code": "-- Field gap log kept by an FDE team\nSELECT gap_title,\n       COUNT(DISTINCT customer_id) AS customers_hit,\n       SUM(hours_spent)            AS hours_spent\nFROM   field_gaps\nWHERE  logged_at >= DATE '2026-01-01'\nGROUP  BY gap_title\nHAVING COUNT(DISTINCT customer_id) >= 3   -- repeated across customers\nORDER  BY hours_spent DESC;               -- best candidates for the product",
+    "lang": "SQL"
+   }
+  ],
+  "glossary": [
+   [
+    "Forward Deployed Engineer (FDE)",
+    "A software engineer embedded with a customer who builds and ships production solutions on the vendor's platform."
+   ],
+   [
+    "Palantir Gotham",
+    "Palantir's data integration and analysis platform first built for government, defense and intelligence users."
+   ],
+   [
+    "Palantir Foundry",
+    "Palantir's data platform for commercial and civil organisations."
+   ],
+   [
+    "Echo",
+    "Palantir's nickname for a Deployment Strategist who frames the problem and owns the customer relationship."
+   ],
+   [
+    "Delta",
+    "Palantir's nickname for a Forward Deployed Software Engineer who builds and ships the solution."
+   ],
+   [
+    "Human API",
+    "A description of the FDE as the translator between messy customer needs and a clean product."
+   ],
+   [
+    "Solutions Architect",
+    "A mostly pre-sale role that designs and advises on how a product will fit a customer."
+   ],
+   [
+    "Customer Success Engineer",
+    "A post-sale role focused on adoption, health and troubleshooting."
+   ],
+   [
+    "Field feedback",
+    "Structured reports from deployments about product gaps and repeated custom work."
+   ]
+  ],
+  "practice": [
+   "Write a one-page comparison table of FDE, SA, CSE and consultant for a company you want to join, using its public job descriptions. Deliverable: the table plus two sentences on what surprised you.",
+   "Pick a vague goal such as 'reduce missed hospital follow-ups'. Write an Echo brief (users, success metric, first problem to solve) and a Delta task list of 5 engineering tasks. Deliverable: a short markdown doc.",
+   "Stretch: create a field gap log as a CSV with 15 invented entries across 5 customers, load it into SQLite, and write the SQL query that ranks which gaps should become product features. Deliverable: CSV, query and a 3-line recommendation."
+  ]
+ },
+ "slg": {
+  "plain": "Services-Led Growth (SLG) is a strategy where a software company uses hands-on engineering help, such as FDEs, to win customers and grow their spending. The alternative, Product-Led Growth (PLG), relies on users signing up and adopting the product on their own. SLG costs more up front, which lowers gross margin, meaning the share of revenue left after the direct cost of delivering the service. Companies accept that because deeply embedded customers use more, stay longer and spend more each year, which is measured by Net Revenue Retention (NRR).",
+  "analogy": "A gym that gives every new member a personal trainer for the first three months loses money on each member at first. The members who get real results keep coming, bring friends and buy extra classes, so the gym earns more over the years than a cheaper gym with no trainers.",
+  "why": "As an FDE you are the expensive part of this model, so you need to understand how your work pays for itself. When a customer's executive asks why the vendor is 'giving away' engineering time, or when your own leadership asks which account deserves more FDE hours, you should be able to answer in terms of adoption, expansion and NRR.",
+  "subtopics": [
+   {
+    "title": "Unit economics and gross margin",
+    "body": "Revenue is the money customers pay. Cost of goods sold (COGS) is what it costs to deliver the product: cloud hosting, support, and for FDE companies, a share of engineer salaries. Gross margin is (revenue minus COGS) divided by revenue.\n\nPure software companies often have high gross margins because serving one more user costs very little. Putting engineers on customer projects raises COGS, so the margin drops.\n\nThis lower margin is the 'margin' side of the margin-for-moat trade. It is a real cost and you should not hide it. The question is what the company gets in return.",
+    "example": "A company earns $10M in annual revenue. Hosting and support cost $1.5M. With no FDEs, gross margin is 85 percent. It then assigns 8 FDEs at a loaded cost of $250k each to customer work, adding $2M to COGS. Gross margin falls to 65 percent.",
+    "code": "revenue = 10_000_000\nhosting_support = 1_500_000\nfde_count, fde_cost = 8, 250_000          # loaded cost per FDE per year\n\ndef gross_margin(rev, cogs):\n    return (rev - cogs) / rev\n\nprint(\"no FDEs:  \", round(gross_margin(revenue, hosting_support), 2))   # 0.85\ncogs_fde = hosting_support + fde_count * fde_cost\nprint(\"with FDEs:\", round(gross_margin(revenue, cogs_fde), 2))          # 0.65",
+    "lang": "Python"
+   },
+   {
+    "title": "Net Revenue Retention explained",
+    "body": "Net Revenue Retention (NRR) measures how revenue from a fixed group of existing customers changes over a period, usually a year. ARR means annual recurring revenue.\n\nThe formula is (starting ARR + expansion - contraction - churn) divided by starting ARR. Expansion is extra spending from upsells or new teams. Contraction is customers reducing spend. Churn is customers leaving.\n\nNRR above 100 percent means the existing customer base grows even if you sign no new customers. FDE-heavy companies aim to push this number up, because deep deployments tend to expand into more teams and use cases.",
+    "example": "A company starts the year with $20M ARR from 40 customers. During the year, those customers add $6M through expansion, two customers cut $1M, and three customers worth $1.5M leave. NRR = (20 + 6 - 1 - 1.5) / 20 = 117.5 percent.",
+    "code": "def nrr(start_arr, expansion, contraction, churn):\n    \"\"\"Net Revenue Retention for one cohort over one period.\"\"\"\n    return (start_arr + expansion - contraction - churn) / start_arr\n\n# Cohort: customers active on 1 Jan, measured on 31 Dec\nprint(f\"{nrr(20.0, 6.0, 1.0, 1.5):.1%}\")   # 117.5%\n\n# Gross Revenue Retention ignores expansion: shows pure leakage\ngrr = (20.0 - 1.0 - 1.5) / 20.0\nprint(f\"GRR {grr:.1%}\")                     # 87.5%",
+    "lang": "Python"
+   },
+   {
+    "title": "How deployments create expansion",
+    "body": "Expansion rarely happens by accident. It happens when a first use case works so well that other teams inside the customer ask for it.\n\nThe FDE's first job is to make one workflow succeed visibly, with a metric the customer's leadership cares about. The second job is to notice the next team with a similar problem and make it easy for them to start.\n\nThis pattern is often called 'land and expand'. You land with one department and expand to others, and each expansion shows up as NRR.",
+    "example": "A manufacturer buys a predictive maintenance product for one plant at $300k per year. The FDE connects sensor data and cuts unplanned downtime on two production lines. The operations VP then asks for four more plants. The contract grows to $1.2M, all of which counts as expansion in that year's NRR.",
+    "code": "-- Expansion by account: which deployments grew?\nSELECT a.account_name,\n       s.arr_start,\n       s.arr_end,\n       s.arr_end - s.arr_start               AS change,\n       ROUND(s.arr_end / s.arr_start, 2)     AS growth_ratio,\n       a.fde_hours_last_year\nFROM   arr_snapshots s\nJOIN   accounts a ON a.account_id = s.account_id\nWHERE  s.year = 2026\nORDER  BY change DESC\nLIMIT  10;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Data flywheels and switching cost",
+    "body": "A data flywheel is a loop where product usage creates data, the data improves the product, and the better product attracts more usage. In deployments, this data includes how the customer's people make decisions, where exceptions happen, and how they correct the system.\n\nSwitching cost is how painful it would be for a customer to replace the product. A tool connected to 15 data sources, woven into daily workflows and tuned on the customer's own history is expensive to rip out.\n\nTogether, the flywheel and the switching cost form the 'moat': a defence against competitors. The moat is what the company buys with the lower margin.",
+    "example": "An AI claims triage tool at an insurer logs every time an adjuster overrides its priority score. After a year, there are 80,000 labelled overrides. Those labels improve the model for that insurer. A competitor pitching a new tool would start with none of that history and would need months of integration work.",
+    "code": "Usage  --->  Process data  --->  Better model / features\n  ^                                      |\n  |                                      v\nMore teams adopt  <---  Visible results for the customer\n\nSwitching cost checklist for an account:\n[ ] number of integrated source systems\n[ ] number of daily active users\n[ ] workflows that depend on the product\n[ ] models tuned on customer data\n[ ] reports that executives read weekly",
+    "lang": "Text"
+   },
+   {
+    "title": "When SLG works and when it fails",
+    "body": "SLG works when field work turns into product. Over time, the same deployment should need fewer FDE hours, and gross margin should rise as a result.\n\nSLG fails when every deployment stays bespoke. Then margins never improve, and the company behaves like a consulting firm with a software licence attached.\n\nA simple health check is to track FDE hours per new deployment over time, alongside NRR. You want the first number going down and the second staying high.",
+    "example": "Company A's first 5 deployments took 3,000 FDE hours each. By deployments 16 to 20, the average was 1,100 hours because connectors and templates were productised. Company B's average stayed at 2,900 hours. Company A is running SLG well. Company B is at risk of becoming a consultancy.",
+    "code": "import statistics as st\n\n# FDE hours per deployment, in the order deployments started\ncompany_a = [3000, 2900, 2600, 2400, 2100, 1900, 1700, 1500, 1300, 1100]\ncompany_b = [3000, 2950, 3100, 2900, 2850, 3000, 2950, 2900, 2880, 2900]\n\ndef trend(hours):\n    first, last = st.mean(hours[:3]), st.mean(hours[-3:])\n    return round((last - first) / first, 2)   # negative = getting cheaper\n\nprint(\"A:\", trend(company_a))   # -0.54\nprint(\"B:\", trend(company_b))   # -0.04",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Services-Led Growth (SLG)",
+    "Growing revenue by pairing software with hands-on engineering delivery."
+   ],
+   [
+    "Product-Led Growth (PLG)",
+    "Growing revenue by letting users discover, adopt and buy the product themselves."
+   ],
+   [
+    "ARR",
+    "Annual recurring revenue: the yearly value of subscription contracts."
+   ],
+   [
+    "Gross margin",
+    "Revenue minus the direct cost of delivering it, divided by revenue."
+   ],
+   [
+    "Net Revenue Retention (NRR)",
+    "The change in revenue from a fixed group of existing customers, including expansion, contraction and churn."
+   ],
+   [
+    "Churn",
+    "Revenue lost when customers cancel."
+   ],
+   [
+    "Land and expand",
+    "Winning a small first use case and then growing into more teams and use cases."
+   ],
+   [
+    "Data flywheel",
+    "A loop where usage creates data that improves the product, which drives more usage."
+   ],
+   [
+    "Switching cost",
+    "The effort and risk a customer faces in replacing a product."
+   ],
+   [
+    "Margin-for-moat",
+    "Accepting lower margins now in exchange for stickier, larger accounts later."
+   ]
+  ],
+  "practice": [
+   "Compute NRR and gross revenue retention for a cohort of 5 invented customers with starting and ending ARR. Deliverable: a small Python script that prints both numbers.",
+   "Write a half-page memo arguing for or against assigning two more FDEs to a $500k account, using gross margin, expansion potential and switching cost. Deliverable: the memo with at least three numbers.",
+   "Stretch: build a spreadsheet or pandas model over 3 years with FDE cost per deployment falling 20 percent a year and NRR of 115 percent. Show when gross margin crosses 75 percent. Deliverable: the model and a chart."
+  ]
+ },
+ "resilient": {
+  "plain": "Resilient API ingestion means writing code that pulls data from someone else's system and keeps working when that system misbehaves. An API (application programming interface) is a set of URLs your code calls to get or send data. Customer APIs time out, return errors, limit how often you may call them (rate limiting), and sometimes send bad data. Resilient code retries only the errors that are temporary, checks every record's shape before using it, and keeps bad records aside so nothing disappears silently.",
+  "analogy": "Picture a courier collecting parcels from a warehouse that is often busy. If the door is shut for lunch, the courier waits and tries again a bit later. If a parcel is addressed to a street that does not exist, the courier does not keep knocking; they put it in a 'problem parcels' bin with a note and carry on.",
+  "why": "Almost every FDE engagement starts by pulling data out of a customer's CRM, ERP or internal service. If your job crashes at 2 a.m. on a timeout or quietly drops 3 percent of invoices, you lose the customer's trust fast. Resilient ingestion is what lets you promise 'every record is either loaded or accounted for'.",
+  "subtopics": [
+   {
+    "title": "Timeouts and error classes",
+    "body": "Every HTTP call needs a timeout, which is a maximum time to wait for a reply. Without one, a stuck server can freeze your worker forever.\n\nHTTP status codes tell you what went wrong. Codes 200 to 299 mean success. 429 means 'too many requests', you hit a rate limit. 500 to 599 mean the server had a problem. Most other 4xx codes, like 400, 401, 403, 404 and 422, mean your request is wrong.\n\nThis gives a simple rule. Transient errors (429, 5xx, timeouts, connection resets) may succeed later, so retry them. Permanent errors (most 4xx) will fail again, so stop and fix the cause.",
+    "example": "A pipeline calls a retailer's orders API. At 09:00 it gets a 503 because the server is restarting. Retrying 4 seconds later works. At 09:05 it gets a 401 because the API token expired. Retrying 50 times would just fill the logs, so the job stops and alerts the FDE to rotate the token.",
+    "code": "import requests\n\nclass RetryableError(Exception):\n    \"\"\"Error worth retrying: rate limit, server error, timeout.\"\"\"\n\ndef classify(resp: requests.Response) -> None:\n    if resp.status_code == 429:                   # rate limited\n        raise RetryableError(\"429\", resp.headers.get(\"Retry-After\"))\n    if 500 <= resp.status_code < 600:             # server problem\n        raise RetryableError(str(resp.status_code))\n    resp.raise_for_status()                       # other 4xx: a real bug, fail\n\ndef get(session: requests.Session, url: str, params: dict) -> dict:\n    try:\n        resp = session.get(url, params=params, timeout=(3, 10))  # connect, read\n    except (requests.Timeout, requests.ConnectionError) as e:\n        raise RetryableError(\"network\") from e\n    classify(resp)\n    return resp.json()",
+    "lang": "Python"
+   },
+   {
+    "title": "Backoff, jitter and Retry-After",
+    "body": "Retrying immediately after a failure usually fails again and adds load to a struggling server. Exponential backoff waits longer after each failure: 1 second, then 2, then 4, then 8.\n\nJitter adds a small random amount to each wait. Without it, 20 parallel workers that failed at the same moment all retry at the same moment, and the server gets hit in waves.\n\nSome servers send a Retry-After header saying exactly how long to wait. Honour it when present. Always cap the number of attempts, then fail loudly so a person can look.",
+    "example": "An FDE runs 10 workers against a CRM API limited to 100 requests per minute. Without jitter, all 10 get 429s together and retry together every few seconds. With exponential backoff plus jitter, retries spread out, and the job finishes its 50,000 records in about 9 minutes without tripping the limit again.",
+    "code": "from tenacity import (retry, stop_after_attempt,\n                      wait_exponential_jitter, retry_if_exception_type)\n\n@retry(\n    wait=wait_exponential_jitter(initial=1, max=30),  # 1s, 2s, 4s... plus random jitter, capped at 30s\n    stop=stop_after_attempt(5),                       # give up after 5 tries\n    retry=retry_if_exception_type(RetryableError),    # only transient errors\n    reraise=True,                                     # surface the last error\n)\ndef fetch_page(session, cursor):\n    return get(session, \"https://api.example-crm.com/v1/orders\",\n               {\"cursor\": cursor, \"limit\": 500})",
+    "lang": "Python"
+   },
+   {
+    "title": "Pagination and checkpoints",
+    "body": "APIs return large results in pages. Offset pagination ('give me rows 1000 to 1500') can skip or repeat rows if data changes during the pull. Cursor pagination returns a token pointing to where the next page starts, which is stable.\n\nA checkpoint is a saved cursor. After each page is stored, write the cursor to a file or table. If the job crashes on page 812, it can resume from page 812 instead of starting over.\n\nFor very large backfills, first ask the customer whether a bulk export or a webhook exists. It is often faster than paging through millions of records.",
+    "example": "A hospital scheduling API returns 200 appointments per page. The initial backfill is 1.8 million appointments, about 9,000 pages. The job crashes at page 4,120 due to a network outage. Because the cursor was saved after each page, the rerun continues from 4,120 and finishes in half the time.",
+    "code": "import json, pathlib\n\nCHECKPOINT = pathlib.Path(\"checkpoint.json\")\n\ndef load_cursor():\n    return json.loads(CHECKPOINT.read_text())[\"cursor\"] if CHECKPOINT.exists() else None\n\ndef save_cursor(cursor):\n    CHECKPOINT.write_text(json.dumps({\"cursor\": cursor}))\n\ndef ingest(session, sink):\n    cursor = load_cursor()                       # resume where we stopped\n    while True:\n        page = fetch_page(session, cursor)\n        sink.write(page[\"data\"])                 # store first...\n        cursor = page.get(\"next_cursor\")\n        save_cursor(cursor)                      # ...then checkpoint\n        if not cursor:\n            break                                # no more pages",
+    "lang": "Python"
+   },
+   {
+    "title": "Validate at the boundary",
+    "body": "The boundary is the point where outside data enters your code. Validate there, so errors are caught once and early.\n\nA schema describes what a valid record looks like: field names, types and allowed values. Pydantic is a Python library that turns a dict into a typed object and raises a ValidationError if the data does not match.\n\nFor each field, decide what to do with missing or bad values: reject the record, fill a default, or leave it as null and flag it. Write those decisions down and share them with the customer.",
+    "example": "An e-commerce order feed sometimes sends amount as the string \"12.50\", sometimes as a number, and occasionally as an empty string. The schema coerces \"12.50\" to 12.5, rejects the empty string, and requires currency to be one of three codes. Out of 40,000 orders on day one, 37 fail validation.",
+    "code": "from datetime import datetime\nfrom decimal import Decimal\nfrom typing import Literal\nfrom pydantic import BaseModel, Field, ValidationError\n\nclass Order(BaseModel):\n    order_id: str\n    customer_id: str\n    amount: Decimal = Field(ge=0)               # \"12.50\" is coerced, -3 fails\n    currency: Literal[\"USD\", \"EUR\", \"GBP\"]\n    created_at: datetime                        # ISO strings are parsed\n    coupon: str | None = None                   # optional field\n\ntry:\n    Order.model_validate({\"order_id\": \"A1\", \"customer_id\": \"C9\",\n                          \"amount\": \"\", \"currency\": \"USD\",\n                          \"created_at\": \"2026-09-01T10:00:00Z\"})\nexcept ValidationError as e:\n    print(e.errors()[0][\"loc\"], e.errors()[0][\"msg\"])   # ('amount',) ...",
+    "lang": "Python"
+   },
+   {
+    "title": "Dead letters and idempotent writes",
+    "body": "A dead-letter queue (DLQ) is a place where records that failed processing are stored with the reason. Nothing is thrown away, so you can report on data quality and replay records after a fix.\n\nIdempotent means doing something twice has the same effect as doing it once. Retries make duplicates likely, so writes must be idempotent. Two common tools: an upsert keyed on a natural ID, and an idempotency key sent with API writes so the server ignores repeats.\n\nWith these two pieces, every record is either loaded exactly once or sitting in the DLQ with an explanation.",
+    "example": "The 37 bad orders from the previous example go to a dead_letter table with the error text. The FDE sends the customer a weekly report: '37 orders had empty amounts, all from the mobile checkout'. The customer fixes the bug, the FDE replays the 37 rows, and the upsert means the 39,963 good orders are not duplicated.",
+    "code": "def load(rows, db):\n    good = 0\n    for row in rows:\n        try:\n            order = Order.model_validate(row)\n        except ValidationError as e:\n            db.execute(\"INSERT INTO dead_letter(source, payload, error) VALUES (%s, %s, %s)\",\n                       (\"orders_api\", json.dumps(row), str(e)))   # keep it with the reason\n            continue\n        db.execute(\"\"\"\n            INSERT INTO orders (order_id, customer_id, amount, currency, created_at)\n            VALUES (%s, %s, %s, %s, %s)\n            ON CONFLICT (order_id) DO UPDATE          -- upsert: safe to run twice\n            SET amount = EXCLUDED.amount, currency = EXCLUDED.currency\n        \"\"\", (order.order_id, order.customer_id, order.amount,\n              order.currency, order.created_at))\n        good += 1\n    return good",
+    "lang": "Python"
+   },
+   {
+    "title": "Test the failure paths first",
+    "body": "Test-Driven Development (TDD) means writing a failing test before the code that makes it pass. For ingestion, the most valuable tests cover failures: a 429, a 500, a timeout and a malformed record.\n\nYou do not want to call the real customer API in tests. A mock replaces it with a fake that returns whatever you script. The responses library does this for requests.\n\nKeep changes small and reviewed. Commit each fix on a feature branch with its test, and open a pull request so a teammate can check the retry logic.",
+    "example": "Before writing fetch_page, the FDE writes a test where the fake API returns 429, then 503, then 200. The test asserts that the function returns the data and made exactly 3 calls. A second test returns 401 and asserts that the function fails after 1 call.",
+    "code": "import pytest, requests, responses\n\nURL = \"https://api.example-crm.com/v1/orders\"\n\n@responses.activate\ndef test_retries_transient_then_succeeds():\n    responses.add(responses.GET, URL, status=429)\n    responses.add(responses.GET, URL, status=503)\n    responses.add(responses.GET, URL, json={\"data\": [], \"next_cursor\": None})\n    assert fetch_page(requests.Session(), None)[\"data\"] == []\n    assert len(responses.calls) == 3             # retried twice\n\n@responses.activate\ndef test_does_not_retry_auth_error():\n    responses.add(responses.GET, URL, status=401)\n    with pytest.raises(requests.HTTPError):\n        fetch_page(requests.Session(), None)\n    assert len(responses.calls) == 1             # no retry on 4xx",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Timeout",
+    "The maximum time a client waits for a response before giving up."
+   ],
+   [
+    "Rate limit",
+    "A cap on how many requests a client may make in a time window, signalled by HTTP 429."
+   ],
+   [
+    "Transient error",
+    "A failure that may succeed if retried later, such as 429, 503 or a timeout."
+   ],
+   [
+    "Exponential backoff",
+    "Waiting longer between each retry, typically doubling the delay."
+   ],
+   [
+    "Jitter",
+    "Random variation added to retry delays so clients do not retry in sync."
+   ],
+   [
+    "Cursor pagination",
+    "Fetching pages using a token that marks where the next page begins."
+   ],
+   [
+    "Schema validation",
+    "Checking that each record has the expected fields, types and values."
+   ],
+   [
+    "Dead-letter queue",
+    "Storage for records that failed processing, kept with the error for review and replay."
+   ],
+   [
+    "Idempotent",
+    "An operation that has the same result whether it runs once or several times."
+   ],
+   [
+    "Mock",
+    "A fake version of a dependency used in tests to return scripted responses."
+   ]
+  ],
+  "practice": [
+   "Write a function that calls https://httpbin.org/status/503 with a timeout and exponential backoff capped at 4 attempts, logging each wait. Deliverable: the script and its log output.",
+   "Define a Pydantic model for an invented 'patient appointment' record with 6 fields, then validate a list of 20 sample dicts where 4 are broken. Deliverable: a script that prints loaded count and writes failures to a dead_letter.jsonl file.",
+   "Stretch: build a full ingestion module with cursor pagination, checkpointing, validation, a DLQ and upserts into SQLite, plus pytest tests using responses for 429, 500, 401 and a malformed row. Deliverable: a small repo with passing tests."
+  ]
+ },
+ "sql": {
+  "plain": "SQL (Structured Query Language) is the language used to ask questions of relational databases, where data lives in tables of rows and columns. You write a query starting with SELECT, but the database evaluates the clauses in a different logical order: FROM and JOIN first, then WHERE, GROUP BY, HAVING, SELECT, ORDER BY and LIMIT. Knowing that order explains many confusing errors and wrong results. This lesson also covers the tools you use most in real analysis work: joins, aggregates, common table expressions and window functions.",
+  "analogy": "Cooking from a recipe: you gather ingredients from the pantry (FROM), combine them (JOIN), throw away the bruised ones (WHERE), sort them into bowls (GROUP BY), discard bowls that are too small (HAVING), then plate and label the dish (SELECT), arrange the plates (ORDER BY) and serve only the first few (LIMIT). You write the menu card first, but the kitchen works in this order.",
+  "why": "On most engagements, the first question from the customer is a number: 'how many claims were late last quarter?' or 'why does your dashboard disagree with finance?'. You will write and debug SQL against unfamiliar schemas, often live in front of the customer, so getting correct numbers quickly is a core FDE skill.",
+  "subtopics": [
+   {
+    "title": "The logical order of a query",
+    "body": "The logical order is FROM, JOIN, WHERE, GROUP BY, HAVING, SELECT, ORDER BY, LIMIT. Each step works on the output of the step before.\n\nThis order explains common errors. WHERE runs before SELECT, so it cannot use an alias defined in SELECT. WHERE also runs before GROUP BY, so it cannot filter on SUM or COUNT. That is the job of HAVING.\n\nThe database may physically run things differently for speed, but the result must match this logical order. Use it as your mental model when reading or debugging.",
+    "example": "A retailer analyst writes WHERE revenue > 1000 where revenue is an alias for SUM(amount). The database errors because revenue does not exist yet at the WHERE step, and aggregates are not computed yet either. Moving the condition to HAVING SUM(amount) > 1000 fixes it.",
+    "code": "-- Wrong: alias and aggregate used in WHERE\n-- SELECT store_id, SUM(amount) AS revenue FROM sales\n-- WHERE revenue > 1000 GROUP BY store_id;\n\n-- Right: filter rows in WHERE, filter groups in HAVING\nSELECT store_id,\n       SUM(amount) AS revenue\nFROM   sales\nWHERE  sale_date >= DATE '2026-07-01'    -- row filter, runs 3rd\nGROUP  BY store_id                       -- runs 4th\nHAVING SUM(amount) > 1000                -- group filter, runs 5th\nORDER  BY revenue DESC;                  -- alias allowed here, runs after SELECT",
+    "lang": "SQL"
+   },
+   {
+    "title": "Joins and the fan-out trap",
+    "body": "A join combines rows from two tables where a condition matches. An INNER JOIN keeps only rows with a match on both sides. A LEFT JOIN keeps every row from the left table and fills NULL where the right side has no match.\n\nThe cardinality of a relationship is how many rows match on each side. If one order has many shipments, joining orders to shipments produces one row per shipment. Summing order amounts after that join counts each order several times. This is called fan-out.\n\nThe fix is to aggregate the 'many' side first, down to one row per key, and then join.",
+    "example": "An online store reports $2.4M revenue for August, while finance says $1.6M. The query joined orders to shipments, and split shipments meant about a third of orders appeared twice. Aggregating shipments per order first, then joining, returns $1.6M.",
+    "code": "-- Fan-out bug: orders with 2 shipments are counted twice\nSELECT SUM(o.amount)\nFROM   orders o\nJOIN   shipments s ON s.order_id = o.order_id;\n\n-- Fix: reduce shipments to one row per order first\nWITH ship AS (\n  SELECT order_id, COUNT(*) AS n_shipments, MAX(shipped_at) AS last_shipped\n  FROM   shipments\n  GROUP  BY order_id\n)\nSELECT SUM(o.amount) AS revenue\nFROM   orders o\nLEFT JOIN ship s ON s.order_id = o.order_id     -- keeps unshipped orders too\nWHERE  o.created_at >= DATE '2026-08-01'\n  AND  o.created_at <  DATE '2026-09-01';",
+    "lang": "SQL"
+   },
+   {
+    "title": "NULLs and aggregates",
+    "body": "NULL means 'unknown or missing'. It is different from zero or an empty string. Any comparison with NULL, such as NULL = NULL, returns unknown, which WHERE treats as false. Use IS NULL and IS NOT NULL instead.\n\nAggregates handle NULL in specific ways. COUNT(*) counts rows. COUNT(column) counts only non-NULL values. SUM and AVG skip NULLs, so AVG of (10, NULL, 20) is 15, not 10.\n\nCOALESCE(x, default) replaces NULL with a value. Use it deliberately, because replacing unknown with 0 changes the meaning of averages.",
+    "example": "A hospital table has 1,000 discharges. 120 have no follow_up_date. COUNT(*) is 1,000, COUNT(follow_up_date) is 880. The 'follow-up rate' is 880 / 1,000 = 88 percent. Writing WHERE follow_up_date = NULL returns zero rows, which would wrongly suggest nobody is missing a follow-up.",
+    "code": "SELECT COUNT(*)                          AS discharges,        -- 1000\n       COUNT(follow_up_date)             AS with_follow_up,    -- 880\n       COUNT(*) - COUNT(follow_up_date)  AS missing,           -- 120\n       ROUND(100.0 * COUNT(follow_up_date) / COUNT(*), 1) AS pct\nFROM   discharges\nWHERE  discharged_at >= DATE '2026-01-01';\n\n-- Find the missing ones: IS NULL, never = NULL\nSELECT patient_id, discharged_at\nFROM   discharges\nWHERE  follow_up_date IS NULL;",
+    "lang": "SQL"
+   },
+   {
+    "title": "CTEs for readable queries",
+    "body": "A common table expression (CTE) is a named subquery defined with WITH at the top of a query. It lets you build a result in small, readable steps.\n\nEach CTE can refer to the ones before it. You can run each step on its own while debugging, which is useful when a number looks wrong in front of a customer.\n\nIn modern PostgreSQL and most warehouses, CTEs are usually optimised like normal subqueries, so readability rarely costs performance.",
+    "example": "An insurer wants the average days from claim filed to first payment, for claims filed in Q2, by product line. The FDE builds it in three CTEs: Q2 claims, first payment per claim, and the joined result. When the auto line looks odd, they run the second CTE alone and find duplicate payment rows.",
+    "code": "WITH q2_claims AS (\n  SELECT claim_id, product_line, filed_at\n  FROM   claims\n  WHERE  filed_at >= DATE '2026-04-01' AND filed_at < DATE '2026-07-01'\n),\nfirst_payment AS (\n  SELECT claim_id, MIN(paid_at) AS first_paid_at   -- one row per claim\n  FROM   payments\n  GROUP  BY claim_id\n)\nSELECT c.product_line,\n       COUNT(*)                                        AS claims,\n       ROUND(AVG(p.first_paid_at::date - c.filed_at::date), 1) AS avg_days_to_pay\nFROM   q2_claims c\nJOIN   first_payment p USING (claim_id)\nGROUP  BY c.product_line\nORDER  BY avg_days_to_pay DESC;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Window functions",
+    "body": "A window function computes a value across a set of rows related to the current row, without collapsing them. GROUP BY turns many rows into one. A window keeps every row and adds a column.\n\nThe syntax is FUNCTION() OVER (PARTITION BY ... ORDER BY ...). PARTITION BY splits rows into groups. ORDER BY sets the order within each group. Useful functions include ROW_NUMBER, RANK, LAG (the previous row's value) and SUM as a running total.\n\nWindow functions run at the SELECT step, so to filter on their result, wrap the query in a CTE and filter in the outer query.",
+    "example": "A subscription company wants each customer's most recent plan change and how much their monthly price moved. ROW_NUMBER picks the latest change per customer. LAG gets the previous price so the query can compute the difference, for example from $49 to $99, a change of +$50.",
+    "code": "WITH changes AS (\n  SELECT customer_id,\n         changed_at,\n         monthly_price,\n         LAG(monthly_price) OVER (PARTITION BY customer_id\n                                  ORDER BY changed_at)        AS prev_price,\n         ROW_NUMBER()       OVER (PARTITION BY customer_id\n                                  ORDER BY changed_at DESC)   AS rn\n  FROM   plan_changes\n)\nSELECT customer_id,\n       changed_at,\n       prev_price,\n       monthly_price,\n       monthly_price - prev_price AS delta\nFROM   changes\nWHERE  rn = 1;             -- latest change only; filtering happens outside the window",
+    "lang": "SQL"
+   },
+   {
+    "title": "Debugging a number that looks wrong",
+    "body": "When a result disagrees with what the customer expects, work through a fixed checklist instead of guessing.\n\nFirst, check the grain: what does one row represent? Second, count rows before and after each join to spot fan-out or dropped rows. Third, check filters, especially date boundaries and time zones. Fourth, check NULL handling. Fifth, compare against a single known record that the customer can verify by hand.\n\nWrite these checks as small queries and keep them. They become a reconciliation script you can rerun when data changes.",
+    "example": "A dashboard shows 5,210 active members at a gym chain, while the membership team says 5,030. Row counts show the join to a 'locations' table adds 180 rows, because 180 members are linked to two home gyms. The fix is to pick a primary location per member before joining.",
+    "code": "-- 1. Grain: is member_id unique in the base table?\nSELECT COUNT(*), COUNT(DISTINCT member_id) FROM members WHERE status = 'active';\n\n-- 2. Row count after the join: did it grow?\nSELECT COUNT(*), COUNT(DISTINCT m.member_id)\nFROM   members m\nJOIN   member_locations ml ON ml.member_id = m.member_id\nWHERE  m.status = 'active';\n\n-- 3. Which keys fan out?\nSELECT member_id, COUNT(*) AS n\nFROM   member_locations\nGROUP  BY member_id\nHAVING COUNT(*) > 1\nORDER  BY n DESC\nLIMIT  20;",
+    "lang": "SQL"
+   }
+  ],
+  "glossary": [
+   [
+    "Logical query order",
+    "The sequence in which SQL clauses are conceptually evaluated: FROM, JOIN, WHERE, GROUP BY, HAVING, SELECT, ORDER BY, LIMIT."
+   ],
+   [
+    "INNER JOIN",
+    "A join that keeps only rows that match on both sides."
+   ],
+   [
+    "LEFT JOIN",
+    "A join that keeps all rows from the left table and fills NULL when there is no match."
+   ],
+   [
+    "Fan-out",
+    "Row multiplication caused by joining to a table with several matching rows per key."
+   ],
+   [
+    "Grain",
+    "What a single row in a table or result represents."
+   ],
+   [
+    "NULL",
+    "A marker for a missing or unknown value."
+   ],
+   [
+    "Aggregate function",
+    "A function such as SUM, COUNT or AVG that combines many rows into one value."
+   ],
+   [
+    "HAVING",
+    "A clause that filters groups after GROUP BY using aggregates."
+   ],
+   [
+    "CTE",
+    "A named subquery defined with WITH to structure a query in steps."
+   ],
+   [
+    "Window function",
+    "A function computed over related rows using OVER, which keeps every row."
+   ]
+  ],
+  "practice": [
+   "Create a small SQLite database with orders (20 rows) and customers (5 rows). Write a query for revenue per customer with more than 3 orders, and annotate each clause with its logical step number. Deliverable: the .sql file.",
+   "Add a shipments table where some orders have 2 shipments. Write the fan-out query, show the inflated total, then write the corrected version. Deliverable: both queries and their outputs.",
+   "Stretch: using window functions, find each customer's first order, their second order, and the days between them, then compute the median gap per region. Deliverable: one query using at least two CTEs and two window functions."
+  ]
+ },
+ "planner": {
+  "plain": "When you send SQL to a database, a component called the query planner (or optimizer) decides how to actually fetch the data. It considers options such as reading the whole table, using an index, and different ways to join tables, and it picks the one it estimates is cheapest. An index is an extra data structure, like a sorted lookup table, that lets the database find rows without scanning everything. EXPLAIN shows the plan the database chose, and EXPLAIN ANALYZE also runs the query and reports real timings and row counts.",
+  "analogy": "Finding a recipe in a cookbook: you can flip through every page (a sequential scan), or use the index at the back that lists 'lasagne, page 212' (an index scan). If you want every pasta recipe and pasta is half the book, flipping through may actually be faster than bouncing between the index and the pages.",
+  "why": "Customers often blame a new AI or analytics product for being slow when the real problem is a missing index or a bad plan on their own database. An FDE who can read a plan and fix a 90-second query in ten minutes earns credibility quickly and avoids expensive infrastructure changes.",
+  "subtopics": [
+   {
+    "title": "From SQL text to a plan",
+    "body": "A query goes through several stages. The parser checks syntax and builds a tree. The rewriter expands views into their base queries. The planner generates candidate plans and estimates the cost of each. The executor runs the chosen plan.\n\nCost is an estimate in abstract units that combines expected disk reads and CPU work. It is based on statistics: how many rows each table has and how values are distributed.\n\nIf the statistics are wrong, the estimates are wrong, and the planner can pick a bad plan. Many slow-query investigations end with 'the statistics were stale'.",
+    "example": "A logistics company loads 30 million new shipment rows overnight. The next morning a report that took 2 seconds takes 3 minutes. The planner still thinks the table has 2 million rows and picks a plan suited to a small table. Running ANALYZE shipments refreshes statistics, and the report is back to 2 seconds.",
+    "code": "-- How many rows does the planner think the table has?\nSELECT relname, reltuples::bigint AS estimated_rows\nFROM   pg_class\nWHERE  relname = 'shipments';\n\n-- When were statistics last refreshed?\nSELECT relname, last_analyze, last_autoanalyze, n_live_tup\nFROM   pg_stat_user_tables\nWHERE  relname = 'shipments';\n\n-- Refresh statistics after a big load\nANALYZE shipments;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Reading EXPLAIN ANALYZE",
+    "body": "A plan is a tree of nodes. Each node does one job, such as scanning a table, joining two inputs or sorting. Read it from the most indented line upward, because the innermost nodes run first and feed their parents.\n\nFor each node, EXPLAIN ANALYZE shows estimated rows and actual rows. A big gap, for example estimated 10 and actual 500,000, tells you the planner was misinformed. That node is usually where the problem starts.\n\nAlso look at actual time, the loops count (how many times the node ran), and whether a sort spilled to disk. The BUFFERS option adds how many pages were read.",
+    "example": "A clinic's appointment search takes 4.2 seconds. The plan shows a Nested Loop whose inner Seq Scan on appointments runs 1,800 loops. The planner estimated 3 outer rows but got 1,800. Adding an index on appointments(clinic_id, starts_at) turns the inner scan into an index scan and brings the query to 35 ms.",
+    "code": "EXPLAIN (ANALYZE, BUFFERS)\nSELECT p.name, a.starts_at\nFROM   patients p\nJOIN   appointments a ON a.patient_id = p.id\nWHERE  p.clinic_id = 7\n  AND  a.starts_at >= now() - interval '30 days';\n\n-- What to look for in the output:\n--   rows=3 (estimate) vs actual rows=1800   -> bad estimate\n--   loops=1800 on an inner Seq Scan          -> repeated full scans\n--   Sort Method: external merge  Disk: ...   -> sort spilled to disk\n--   Buffers: shared read=...                 -> pages read from disk",
+    "lang": "SQL"
+   },
+   {
+    "title": "B-tree indexes and column order",
+    "body": "A B-tree is a balanced tree that keeps keys in sorted order. Finding a key takes about log(n) steps, so even a billion rows need only a few levels. Because keys are sorted, a B-tree also handles ranges (created_at > X) and ORDER BY.\n\nA composite index covers several columns, such as (customer_id, created_at). It is sorted by the first column, then the second within each first value. Put columns filtered by equality first and range columns after. A query that does not filter on the first column usually cannot use the index efficiently.\n\nSome things prevent index use: wrapping the column in a function, like lower(email), or a pattern that starts with a wildcard, like LIKE '%smith'. An expression index on lower(email) solves the first case.",
+    "example": "A bank's statement page runs WHERE account_id = 5521 AND posted_at >= '2026-06-01' ORDER BY posted_at DESC LIMIT 50. With an index on (account_id, posted_at), the database jumps to account 5521, walks backward through dates and stops after 50 rows. With the index in the reverse order, it would scan every account's recent rows.",
+    "code": "-- Equality column first, range/sort column second\nCREATE INDEX idx_txn_account_posted\n    ON transactions (account_id, posted_at);\n\n-- Uses the index for the filter AND the sort, stops at 50 rows\nSELECT *\nFROM   transactions\nWHERE  account_id = 5521\n  AND  posted_at >= DATE '2026-06-01'\nORDER  BY posted_at DESC\nLIMIT  50;\n\n-- Function on the column hides it from a plain index...\n-- WHERE lower(email) = 'ana@example.com'\n-- ...so index the expression instead\nCREATE INDEX idx_users_email_lower ON users (lower(email));",
+    "lang": "SQL"
+   },
+   {
+    "title": "Hash, GIN and when not to index",
+    "body": "PostgreSQL has several index types. Hash indexes support only equality checks. GIN (generalised inverted index) maps each element inside a value to the rows containing it, which suits arrays, JSONB documents and full-text search.\n\nIndexes are not free. Every INSERT, UPDATE and DELETE must also update each index, and each index uses disk and memory. A table with 15 indexes can be slow to write.\n\nIndexes also do not help when a query returns a large share of the table. Reading most of the rows through an index costs more than a straight sequential scan, so the planner will skip the index, correctly.",
+    "example": "A marketplace stores product attributes as JSONB, such as {\"color\": \"red\", \"size\": \"M\"}. Searching for red items scanned 8 million rows. A GIN index on attributes makes the containment query attributes @> '{\"color\": \"red\"}' use the index and return in milliseconds. Meanwhile, an index on is_active was dropped because 97 percent of rows are active, so it was never used.",
+    "code": "-- GIN index for JSONB containment queries\nCREATE INDEX idx_products_attrs ON products USING gin (attributes);\n\nSELECT id, title\nFROM   products\nWHERE  attributes @> '{\"color\": \"red\"}';   -- can use the GIN index\n\n-- Hash index: equality only\nCREATE INDEX idx_sessions_token ON sessions USING hash (token);\n\n-- Find indexes that are never used (candidates to drop)\nSELECT relname AS table_name, indexrelname AS index_name, idx_scan\nFROM   pg_stat_user_indexes\nWHERE  idx_scan = 0\nORDER  BY relname;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Partitioning large tables",
+    "body": "Partitioning splits one logical table into several physical tables based on a key, most often a date range. Queries still address the parent table.\n\nWhen a query filters on the partition key, the planner skips partitions that cannot contain matching rows. This is called partition pruning. It works like an index at the level of whole chunks.\n\nPartitioning also makes data retention easy. Deleting a year of data from a normal table is slow and leaves bloat. Dropping or detaching a partition is almost instant.",
+    "example": "An IoT customer stores 4 billion sensor readings. Queries almost always ask for the last 7 days. The FDE partitions the table by month. A query for the last week touches one or two partitions instead of the entire table, and the retention job drops partitions older than 24 months each month.",
+    "code": "CREATE TABLE readings (\n    sensor_id   bigint       NOT NULL,\n    recorded_at timestamptz  NOT NULL,\n    value       double precision\n) PARTITION BY RANGE (recorded_at);\n\nCREATE TABLE readings_2026_09 PARTITION OF readings\n    FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');\nCREATE TABLE readings_2026_10 PARTITION OF readings\n    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');\n\n-- Index is created on each partition\nCREATE INDEX ON readings (sensor_id, recorded_at);\n\n-- Only September's partition is scanned (partition pruning)\nEXPLAIN SELECT avg(value) FROM readings\nWHERE recorded_at >= '2026-09-20' AND recorded_at < '2026-09-27';",
+    "lang": "SQL"
+   }
+  ],
+  "glossary": [
+   [
+    "Query planner",
+    "The database component that chooses how to execute a query based on estimated cost."
+   ],
+   [
+    "Execution plan",
+    "The tree of operations the database will run to answer a query."
+   ],
+   [
+    "Statistics",
+    "Stored summaries of table size and value distribution used for row estimates."
+   ],
+   [
+    "Sequential scan",
+    "Reading every row of a table in order."
+   ],
+   [
+    "Index scan",
+    "Using an index to find matching rows, then fetching them from the table."
+   ],
+   [
+    "B-tree",
+    "A balanced, sorted tree index that supports equality, ranges and ordering."
+   ],
+   [
+    "Composite index",
+    "An index over several columns, sorted by the first column then the next."
+   ],
+   [
+    "GIN index",
+    "An inverted index for values containing many elements, such as arrays, JSONB and text."
+   ],
+   [
+    "Partition pruning",
+    "Skipping partitions that cannot contain rows matching the query's filter."
+   ]
+  ],
+  "practice": [
+   "In a local PostgreSQL (Docker is fine), create a table with 1 million generated orders. Run EXPLAIN ANALYZE on a filter by customer_id before and after adding an index. Deliverable: both plans and the timing difference.",
+   "Create a composite index on (customer_id, created_at) and test four queries: equality on both, equality on customer_id only, range on created_at only, and a query using lower() on a text column. Deliverable: a table of which queries used the index and why.",
+   "Stretch: build a monthly-partitioned events table with 12 partitions and 10 million rows, show partition pruning in EXPLAIN output, then write a script that detaches partitions older than 6 months. Deliverable: SQL scripts and captured plans."
+  ]
+ },
+ "acid": {
+  "plain": "A transaction is a group of database changes that are treated as a single unit: either all of them happen or none of them do. ACID names the four guarantees a transactional database provides. Atomicity means all or nothing. Consistency means rules such as 'balance cannot be negative' always hold. Isolation means transactions running at the same time do not see each other's unfinished work. Durability means once the database says a change is committed, it survives a crash or power loss.",
+  "analogy": "Moving money between two envelopes on a desk: you take $100 out of one and put it into the other. If someone interrupts you halfway, you put the money back in the first envelope as if nothing happened. Anyone watching sees either the old state or the new one, never $100 floating in your hand.",
+  "why": "FDEs increasingly build AI workflows that write back to customer systems of record: approving refunds, updating claims, booking appointments. If two agents or users act at once, or a step fails halfway, you must not create a double refund or a half-updated record. Transactions are how you make those writes safe.",
+  "subtopics": [
+   {
+    "title": "Atomicity: BEGIN, COMMIT, ROLLBACK",
+    "body": "You start a transaction with BEGIN. Every statement after it is part of the same unit until COMMIT, which makes the changes permanent, or ROLLBACK, which undoes them.\n\nIf any statement fails, the database will not let you commit a partial result. In PostgreSQL, the transaction enters an aborted state and you must roll back.\n\nIn application code, most libraries give you a context manager or 'with' block that commits on success and rolls back on any exception. Use it, so you never forget to close a transaction.",
+    "example": "A pharmacy system moves 20 units of a drug from Warehouse A to Store 14. It subtracts 20 from A and adds 20 to Store 14. If the second update fails because Store 14's row is missing, the rollback puts the 20 units back at A, and the stock total stays correct.",
+    "code": "import psycopg   # psycopg 3\n\ndef transfer_stock(conn, sku, from_loc, to_loc, qty):\n    # The 'with conn.transaction()' block commits on success, rolls back on error\n    with conn.transaction():\n        conn.execute(\n            \"UPDATE stock SET qty = qty - %s WHERE sku = %s AND location = %s\",\n            (qty, sku, from_loc))\n        cur = conn.execute(\n            \"UPDATE stock SET qty = qty + %s WHERE sku = %s AND location = %s\",\n            (qty, sku, to_loc))\n        if cur.rowcount != 1:                  # destination row missing\n            raise ValueError(\"unknown destination\")   # triggers ROLLBACK\n\nwith psycopg.connect(\"postgresql://app@localhost/pharmacy\") as conn:\n    transfer_stock(conn, \"AMOX-500\", \"WH-A\", \"STORE-14\", 20)",
+    "lang": "Python"
+   },
+   {
+    "title": "Consistency through constraints",
+    "body": "Consistency in ACID means a transaction moves the database from one valid state to another. 'Valid' is defined by rules you declare in the schema, called constraints.\n\nCommon constraints are NOT NULL (value required), UNIQUE (no duplicates), CHECK (a condition such as qty >= 0), and FOREIGN KEY (a value must exist in another table). The database checks them on every write, whatever application sent it.\n\nPutting rules in the database protects you from bugs in any one application. It is especially useful when several services, scripts and AI agents all write to the same tables.",
+    "example": "An insurer's refund table has UNIQUE (claim_id) and CHECK (amount > 0). A new AI agent has a bug that tries to issue a second refund for claim 88123. The unique constraint rejects it, the transaction rolls back, and the error is logged for the FDE to fix.",
+    "code": "CREATE TABLE claims (\n    claim_id   bigint PRIMARY KEY,\n    status     text   NOT NULL CHECK (status IN ('open','approved','paid','denied'))\n);\n\nCREATE TABLE refunds (\n    refund_id  bigserial PRIMARY KEY,\n    claim_id   bigint  NOT NULL REFERENCES claims(claim_id),  -- must exist\n    amount     numeric(12,2) NOT NULL CHECK (amount > 0),     -- positive only\n    created_at timestamptz NOT NULL DEFAULT now(),\n    UNIQUE (claim_id)                                         -- one refund per claim\n);\n\n-- A second refund for the same claim fails with a unique violation\nINSERT INTO refunds (claim_id, amount) VALUES (88123, 450.00);\nINSERT INTO refunds (claim_id, amount) VALUES (88123, 450.00);  -- ERROR",
+    "lang": "SQL"
+   },
+   {
+    "title": "Isolation levels and anomalies",
+    "body": "Isolation controls what a transaction can see of other concurrent transactions. Stronger isolation prevents more problems but can cause more waiting or retries.\n\nIn PostgreSQL, READ COMMITTED is the default: each statement sees data committed before that statement began. REPEATABLE READ gives the whole transaction one consistent snapshot. SERIALIZABLE makes the result equivalent to running transactions one after another, and aborts some transactions with a serialization error that you must retry.\n\nThe problems you are guarding against are called anomalies. A non-repeatable read is reading the same row twice and getting different values. A phantom is a repeated query returning new rows. A lost update is two writers overwriting each other. Write skew is two transactions each reading a condition, then writing in a way that together breaks it.",
+    "example": "A hospital rule says at least one doctor must be on call per ward. Two doctors on the same ward each check 'is someone else on call?' at the same time, both see yes, and both go off call. That is write skew. Under SERIALIZABLE, PostgreSQL detects the conflict and aborts one of the two transactions.",
+    "code": "import psycopg\nfrom psycopg import errors\n\ndef go_off_call(conn, doctor_id, ward, attempts=3):\n    for _ in range(attempts):\n        try:\n            with conn.transaction():\n                conn.execute(\"SET TRANSACTION ISOLATION LEVEL SERIALIZABLE\")\n                (on_call,) = conn.execute(\n                    \"SELECT count(*) FROM shifts WHERE ward=%s AND on_call\",\n                    (ward,)).fetchone()\n                if on_call < 2:\n                    raise ValueError(\"last doctor on call\")\n                conn.execute(\"UPDATE shifts SET on_call=false WHERE doctor_id=%s\",\n                             (doctor_id,))\n            return True\n        except errors.SerializationFailure:\n            continue                    # conflict detected: retry the whole transaction\n    return False",
+    "lang": "Python"
+   },
+   {
+    "title": "Locks and safe read-modify-write",
+    "body": "A read-modify-write is when code reads a value, changes it in the application and writes it back. If two processes do this at the same time, one change can be lost.\n\nThere are two common fixes. The first is SELECT ... FOR UPDATE, which locks the row until your transaction ends, so the second process waits. The second is a conditional update that checks the expected state in the WHERE clause, so only one writer can succeed.\n\nKeep transactions short. Locks are held until COMMIT, so never hold a transaction open while calling an LLM, a slow external API or waiting for a user.",
+    "example": "Two support agents click 'approve refund' on the same ticket within a second. With a conditional update, both run UPDATE refunds SET status = 'approved' WHERE id = 501 AND status = 'pending'. The first changes 1 row. The second changes 0 rows, and the app tells that agent the refund was already approved.",
+    "code": "def approve_refund(conn, refund_id, approver):\n    # Call any slow LLM or API BEFORE opening the transaction.\n    with conn.transaction():\n        cur = conn.execute(\"\"\"\n            UPDATE refunds\n               SET status = 'approved', approved_by = %s, approved_at = now()\n             WHERE id = %s\n               AND status = 'pending'          -- only one writer can win\n        \"\"\", (approver, refund_id))\n        return cur.rowcount == 1               # False: someone got there first\n\n# Alternative: lock, read, decide, write\n# SELECT status FROM refunds WHERE id = %s FOR UPDATE;",
+    "lang": "Python"
+   },
+   {
+    "title": "Durability and the write-ahead log",
+    "body": "Durability means committed data survives crashes. PostgreSQL achieves this with a write-ahead log (WAL): every change is first recorded in a sequential log file and flushed to disk before COMMIT returns.\n\nThe actual table files can be updated later. If the server crashes, on restart it replays the WAL to reach the last committed state. The same log is used for replication to standby servers and for point-in-time recovery.\n\nAs an FDE you rarely tune the WAL, but you should know that settings such as synchronous_commit trade some durability for speed, and that backups plus WAL archives are what let a customer restore to a precise moment.",
+    "example": "A ticketing company's database server loses power at 14:03:27. Transactions that returned COMMIT before that moment are in the WAL on disk. On restart, PostgreSQL replays the log, and all 4,812 bookings made that afternoon are present. A booking that was still in progress, without a COMMIT, is absent.",
+    "code": "-- Current WAL position (grows with every change)\nSELECT pg_current_wal_lsn();\n\n-- Durability setting: 'on' waits for the WAL flush before COMMIT returns\nSHOW synchronous_commit;\n\n-- Per-transaction trade-off for low-value writes, e.g. click logs:\nBEGIN;\nSET LOCAL synchronous_commit = off;   -- faster, may lose the last moments on crash\nINSERT INTO click_events (user_id, page) VALUES (42, '/pricing');\nCOMMIT;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Normalization for transactional data",
+    "body": "Normalization is designing tables so each fact is stored once. First normal form (1NF) means each column holds a single value, not a list. Second (2NF) and third (3NF) normal forms remove columns that depend on only part of a key or on another non-key column.\n\nFor transactional systems, normalization keeps writes consistent: if a customer's address lives in one row, updating it cannot leave copies out of sync.\n\nAnalytics and AI retrieval often use denormalized, wide tables built from the normalized source, because reads dominate there. A common pattern is normalized tables for the app and a denormalized reporting table rebuilt on a schedule.",
+    "example": "A clinic stored the doctor's name and phone on every appointment row. When Dr. Rivera changed phone numbers, 3,400 rows needed updating, and 212 were missed. Moving doctor details into a doctors table referenced by doctor_id fixes this at the source.",
+    "code": "-- Before: doctor details repeated on every appointment\n-- appointments(id, patient_id, starts_at, doctor_name, doctor_phone)\n\n-- After (3NF): each fact stored once\nCREATE TABLE doctors (\n    doctor_id  serial PRIMARY KEY,\n    name       text NOT NULL,\n    phone      text NOT NULL\n);\nCREATE TABLE appointments (\n    id         bigserial PRIMARY KEY,\n    patient_id bigint NOT NULL,\n    doctor_id  int    NOT NULL REFERENCES doctors(doctor_id),\n    starts_at  timestamptz NOT NULL\n);\n\n-- Denormalized view for reporting, built from the normalized source\nCREATE VIEW appointment_report AS\nSELECT a.id, a.starts_at, d.name AS doctor_name, d.phone AS doctor_phone\nFROM appointments a JOIN doctors d USING (doctor_id);",
+    "lang": "SQL"
+   }
+  ],
+  "glossary": [
+   [
+    "Transaction",
+    "A group of database operations that succeed or fail as one unit."
+   ],
+   [
+    "Atomicity",
+    "The guarantee that all changes in a transaction happen or none do."
+   ],
+   [
+    "Consistency",
+    "The guarantee that every committed state satisfies declared constraints."
+   ],
+   [
+    "Isolation",
+    "The guarantee about what concurrent transactions can see of each other."
+   ],
+   [
+    "Durability",
+    "The guarantee that committed changes survive crashes."
+   ],
+   [
+    "Constraint",
+    "A schema rule such as NOT NULL, UNIQUE, CHECK or FOREIGN KEY enforced by the database."
+   ],
+   [
+    "Isolation level",
+    "A setting (READ COMMITTED, REPEATABLE READ, SERIALIZABLE) that controls which anomalies are prevented."
+   ],
+   [
+    "Write skew",
+    "An anomaly where two transactions read the same condition and together make it false."
+   ],
+   [
+    "Write-ahead log (WAL)",
+    "A log of changes flushed to disk before commit, used for crash recovery and replication."
+   ],
+   [
+    "Normalization",
+    "Structuring tables so each fact is stored in exactly one place."
+   ]
+  ],
+  "practice": [
+   "In PostgreSQL, create an accounts table with CHECK (balance >= 0). Write a transfer in a transaction, then try one that would overdraw and confirm nothing changed. Deliverable: the SQL session transcript.",
+   "Open two psql sessions. Reproduce a lost update with plain read-then-write, then prevent it with SELECT ... FOR UPDATE and again with a conditional UPDATE. Deliverable: a short write-up with both transcripts.",
+   "Stretch: write a Python refund-approval service where 10 threads try to approve the same refund at once. Prove with a test that exactly one approval succeeds, using a conditional update and a UNIQUE constraint. Deliverable: code and a passing pytest."
+  ]
+ },
+ "spark": {
+  "plain": "Apache Spark is a system for processing data too large for one computer by spreading the work across many machines, called a cluster. Spark splits a dataset into chunks called partitions and runs the same operation on each partition in parallel. A driver program plans the work, and executors, which are processes on worker machines, do it. You write code in Python (PySpark), SQL, Scala or Java using DataFrames, which look like tables, and Spark turns that code into an efficient distributed plan.",
+  "analogy": "Counting votes in a national election: each polling station counts its own ballots in parallel (partitions processed by executors). Then the results are sent to regional offices grouped by candidate (the shuffle), where they are added up. The regional office that gets a landslide candidate's pile has far more work than the others, which is data skew.",
+  "why": "Large customers have event logs, transactions and sensor data in the billions of rows, usually in a data lake or a platform such as Databricks. An FDE is often asked why a nightly Spark job takes six hours or fails with out-of-memory errors. Knowing how Spark executes lets you fix it with a configuration change or a smarter join instead of a bigger cluster bill.",
+  "subtopics": [
+   {
+    "title": "Driver, executors and partitions",
+    "body": "A Spark application has one driver and many executors. The driver runs your program, builds the plan and schedules work. Executors run on worker nodes, each with some CPU cores and memory, and process data.\n\nData is divided into partitions. Each partition is processed by one task, and one task runs on one executor core at a time. If you have 200 partitions and 50 cores, Spark runs 50 tasks, then the next 50, and so on.\n\nPartition size matters. Aim for partitions roughly in the 100 to 200 MB range. Tiny partitions waste time on scheduling overhead. Huge ones leave cores idle and may not fit in memory.",
+    "example": "A retailer's clickstream is 400 GB of Parquet in 50,000 small files of about 8 MB each. Reading it creates tens of thousands of tiny tasks, and the job spends much of its time on scheduling. Compacting the data into about 2,500 files of 160 MB each cuts the read stage from 40 minutes to 9.",
+    "code": "from pyspark.sql import SparkSession\n\nspark = (SparkSession.builder\n         .appName(\"clickstream-daily\")\n         .getOrCreate())\n\ndf = spark.read.parquet(\"s3://retail-lake/clickstream/2026/09/\")\nprint(\"partitions:\", df.rdd.getNumPartitions())   # how many tasks the read creates\n\n# Compact many small files into fewer, larger ones (about 160 MB each)\n(df.repartition(2500)\n   .write.mode(\"overwrite\")\n   .parquet(\"s3://retail-lake/clickstream_compact/2026/09/\"))",
+    "lang": "Python"
+   },
+   {
+    "title": "Lazy evaluation and actions",
+    "body": "Spark operations come in two kinds. Transformations, such as filter, select, withColumn, groupBy and join, describe a new DataFrame. Actions, such as count, show, collect and write, ask for a result.\n\nTransformations are lazy: they only add steps to a plan. Nothing runs until an action is called. This lets Spark's optimizer, called Catalyst, see the whole pipeline and improve it, for example by pushing a date filter down into the file read so fewer files are opened.\n\nYou can inspect the plan with explain(). Be careful with collect(), which brings the entire result into the driver's memory and can crash it on large data.",
+    "example": "An insurer filters 5 years of claims to September 2026 and selects 4 of 60 columns. Because Parquet stores columns separately and the data is partitioned by month, Catalyst reads only September's folder and only 4 columns. The job reads about 3 GB instead of 1.2 TB.",
+    "code": "from pyspark.sql import functions as F\n\nclaims = spark.read.parquet(\"s3://ins-lake/claims/\")     # nothing read yet\n\nsept = (claims\n        .filter(F.col(\"claim_month\") == \"2026-09\")     # transformation (lazy)\n        .select(\"claim_id\", \"policy_id\", \"amount\", \"status\"))\n\nsept.explain()          # shows PartitionFilters and pruned columns in the plan\n\nprint(sept.count())     # action: now Spark actually runs the job\n\n# Avoid on big data: pulls every row into the driver\n# rows = sept.collect()\nsample = sept.limit(20).toPandas()   # safe: small, bounded result",
+    "lang": "Python"
+   },
+   {
+    "title": "Narrow vs wide and the shuffle",
+    "body": "A narrow transformation produces each output partition from a single input partition. filter, select and withColumn are narrow, and Spark can chain them in one pass.\n\nA wide transformation needs rows from many input partitions. groupBy, join, distinct and orderBy are wide. To perform them, Spark must redistribute rows across the cluster so rows with the same key end up together. This is the shuffle. It writes data to disk, sends it over the network and serializes it, so it is usually the most expensive part of a job.\n\nSpark splits jobs into stages at each shuffle. The number of partitions after a shuffle is set by spark.sql.shuffle.partitions, which defaults to 200. Adaptive Query Execution (AQE), enabled by default in recent Spark versions, can merge small shuffle partitions at runtime.",
+    "example": "A bank aggregates 2 billion card transactions by merchant. The filter and currency conversion run in stage 1 with no data movement. The groupBy triggers a shuffle of about 180 GB. With the default 200 shuffle partitions, each is about 900 MB and some spill to disk. Raising it to 1,200 brings partitions near 150 MB and the stage runs faster.",
+    "code": "spark.conf.set(\"spark.sql.adaptive.enabled\", \"true\")                     # AQE\nspark.conf.set(\"spark.sql.adaptive.coalescePartitions.enabled\", \"true\")  # merge tiny ones\nspark.conf.set(\"spark.sql.shuffle.partitions\", \"1200\")                   # about 180 GB / 150 MB\n\ntxns = spark.read.parquet(\"s3://bank-lake/card_txns/\")\n\nstage1 = (txns\n          .filter(F.col(\"status\") == \"settled\")                   # narrow\n          .withColumn(\"usd\", F.col(\"amount\") * F.col(\"fx_rate\")))  # narrow\n\nby_merchant = (stage1\n               .groupBy(\"merchant_id\")                             # wide: shuffle\n               .agg(F.sum(\"usd\").alias(\"total_usd\"),\n                    F.count(\"*\").alias(\"n_txns\")))\n\nby_merchant.write.mode(\"overwrite\").parquet(\"s3://bank-lake/marts/merchant_totals/\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Joins: broadcast and skew",
+    "body": "Joining two large tables requires shuffling both by the join key. If one side is small, Spark can instead copy it to every executor. This is a broadcast join, and the large side never moves. Spark does this automatically below a size threshold, and you can force it with F.broadcast().\n\nSkew means a few keys have far more rows than the rest. After a shuffle, the task holding a hot key does most of the work while other tasks finish and wait. In the Spark UI, you see most tasks take seconds and one take an hour.\n\nFixes include AQE's skew join handling, which splits oversized partitions, and salting: adding a random number to the hot key so its rows spread across several partitions, then combining the results.",
+    "example": "A food delivery platform joins 3 billion order events to a 40 MB restaurants table. Broadcasting the restaurants table removes a shuffle of the big table. Separately, a join on city is skewed because one metro area has 35 percent of orders. Salting city into 16 buckets spreads that load across 16 tasks.",
+    "code": "orders = spark.read.parquet(\"s3://food-lake/orders/\")          # about 3 billion rows\nrestaurants = spark.read.parquet(\"s3://food-lake/restaurants/\") # about 40 MB\n\n# Broadcast join: copy the small side to every executor, no big shuffle\nenriched = orders.join(F.broadcast(restaurants), \"restaurant_id\")\n\n# Let AQE split skewed partitions automatically\nspark.conf.set(\"spark.sql.adaptive.skewJoin.enabled\", \"true\")\n\n# Manual salting for a skewed aggregation on city\nN = 16\nsalted = orders.withColumn(\"salt\", (F.rand() * N).cast(\"int\"))\npartial = salted.groupBy(\"city\", \"salt\").agg(F.sum(\"total\").alias(\"part\"))\nby_city = partial.groupBy(\"city\").agg(F.sum(\"part\").alias(\"gmv\"))   # combine salts",
+    "lang": "Python"
+   },
+   {
+    "title": "Memory, caching and serialization",
+    "body": "Each executor has a fixed amount of memory shared between execution (shuffles, joins, sorts) and storage (cached data). When a task's data does not fit, Spark spills it to disk, which is slow. Severe cases cause out-of-memory errors.\n\nOften the fix is more, smaller partitions rather than more memory per executor. Also check for oversized rows, wide explodes and skew.\n\ncache() or persist() keeps a DataFrame in memory for reuse, which helps only if you use it more than once. Unpersist it afterwards. Python UDFs (user-defined functions) force data to be serialized between the JVM and Python, so prefer built-in functions in pyspark.sql.functions.",
+    "example": "A telecom job builds a cleaned calls DataFrame and uses it for three reports. Without caching, Spark rereads and recleans 600 GB three times. Caching it once saves two full passes. The same job also used a Python UDF to parse phone numbers; replacing it with regexp_extract cut that step's time noticeably.",
+    "code": "calls = (spark.read.parquet(\"s3://telco-lake/calls/2026/09/\")\n         .filter(F.col(\"duration_s\") > 0)\n         # built-in function instead of a Python UDF\n         .withColumn(\"area_code\", F.regexp_extract(\"caller\", r\"^\\+1(\\d{3})\", 1)))\n\ncalls.cache()                        # reused three times below\n\ncalls.groupBy(\"area_code\").count().write.mode(\"overwrite\").parquet(\"s3://telco-lake/r/area/\")\ncalls.groupBy(\"tower_id\").agg(F.avg(\"duration_s\")).write.mode(\"overwrite\").parquet(\"s3://telco-lake/r/tower/\")\ncalls.filter(F.col(\"dropped\")).groupBy(\"tower_id\").count().write.mode(\"overwrite\").parquet(\"s3://telco-lake/r/drops/\")\n\ncalls.unpersist()                    # free executor memory",
+    "lang": "Python"
+   },
+   {
+    "title": "Writing output for fast reads",
+    "body": "How you write data decides how fast the next job can read it. Parquet is a columnar file format, which stores each column separately and compresses well, so readers can skip columns they do not need.\n\npartitionBy on write creates one folder per value, such as region=EU. Readers that filter on region then skip whole folders. Choose a partition column with a modest number of values that queries filter on often. Partitioning by a high-cardinality column like user_id creates millions of tiny files.\n\nSpark writes at least one file per task per output partition. Control file counts with repartition or coalesce before writing.\n\nFor comparison, Hadoop MapReduce, Spark's predecessor, wrote intermediate results to disk between every step. Spark keeps intermediate data in memory where it can, which is a main reason it is faster for multi-step jobs.",
+    "example": "A marketing analytics customer writes daily spend per campaign partitioned by date and region, with 6 regions. A dashboard query for 'EU, last 7 days' reads 7 folders out of thousands. Before, the table was partitioned by campaign_id with 90,000 values and produced over a million small files.",
+    "code": "daily = (spark.read.parquet(\"s3://mkt-lake/ad_events/\")\n         .groupBy(\"event_date\", \"region\", \"campaign_id\")\n         .agg(F.sum(\"cost\").alias(\"spend\"), F.sum(\"clicks\").alias(\"clicks\")))\n\n(daily\n   .repartition(\"event_date\", \"region\")     # one task per folder: fewer, larger files\n   .write\n   .mode(\"overwrite\")\n   .partitionBy(\"event_date\", \"region\")     # folders like event_date=2026-09-26/region=EU/\n   .parquet(\"s3://mkt-lake/marts/daily_spend/\"))\n\n# Reader: only matching folders are scanned\neu_week = (spark.read.parquet(\"s3://mkt-lake/marts/daily_spend/\")\n           .filter((F.col(\"region\") == \"EU\") & (F.col(\"event_date\") >= \"2026-09-20\")))",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Cluster",
+    "A group of machines that work together on one job."
+   ],
+   [
+    "Driver",
+    "The Spark process that runs your program, builds the plan and schedules tasks."
+   ],
+   [
+    "Executor",
+    "A worker process that runs tasks and holds data in memory."
+   ],
+   [
+    "Partition",
+    "A chunk of a dataset processed by one task."
+   ],
+   [
+    "Lazy evaluation",
+    "Deferring work until an action requires a result, so the whole plan can be optimized."
+   ],
+   [
+    "Shuffle",
+    "Redistributing rows across the cluster by key, needed for wide operations."
+   ],
+   [
+    "Broadcast join",
+    "A join where the small table is copied to every executor so the large table stays in place."
+   ],
+   [
+    "Data skew",
+    "Uneven distribution where a few keys hold most of the rows."
+   ],
+   [
+    "Salting",
+    "Adding a random suffix to a hot key to spread its rows across partitions."
+   ],
+   [
+    "Parquet",
+    "A compressed, columnar file format widely used in data lakes."
+   ]
+  ],
+  "practice": [
+   "Install PySpark locally, generate a DataFrame of 5 million fake orders, and run a filter and a groupBy. Use explain() and the Spark UI (localhost:4040) to identify the stages and the shuffle. Deliverable: a screenshot and three sentences.",
+   "Join the orders to a 1,000-row stores table with and without F.broadcast, and compare the plans and run times. Deliverable: both explain() outputs and the timings.",
+   "Stretch: create a skewed dataset where one customer_id has 40 percent of rows, show the slow task in the Spark UI, then fix it once with AQE skew join and once with salting. Deliverable: a notebook with before and after task durations."
+  ]
+ }
+}

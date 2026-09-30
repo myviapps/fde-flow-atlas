@@ -1,0 +1,1350 @@
+{
+ "case": {
+  "replace_subtopics": [
+   {
+    "title": "Restate and clarify the goal",
+    "body": "Start by saying the problem back in your own words and asking what \"better\" means. This shows you listen, and it often reveals that the stated ask is a guess at a solution.\n\nAsk a few clarifying questions: Why now? What happens if nothing changes? How do they measure the problem today? Which part of the organisation is involved?\n\nDo not propose any technology yet. Interviewers watch for candidates who design too early. Customers do too.\n\nSignpost your structure before you dive in. Say it out loud: \"First I will ask a few questions, then map how discharge works today, then check the data, then pick a metric, then propose a first step and the risks.\" This tells the interviewer where you are going and makes it easy for them to redirect you.\n\nTime-box the round the same way. A 30 to 45 minute case can be split as: about 5 minutes of questions, 10 minutes on the current state, 10 minutes on the design, 5 minutes on metrics and risks, and a few minutes to sum up. Glance at the clock at each switch. Running out of time before you reach a metric or a first step is one of the most common ways to fail a case round.",
+    "example": "Prompt: \"A regional hospital wants AI to reduce discharge delays.\" You restate: \"So the goal is to shorten the time between a patient being medically ready to leave and actually leaving, which frees beds. Is that right, and is this across all wards or specific ones?\" The interviewer says the COO is worried because the emergency department is boarding patients who wait for beds. Now you know the real driver is bed capacity. Before asking anything else you say: \"I will spend about five minutes on questions, ten on how discharge works today, ten on a first solution and five on risks and metrics. Stop me if you want me to go deeper anywhere.\"",
+    "code": "Clarifying questions template\n\nGoal        : What outcome would make this a success in 6 months?\nWhy now     : What changed? What does the problem cost today?\nScope       : Which sites, teams, products or wards?\nMeasure     : How is the problem measured now, if at all?\nSponsor     : Who asked for this, and who approves the budget?\nTried before: What has been tried, and why did it not work?\n\nSignposting and time box (40-minute round)\n\n00-05  Clarify goal, scope, sponsor        \"First, a few questions...\"\n05-15  Users and current workflow          \"Now let me map how it works today...\"\n15-25  Data, constraints, first design     \"Given that data, here is a first slice...\"\n25-32  Metric, baseline, guardrail, cost   \"We would know it worked if...\"\n32-37  Risks and next steps                \"The biggest risks are...\"\n37-40  Summary in three sentences",
+    "lang": "Text"
+   },
+   {
+    "title": "Data reality and constraints",
+    "body": "Ask what data exists, where it lives, how fresh it is, and who can grant access. Much important information sits in free-text notes, spreadsheets or whiteboards, and some is not recorded at all.\n\nData access is often the slowest part of a real project. Start the access request on day one.\n\nThen list constraints before you design: privacy law (HIPAA for US health data), where the system must run (on-premises, the customer's cloud account, or a vendor cloud), required humans in the loop, integration limits, budget and timeline. Constraints narrow the design space and show the interviewer you have done this before.\n\nInterviewers often ask \"what would this cost to run?\" or \"how fast must it be?\". Answer with a back-of-envelope sizing line: volume times tokens times price, plus a latency budget. You do not need exact prices. Say which numbers are assumptions and round them. Tokens are the small text pieces a language model reads and writes, and providers charge per million tokens (see the llmcost concept for the full method).\n\nThe latency budget is how long the result may take. A nightly batch list can take minutes. A suggestion shown while a nurse types must come back in a second or two. The budget changes the design: a slow, cheap batch job and a fast, interactive call are different systems.",
+    "example": "Discharge orders and medication lists are in the EHR and available through a read-only reporting database refreshed every 15 minutes. \"Likely discharge tomorrow\" exists only in physicians' progress notes as free text. Transport bookings are in a separate scheduling tool. Constraints: patient data must stay inside the hospital's cloud account, every AI suggestion must be confirmed by a nurse, and the EHR team will not allow writes into the EHR in the first phase. Quick sizing out loud: \"The ward has about 32 patients. If we read about 10 notes each at roughly 2,000 tokens a note, that is 640,000 input tokens a night. At an assumed 3 dollars per million input tokens that is about 2 dollars a night, roughly 60 dollars a month for one ward. The list only has to be ready by 8 pm, so latency is not a constraint; we can run it as a batch job.\"",
+    "code": "Data and constraints inventory\n\nData source             System         Freshness   Access          Notes\nDischarge orders        EHR reporting  15 min      Read, via CIO   Structured\nMedication lists        EHR reporting  15 min      Read, via CIO   Structured\n\"Likely d/c tomorrow\"   Progress notes Real time   Read, via CIO   Free text only\nTransport bookings      Scheduler      Hourly      API key needed  Separate vendor\n\nConstraints\n- PHI stays in the hospital's cloud tenant (HIPAA, BAA required)\n- Nurse confirms every suggestion; no autonomous actions\n- No writes to the EHR in phase 1\n- Pilot budget: 8 weeks, 2 engineers\n\nBack-of-envelope sizing (assumed prices, check the current price list)\n\nInput : 32 patients x 10 notes x 2,000 tokens = 640,000 tokens/night\n        640,000 / 1,000,000 x $3.00           = $1.92\nOutput: 32 patients x 200 tokens              = 6,400 tokens/night\n        6,400 / 1,000,000 x $15.00            = $0.10\nTotal : about $2.02 per night, about $60 per month for one ward\nLatency budget: batch job, list ready by 20:00 (minutes are fine)",
+    "lang": "Text"
+   },
+   {
+    "title": "Success metric, baseline and guardrail",
+    "body": "Pick one primary metric that the sponsor cares about and that your work can move. Measure its baseline, the value before you change anything. Without a baseline you cannot prove impact.\n\nAdd a guardrail metric, which must not get worse. It stops you from \"winning\" in a harmful way, such as rushing patients out.\n\nIf possible, compare the pilot group with a similar control group over the same period. This separates your effect from seasonal changes or other projects.\n\nThe hours metric is a lagging metric: it moves only after weeks of use. Add a leading metric that shows early whether people use the tool at all. Here that is adoption: the share of nightly lists that the charge nurse opens and confirms. If adoption is low in week 2, the hours metric will not move in week 8, so you fix adoption first.",
+    "example": "Primary metric: median hours from medically ready to discharge on ward 4 West. Baseline over the last 90 days: 6.5 hours. Guardrail: 30-day readmission rate, baseline 11.2%. Control: ward 5 West, similar patient mix. Target agreed with the COO: 1.5 hours saved on the pilot ward within 8 weeks with no rise in readmissions. The small calculation below turns the target into beds, which is the language the sponsor uses. Leading metric: the charge nurse opened and confirmed 17 of the 20 nightly lists in the first four weeks, 85% adoption, so it is fair to judge the hours metric at week 8.",
+    "code": "# Translate hours saved into bed capacity for the sponsor\ndischarges_per_day = 14          # ward 4 West average\nhours_saved_each   = 1.5         # target reduction in median delay\nbed_hours_per_day  = 24\n\nbed_hours_freed = discharges_per_day * hours_saved_each\nbeds_equivalent = bed_hours_freed / bed_hours_per_day\nprint(f\"{bed_hours_freed:.0f} bed-hours/day = {beds_equivalent:.2f} beds on one ward\")\n\n# Across 10 similar wards if the pilot scales\nprint(f\"Hospital-wide: {beds_equivalent * 10:.1f} beds\")\n\n# Leading metric: adoption of the nightly list\nlists_published = 20             # nights in the first 4 weeks\nlists_confirmed = 17             # opened and confirmed by the charge nurse\nprint(f\"Adoption: {lists_confirmed / lists_published:.0%}\")\n# Output:\n# 21 bed-hours/day = 0.88 beds on one ward\n# Hospital-wide: 8.8 beds\n# Adoption: 85%",
+    "lang": "Python"
+   },
+   {
+    "title": "Thin slice, plan and risks",
+    "body": "A thin slice is the smallest version that solves one real problem for real users end to end. It is narrow in scope, but it works in production conditions with real data.\n\nPick the slice at the bottleneck. Describe what users see, what data it uses, and how a human stays in control. Give a short week-by-week plan with a demo point.\n\nClose with the top risks and one mitigation each. Common risks are data access delays, users not trusting the tool, model errors, and scope creep. Then explain how the slice would expand if it works.\n\nBefore you propose AI, ask: do we even need AI? Name the simplest non-AI fix first. Here, the EHR could notify pharmacy automatically the moment a discharge order is drafted, not only when it is signed. That costs little and may win back part of the delay. Treat it as the baseline the AI slice must beat. If the AI list cannot beat the simple fix by a clear margin, recommend the simple fix. Interviewers reward this honesty.\n\nA backtest target such as \"80% of next-day discharges appear on the list\" measures recall only: how many real discharges you caught. Also set a precision target: of the patients on the list, how many really leave the next day. Each error type has a cost. A missed discharge (false negative) means pharmacy starts late, which is today's problem. A listed patient who stays (false positive) means pharmacy reconciles medicines for nothing, which wastes their time and erodes trust. Size both in pharmacist hours.",
+    "example": "Slice: each evening, a model reads progress notes and orders on 4 West and produces a list of patients likely to be discharged tomorrow. Pharmacy gets the list and starts medication reconciliation early. A charge nurse confirms or removes each name. Weeks 1 to 2: access and baseline. Weeks 3 to 4: build the list and test on past data. Week 5: demo to COO and pharmacy lead. Weeks 6 to 8: live pilot. Risks: data access (mitigation: start the request on day one), nurse trust (show reasons for each prediction), wrong predictions (nurse confirms, and overrides become eval data). Non-AI baseline: auto-notify pharmacy when the order is drafted, piloted on 5 West. AI slice target: recall of at least 80% and precision of at least 70%. With 14 discharges a day, 70% precision means about 16 names on the list and about 5 wasted reconciliations, roughly 5 x 20 minutes = 100 minutes of pharmacist time a day. Pharmacy agrees that is acceptable only if the early start saves more than that.",
+    "code": "8-week pilot plan: Predicted discharge list, ward 4 West\n\nWk 1-2  Access approved, baseline measured, shadow 3 discharges\nWk 3-4  Build nightly list from notes + orders; backtest on 60 days\n        Target: 80% of next-day discharges appear on the list\nWk 5    Demo to COO, pharmacy lead, charge nurses; adjust\nWk 6-8  Live pilot; nurse confirms each name; weekly metric review\n\nTop risks                     Mitigation\nData access slips             Request on day 1; CIO sponsor escalation\nNurses ignore the list        Show the note snippet behind each prediction\nWrong predictions             Human confirms; log overrides as eval cases\nScope creep to other wards    Expansion only after week-8 review\n\nBacktest targets (60 days of history)\n\nRecall    >= 80%   real next-day discharges that appear on the list\nPrecision >= 70%   listed patients who really leave next day\nError cost        missed discharge = pharmacy starts late (today's delay)\n                  false alarm      = ~20 min wasted reconciliation\nBaseline to beat  non-AI rule: notify pharmacy when order is drafted",
+    "lang": "Text"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Signposting",
+    "Telling the listener the structure of your answer before you give it, so they can follow and redirect you."
+   ],
+   [
+    "Leading metric",
+    "An early signal, such as adoption, that predicts whether the main (lagging) result will move later."
+   ],
+   [
+    "Precision and recall",
+    "Recall is the share of real cases you caught; precision is the share of your flagged cases that were real."
+   ],
+   [
+    "Back-of-envelope sizing",
+    "A rough estimate from a few rounded numbers, such as volume x tokens x price, said out loud to check feasibility."
+   ]
+  ],
+  "add_practice": [
+   "For your practice case, write one back-of-envelope cost line (volume x tokens x price) and one non-AI fix that the AI solution must beat, then state a recall and a precision target and the cost of each error type."
+  ]
+ },
+ "discovery": {
+  "add_subtopics": [
+   {
+    "title": "Quantitative discovery: sizing the pain with data",
+    "body": "Interviews tell you what people feel. System data tells you how often it really happens. Good discovery uses both and compares them. This is called triangulation: checking one source against another. People remember the most painful or most recent case, not the most common one, so a loud complaint can be rare and a quiet one can eat most of the time.\n\nAsk for exports that already exist: helpdesk tickets, exception queues, audit logs, email volumes by folder, the ERP's list of rejected documents. Then run simple counts: how many per week, which reason is most common, how long each type takes. Totals and percentages are enough at this stage. You are sizing the problem, not building a model.\n\nRequest data safely. Ask for the smallest sample that answers your question, for example 90 days and only the columns you need. Ask the data owner to mask names, emails and account numbers before sending, or to let you query inside their environment. Confirm that an NDA (non-disclosure agreement) and, where personal data is involved, a data processing agreement are in place. Write down where the file is stored and when you will delete it.\n\nWhen the numbers and the interviews disagree, go back to the users with the numbers. The conversation that follows is often the most useful of the whole discovery.",
+    "example": "At the logistics company the clerks said handwritten PO numbers were the worst part of invoice entry. You ask the AP lead for a masked 90-day export of exception tickets with only three columns. The count shows missing PO numbers take 70% of exception time and handwritten POs only 17%. You show the table to two clerks, who agree: handwritten POs are annoying but missing POs mean chasing a buyer by email for days. The problem statement changes to focus on missing POs.",
+    "code": "import csv, io\nfrom collections import Counter\n\n# Export of 90 days of AP exception tickets (masked sample, 10 rows shown)\ndata = \"\"\"ticket_id,reason,minutes_to_resolve\nT1,po_missing,35\nT2,po_handwritten,20\nT3,vat_mismatch,15\nT4,po_missing,40\nT5,duplicate_invoice,10\nT6,po_missing,30\nT7,po_handwritten,25\nT8,po_missing,45\nT9,vat_mismatch,12\nT10,po_missing,38\n\"\"\"\nrows = list(csv.DictReader(io.StringIO(data)))\ncount = Counter(r[\"reason\"] for r in rows)\nminutes = Counter()\nfor r in rows:\n    minutes[r[\"reason\"]] += int(r[\"minutes_to_resolve\"])\n\ntotal = sum(minutes.values())\nfor reason, n in count.most_common():\n    print(f\"{reason:18} {n:2} tickets  {minutes[reason]:3} min  {minutes[reason]/total:.0%} of time\")\n# Output:\n# po_missing          5 tickets  188 min  70% of time\n# po_handwritten      2 tickets   45 min  17% of time\n# vat_mismatch        2 tickets   27 min  10% of time\n# duplicate_invoice   1 tickets   10 min  4% of time",
+    "lang": "Python",
+    "checklist": [
+     "Smallest sample requested: time window and columns named",
+     "Personal data masked, or you query inside the customer's environment",
+     "NDA and data processing agreement confirmed before data moves",
+     "Counts by reason and by time spent, not only by volume",
+     "Numbers shown back to users when they disagree with interviews",
+     "Storage location and deletion date written down"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Preparing an interview guide",
+    "body": "An interview guide keeps you focused without turning the conversation into a script. It has three parts: what you want to learn (your goals), who you are talking to, and a short list of open questions grouped by theme.\n\nWrite 8 to 12 questions but expect to use about half. The guide is a safety net. The best material often comes from follow-ups like 'tell me more about that'.\n\nBefore each interview, read whatever you can find: the customer's org chart, recent tickets, a sample of the data. You will ask better questions and waste less of their time.\n\nWrite a separate, shorter guide for executives. A sponsor or director usually gives you 15 to 20 minutes, not 45, and cares about different things. Ask about the outcome they need, the budget and deadline, what their board or boss asks them about, and what would make them stop the project. Do not ask an executive to walk you through a screen; ask their team for that.",
+    "example": "An insurer wants to 'use AI for claims'. You schedule 45 minutes each with two claims handlers, a team lead and the claims operations director. Your goal is to learn where a claim waits the longest. Your guide has three themes: the daily workflow, the hardest recent claim, and how success is measured today. You also book 20 minutes with the claims operations director using the short executive guide below. She tells you the board tracks cost per claim and that the budget must be approved before the end of the quarter.",
+    "code": "INTERVIEW GUIDE - Claims processing discovery\nGoal:      Find where claims wait longest and why\nPerson:    Claims handler, 3+ years, motor claims team\nTime:      45 min (5 intro, 30 questions, 10 wrap-up)\n\nWARM-UP\n  - What does a normal day look like for you?\nWORKFLOW\n  - Walk me through the last claim you closed, step by step.\n  - Where did you have to wait for something or someone?\n  - What tools or screens did you use? Any spreadsheets on the side?\nHARDEST CASE\n  - Tell me about a recent claim that took much longer than usual.\n  - What happened next? What did you do about it?\nMEASURES\n  - How does your manager know you are doing well?\nWRAP-UP\n  - What should I have asked that I did not?\n  - Who else should I talk to?\n\nEXECUTIVE GUIDE - 20 min, claims operations director\n  - What result do you need from this in the next 6 to 12 months?\n  - How will your boss or board judge whether it worked?\n  - What budget and deadline are you working to?\n  - What has been tried before, and why did it stop?\n  - What would make you stop or pause this project?\n  - Who on your team should I shadow?",
+    "lang": "Text",
+    "checklist": [
+     "Goals written in one or two sentences",
+     "Background read: org chart, sample tickets or data",
+     "8 to 12 open questions grouped by theme",
+     "At least one 'last time you...' question",
+     "Recording or note-taker agreed with the interviewee",
+     "Closing question: who else should I talk to?"
+    ]
+   },
+   {
+    "title": "Open questions versus leading questions",
+    "body": "An open question lets the person answer in their own way, usually starting with what, how, tell me or walk me through. A leading question suggests the answer you want, for example 'Wouldn't it be faster if this were automated?'. People are polite, so they tend to agree with leading questions, and you learn nothing.\n\nAsk about the past, not the future. 'Would you use a tool that...' produces guesses. 'Tell me about the last time you...' produces facts.\n\nAfter asking, stay quiet. A pause of a few seconds often makes people add the most useful detail.\n\nSometimes the customer pushes back: \"We already know what we want, just build it.\" Do not argue and do not refuse. Acknowledge the request, agree a short, fixed discovery time box (for example three days), and promise to come back with evidence. Then bring one data point that tests the ask. Often a single number changes the request, and the customer feels they discovered it, not that you overruled them. If the data supports their ask, you build it with more confidence.",
+    "example": "At a hospital pharmacy you want to know if stock checks are painful. Leading: 'Stock checks must be a real pain, right?' Open: 'Walk me through yesterday's stock check.' The open question reveals that the pharmacist prints a report, walks the shelves and types counts back into a spreadsheet, which takes about an hour each morning. A support director says: \"Just build us a chatbot.\" You reply: \"Happy to. Can I spend three days looking at last quarter's tickets so the bot covers the right questions?\" The ticket export shows 40% of contacts are password resets that a self-service reset link would solve without a chatbot. The director moves resets to the first release.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Leading (avoid)",
+      "Open (use)"
+     ],
+     "rows": [
+      [
+       "Would an AI assistant help you?",
+       "Walk me through the last time you looked for an answer."
+      ],
+      [
+       "Is the search tool too slow?",
+       "What happens when you search for a policy?"
+      ],
+      [
+       "You'd want this on mobile, right?",
+       "Where are you when you need this information?"
+      ],
+      [
+       "Isn't the approval step pointless?",
+       "Why does the approval step exist, as far as you know?"
+      ],
+      [
+       "Would you pay for this?",
+       "What have you already tried to fix this, and what did it cost?"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Shadowing and capturing pain in their words",
+    "body": "Shadowing means sitting with a user, in person or on a screen share, and watching them do real work. People forget or skip steps when they describe their job. Watching shows the extra spreadsheet, the sticky note of passwords and the copy-paste between systems.\n\nWrite down pain as verbatim quotes, meaning the exact words the person used. 'I dread month-end' tells you more than your summary 'month-end is inefficient'. Quotes are also powerful later in a demo or a PRD.\n\nNote timings and counts when you can: how many screens, how many minutes, how many times a day. These become your baseline, the 'before' number you will improve.\n\nWhile you shadow, collect real input samples: 20 to 50 actual documents, emails or records the user handles, including the ugliest ones such as a handwritten PO, a blurry phone photo of a receipt or a scan that is upside down. Clean samples make any AI look good. The ugly ones tell you early whether the idea is feasible and what share of inputs will need a human. Ask permission first, take samples only through an approved channel, and mask personal data (names, addresses, bank details) before they leave the customer's systems.",
+    "example": "You shadow an accounts payable clerk at a logistics company for an hour. She opens an emailed invoice PDF, retypes 14 fields into the ERP, then checks the purchase order in a second system. You time five invoices at about 6 minutes each and write down her quote: 'The worst part is when the PO number is handwritten.' Before you leave you ask the clerk for 30 recent invoices, including the five she calls 'the nightmares'. The AP lead approves, and the files are masked and placed in the customer's shared folder that you can access.",
+    "code": "OBSERVATION LOG - AP clerk, 10:00-11:00\ntime   step                              tool         notes\n10:02  open invoice email                Outlook\n10:03  retype 14 fields                  ERP screen   'I always mistype VAT'\n10:06  look up PO number                 PO system    PO handwritten, zoomed in\n10:08  submit, next invoice              ERP\n...\nBaseline: 5 invoices, avg ~6 min each\nQuote:    'The worst part is when the PO number is handwritten.'\n\nSAMPLE LOG\n30 invoices collected (approved by AP lead, masked, stored in customer folder)\n  22 clean PDFs, 5 scans, 2 phone photos, 1 handwritten PO\nDelete by: end of pilot",
+    "lang": "Text"
+   },
+   {
+    "title": "Writing the problem statement",
+    "body": "After the interviews, group your notes into themes, count how often each comes up, and pick the one with the most pain and the clearest path to improvement.\n\nThen write a problem statement: who has the problem, what it is, how often or how much it costs, why it happens and how success will be measured. Keep it to one paragraph.\n\nShare it with the sponsor and at least one user. If they say 'yes, that is it', you are ready to design. If they correct you, that is cheap now and expensive later.\n\nA simple way to synthesise is affinity mapping. Write each observation or quote on its own sticky note (or a row in a spreadsheet). Group notes that say similar things into clusters, name each cluster, and count the notes in it. The biggest clusters, weighted by how much time or money they cost, are your candidate problems.\n\nHow many interviews are enough? Keep going until you reach saturation: the point where new interviews add no new themes, only more examples of old ones. For one team this often happens after 5 to 8 conversations.\n\nFinally, turn the statement into an opportunity size, a rough value in hours or money. That number feeds the business case (see the roi concept).",
+    "example": "After eight interviews and two shadowing sessions at the logistics company, the strongest theme is manual invoice entry. You write the statement below and the finance director agrees, adding that month-end is when it matters most. Your affinity map has 64 notes. The largest cluster, 'retyping invoice fields', has 21 notes; 'chasing missing POs' has 14. Interviews 7 and 8 added no new clusters, so you stop. Opportunity size: 1,500 invoices a month x 4 minutes saved (from about 6 down to 2) = 6,000 minutes = 100 hours a month.",
+    "code": "PROBLEM STATEMENT\nWho:      Accounts payable clerks (6 people) at the logistics company\nProblem:  Manually retype invoice fields from PDFs into the ERP\nSize:     ~6 min per invoice, ~1,500 invoices a month (from our timing)\nWhy:      Invoices arrive as email PDFs in many layouts; no extraction\nImpact:   Month-end backlog, late-payment fees, retyping errors\nSuccess:  Median handling time under 2 min per invoice,\n          field error rate at or below today's, within 8 weeks\nEvidence: 8 interviews, 2 shadowing sessions, clerk quotes attached\n\nOPPORTUNITY SIZE\n1,500 invoices/month x 4 min saved = 6,000 min = 100 hours/month\n(feeds the ROI model: 100 h x loaded hourly cost)",
+    "lang": "Text"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Triangulation",
+    "Checking what people say in interviews against a second source, such as system data, before you trust it."
+   ],
+   [
+    "Affinity mapping",
+    "Grouping observation notes into clusters by theme and counting them to find the biggest problems."
+   ],
+   [
+    "Saturation",
+    "The point in discovery when new interviews add no new themes."
+   ],
+   [
+    "Opportunity size",
+    "A rough estimate of the value of solving a problem, such as hours saved per month."
+   ]
+  ],
+  "add_practice": [
+   "Take any small export you can get (your own email folder counts or a public ticket dataset), count items by reason and by time, and write two sentences on whether the numbers agree with what people complain about most."
+  ]
+ },
+ "poc": {
+  "replace_subtopics": [
+   {
+    "title": "POC versus pilot versus production",
+    "body": "The three words are often mixed up, and the mix-up causes disappointment. A POC answers a feasibility question: can this approach work on their data at all, at a sensible cost? It usually uses historical or sample data, a small team and no connection to live systems. It ends with a readout and a go or no-go decision.\n\nA pilot answers a value question: does it help real people in their daily work? It runs with a limited group of real users, real data and at least basic security and support, for weeks or months. It is usually paid. The arc lesson describes running a pilot well.\n\nProduction is the full, supported service under a contract, with service levels, monitoring and change control.\n\nSay out loud which one you are running, and write it down. Many customers expect a POC to become the production system by adding users. It rarely can, because a POC skips security hardening, integration and support on purpose so it can move fast.\n\nSometimes the POC is a competitive bake-off: the customer runs the same test against two or three vendors and picks one. Ask early for the shared evaluation set, the scoring method, who scores and how ties are broken. If every vendor uses its own data or its own metric, the results cannot be compared and the decision falls back on the slickest demo. Offer to help design a fair test; customers usually welcome it.",
+    "example": "A regional water company, Quarrymoor Water, asks for a 'pilot' of AI fault triage. On the first call the FDE learns they have no labelled data, no API access to the job system yet and no users identified. She proposes a four-week POC on historical reports first, with a paid pilot as the agreed next step if criteria are met. Quarrymoor later reveals two other vendors are also testing fault triage. The FDE asks for the same 300 labelled reports for all three, blind scoring by the same supervisors and the same cost-per-report calculation, and Quarrymoor agrees.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "",
+      "POC",
+      "Pilot",
+      "Production"
+     ],
+     "rows": [
+      [
+       "Question",
+       "Can it work?",
+       "Does it help users?",
+       "Run it for everyone"
+      ],
+      [
+       "Data",
+       "Historical or sample",
+       "Live, limited scope",
+       "Live, full scope"
+      ],
+      [
+       "Users",
+       "Few, testers",
+       "A real group",
+       "All intended users"
+      ],
+      [
+       "Length",
+       "2 to 6 weeks",
+       "1 to 3 months",
+       "Ongoing"
+      ],
+      [
+       "Commercials",
+       "Often free or low fee",
+       "Usually paid",
+       "Full contract"
+      ],
+      [
+       "Ends with",
+       "Go or no-go decision",
+       "Rollout decision",
+       "Renewal"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Written success criteria before you start",
+    "body": "The single most important POC document is one page of success criteria, agreed and signed before work starts. It turns 'let's see how it goes' into a test with a clear result.\n\nGood criteria are measurable and tied to the customer's question. Each one names a metric, a baseline if one exists, a target, and how and by whom it is measured. The SMART criteria in the arc lesson apply here too. For AI POCs, agree the evaluation set early: who labels it, how many examples, and whether reviewers see the AI's answers blind.\n\nTwo lines are often forgotten. The first is the decision rule: what happens if the criteria are met, and what if they are not. Writing 'if met, a paid pilot starts in May' makes the commercial next step part of the agreement. The second is the list of non-goals, such as 'no integration with the live job system in the POC'.\n\nKeep it to three to five criteria. More than that and the POC becomes a feature checklist instead of a test of the main question.\n\nRemember that a small evaluation set gives an uncertain answer. If the AI scores 85% on 300 labelled reports, the true accuracy could reasonably be anywhere from about 81% to 89% (a 95% interval of roughly plus or minus 4 points). On 100 reports the band is about plus or minus 7 points. So a score of 84% against a target of 85% is not a clear failure, and the decision rule should say how you treat results that close to the line, for example 'within 2 points: extend the test set before deciding'.\n\nA target like 'P1 recall 100%' also needs a minimum number of P1 (most urgent) cases. If the set has only 10 P1 reports and the AI catches all 10, the true miss rate could still be as high as about 30%. A handy rule of thumb, the rule of three, says that with zero misses in n cases the true miss rate could be up to about 3/n. Aim for at least 30 P1 cases, which caps it near 10%, and say so in the criteria.",
+    "example": "Quarrymoor's sponsor first says success means 'the AI understands our faults'. The FDE turns this into four measurable criteria, with a 300-report labelled test set chosen by the maintenance planning lead. The sponsor also agrees in writing that meeting three of them leads to a paid pilot in the North region. The criteria sheet adds a line: 'Test set contains at least 40 P1 reports; results within 2 points of a target trigger 100 more labelled reports before the decision.'",
+    "code": "POC SUCCESS CRITERIA  (signed before work starts)\nCustomer: Quarrymoor Water      Sponsor: Head of Network Maintenance\nQuestion the POC answers:\n  Can AI triage of field fault reports cut time-to-assign for crews?\n\nScope: 1 region (North), 3 months of historical reports (about 9,000)\nTime box: 4 weeks, 2 FDEs, 1 customer analyst at 20 percent\n\n#  Criterion                         Baseline   Target    Measured by\n1  Correct fault category            n/a        >= 85%    300 labelled reports\n2  Correct priority (P1-P4)          n/a        >= 90%    same set, P1 recall 100%\n3  Time to assign (simulated)        47 min     <= 15 min replay of 2 weeks\n4  Cost per report                   n/a        <= 0.05 GBP  token logs\n\nJudged by: maintenance planning lead + 2 supervisors (blind review)\nIf criteria 1, 2 and 4 are met: 3-month paid pilot in North region\nIf not met: written findings, no further commitment on either side\nSigned: ______ (Quarrymoor)   ______ (vendor)   Date: ______\n\nStatistical notes (added to the sheet)\n  Test set: 300 reports, at least 40 of them P1\n  85% on 300 items is about +/- 4 points (95% interval)\n  Within 2 points of a target: label 100 more reports, then decide",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Evaluation set",
+      "Score",
+      "Rough 95% range"
+     ],
+     "rows": [
+      [
+       "100 items",
+       "85%",
+       "78% to 92% (+/- 7 points)"
+      ],
+      [
+       "300 items",
+       "85%",
+       "81% to 89% (+/- 4 points)"
+      ],
+      [
+       "1,000 items",
+       "85%",
+       "83% to 87% (+/- 2 points)"
+      ],
+      [
+       "10 P1 cases",
+       "0 misses",
+       "miss rate up to about 30%"
+      ],
+      [
+       "30 P1 cases",
+       "0 misses",
+       "miss rate up to about 10%"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Scoping: in, out and customer commitments",
+    "body": "Scope is what the POC will cover. Keep it narrow: one workflow, one team or region, one data source if possible. Every extra system you connect adds access requests and security reviews that can eat the whole time box.\n\nUse fixed time, variable scope. The end date does not move; if something takes longer than expected, you drop lower-priority scope instead of extending. Rank scope items in advance so that choice is quick.\n\nA POC also depends on the customer. Write down what they must provide and by when: sample data, system access, a named analyst's time, subject-matter experts to label examples, and a meeting slot for the readout. When a commitment slips, say so the same day and show what it costs in scope.\n\nWatch for scope creep dressed as enthusiasm. 'Could it also do the invoices?' is a good sign for the future and belongs on a list for the pilot. Free POCs are the most likely to drift, which is one reason some vendors charge a small fee: it makes both sides take the dates seriously.\n\nAgree how data is handled before any data moves. Four questions matter. First, paperwork: an NDA (non-disclosure agreement) and, if the data contains personal information, a DPA (data processing agreement) must be signed first. Second, location: does the POC run in the vendor's sandbox or inside the customer's own cloud tenant? Customer tenants are slower to set up but calm security teams. Third, minimisation: can you use masked data, where names and account numbers are replaced, or synthetic data, which is generated to look realistic but describes no real person? Fourth, the end: write a deletion date and how deletion will be confirmed in writing.",
+    "example": "In week two, Quarrymoor's operations team asks whether the POC could also draft replies to customer complaints. The FDE thanks them, adds it to the 'pilot candidates' list in the shared document, and keeps the POC on fault triage. The readout later lists it as the second use case, which strengthens the case for the pilot. Quarrymoor's fault reports contain customer addresses and phone numbers. The POC scope says: NDA and DPA signed on day 0, POC runs in Quarrymoor's own cloud account, phone numbers and names masked by their analyst before loading, all copies deleted within 10 working days of the readout with a written confirmation.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "One workflow and one team or region named in writing",
+     "Non-goals listed, including systems you will not connect",
+     "Data samples: which, how many, format and delivery date",
+     "Access: accounts, network, tools, with named owners and dates",
+     "Customer people: analyst and expert hours per week",
+     "Scope items ranked, so you know what to drop first",
+     "Readout date booked with the decision maker attending",
+     "What happens next if the criteria are met",
+     "NDA and, for personal data, DPA signed before data moves",
+     "Where the POC runs: vendor sandbox or customer tenant",
+     "Masked or synthetic data used wherever possible",
+     "Deletion date and written confirmation of deletion agreed"
+    ]
+   },
+   {
+    "title": "Answering RFP technical sections",
+    "body": "Large organisations and public bodies often buy through an RFP. The customer sends a long document of requirements and questions, and each vendor answers in a fixed format by a deadline. An RFI (request for information) is a lighter, earlier version. Security questionnaires, often hundreds of questions, frequently come alongside.\n\nFDEs are asked to answer the technical parts: architecture, integration, deployment, security, data handling and support. Answer each requirement with a clear compliance level first, then a short explanation and evidence. The table shows common levels.\n\nBe precise and honest. RFP answers are often attached to the contract, so an optimistic 'yes' becomes a promise. If the product does not do something, say so and describe the nearest alternative and whether it meets the need behind the question. Reuse approved answers from a library, but reread each one for this customer; products change and a stale answer is a risk.\n\nFinally, read the questions for what they reveal. A block of questions about on-premises deployment and data residency tells you what the security team worries about, which is useful for the POC and the pilot too.\n\nSecurity questionnaires often come in standard formats. SIG Lite (from Shared Assessments) and the CAIQ (the Cloud Security Alliance's Consensus Assessments Initiative Questionnaire) are common. Many vendors keep pre-filled versions of these and a public trust center: a web page with security documents, certifications and sub-processor lists that buyers can read, sometimes after signing an NDA. Pointing to them saves days.\n\nBuyers now add AI-specific questions. Expect these and have approved answers ready: Is our data used to train any model? How long are prompts and outputs kept, and is zero data retention available? Which model providers act as sub-processors (third parties that process our data)? In which region does inference, the model call itself, run? Can we turn AI features off? Answer only what your contracts and your model provider's terms actually say, and check with your security or legal team when unsure.",
+    "example": "Quarrymoor's procurement team sends a 140-question RFP with the POC invitation. The FDE marks 118 answers as standard, 14 as configurable, 5 as roadmap without dates, and 3 as not supported, each with the nearest alternative. The evaluation panel later says the honest 'not supported' answers made the rest more credible.",
+    "code": "RFP 4.3.7  \"Describe how customer data is protected in transit and at rest.\"\n\nAnswer: Compliant (standard)\n- In transit: TLS 1.2 or higher on all external endpoints.\n- At rest: AES-256 encryption for stored data; keys managed in the\n  cloud provider's key management service.\n- Customer-managed keys: Partially compliant. Available for stored\n  documents; not yet for search indexes (planned, no committed date).\n- Evidence: SOC 2 Type II report available under NDA (Appendix C).\n\nRFP 4.3.8  \"The solution must run fully on-premises.\"\nAnswer: Not compliant. Offered alternative: single-tenant deployment in the\ncustomer's own cloud account, in-region. See section 5.2 for how this meets\nthe underlying data residency requirement.\n\nRFP 6.2.1  \"Is customer data used to train AI models?\"\nAnswer: Compliant (standard)\n- Customer data is not used to train our models or our model providers'\n  models under our current agreements (see trust center, AI data use).\n- Prompts and outputs retained 30 days for abuse monitoring;\n  zero data retention available on request (contract addendum).\n- Model sub-processors and inference regions listed on the trust center.",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Answer level",
+      "Meaning",
+      "Say also"
+     ],
+     "rows": [
+      [
+       "Compliant (standard)",
+       "Works out of the box today",
+       "Where it is documented"
+      ],
+      [
+       "Compliant (configuration)",
+       "Works with setup, no new code",
+       "Who configures it and effort"
+      ],
+      [
+       "Partially compliant",
+       "Some of the requirement is met",
+       "Exactly which part is not"
+      ],
+      [
+       "Roadmap",
+       "Planned, not available",
+       "Only dates that are committed"
+      ],
+      [
+       "Not compliant",
+       "Not supported",
+       "Nearest alternative, if any"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Turning a POC into a signed deal",
+    "body": "A successful POC does not sign itself. Between a good readout and a signed contract sit a business case, a security review, procurement and legal. Each has its own owner and calendar, and a POC that ends without a plan for them often stalls for months.\n\nThe demo lesson covers running the readout itself. Around it, three habits help. First, confirm the decision maker and the budget early, ideally before the POC starts, so the readout goes to someone who can say yes. Second, keep a mutual action plan: a shared, dated list of every step to signature and go-live, with owners on both sides. It makes delays visible without blame. Third, give your sponsor what they need to sell it internally: a one-page summary with results against criteria, costs, risks and the recommended next step, in words their own leadership uses.\n\nThe FDE's role is technical credibility, not sales pressure. You make sure the results are honest, the production path is realistic and the security team's questions are answered quickly. When those are in place, the commercial conversation is much easier for everyone.\n\nBuild a mid-point checkpoint into every POC. Halfway through, review early results with the sponsor against the criteria and apply an agreed early-stop rule, for example 'if category accuracy is below 60% at the midpoint, we stop and write up findings'. This saves both sides weeks when the approach clearly will not work.\n\nTreat a well-evidenced no-go as a good outcome. It saves the customer money and a failed rollout, and it builds trust you can use for the next use case. Write it up with the same care as a success: what was tested, what the numbers were, why it missed and what would have to change.",
+    "example": "Quarrymoor's POC meets three of four criteria, missing the time-to-assign target at 19 minutes against 15, because assignments still waited for a supervisor's sign-off. The readout names the miss and the process fix. The mutual action plan below takes the pilot from readout to kick-off in four weeks, with the security review started before procurement instead of after it. At the week-2 checkpoint, category accuracy is 78%, above the 60% stop line, so the POC continues. In a different POC for invoice matching the same rule triggered at 45%, the team stopped, and the customer later came back with a better-labelled dataset.",
+    "code": "MUTUAL ACTION PLAN: Quarrymoor Water, AI fault triage   (shared doc, updated weekly)\n\nDate        Step                                    Owner (who)         Status\n14 Apr      POC readout, criteria results           FDE lead            done\n16 Apr      Sponsor recommends pilot to COO         Head of Maintenance done\n23 Apr      Security review of pilot architecture   IT security         in progress\n25 Apr      Pilot SOW and pricing sent              Account executive   planned\n2 May       Procurement: supplier onboarding        Procurement         planned\n9 May       Legal: DPA and SOW signed               Legal both sides    planned\n12 May      Pilot kick-off, North region crews      FDE lead + planners planned\n\nRisks: security review needs a DPIA (owner: data protection officer, due 30 Apr)\nDecision maker: COO.  Budget: maintenance operations, FY26.",
+    "lang": "Text",
+    "checklist": [
+     "Decision maker and budget owner named before the readout",
+     "Results table against every criterion, including misses",
+     "One-page summary the sponsor can forward",
+     "Mutual action plan with dated steps and owners on both sides",
+     "Security review and data protection questions started early",
+     "Pilot scope, users, price and success criteria drafted",
+     "POC environment and data either handed over or deleted as agreed"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Confidence interval",
+    "A range that likely contains the true value; small test sets give wide ranges."
+   ],
+   [
+    "Rule of three",
+    "With zero failures in n tests, the true failure rate could still be up to about 3/n."
+   ],
+   [
+    "Bake-off",
+    "A competitive POC where several vendors are tested on the same criteria."
+   ],
+   [
+    "Trust center",
+    "A vendor web page with security documents, certifications and sub-processor lists for buyers."
+   ],
+   [
+    "Sub-processor",
+    "A third party, such as a model provider, that processes customer data on the vendor's behalf."
+   ],
+   [
+    "Synthetic data",
+    "Generated data that looks realistic but describes no real person or transaction."
+   ]
+  ],
+  "add_practice": [
+   "Your POC scored 83% against an 85% target on 200 labelled items. Work out the rough margin (1.96 x sqrt(p(1-p)/n)) and write the decision-rule line you wish you had agreed before starting."
+  ]
+ },
+ "exec": {
+  "add_subtopics": [
+   {
+    "title": "Delivering bad news early",
+    "body": "Bad news does not improve with age. The no-surprises rule says a sponsor should hear about a slip or a missed target from you, before they find it on a dashboard or hear it from their own team. An executive who learns about a problem from someone else stops trusting your status reports, even the green ones.\n\nTell them as soon as you are fairly sure, not when you are certain. A good bad-news message does four things. It owns the problem in plain words, without blaming the customer or another team. It gives the impact in business terms: what date, metric or team is affected. It gives a new date with an honest confidence level, such as 'high confidence' or 'depends on one open item'. And it offers two or three options with a recommendation, so the sponsor has something to decide instead of something to worry about.\n\nSend it in writing the same day, and offer a short call if they want to talk it through. Writing creates a record and lets them forward it upward unchanged.\n\nThis subtopic covers the executive side. For the day-to-day craft of saying no and writing hard messages in chat and email, see the asyncwriting topic (Writing and async communication).",
+    "example": "At a logistics company, the go-live for an AI routing assistant was 14 May. On 2 May the FDE learns that the customer's map data feed will not be approved by their security team until 12 May. She emails the sponsor that afternoon: go-live moves to 21 May with high confidence, or 14 May with the assistant limited to two depots. The sponsor picks the limited launch and thanks her for the early warning.",
+    "code": "Subject: Routing assistant go-live - 14 May at risk, decision by Mon\n\nHi Marco,\n\nBottom line: we will miss 14 May for all depots. I should have\nflagged the map-feed dependency earlier; that is on me.\n\nImpact: the security review of the map feed finishes 12 May, which\nleaves too little time to test all 9 depots.\n\nOptions:\n  A) Go live 21 May for all 9 depots (high confidence)\n  B) Go live 14 May for 2 depots, the other 7 on 21 May (recommended)\n  C) Keep 14 May for all depots without full testing (not advised)\n\nCan you choose by Monday 12:00? Happy to talk it through on a call.\n\nLena (FDE)",
+    "lang": "Text"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Two tracks during an incident",
+    "body": "An incident is any event where the system stops doing what users need. During an incident you run two tracks in parallel. Track one is technical: find the cause and restore service. Track two is human: keep the people affected informed and calm.\n\nNew FDEs often drop track two because the technical problem feels more urgent. The result is silence, and silence makes executives assume the worst. A short message every hour or so, even when nothing has changed, keeps trust intact while you debug.\n\nIf your pod has two people available, split the tracks between them. One person debugs. The other writes updates, fields calls and keeps a timeline. When you are alone, set a timer so you remember to send updates.\n\nMost teams sort incidents by severity level so everyone knows how fast to move. A common scale is SEV1 (the service is down or data is at risk for many users: updates every 30 to 60 minutes), SEV2 (a major feature is degraded: updates every 2 to 4 hours) and SEV3 (a minor issue with a workaround: an update each day). Name one incident lead who makes decisions and owns the timeline, so the customer knows who is in charge.\n\nAfter the fix, the customer usually wants a customer-facing incident report. It differs from your internal blameless postmortem, which lists every technical detail and lesson. The customer report is shorter and plain: what happened, the impact on them, how it was fixed and what will prevent it happening again. Running incidents in full, with roles, war rooms and status pages, is covered in the incidents topic (Incidents and escalations in the field).",
+    "example": "An insurer's claims assistant slows from 2 seconds to 8 seconds per answer at 10:00. You post a holding note to the CIO at 10:20, start pulling logs, and find at 11:05 that a vendor API is rate limiting your calls (refusing requests because you sent too many). You switch to cached results as a workaround at 13:40. Between 10:20 and 13:40 the CIO received three short updates, so the escalation never grew. The insurer slowdown is declared a SEV2 at 10:15, with you as incident lead, so updates go out at least every 2 hours. On Wednesday the CIO gets a one-page incident report; the longer internal postmortem stays with your engineering team.",
+    "code": "INCIDENT TIMELINE  (keep this open in a shared doc)\ntime   track   entry\n10:00  tech    p95 latency alert fires: 8.1s (normal 2s)\n10:20  people  Holding note to CIO + sponsor. Next update 11:30.\n10:45  tech    Scope: all regions, started 09:58, no deploy today\n11:05  tech    Logs show HTTP 429 from policy-lookup vendor API\n11:30  people  Update 2: cause found, workaround in progress, ETA 14:00\n13:40  tech    Cached policy lookups enabled, p95 back to 1.3s\n13:50  people  Update 3: resolved, full write-up by Wed 12:00\n# Rule: every 'people' entry states the next update time.\n\nSEVERITY  EXAMPLE                          UPDATE CADENCE\nSEV1      assistant down for all users     every 30-60 min\nSEV2      answers 4x slower, still usable  every 2-4 hours\nSEV3      one report shows a wrong label   daily\n\nCUSTOMER INCIDENT REPORT (one page)\nWhat happened | Impact on you | How we fixed it | How we prevent it",
+    "lang": "Text"
+   },
+   {
+    "title": "Listen and restate before you explain",
+    "body": "Active listening means showing the other person you understood them before you respond. The simplest technique is to restate their problem in their own business terms: 'So the claims team is falling behind and customers are waiting longer for answers. That is the priority.'\n\nRestating does two things. It lowers the emotional temperature, because the executive feels heard. It also checks that you are solving the right problem. Sometimes the executive's real worry turns out to be a board meeting on Thursday, which changes what you should prioritise.\n\nAfter restating, say three things: what you are doing now, when they will hear from you next, and who to call in the meantime. Avoid technical explanations at this stage. You do not know the cause yet, and guessing out loud creates promises you may have to take back.\n\nApologise for the impact, not for the cause. 'I am sorry your nurses could not see their shifts this morning' is honest and kind. Do not guess who is to blame, and do not talk about liability, refunds or SLA credits (money back promised in the service level agreement) on the call. You do not know the cause yet, and those are contract questions. Say that you will pass them to the account team, then do it the same day.",
+    "example": "A hospital's COO calls because nurses cannot see tomorrow's shift schedule in the new AI scheduling tool. You say: 'Nurses on three wards cannot see tomorrow's shifts, and that risks gaps in cover tonight. I am looking at it now with our engineer, and I will call you back by 15:00 with either a fix or a manual fallback.' You have not explained anything technical, and the COO knows exactly what happens next. The COO asks, 'Are we getting a credit for this?' You answer: 'That is a fair question. I will ask our account manager, Joe, to come back to you on the contract side today. My focus right now is getting your nurses their schedule.'",
+    "code": "Subject: Scheduling tool - looking at it now\n\nHi Priya,\n\nThank you for flagging this quickly. My understanding: nurses on\nWards 4, 7 and 9 cannot see tomorrow's shifts, which risks gaps\nin cover tonight.\n\nWhat we are doing now: checking the data sync from your rostering\nsystem, which is the most likely source.\nNext update: by 15:00 today, with a fix or a manual fallback.\nIf urgent before then: call me on 07700 900123.\n\nSam (FDE)",
+    "lang": "Text"
+   },
+   {
+    "title": "Answer first: pyramid principle and SCQA",
+    "body": "The pyramid principle, popularised by Barbara Minto, says to start with your main conclusion and then give the supporting points. Executives often read only the first two lines of a message, so those lines must carry the answer.\n\nSCQA is a way to order the rest: Situation (what was happening), Complication (what went wrong), Question (what the reader wants to know) and Answer. In an incident update you usually put the Answer at the very top, then Situation, Complication, cause, prevention, and your ask.\n\nKeep it to five to seven lines. Use plain words and numbers. End with one specific request, such as a 30-minute meeting with a named person, so the executive has something concrete to do.\n\nThe same answer-first habit applies to everyday async messages: put the ask and the deadline in the subject line, keep one topic per message, and move any decision made in chat into the recap email or decision log so it is not lost in a thread. The asyncwriting topic (Writing and async communication) covers these norms in depth.",
+    "example": "The CIO receives this at 13:50: 'Fixed at 13:40, no data lost.' The next lines explain that about 1,100 claims took three times longer between 10:00 and 13:40, that a vendor began rate limiting, that caching and an alert are now in place, and that you would like 30 minutes with their vendor manager. The CIO forwards it to the board unchanged, which is the sign of a good update. A subject line such as 'Decision needed by Thu: add Exceptions report to go-live?' tells the reader what you need and by when before they open the message.",
+    "code": "ANSWER-FIRST UPDATE TEMPLATE\nAnswer:       <status in one line: fixed / workaround / still open>\nSituation:    <what users were doing, when, which team>\nComplication: <impact in business units: claims, patients, orders>\nCause:        <one sentence, or \"under investigation, update at HH:MM\">\nPrevention:   <test, alert or change you have made or will make>\nAsk:          <one decision or meeting you need, with a name>\n\nChecks before sending:\n[ ] First line makes sense if it is the only line read\n[ ] No acronyms the reader would not use themselves\n[ ] Every number has a unit and a time window",
+    "lang": "Text"
+   },
+   {
+    "title": "Storytelling in reviews and presentations",
+    "body": "Beyond incidents, you will present progress to executives in steering meetings and quarterly business reviews (QBRs), which are regular meetings where a vendor shows a customer the value delivered. The same answer-first rule applies at the level of a whole presentation.\n\nA reliable structure has three parts. First, the result against the agreed success metric. Second, the story of how you got there, including one real user quote. Third, what comes next and the decision you need. Put the detail in an appendix so people can find it if they ask.\n\nRehearse the first 60 seconds. If the meeting is cut short, the executive should still leave knowing whether the project is working and what you need from them.\n\nPre-wire important meetings. A few days before a steering meeting, brief the key executive one to one: show them the main result and the decision you will ask for. Nobody should be surprised in the room, because surprised executives defend themselves instead of deciding. Pre-wiring also shows you objections early, while you can still answer them.\n\nSometimes two executives want different outcomes, for example the COO wants speed and the CISO (Chief Information Security Officer) wants more security review. Do not pick a side yourself. Write both positions down fairly, with the trade-offs, and take the conflict to the executive sponsor, who owns the decision. Your job is to make the choice clear, not to make it.",
+    "example": "For a retailer's demand forecasting pilot, your first slide says: 'Forecast error for fresh produce fell from 31% to 22% in 6 stores, cutting waste by an estimated 9 tonnes a month.' Slide two shows the store manager who now orders from the forecast. Slide three asks the COO to approve rollout to 40 more stores. Before the retailer's steering meeting, you walk the COO through the rollout slide in a 20-minute call. She asks about store staffing, so you add a line on it. When the finance director later pushes for a slower rollout, you present both views to the sponsor on one slide and let her decide.",
+    "code": "QBR OUTLINE (3 slides + appendix)\n1. RESULT      Metric vs. target, baseline -> now, one sentence of impact\n2. STORY       What changed for users; one quote; one chart\n3. NEXT        Plan for next quarter; risks; THE DECISION WE NEED\nAppendix       Method, data sources, detailed metrics, open issues\n\nRehearsal rule: say slide 1 aloud in under 60 seconds.\n\nPRE-WIRE CHECKLIST (2-3 days before the meeting)\n[ ] Key executive briefed 1:1 on result and the ask\n[ ] Objections heard and answered on the slides\n[ ] Conflicting views written up side by side for the sponsor",
+    "lang": "Text"
+   }
+  ],
+  "add_glossary": [
+   [
+    "No-surprises rule",
+    "Tell the sponsor about a slip or miss before they discover it themselves."
+   ],
+   [
+    "Severity level (SEV1-SEV3)",
+    "A label for how serious an incident is, which sets how fast you respond and how often you update."
+   ],
+   [
+    "Incident lead",
+    "The one named person who runs an incident, makes decisions and owns the timeline."
+   ],
+   [
+    "Pre-wiring",
+    "Briefing a key person one to one before a meeting so there are no surprises in the room."
+   ],
+   [
+    "SLA credit",
+    "Money or service time given back when a service level agreement is missed; a contract matter for the account team."
+   ]
+  ],
+  "add_practice": [
+   "Write a bad-news email for a made-up two-week slip: one-line bottom line, the impact, a new date with a confidence level, three options with your recommendation and a decision deadline."
+  ]
+ },
+ "docs": {
+  "add_subtopics": [
+   {
+    "title": "User-facing documentation",
+    "body": "The SOW, PRD and design doc are for the project team. The people who use the system every day need different documents, written in their words. Four are standard.\n\nAn end-user quick-start is one page: what the tool is for, how to open it, the three most common tasks with screenshots, and who to ask for help. If it runs past one page, users will not read it.\n\nAn admin guide is for the customer staff who run the tool: adding users and roles, changing settings, re-indexing documents, reading the usage dashboard and what to do when something fails.\n\nA FAQ of known limits tells users honestly what the tool does not do well, for example 'it does not read handwritten notes' or 'answers about policies older than 2024 may be missing'. Stating limits up front prevents surprise and builds trust.\n\nRelease notes, also called a changelog, list what changed in each version: new features, fixes and anything users must do differently. Date and number each version.\n\nDecide before handover who owns each document. Usually the customer's admin or Center of Excellence owns the quick-start and FAQ, and the vendor owns release notes. A document with no owner goes out of date within months. Training and enablement materials are covered in the enablement topic (Customer enablement and the AI CoE).",
+    "example": "For the bank assistant, the FDE writes a one-page quick-start for branch advisors, a 6-page admin guide for the bank's IT team, a FAQ listing four known limits, and release notes starting at version 1.0. At handover the bank's knowledge manager takes ownership of the quick-start and FAQ.",
+    "code": "RELEASE NOTES - Branch product assistant\n\nv1.2  (2026-05-06)\n  New:     answers now show the policy's last-updated date\n  Fixed:   citations for mortgage policies opened the wrong page\n  Action:  none for advisors; admins re-index once (Admin guide 4.2)\n\nv1.1  (2026-04-22)\n  New:     mortgage policies added to the index\n  Known limit: savings rates older than 2024 not included (see FAQ)",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Document",
+      "Reader",
+      "Length",
+      "Owner after handover"
+     ],
+     "rows": [
+      [
+       "Quick-start",
+       "End users",
+       "1 page",
+       "Customer admin or CoE"
+      ],
+      [
+       "Admin guide",
+       "Customer IT or admins",
+       "5-15 pages",
+       "Customer admin"
+      ],
+      [
+       "FAQ of known limits",
+       "End users and support",
+       "1-2 pages",
+       "Customer CoE, vendor updates limits"
+      ],
+      [
+       "Release notes",
+       "Admins and users",
+       "Short entry per version",
+       "Vendor"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Architecture diagrams customers understand",
+    "body": "Most customer reviewers look at the architecture diagram before they read a word of the design doc. A good diagram shows the right amount of detail for its reader.\n\nThe C4 model is a simple way to choose that level. It has four zoom levels. Level 1, context: your system as one box, the people who use it and the other systems it talks to. Level 2, containers: the separately deployed parts, such as the web app, the API, the database and the model provider. Level 3, components: the main parts inside one container. Level 4, code: classes and functions, which you rarely draw by hand. Executives and security teams usually need levels 1 and 2 only.\n\nFor each arrow, label what flows and how: 'policy text, HTTPS' or 'user questions, logged 30 days'. Security reviewers care most about where data crosses a boundary, so draw the customer's network or cloud account as a box around the parts inside it.\n\nDraw diagrams as code where you can. Mermaid is a text format that tools such as GitHub, GitLab and many wikis render as a diagram. Because it is text, it lives in the repository next to the design doc, changes show up in code review, and it never goes stale in a forgotten slide.",
+    "example": "For the bank assistant, the FDE draws a level 1 context diagram for the steering group and a level 2 container diagram for the bank's security architect, with a box labelled 'Bank cloud account' around the app, the API and the vector database, and one arrow leaving it to the model provider.",
+    "code": "flowchart LR\n  advisor([Branch advisor]) -->|question, HTTPS| app[Assistant web app]\n  subgraph bank[Bank cloud account]\n    app --> api[Assistant API]\n    api --> vdb[(Vector database)]\n    idx[Nightly indexer] -->|policy text| vdb\n  end\n  lib[(Policy library)] -->|read-only| idx\n  api -->|prompt, no retention| llm[Model provider API]",
+    "lang": "Text"
+   },
+   {
+    "title": "Runbooks and handover docs",
+    "body": "A runbook is a step-by-step guide for operating the system when you are not there. It answers: when this alert fires or this symptom appears, what does it mean, how do I confirm it and what is the first safe action? The person reading it may be woken at 3 am and new to the system, so write short numbered steps with exact commands and links.\n\nA good runbook entry has a fixed shape: the symptom or alert name, what it means, how to confirm it, first safe actions, when and to whom to escalate, and how to roll back. 'Safe' matters: the first steps should never make things worse, for example restarting a worker is safe, deleting a queue is not.\n\nA handover doc sits above the runbooks. It lists everything the customer team needs to own the system: architecture diagram, environments and access, where the code lives, credentials and who holds them, scheduled jobs, monitoring dashboards, known issues, the runbook index and the support contacts. Walk through it live with the new owners and have them run one runbook entry themselves, a drill, before you leave.\n\nWho answers which ticket after handover, the L1, L2 and L3 support split, and how hypercare ends are covered in the supportops topic (Support model, escalation and hypercare). The mechanics of alerts and on-call are in the observability topic.",
+    "example": "Before handing over the bank assistant, the FDE writes eight runbook entries, including 'Answers missing new policies'. The bank's CoE engineer runs that entry in a drill, finds step 3 unclear, and the FDE fixes it the same day.",
+    "code": "RUNBOOK ENTRY: Answers missing new policies\nMeans:     the nightly re-index job did not finish\nConfirm:   1. Open dashboard 'Indexer' -> last success older than 26 h?\n           2. Check job log: indexer.log, look for ERROR lines\nFirst safe actions:\n           3. Re-run the job: ./run_indexer.sh --since yesterday\n           4. Ask one test question about a policy published yesterday\nEscalate:  still failing after 1 re-run -> vendor L3 support queue\nRollback:  not needed; the old index keeps serving answers",
+    "lang": "Text",
+    "checklist": [
+     "Architecture diagram and environments listed",
+     "Access and credential owners named",
+     "Scheduled jobs and dashboards listed",
+     "Every alert has a runbook entry",
+     "Customer ran at least one runbook drill",
+     "Support contacts and escalation path written down"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "The statement of work",
+    "body": "A SOW is usually attached to a master services agreement, the main contract between the two companies. The SOW covers one project: objectives, scope, deliverables, timeline, acceptance criteria, responsibilities on both sides, assumptions and fees.\n\nAcceptance criteria are the most important part for an engineer. They are testable conditions the customer checks before signing off a deliverable. 'An AI assistant' is not testable. 'The assistant answers the agreed 100-question test set with at least 85% judged correct by the bank's reviewers' is.\n\nAlso list what is out of scope and what the customer must provide, such as data access by a certain date. Many delays come from customer dependencies that were never written down.\n\nThe SOW also sits under a commercial model. Under fixed price, the customer pays an agreed amount for the agreed scope, so every scope change needs a change request, and an overrun costs your company money. Under time and materials (T&M), the customer pays for hours worked, so the risk of overruns moves to the customer and the sponsor will watch hours closely. Milestone payments release money when a deliverable is accepted, which makes clear acceptance criteria even more important. As an FDE, check which model applies before you agree to 'just one more thing'. Pricing and services economics are covered in the psa topic (Professional services operations and PSA).\n\nRead four clauses yourself, even though legal writes them. IP ownership: who owns the custom code, adapters and prompts you build, and can your company reuse them for other customers? Warranty or hypercare: how long after go-live you must fix defects for free (see the supportops topic). Deemed acceptance: many SOWs say a deliverable counts as accepted if the customer raises no written objection within, say, 10 business days. Data return and deletion: what happens to customer data, logs and test sets when the project ends, and by when.",
+    "example": "For the bank project, the SOW lists three deliverables: a data connector to the product policy library, the assistant web app, and a two-week pilot in five branches. The bank must provide read access to the policy library by week 2. Integration with the core banking system is explicitly out of scope. The bank SOW is fixed price with three milestone payments. The IP clause says the bank owns its configuration and prompts while the vendor keeps the connector code, the warranty covers 30 days after go-live, deliverables are deemed accepted after 10 business days without objection, and all bank data is deleted within 30 days of the end date.",
+    "code": "STATEMENT OF WORK  (template)\n1. Background and objectives\n   <one paragraph: the problem and the business goal>\n2. Scope\n   In scope:     <bullets>\n   Out of scope: <bullets, be explicit>\n3. Deliverables and acceptance criteria\n   D1 <name>  - accepted when <testable condition>\n   D2 <name>  - accepted when <testable condition>\n4. Timeline and milestones\n   <milestone>  <week or date>\n5. Responsibilities\n   Provider: <what we do>\n   Customer: <data access, SMEs, environments, by when>\n6. Assumptions and risks\n7. Change control\n   Changes via written change request, assessed for time and cost\n8. Fees and payment schedule\n9. Sign-off  (names, roles, dates)\n\nCLAUSES AN ENGINEER READS\nCommercial model   fixed price | T&M | milestones\nIP ownership       custom code, adapters, prompts: who owns, who may reuse\nWarranty/hypercare defects fixed free for <N> days after go-live\nDeemed acceptance  accepted if no written objection in <10> business days\nData at the end    return and delete customer data by <date>, confirm in writing",
+    "lang": "Text"
+   },
+   {
+    "title": "Keeping a decision log",
+    "body": "A decision log is a simple table, often in a shared doc, where each significant decision gets one row: date, decision, options considered, reason, who decided and any follow-up.\n\nIt answers the question 'why did we do it this way?' months later, when the original people may have moved on. It also stops the same debate from happening in every meeting.\n\nLog decisions that change scope, architecture, cost or risk. Small coding choices do not need an entry.\n\nWhen a decision changes the SOW, write a change request. It is a short, formal document the sponsor signs, and it becomes an amendment to the contract. It should state what changes, why, the impact on time, cost and risk, the options, who approves and the date.",
+    "example": "Mid-project, the bank asks to add mortgage policies. You estimate two extra weeks. The sponsor decides to add mortgages and drop the branch manager dashboard to keep the date. You log it and raise a change request against the SOW. The mortgage decision above becomes change request CR-003, signed by the sponsor two days later.",
+    "code": "CHANGE REQUEST  CR-003\nDate:         2026-04-02\nRequested by: Head of Branch Operations\nDescription:  Add mortgage policies to the assistant index\nReason:       Mortgage questions are 30% of branch queries\nImpact:       Time  +2 weeks of effort, pilot date kept\n              Cost  no change (manager dashboard removed)\n              Risk  medium: mortgage policies use a new PDF layout\nOptions:      A) Add mortgages, drop dashboard (recommended)\n              B) Add mortgages, move pilot by 2 weeks\n              C) No change\nDecision:     A\nApproved by:  Sponsor, Head of Retail Banking   Date: 2026-04-04",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Date",
+      "Decision",
+      "Reason",
+      "Owner"
+     ],
+     "rows": [
+      [
+       "2026-03-04",
+       "Use RAG, not fine-tuning",
+       "Policies change weekly; need citations",
+       "Tech lead"
+      ],
+      [
+       "2026-03-18",
+       "Host in bank's cloud account",
+       "Security review: data must stay in tenant",
+       "Bank CISO"
+      ],
+      [
+       "2026-04-02",
+       "Add mortgage policies, drop manager dashboard",
+       "Sponsor priority; keep pilot date",
+       "Sponsor"
+      ],
+      [
+       "2026-04-09",
+       "Weekly re-index of policy library",
+       "Matches policy publishing cycle",
+       "Data owner"
+      ]
+     ]
+    },
+    "checklist": [
+     "Every scope change has a log entry and, if needed, a SOW change request",
+     "Each entry names an owner and a date",
+     "Options considered are listed, not just the winner",
+     "The log is linked from the PRD and the design doc",
+     "The customer can read it"
+    ]
+   },
+   {
+    "title": "The technical design doc",
+    "body": "A design doc explains how you will build the system and why you chose that way. It usually includes context, goals and non-goals, the proposed architecture, alternatives you considered, data and security, testing, rollout and open risks.\n\nThe 'alternatives considered' section is where reviewers learn the most. It shows you thought about other options and explains why you rejected them.\n\nShare it early, as a draft, with the customer's engineers and security team. Their comments are much cheaper at this stage than after the code is written.\n\nAgree the review workflow at the start. List the required approvers by name in the header, typically your tech lead, the customer's security architect and the data owner for each source. Reviewers leave comments; every comment is either resolved with a change or answered with a reason, and nothing is marked approved while a blocking comment is open. Use version numbers (v0.1 draft, v1.0 approved) and record the approval date in the doc. Keep the approved version in one agreed place, so a year later anyone can find exactly what security signed off.",
+    "example": "For the bank assistant, the design doc proposes retrieval-augmented generation over the policy library, hosted in the bank's cloud account. It compares this with fine-tuning a model on the policies and rejects fine-tuning because policies change weekly and answers need citations. The bank design doc v0.3 gets 27 comments. The security architect marks two as blocking (log retention and admin access). Both are fixed in v0.4, and v1.0 is approved on 18 March with names and date in the header.",
+    "code": "TECHNICAL DESIGN DOC  (template)\nTitle / author / reviewers / status: draft | in review | approved\n1. Context         why this exists, link to PRD\n2. Goals           measurable, from the PRD\n   Non-goals       what this design will not handle\n3. Proposed design\n   - architecture diagram\n   - components and data flow\n   - APIs and data models\n4. Alternatives considered\n   Option B: <summary>  rejected because <reason>\n5. Data, security and privacy\n   where data lives, who can access it, PII handling, logging\n6. Testing and evaluation\n7. Rollout and rollback plan\n8. Risks and open questions\n\nREVIEW BLOCK (top of the design doc)\nVersion:    v1.0 approved   (history: v0.1 draft, v0.3 review, v0.4 fixes)\nApprovers:  Tech lead ........ approved 2026-03-16\n            Bank security .... approved 2026-03-18\n            Policy data owner  approved 2026-03-17\nOpen blocking comments: 0\nLocation:   bank wiki > Branch assistant > Design (single source)",
+    "lang": "Text"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Time and materials (T&M)",
+    "A contract where the customer pays for hours worked, so overrun risk sits with the customer."
+   ],
+   [
+    "Fixed price",
+    "A contract where the customer pays an agreed amount for agreed scope, so overrun risk sits with the vendor."
+   ],
+   [
+    "Deemed acceptance",
+    "A clause saying a deliverable counts as accepted if no written objection arrives within a set time."
+   ],
+   [
+    "IP ownership",
+    "Who legally owns code, models, prompts and documents created during the project."
+   ],
+   [
+    "Release notes",
+    "A dated list of what changed in each version and what users must do differently."
+   ],
+   [
+    "C4 model",
+    "Four zoom levels for architecture diagrams: context, containers, components and code."
+   ],
+   [
+    "Mermaid",
+    "A text format for diagrams that many tools render, so diagrams live in the repository."
+   ],
+   [
+    "Runbook",
+    "Step-by-step instructions for confirming and safely handling a known alert or symptom."
+   ]
+  ],
+  "add_practice": [
+   "For a small project, draw a C4 level 1 and level 2 diagram in Mermaid, write one runbook entry for its most likely failure, and write a one-page quick-start for its end users.",
+   "Write a change request for a made-up scope change with impact on time, cost and risk, and say how its effect differs under fixed price versus time and materials."
+  ]
+ },
+ "demo": {
+  "add_subtopics": [
+   {
+    "title": "Handling questions and objections",
+    "body": "Questions are a good sign: people ask about things they care about. Handle them so they help the story instead of derailing it.\n\nKeep a parking lot. When a question is off the path, such as a detailed pricing question in the middle of the workflow, say 'Good question, let me park it and come back at the end', and write it where everyone can see. Then really come back to it.\n\nSay 'I don't know' when you do not know. Follow it with a date: 'I don't know how long we keep audit logs by default. I will confirm by Thursday.' A guessed answer that turns out wrong costs more trust than an honest gap.\n\nNever promise roadmap dates. Features that are planned can slip or change. Say what exists today, and offer to connect them with the product team if a future feature matters to their decision.\n\nFour AI objections come up in almost every demo. Prepare short, honest answers that you can back with evidence, and check them with your team so every FDE gives the same answer.",
+    "example": "During the claims demo, the head of IT asks whether the model will be trained on their claims. The FDE answers from the approved line in the table below, adds the link to the trust center, and parks a follow-up question about data residency for the end of the meeting, where she answers it.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Objection",
+      "Short honest answer"
+     ],
+     "rows": [
+      [
+       "It will make things up (hallucination)",
+       "Sometimes it can. That is why each answer cites its source and a person approves before anything is sent. Here is our measured error rate on your test claims."
+      ],
+      [
+       "Is our data safe?",
+       "Your data stays in your region, is not used to train models under our contract, and access is logged. Our security documents are on the trust center."
+      ],
+      [
+       "What will it cost?",
+       "Running cost is about X per claim at your volume; we will confirm it in the pilot and can set a monthly cap."
+      ],
+      [
+       "Will it replace our staff?",
+       "It removes retyping and searching so handlers spend time on decisions. How you use the saved time is your choice, and we can help plan it with HR."
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Build the demo around the user's workflow",
+    "body": "Start from a real person and a real task you saw in discovery. Show the steps in the order that person does them, using realistic data, and ideally the customer's own data if you are allowed.\n\nPick one workflow and do it well. Showing every feature makes the audience work to figure out what matters.\n\nName the user out loud: 'This is Priya, a claims handler. It's Monday and she has 40 new claims.' The audience will follow Priya more easily than a list of screens.\n\nConsider showing one AI mistake on purpose. Pick a realistic error, such as a blurry photo where the assistant reads the wrong amount, and show how the user spots it and corrects it in two clicks. A demo that shows the safety net builds more trust than a flawless run, because everyone in the room knows AI makes mistakes and wants to see what happens when it does.",
+    "example": "For an insurer, you demo the assistant through one motor claim: Priya opens the claim, the assistant has already extracted the damage details from photos and the repair quote, flags a mismatch in the repair cost, and drafts the approval note. Three screens, one story. After the smooth motor claim, you open a second claim with a smudged repair quote. The assistant reads 1,850 as 7,850, the cost check flags it, and Priya fixes the figure before approving. The claims manager says this is the part that convinced her.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "One named user from discovery",
+     "One workflow, shown in the user's real order",
+     "Realistic data, customer data only if approved",
+     "The key moment happens in the first half",
+     "Every screen shown earns its place in the story"
+    ]
+   },
+   {
+    "title": "Tailoring to executives and end users",
+    "body": "Executives have little time and care about outcomes, cost, risk and timing. Lead with the result, show one short workflow, then talk about what it would take to roll out.\n\nEnd users care about whether it fits their daily work. They want to see their exact screens, how edge cases are handled and what happens when the AI is wrong. Give them more time in the product and ask for their feedback.\n\nOften you run two versions of the same demo for the same customer, one per audience.\n\nThere is often a third audience: the customer's IT and security engineers. They frequently decide whether the system can go live at all. They want to see the architecture, where data flows and is stored, how users log in (single sign-on), what is logged and for how long, and how access is controlled. Give them a separate technical session with the architecture diagram and a look at real logs, not the executive story.",
+    "example": "For the insurer's COO, you open with 'cost per claim could drop because handling time falls', show one claim in two minutes, then cover pilot plan and data security. For the claims handlers, you spend twenty minutes on real claims, including a blurry photo the assistant cannot read, and show how the handler corrects it. For the insurer's security team, you run a 45-minute session: the architecture diagram, a login through their identity provider, an audit log entry for one claim, and the data retention settings. They leave with a list of three questions for the design doc.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "",
+      "Executives",
+      "End users",
+      "IT and security"
+     ],
+     "rows": [
+      [
+       "Open with",
+       "Business result and number",
+       "Their daily task",
+       "Architecture and data flow"
+      ],
+      [
+       "Depth",
+       "One short happy path",
+       "Several cases, including errors",
+       "Login, logs, access control"
+      ],
+      [
+       "Talk about",
+       "Cost, risk, timeline, security",
+       "Speed, accuracy, how to correct it",
+       "Where data lives, retention, audit"
+      ],
+      [
+       "Close with",
+       "Decision or approval",
+       "Feedback and training date",
+       "Open questions for the design review"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Handling live failures",
+    "body": "Live demos fail: the network drops, a model returns an odd answer, a login expires. Plan for this in advance so a failure costs you thirty seconds instead of the meeting.\n\nPrepare a fallback for every live step: a screen recording of the same flow, cached responses you can switch to, or screenshots. Test the whole demo on the same machine and network you will use, shortly before the meeting.\n\nWhen something breaks, name it in one calm sentence, switch to the fallback and continue the story. Follow up afterwards with the cause. Do not debug in front of the audience.\n\nLanguage models add a special risk: non-determinism. The same prompt can give a different answer live than it did in rehearsal, even with nothing broken. Reduce the risk. Pin the exact model version (a dated snapshot, not an alias that can change underneath you). Lower the temperature, the setting that controls randomness, where the model supports it. Pre-warm the system by running the key steps a few minutes before the meeting, so caches are filled and cold starts are over. And keep a cached output for the key step, the one moment the story depends on, so you can switch to it if the live answer is odd.",
+    "example": "Halfway through a demo to a hospital's operations director, the LLM call times out. You say: 'That call timed out, so let me show you the recording of the same step from this morning.' You play 40 seconds of video and carry on. That evening you email the director a short note: the cause was a rate limit on the demo account, now raised. In rehearsal the assistant wrote a crisp approval note; live, it adds an unexpected paragraph. Because the model version is pinned and the note is cached, you say 'The wording varies run to run; here is the note it produced this morning' and move on.",
+    "code": "DEMO FALLBACK PLAN\nStep                     Live source          Fallback\n1 Open claim             staging app          screenshot set A\n2 Extract from photos    live model call      cached JSON + video 0:40-1:20\n3 Flag cost mismatch     rules service        video 1:20-1:50\n4 Draft approval note    live model call      pre-generated note\n\nBefore the meeting:\n  [ ] full dry run on the demo laptop and venue network\n  [ ] logins refreshed, tokens valid for 24h\n  [ ] recording and screenshots open in a background tab\n  [ ] phone hotspot ready as backup network\n\nLLM-SPECIFIC CHECKS\n  [ ] model pinned to a dated version, not a moving alias\n  [ ] temperature lowered where the model supports it\n  [ ] key steps run 10 minutes before (pre-warm)\n  [ ] cached output saved for the key step",
+    "lang": "Text"
+   },
+   {
+    "title": "A 10-minute demo script",
+    "body": "Write the demo down as a script with timings. You do not need to read it aloud, but writing it forces you to cut and to decide what each minute is for.\n\nA good default for ten minutes: one minute of context, two minutes of the before story, four minutes of the live workflow, one minute of the after and its number, and two minutes for the ask and questions.\n\nRehearse at least twice with a timer, once with a colleague acting as a skeptical executive.\n\nCheck your screen before you share it. Turn on do-not-disturb so chat pop-ups and email previews do not appear. Use a clean browser profile with only the demo tabs open and no bookmarks, history or autofill that could show another customer's name or data. Close anything confidential. Set the zoom to about 125 to 150 percent so people on small screens can read it, and share a single window rather than your whole desktop when you can.",
+    "example": "Below is a script for the insurer demo to the COO. The ask is specific: approval for a four-week pilot with one claims team, and a named person to arrange data access. Before the COO demo you switch to a browser profile called 'Demo only', close the chat app, set zoom to 150% and share just that window.",
+    "code": "10-MINUTE DEMO SCRIPT  -  Claims assistant, COO audience\n0:00  Context   'You asked us to reduce claim handling time.\n                 Here is one claim, today and with the assistant.'\n1:00  Before    Show Priya's current 4-system process.\n                 'We timed this at about 12 minutes per claim.'\n3:00  Live      Open claim -> extracted details -> cost mismatch flag\n                 -> drafted approval note. Priya reviews and approves.\n7:00  After     'Same claim: about 3 minutes in our 20-claim test.'\n                 Note: estimate; pilot will measure the full team.\n8:00  Ask       'We propose a 4-week pilot with the motor team.\n                 We need data access by the 15th. Who should own that?'\n8:30  Questions\n10:00 End\n\nSCREEN-SHARE HYGIENE\n  [ ] do-not-disturb on (chat, email, calendar pop-ups)\n  [ ] clean browser profile: demo tabs only, no history or autofill\n  [ ] nothing from other customers visible anywhere\n  [ ] zoom 125-150%, share one window",
+    "lang": "Text"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Parking lot",
+    "A visible list of off-topic questions you promise to answer later in the meeting."
+   ],
+   [
+    "Non-determinism",
+    "When the same input can produce different outputs on different runs, as with language models."
+   ],
+   [
+    "Temperature",
+    "A model setting that controls how random its output is; lower means more consistent."
+   ],
+   [
+    "Pre-warm",
+    "Running key steps shortly before a demo so caches are filled and slow first calls are over."
+   ],
+   [
+    "Screen-share hygiene",
+    "Preparing your screen so no pop-ups, other customers' data or clutter appear while sharing."
+   ]
+  ],
+  "add_practice": [
+   "Write short honest answers to the four common AI objections (hallucination, data security, cost, jobs) for a product you know, then have a friend fire them at you in random order during a demo."
+  ]
+ },
+ "moat": {
+  "replace_subtopics": [
+   {
+    "title": "The build-it-where decision",
+    "body": "When a customer asks for something new, you have three places to put it. Configuration means settings the product already supports, such as a threshold or a list of approvers. An adapter is a small piece of code at the edge that connects the product to one customer's systems without changing the product itself. Core means the shared product code that every customer runs.\n\nThe default is configuration first, then an adapter, and core only with evidence. Evidence usually means two or more customers need something similar, and a general version fits where the product is heading.\n\nWrite down your reasoning each time. A short note ('config, because only Harbourline Freight needs it; revisit if a second customer asks') makes it easy to spot repetition later.\n\nPromotion to core is not finished when the core feature ships. Every tenant still running the old adapter must be migrated to the new feature, tested, and then the adapter code deleted. Skip that last step and you keep paying for both: the core feature and a pile of old adapters doing the same job, which is exactly the sprawl you wanted to avoid. Put the migration and the deletion on the plan with dates and an owner.",
+    "example": "A freight company asks for invoices over 10,000 euros from its EMEA team to need a second approver. The product already supports approval rules, so this is configuration. A month later a retailer asks the same thing, and a third customer asks for approval chains by region. Now there is repetition, so you bring the product team a proposal for regional approval chains in core. When regional approval chains ship in core, the freight company is moved over in the first week, the retailer the week after, and the old adapter is deleted from the repository with a short note in the registry.",
+    "code": "def where_should_it_live(req):\n    \"\"\"Rough triage for a customer request.\"\"\"\n    if req[\"supported_by_existing_settings\"]:\n        return \"config\"                     # no code change at all\n    if req[\"customers_asking\"] >= 2 and req[\"fits_roadmap\"]:\n        return \"core (propose to product with evidence)\"\n    return \"adapter (own it, test it, log it)\"\n\nrequests = [\n    {\"name\": \"EMEA 2nd approver\", \"supported_by_existing_settings\": True,\n     \"customers_asking\": 1, \"fits_roadmap\": True},\n    {\"name\": \"Regional approval chains\", \"supported_by_existing_settings\": False,\n     \"customers_asking\": 3, \"fits_roadmap\": True},\n    {\"name\": \"Legacy AS/400 export\", \"supported_by_existing_settings\": False,\n     \"customers_asking\": 1, \"fits_roadmap\": False},\n]\nfor r in requests:\n    print(f\"{r['name']:<26} -> {where_should_it_live(r)}\")\n\n# Promotion lifecycle: an adapter is only \"done\" when no tenant uses it\nadapters = {\n    \"regional_approvals_v0\": {\"core_feature\": \"approval_chains\", \"tenants\": [\"freightco\", \"retailco\"]},\n    \"fixed_width_appointments\": {\"core_feature\": None, \"tenants\": [\"stmarys\"]},\n}\nmigrated = {\"freightco\"}   # tenants already switched to the core feature\n\nfor name, a in adapters.items():\n    if a[\"core_feature\"] is None:\n        print(f\"{name:26} keep: no core feature yet\")\n        continue\n    left = [t for t in a[\"tenants\"] if t not in migrated]\n    if left:\n        print(f\"{name:26} migrate {left} to {a['core_feature']}, then delete\")\n    else:\n        print(f\"{name:26} delete adapter code now\")\n# Output:\n# regional_approvals_v0      migrate ['retailco'] to approval_chains, then delete\n# fixed_width_appointments   keep: no core feature yet",
+    "lang": "Python"
+   },
+   {
+    "title": "Isolating one-offs with config and adapters",
+    "body": "Isolation means a customer-specific change cannot break anything else. Configuration does this naturally. Adapters do it by sitting between the customer's system and a clean interface the product already expects.\n\nA good adapter has an owner (a named person), tests, and a record in a registry so people know it exists. Without those three things, adapters quietly become tech debt: code that costs more to maintain over time than it saved.\n\nNever copy the core code into a customer branch to change one line. That is called forking, and it means every future product update has to be merged by hand into that customer's copy.\n\nA third isolation tool is the per-tenant feature flag: a switch, stored in configuration, that turns a behaviour on for one customer without a separate code branch. The code for the new behaviour ships to everyone but runs only where the flag is on. This lets you try a change with one customer, and turn it off in seconds if it misbehaves.\n\nFlags need cleanup. Each flag should have an owner and a removal date. Once the behaviour is on for everyone, or abandoned, delete the flag and the dead code path. Old flags multiply the combinations you have to test.",
+    "example": "A hospital exports patient appointments as a fixed-width text file instead of JSON. Rather than teaching the core scheduler to read that format, you write a 40-line adapter that converts the file into the standard appointment objects. The scheduler never knows the hospital is different. The hospital wants appointment reminders sent 48 hours ahead instead of 24. You add a flag `reminder_48h` with an owner and a removal date, turn it on for stmarys only, and after two other hospitals ask for it, make 48 hours a normal setting and delete the flag.",
+    "code": "# tenants/stmarys.yaml  - configuration, no code\ntenant: stmarys\napprovals:\n  second_approver_over_eur: 10000\n  approver_group: finance-emea\ningest:\n  adapter: fixed_width_appointments   # registered adapter name\n  owner: sam.k@vendor.example\n  tests: tests/adapters/test_fixed_width.py\n\n# adapters/fixed_width_appointments.py\n# def parse(line: str) -> Appointment:\n#     return Appointment(\n#         patient_id=line[0:10].strip(),\n#         start=datetime.strptime(line[10:22], \"%Y%m%d%H%M\"),\n#         clinic=line[22:30].strip(),\n#     )\n\n# per-tenant feature flags (same tenants/stmarys.yaml)\nfeature_flags:\n  reminder_48h:\n    enabled: true\n    owner: sam.k@vendor.example\n    remove_by: 2026-09-30   # delete flag and old code path by this date",
+    "lang": "YAML"
+   },
+   {
+    "title": "Process data as a moat",
+    "body": "Features are easy to copy. A competitor can watch a demo and build something similar in months. What they cannot copy is data they do not have.\n\nProcess data is the record of how work actually happens inside customers: which suggestions users accepted, which they corrected, what the correct answer turned out to be, and which exceptions came up. It is created as a side effect of people using your product in real workflows.\n\nTo make it useful, capture it deliberately. Log each model suggestion together with what the user did and the final outcome, in a consistent format. Respect the contract: customers must agree to how their data is used, often in anonymised or aggregated form.\n\nCheck the contract before you log anything for training. Many enterprise contracts forbid using one customer's data to improve models for other customers. The usual safe patterns are per-tenant opt-in (each customer agrees in writing, and the consent is stored with the data, as in the consent_scope field above), aggregation or anonymisation (removing names and details so records cannot be traced back), and training only within one tenant's own model. Also check your model provider's terms: some deployments run with zero data retention, where the provider keeps nothing, so prompts and outputs exist only in your own logs.\n\nData is also not the only moat, and on its own it is getting weaker: each new foundation model does more out of the box, so a pile of generic data buys less than it used to. Stronger moats in enterprise AI usually combine several things: switching costs from deep integration with the customer's systems, being embedded in daily workflows, a library of evaluation sets built with customers, and domain know-how in the team.",
+    "example": "An insurance claims product suggests a damage category for each claim. When an adjuster changes 'minor collision' to 'total loss', the product logs the original suggestion, the correction, and the final payout. After a year across 12 insurers, the vendor has hundreds of thousands of expert-labelled corrections that no new entrant can buy. Before building the correction log, the claims vendor finds that 9 of its 12 insurers allow aggregate training, 2 allow training only on their own tenant, and 1 forbids any training use. The logging code reads each tenant's consent_scope and drops events that are not allowed.",
+    "code": "{\n  \"event\": \"suggestion_corrected\",\n  \"tenant\": \"insurer_07\",\n  \"timestamp\": \"2026-03-14T10:22:05Z\",\n  \"model_version\": \"damage-cls-2026-02\",\n  \"input_ref\": \"claim/88213/photos\",\n  \"suggested\": {\"label\": \"minor_collision\", \"confidence\": 0.71},\n  \"final\": {\"label\": \"total_loss\", \"set_by_role\": \"senior_adjuster\"},\n  \"outcome\": {\"payout_band\": \"high\", \"reopened\": false},\n  \"consent_scope\": \"aggregate_model_training\"\n}",
+    "lang": "JSON",
+    "table": {
+     "headers": [
+      "Moat",
+      "What it is",
+      "How durable"
+     ],
+     "rows": [
+      [
+       "Process data",
+       "Corrections and outcomes from real use",
+       "Strong if contracts allow its use; weakening as models improve"
+      ],
+      [
+       "Switching costs",
+       "Deep integration with customer systems",
+       "Strong: replacing it means redoing the integration"
+      ],
+      [
+       "Workflow embedding",
+       "Users do their daily job inside the product",
+       "Strong while users rely on it"
+      ],
+      [
+       "Eval sets",
+       "Customer-specific test sets with expert labels",
+       "Medium to strong: slow to rebuild"
+      ],
+      [
+       "Domain know-how",
+       "Team expertise in the customer's industry",
+       "Medium: people can leave"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Feature flag",
+    "A configuration switch that turns a behaviour on for chosen tenants without a separate code branch."
+   ],
+   [
+    "Promotion lifecycle",
+    "Moving tenants from a custom adapter to a new core feature and then deleting the adapter."
+   ],
+   [
+    "Switching cost",
+    "The effort a customer would face to replace your product, such as redoing integrations."
+   ],
+   [
+    "Zero data retention",
+    "A provider setting or term under which prompts and outputs are not stored after the request."
+   ]
+  ],
+  "add_practice": [
+   "For a product you know, list which moats from the table it has, and write the consent rule you would check before logging any customer data for model training."
+  ]
+ },
+ "change": {
+  "add_subtopics": [
+   {
+    "title": "Retiring the old way and expanding",
+    "body": "While the old way still works, many people will keep using it. The spreadsheet, the manual report or the old inbox is a safety blanket, and running both doubles the work, as the claims example in 'Why good tools still fail' shows. So adoption is not finished until the old way is retired, on purpose and on a date.\n\nA decommission plan has five parts. A retirement date, agreed by the sponsor and announced early. A named owner who makes sure it happens. A read-only period, usually two to four weeks, where the old spreadsheet or report can still be opened but not edited, so people can look up history without drifting back. An archive: where old data will live afterwards and who can reach it. And a check that nothing else depended on it, for example another team's monthly report that quietly reads the old spreadsheet.\n\nOnce one team's workflow is proven and the old way is gone, you have the best evidence you will ever get: real numbers from real users. That is the moment to take the workflow to the next team, site or use case, reusing the champions, training and communication plan you already have. From the FDE side this is 'land and expand': land one team, prove it, expand. How the account team turns this into renewals and a second use case is covered in the expansion topic (Renewal, value realisation and expansion).",
+    "example": "At the distribution company, the old order-error spreadsheet becomes read-only on 30 March and is archived on 27 April, with the operations director as owner. The FDE finds that the finance team's month-end report reads that spreadsheet and moves it to the new tool's export first. In May the same order-check workflow, with two of the original champions as trainers, goes live at the second warehouse.",
+    "code": "DECOMMISSION PLAN - Order-error spreadsheet\nOwner:           Operations director\nAnnounced:       2 March (in the go-live email)\nRead-only from:  30 March  (view history, no new entries)\nArchived on:     27 April  -> shared drive /archive/order-errors, read: ops leads\nDependencies:    finance month-end report -> moved to tool export on 20 March\nNext team:       Warehouse 2, go-live 18 May, champions: Priya, Tom",
+    "lang": "Text"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Handling resistance",
+    "body": "Resistance is any behavior that slows the change: complaints, workarounds, quiet non-use. It usually has a reason. The tool may add work, threaten someone's status or expertise, or have failed them once in front of a customer.\n\nOne widely used model, Prosci's ADKAR, says a person needs Awareness of why, Desire to take part, Knowledge of how, Ability to do it in practice, and Reinforcement so it lasts. Asking which of these is missing helps you pick the right fix: more explanation, a better reason, training, practice or follow-up.\n\nListen first. Ask the resistant person to show you where the tool gets in the way. Some complaints reveal real bugs. When the concern is about jobs or status, be honest about what you know, and bring the sponsor in for decisions you cannot make.\n\nWatch for the opposite problem too: over-trust, also called automation bias. This is when users accept almost every suggestion without really checking, because the tool is usually right and checking takes effort. It looks like perfect adoption, but errors slip through unseen. Track the acceptance rate (suggestions accepted unchanged), the edit rate and the rejection rate. If users accept 98% of suggestions while your evaluation says the model is wrong about 5% of the time, some errors are being passed on. Audit a random sample each week, show users real examples of errors caught, and keep the review step meaningful, for example by asking them to confirm the one field that matters most.",
+    "example": "A senior underwriter refused to use a risk-scoring assistant and told colleagues it was 'a black box'. The FDE sat with her for an hour. She showed two cases where the score ignored a clause she always checks. The team added that clause to the model's inputs and showed the reasoning for each score. She later became the team's champion. The underwriting team, once won over, accepted 392 of 400 risk scores unchanged in one month. A 40-case audit found two scores that missed an exclusion clause. The FDE shared both cases in the next team meeting and added a required tick box for that clause.",
+    "code": "# Over-trust check: how often do users accept AI suggestions unchanged?\nsuggestions = 400\naccepted_unchanged = 392\nedited = 6\nrejected = 2\nprint(f\"Accepted unchanged: {accepted_unchanged/suggestions:.1%}\")\nprint(f\"Edited: {edited/suggestions:.1%}  Rejected: {rejected/suggestions:.1%}\")\n# Audit a random sample: if the model's real error rate is 5%,\n# 98% unchanged acceptance means some errors are slipping through.\n# Output:\n# Accepted unchanged: 98.0%\n# Edited: 1.5%  Rejected: 0.5%",
+    "lang": "Python",
+    "checklist": [
+     "Ask the person to show you, on screen, where it gets in the way",
+     "Identify which ADKAR element is missing",
+     "Separate real product gaps from habit or fear",
+     "Fix and tell them what changed because of their feedback",
+     "Bring the sponsor in for policy or job questions",
+     "Check back after two weeks"
+    ]
+   },
+   {
+    "title": "Measuring adoption",
+    "body": "Adoption needs numbers, the same as model accuracy. Three levels are useful. Breadth is the share of intended users who used the tool in a period, for example weekly active users divided by licensed users. Depth is the share of the relevant work that goes through the tool. Outcome is the business number the project was meant to move, such as handle time.\n\nLogins alone mislead: people can log in and then do the work elsewhere. Depth catches that. Collect usage events from the start, since adding them later means you have no baseline.\n\nLook at the data by team and by person. A low average often hides one team at 90 percent and another at 5 percent, and the fixes differ.\n\nOne week of breadth can hide a slow drop-off. Two more measures catch it. A retention cohort follows one group over time: of the users who were active in week 1, how many are still active in week 2, 3 and 4? A falling line means people tried the tool and stopped. Stickiness is average daily active users divided by weekly active users (DAU/WAU). If it is high, people use the tool most days; if it is low, they use it only now and then. For a tool meant for daily work, a low stickiness is a warning even when breadth looks fine.",
+    "example": "A support tool has 6 licensed agents. In one week, 3 of them used it at least once (breadth 50 percent), and 4 of the 8 relevant tasks were done in the tool (depth 50 percent). The three non-users get a short conversation with their champion before the next weekly review. Five handlers used the tool in week 1, but only two of them were still active in week 4, a 40% retention. The two who stayed used it on most days (stickiness 70%), so the FDE interviews the three who stopped.",
+    "code": "from datetime import date\n\n# One row per time a user did the target task: (user, day, done_with_tool?)\nevents = [\n    (\"ana\", date(2026, 3, 2), True),  (\"ana\", date(2026, 3, 3), True),\n    (\"ben\", date(2026, 3, 2), False), (\"ben\", date(2026, 3, 4), True),\n    (\"cara\", date(2026, 3, 3), True), (\"dev\", date(2026, 3, 5), False),\n    (\"eli\", date(2026, 3, 5), False), (\"eli\", date(2026, 3, 6), False),\n]\nlicensed_users = [\"ana\", \"ben\", \"cara\", \"dev\", \"eli\", \"fay\"]\n\nactive = {u for u, d, used in events if used}             # used the tool at least once\nreach = len(active) / len(licensed_users)                  # breadth: who uses it\ntasks = [used for _, _, used in events]\ndepth = sum(tasks) / len(tasks)                            # depth: share of tasks done in the tool\nnot_started = [u for u in licensed_users if u not in active]\n\nprint(f\"Weekly active: {len(active)}/{len(licensed_users)} = {reach:.0%}\")\nprint(f\"Tasks done in tool: {sum(tasks)}/{len(tasks)} = {depth:.0%}\")\nprint(\"Follow up with:\", not_started)\n# Weekly active: 3/6 = 50%\n# Tasks done in tool: 4/8 = 50%\n# Follow up with: ['dev', 'eli', 'fay']\n\n# Retention cohort: of the users active in week 1, who is still active later?\nweekly_active = {\n    1: {\"ana\", \"ben\", \"cara\", \"dev\", \"eli\"},\n    2: {\"ana\", \"ben\", \"cara\", \"eli\"},\n    3: {\"ana\", \"cara\", \"eli\"},\n    4: {\"ana\", \"cara\"},\n}\ncohort = weekly_active[1]\nfor week, users in weekly_active.items():\n    kept = len(cohort & users)\n    print(f\"Week {week}: {kept}/{len(cohort)} of the week-1 cohort active = {kept/len(cohort):.0%}\")\n\n# Stickiness: average daily active users / weekly active users\ndaily_active_counts = [2, 1, 1, 2, 1]      # Mon-Fri of week 4 (never above WAU)\nwau = len(weekly_active[4])\ndau = sum(daily_active_counts) / len(daily_active_counts)\nprint(f\"Stickiness (DAU/WAU) in week 4: {dau:.1f}/{wau} = {dau/wau:.0%}\")\n# Output:\n# Week 1: 5/5 of the week-1 cohort active = 100%\n# Week 2: 4/5 of the week-1 cohort active = 80%\n# Week 3: 3/5 of the week-1 cohort active = 60%\n# Week 4: 2/5 of the week-1 cohort active = 40%\n# Stickiness (DAU/WAU) in week 4: 1.4/2 = 70%",
+    "lang": "Python"
+   },
+   {
+    "title": "Communication plans",
+    "body": "A communication plan lists who needs to hear what, from whom, when, and through which channel. It prevents surprises, which are a major source of resistance.\n\nEvery message should answer the user's questions: what is changing, why, what it means for me, when, and where to get help. The sender matters. People listen to their own manager more than to a project email.\n\nPlan several touches: an early heads-up, a go-live message, and follow-ups that share early results and fixes. Sharing 'you told us X, we changed Y' shows that feedback works and encourages more of it.\n\nIn some countries, workers' representatives must be involved before the rollout. In Germany, for example, a works council (Betriebsrat) has a right to be consulted on, and to agree to, technical tools that can monitor employee behaviour or performance, and usage logs of an AI tool can count. Similar rules exist elsewhere in Europe, and unions may have agreements too. Ask the customer's HR team early whether this applies. Involving them late can stop a go-live completely.",
+    "example": "Two weeks before go-live at a distribution company, the operations director told team leads in their weekly meeting why the new order-check tool was coming. One week before, each team lead sent a short email to their team. On go-live day the champions posted in the team chat. Three weeks after, the director shared that order errors had dropped and listed two fixes that came from user feedback. Before the German warehouse rollout, HR tells the FDE that the works council must approve the tool because it logs which employee handled each order. The FDE prepares a one-page summary of what is logged, who can see it and how long it is kept, and approval comes three weeks later.",
+    "code": "COMMUNICATION PLAN\nwhen       audience      sender           channel        message\nT-14 days  Team leads    Ops director     Weekly meeting Why, timeline, their role\nT-7 days   All users     Own team lead    Email          What changes, training date\nT-0        All users     Champions        Team chat      Live today, where to get help\nT+7 days   All users     FDE + team lead  Email          Top questions answered\nT+21 days  All staff     Ops director     Newsletter     Early results, fixes made\n\nEMAIL TEMPLATE (from team lead)\nSubject: New order-check tool from Monday 9 March\nWhat:  Orders will be checked by the new tool before release.\nWhy:   Last quarter 3% of orders had errors that reached customers.\nYou:   You review flagged orders only, about 1 in 10.\nHelp:  Training Thursday 10:00. Champion on our team: Priya.",
+    "lang": "Text"
+   },
+   {
+    "title": "Training plans that stick",
+    "body": "Training works best when it is about the user's own tasks, uses realistic data, and happens close to when they will need it. People forget most of a demo within days if they do not practice.\n\nSplit training by role. A manager needs to read the dashboard and know what to expect from the team. A daily user needs to do their three most common tasks and know what to do when the tool is wrong.\n\nKeep training short, add a one-page quick reference, and plan for new starters. A recording of a live session is useful as a backup, but hands-on practice is what builds confidence.\n\nTraining is not a single event. Plan ongoing support for at least the first month: weekly office hours where anyone can drop in with questions, short in-app tips on the screens where people get stuck, and a one-click feedback button that feeds the champion issue log. Each channel shows users that help is easy to find. For the broader programme of enablement, prompt libraries and the Center of Excellence, see the enablement topic (Customer enablement and the AI CoE).",
+    "example": "For an insurer's claims summarizer, the FDE planned a 45-minute hands-on session per team of 10 handlers, held two days before their go-live. Each handler summarized three real past claims, compared them to the file, and practiced flagging a wrong summary. Team leads got a separate 20-minute session on the quality dashboard. For the claims summarizer, the FDE runs 30-minute office hours every Tuesday for four weeks and adds a 'Was this summary useful?' button. Most feedback in week 1 is about one confusing label, which is renamed by week 2.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Audience",
+      "Format",
+      "Length",
+      "Goal"
+     ],
+     "rows": [
+      [
+       "Daily users",
+       "Hands-on, real past cases",
+       "45 min",
+       "Do top 3 tasks alone"
+      ],
+      [
+       "Team leads",
+       "Walkthrough plus dashboard",
+       "20 min",
+       "Coach and spot misuse"
+      ],
+      [
+       "Champions",
+       "Early access and Q&A",
+       "2 x 30 min",
+       "Help others, report issues"
+      ],
+      [
+       "New starters",
+       "Recording plus buddy",
+       "30 min",
+       "Same as daily users"
+      ],
+      [
+       "Executives",
+       "5-minute demo in a meeting",
+       "5 min",
+       "Know what changed and why"
+      ]
+     ]
+    },
+    "checklist": [
+     "Training split by role",
+     "Uses the user's real tasks and realistic data",
+     "Held within a few days of go-live",
+     "One-page quick reference handed out",
+     "Users practice what to do when the tool is wrong",
+     "Plan for new starters written down",
+     "Office hours, in-app tips and a feedback button planned for the first month"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Decommission",
+    "Retiring an old tool, report or process on a planned date."
+   ],
+   [
+    "Read-only period",
+    "A time when the old system can be viewed but not edited, before it is archived."
+   ],
+   [
+    "Automation bias",
+    "Over-trusting a tool's output and accepting it without checking."
+   ],
+   [
+    "Retention cohort",
+    "A group of users followed over time to see how many keep using a tool."
+   ],
+   [
+    "Stickiness (DAU/WAU)",
+    "Average daily active users divided by weekly active users; how often people use a tool."
+   ],
+   [
+    "Works council",
+    "An elected employee body that in some countries must be consulted on tools that monitor staff."
+   ]
+  ],
+  "add_practice": [
+   "Write a decommission plan for an old spreadsheet your team uses: owner, read-only date, archive location and one dependency you would check first.",
+   "Extend the cohort script to compare two teams' week-4 retention and stickiness, and write two sentences on which team you would visit first and why."
+  ]
+ },
+ "pm": {
+  "replace_subtopics": [
+   {
+    "title": "Agile and sprints in practice",
+    "body": "Agile means delivering in small, working increments and using feedback to decide what comes next. Scrum is a popular agile framework built around sprints and a few regular meetings, sometimes called ceremonies.\n\nA sprint starts with planning, where the team picks work that fits. Each day a short standup covers progress and blockers. The sprint ends with a review, where working software is demoed, and a retrospective, where the team improves its own process.\n\nFDE teams usually keep the rhythm and drop the heavy parts. A two-person team may skip formal story points but still plan every two weeks, demo to the customer at the end of each sprint and write down blockers daily.\n\nMany FDE teams use Kanban instead of sprints. Kanban is a continuous flow: there are no fixed two-week boxes; work items move across a board with columns such as To do, In progress, Waiting on customer, In review and Done. The key rule is a WIP limit (work in progress limit): for example, at most three items in In progress at once. When the column is full, you finish something before starting something new. This suits FDE work well, because a lot of time is spent waiting on the customer and priorities change often. A 'Waiting on customer' column makes those blockers visible at a glance.\n\nMany teams mix the two: a Kanban board for daily flow plus a demo to the customer every two weeks. Common tools are Jira, Linear and GitHub Projects; the customer may insist on their own, and it is usually easier to use theirs.",
+    "example": "A two-person FDE team runs a six-week pilot at a regional insurer, split into three two-week sprints. Sprint 1 ends with a demo of claims summaries on 50 historical claims. Sprint 2 adds the handler review screen. Sprint 3 runs live with one team of eight handlers and ends with a results readout to the sponsor. A solo FDE supporting three small workflows at a logistics company uses a Kanban board in the customer's Jira with a WIP limit of 2 and a 'Waiting on customer' column. Every Friday she demos whatever reached Done that week.",
+    "code": "SPRINT CALENDAR - 2-week sprint\nMon wk1  10:00  Sprint planning (60 min): team + customer product owner\nDaily    09:30  Standup (15 min): done / next / blocked\nThu wk1  14:00  Backlog refinement (30 min): split and clarify next items\nThu wk2  15:00  Sprint review (45 min): demo working software to users\nFri wk2  11:00  Retrospective (30 min): keep / stop / try\nFri wk2  16:00  Weekly status report sent to sponsor\n\nKANBAN BOARD (WIP limit shown in brackets)\nTo do        | In progress (2) | Waiting on customer | In review | Done\nCLM-15 queue | CLM-12 summary  | D-3 service account | CLM-11    | CLM-9\nCLM-16 PDF   | CLM-14 flag btn |                     |           | CLM-10\nRule: In progress is full (2/2), so finish or unblock before pulling CLM-15",
+    "lang": "Text"
+   },
+   {
+    "title": "Backlog and user stories",
+    "body": "The backlog is the single ordered list of all the work the team might do. The top items are small and well understood. Items further down can be rough ideas.\n\nA user story describes a need from the user's point of view: As a [type of user], I want [something], so that [benefit]. It keeps the team focused on the person and the reason, which helps when you need to cut scope.\n\nAcceptance criteria are the testable conditions that make a story done. A common format is Given (the situation), When (the action), Then (the expected result). A story that is too big to finish in one sprint gets split, for example by user type or by one path through the workflow.\n\nAcceptance criteria belong to one story. The definition of done (DoD) is a checklist the team applies to every story, so 'done' means the same thing each time. For an AI project a typical DoD is: code reviewed, automated tests pass, the evaluation set still meets its thresholds (no drop in quality), deployed to the staging environment, and docs or release notes updated. A story that meets its acceptance criteria but fails the DoD is not done.",
+    "example": "At an insurer, the story 'claims summaries' is too big. It is split into: show a summary for a single claim, let the handler flag a wrong summary, and show summaries for all claims in the handler's queue. The first story is done when a handler opens a claim and sees a summary within five seconds, with each fact linked to its source document. CLM-12 meets all its acceptance criteria on Tuesday, but the evaluation run shows summary accuracy fell from 91% to 86%. By the team's DoD it is not done, so the fix goes in before it is demoed.",
+    "code": "STORY  CLM-12  (Must)\nAs a claims handler,\nI want a short summary of each new claim's documents,\nso that I can decide the next action without reading every page.\n\nAcceptance criteria\n  Given a claim with up to 40 pages of documents\n  When I open the claim in the review screen\n  Then a summary of at most 150 words appears within 5 seconds\n  And every fact in the summary links to the page it came from\n  And a 'Flag as wrong' button records my user id and a reason\n\nNotes: needs read access to DocStore (dependency D-3)\n\nDEFINITION OF DONE (applies to every story)\n[ ] Code reviewed by a second person\n[ ] Unit and integration tests pass in CI\n[ ] Evaluation set: accuracy not below agreed threshold\n[ ] Deployed to staging and smoke-tested\n[ ] Docs and release notes updated",
+    "lang": "Text"
+   },
+   {
+    "title": "The weekly status report",
+    "body": "A weekly status report tells the sponsor and stakeholders where the project stands in under two minutes of reading. It uses RAG status: red means the goal or date is at risk without help, amber means there is a problem the team is handling, green means on track.\n\nA good report includes the overall color with one reason, what was done this week, what is planned next week, the top risks and issues, and a short list of asks with owners and dates. The asks section is the most useful part, because it turns the report into action.\n\nBe honest about color. Moving to amber early, with a plan, builds trust. Staying green until the last week and then jumping to red destroys it.\n\nSponsors also want to see the dates that matter and what moves them. A milestone plan lists the key dates, such as data access, first demo, live start and readout, with the dependencies between them. The critical path is the chain of tasks where any delay moves the final date. Tasks off the critical path have slack (spare time) and can slip a little without harm. Show the sponsor which dependency sits on the critical path, so they know which ask really matters.\n\nA note on names: RAG status here means red, amber, green. It has nothing to do with RAG, retrieval-augmented generation, the AI technique in other lessons of this atlas. In a status report for an AI project, spell out 'RAG status (red/amber/green)' once to avoid confusion.",
+    "example": "In week 3 of the claims pilot, the model is ready but only 3 of 8 handlers have accounts. The FDE marks the project amber, explains that live use will start two days late unless accounts are created by Wednesday, and names the IAM team lead as the owner of that ask. In the claims pilot, the service account (D-3) sits on the critical path: every day it is late moves the readout a day. Handler training has four days of slack, so a two-day slip there does not move the readout. The sponsor chases the IAM team, not the training booking.",
+    "code": "STATUS - Claims summary pilot - week 3 of 6          Overall: AMBER\nReason: live start at risk, 5 of 8 handler accounts missing\n\nDone this week\n  - Summaries on 200 past claims, 91% rated correct by 2 handlers\n  - Flag button and source links shipped\nNext week\n  - Live use with team A (8 handlers) from Monday\n  - Daily accuracy review with team lead\nRisks / issues\n  - D-3 service account late (owner: IAM team, due Wed)\nAsks\n  1. Create 5 handler accounts by Wed 19 Mar (IAM team lead)\n  2. Confirm 30-min slot for week-4 review (Claims director)\n\nMILESTONE PLAN - critical path marked *\n* D-3 service account ready       Fri 14 Mar\n* Live use with team A starts      Mon 17 Mar   (needs D-3)\n  Handler training done           Mon 24 Mar   (needed by Fri 28 Mar: slack 4 days)\n* Live results collected          Fri 28 Mar   (needs live start + 2 weeks)\n* Readout to sponsor              Fri 4 Apr\nIf D-3 slips 3 days -> live start, results and readout all move 3 days",
+    "lang": "Text"
+   }
+  ],
+  "fix": [
+   [
+    "Red, amber or green rating of whether a project is on track.",
+    "Red, amber or green rating of whether a project is on track. Not the same as RAG, retrieval-augmented generation."
+   ]
+  ],
+  "add_glossary": [
+   [
+    "Kanban",
+    "A way of working where tasks flow continuously across a board, with limits on work in progress."
+   ],
+   [
+    "WIP limit",
+    "The maximum number of items allowed in a board column at once."
+   ],
+   [
+    "Definition of done",
+    "A team checklist every story must pass, such as tests, evals and deployment to staging."
+   ],
+   [
+    "Critical path",
+    "The chain of dependent tasks where any delay moves the final date."
+   ],
+   [
+    "Slack",
+    "Spare time a task has before its delay would move the final date."
+   ]
+  ],
+  "add_practice": [
+   "Draw a Kanban board for a pilot with a WIP limit and a 'Waiting on customer' column, then write a milestone plan and mark which dependency is on the critical path."
+  ]
+ },
+ "roi": {
+  "add_subtopics": [
+   {
+    "title": "Tracking realised value after go-live",
+    "body": "A business case is a forecast. After go-live, the customer will ask whether the forecast came true, usually at the quarterly business review and certainly before renewal. Track realised value, the value actually delivered, from the first month.\n\nEach month, put the forecast and the actual side by side, using the same formula as the case: measured adoption times measured saving times volume. Measure, do not re-estimate.\n\nThen deal with attribution: how much of the change was caused by the tool? Handling times can fall for other reasons, such as a quiet season or a new process. The strongest method is a control group, a similar team that does not have the tool yet, for example a team scheduled for a later rollout wave. Subtract its change from the live teams' change. If no control group is possible, use a before and after comparison over the same season and say plainly that other factors may be mixed in.\n\nWhen actuals differ from the forecast, update the case and explain why, for example slower adoption in month 1. A case that is updated honestly keeps its credibility. The account team uses these numbers in QBRs, success plans and the renewal conversation; that side is covered in the expansion topic (Renewal, value realisation and expansion).",
+    "example": "The claims summarizer went live in April. A fourth claims team, scheduled for the second wave, acts as the control group. Realised hours reach 58% of the forecast in April because adoption started at 55%, then 96% by June. The FDE adds these three months to the case, and the account manager puts the June figure on the first slide of the QBR.",
+    "code": "# Realised value: forecast vs actual, with a control group\nforecast_hours_per_month = 11_592 / 12          # from the business case\nusers, weeks_per_month = 120, 46 / 12\nmonths = {\n    # month: (measured adoption, hours/user/week change in live teams,\n    #         same measure in a control team that does not have the tool yet)\n    \"Apr\": (0.55, 2.4, 0.2),\n    \"May\": (0.68, 2.8, 0.1),\n    \"Jun\": (0.72, 3.1, 0.3),\n}\nfor m, (adoption, treated, control) in months.items():\n    net_saving = treated - control              # remove what changed anyway\n    actual = users * adoption * net_saving * weeks_per_month\n    print(f\"{m}: actual {actual:,.0f} h vs forecast {forecast_hours_per_month:,.0f} h\"\n          f\" = {actual / forecast_hours_per_month:.0%}\")\n# Output:\n# Apr: actual 557 h vs forecast 966 h = 58%\n# May: actual 845 h vs forecast 966 h = 87%\n# Jun: actual 927 h vs forecast 966 h = 96%",
+    "lang": "Python"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "What a business case contains",
+    "body": "A business case answers five questions: what problem costs money today, what the solution changes, what it costs, what the return is, and what the risks are. It ends with a clear ask, such as funding for a rollout to three more teams.\n\nKeep it short. One page of text plus a one-page calculation is enough for most decisions. Every number should have a source: the customer's data, a pilot measurement, or a clearly labeled assumption.\n\nWrite the assumptions in a separate list. It makes the case easy to challenge and easy to update when the pilot produces real measurements.\n\nCompare the project against its alternatives, not only against doing nothing at zero cost. A CFO will ask 'compared with what?'. Show at least three options: do nothing (and what that costs as volume grows), a non-AI fix (such as a better search in the document store, a template, or one more contractor in peak season), and the AI solution. Sometimes the non-AI fix wins on cost and risk; saying so builds trust. When the AI solution wins, the comparison shows why.",
+    "example": "An insurer's claims team of 120 handlers spends a large share of the day reading claim documents. A pilot of an AI summarizer suggests about 3 hours saved per handler per week. The business case states the baseline, the measured saving, the rollout cost, the running cost, the return, the risks and a request to fund rollout to all claims teams. For the claims team, the options are: do nothing (backlog grows about 8% a year, peak contractors cost more each year), improve document search (cheaper, saves about 1 hour per handler per week in a quick test) or the AI summarizer (about 3 hours). The case shows all three and recommends the summarizer, with better search as a cheaper fallback.",
+    "code": "BUSINESS CASE - Claims document summarizer (one page)\nProblem:     Handlers spend ~40% of time reading claim documents (time study, Feb)\nSolution:    AI summary with source links in the review screen\nScope:       120 handlers, 3 claims teams, 3-year horizon\nBenefit:     3 h/handler/week saved (pilot, 8 handlers, 4 weeks)\nCosts:       Build 180k one-time; run 154k/year (API, hosting, 0.5 FTE support)\nReturn:      3-year ROI, payback, NPV (see calculation)\nRisks:       Adoption below 50%; token prices; accuracy on new claim types\nAsk:         Approve rollout budget; name an adoption owner per team\n\nASSUMPTIONS (label source for each)\n  A1 Loaded cost 55/hour (finance)     A2 46 working weeks/year (HR)\n  A3 Adoption 70% by month 3 (pilot)   A4 Run cost grows with claim volume\n\nOPTIONS COMPARED (3-year view)\nOption              One-time  Run/year  Hours saved/handler/week  Risk\nDo nothing          0         0         0 (backlog grows ~8%/yr)  rising cost\nBetter doc search   40k       10k       ~1 (quick test)           low\nAI summarizer       180k      154k      ~3 (pilot)                medium",
+    "lang": "Text",
+    "checklist": [
+     "Problem stated with a measured baseline",
+     "Benefit per task from a pilot or small test",
+     "Adoption assumption stated separately",
+     "Full one-time and recurring costs",
+     "ROI, payback and NPV over a stated horizon",
+     "Low, base and high cases",
+     "Risks with mitigations",
+     "A specific ask and owner"
+    ]
+   },
+   {
+    "title": "Estimating value from a baseline",
+    "body": "Value starts with a baseline, the measured state before the change: how many times the task happens, how long it takes, how often it goes wrong, and what that costs. Get these from the customer's systems where possible, since people's estimates of their own time are often off.\n\nThe basic formula is volume times improvement per unit times adoption times cost per unit. Adoption is the share of the work that will actually go through the new tool. The cost per hour should be the loaded cost, meaning salary plus benefits, taxes and overheads, which finance teams can provide.\n\nSeparate hard savings from soft ones. Hard savings reduce spending, such as less overtime or fewer contractors. Soft savings free up capacity or improve quality. Both matter, but a CFO will weigh them differently.\n\nTime is not the only source of value. Quality and risk often matter as much. Count the errors the tool prevents and multiply by the cost of one error: rework, overpayments, penalties, refunds or complaint handling. Add avoided incidents where there is evidence, for example a missed fraud flag or a regulatory breach, but label these carefully because they are rare and hard to predict.",
+    "example": "For the insurer: 120 handlers x 70 percent adoption x 3 hours saved per week x 46 working weeks = 11,592 hours a year. At a loaded cost of 55 per hour, that is 637,560 per year of freed capacity. If the team currently pays for contractors during peak season, the part that replaces contractor spend is a hard saving; the rest is capacity. The insurer's audit sample shows 4% of claims are paid wrongly or reworked. In the pilot the rate fell to 2.5%. At 60,000 claims a year and about 180 per error, that is 162,000 a year of quality value on top of the time saved.",
+    "code": "users          = 120      # handlers in scope\nadoption       = 0.70     # share of work done with the tool\nhours_saved    = 3        # per user per week, from the pilot\nweeks          = 46       # working weeks per year\nhourly_cost    = 55       # loaded cost from finance\n\nhours_per_year = users * adoption * hours_saved * weeks\nvalue          = hours_per_year * hourly_cost\nprint(f\"{hours_per_year:,.0f} hours/year, value {value:,.0f}\")\n# 11,592 hours/year, value 637,560\n\n# Value from quality: fewer errors x cost per error\nclaims_per_year   = 60_000\nerror_rate_before = 0.04     # claims paid wrongly or reworked (audit sample)\nerror_rate_after  = 0.025    # measured in the pilot\ncost_per_error    = 180      # rework, overpayment recovered late, complaint handling\n\nerrors_avoided = claims_per_year * (error_rate_before - error_rate_after)\nprint(f\"Errors avoided per year: {errors_avoided:,.0f}\")\nprint(f\"Quality value per year: {errors_avoided * cost_per_error:,.0f}\")\n# Output:\n# Errors avoided per year: 900\n# Quality value per year: 162,000",
+    "lang": "Python"
+   },
+   {
+    "title": "ROI, payback and NPV",
+    "body": "ROI over a period is total value minus total cost, divided by total cost. It tells you how much you get back per unit spent. Always say the time period, since an ROI over three years is not comparable with one over one year.\n\nPayback period is the upfront cost divided by the net benefit per month. A short payback reduces risk, because the project earns back its money before much can change.\n\nNPV, net present value, adds up future net benefits after discounting them, because money next year is worth less than money today. The discount rate, often around 8 to 12 percent, comes from the customer's finance team. A positive NPV means the project creates value at that rate. The calculator below keeps it simple and assumes a flat benefit each year; a real case often adds a ramp-up in the first months.\n\nMany CFOs also ask for IRR, internal rate of return. It is the discount rate at which the NPV becomes exactly zero. Put simply, it is the yearly return the project earns on its money. Finance compares it with a hurdle rate, the minimum return the company expects from any investment (often 10 to 15 percent). A project whose IRR is well above the hurdle rate is attractive. IRR has no simple formula, so spreadsheets (the IRR function) and code find it by trying rates until the NPV reaches zero.",
+    "example": "With the insurer's numbers, annual value is 637,560 and annual net benefit after running costs is 483,560. The 3-year ROI is 198 percent, the payback is about 4.5 months, and the NPV at 10 percent is 1,022,542. The summarizer's cash flows are -180,000 today and 483,560 at the end of each of three years. Its IRR is about 263%, far above a 12% hurdle rate. A slower project costing 600,000 that returns 250,000 a year has an IRR of about 12%, only just at the hurdle.",
+    "code": "def business_case(users, hours_saved_per_week, adoption, hourly_cost,\n                  build_cost, annual_run_cost, years=3, weeks_per_year=46,\n                  discount_rate=0.10):\n    # Value: hours saved by the people who actually use the tool, priced at loaded cost\n    annual_value = users * adoption * hours_saved_per_week * weeks_per_year * hourly_cost\n    annual_net = annual_value - annual_run_cost          # benefit after running costs\n    total_cost = build_cost + annual_run_cost * years\n    total_value = annual_value * years\n    roi = (total_value - total_cost) / total_cost          # return per 1 unit spent\n    payback_months = build_cost / (annual_net / 12) if annual_net > 0 else float(\"inf\")\n    npv = -build_cost + sum(annual_net / (1 + discount_rate) ** t for t in range(1, years + 1))\n    return {\"annual_value\": annual_value, \"annual_net\": annual_net,\n            \"roi\": roi, \"payback_months\": payback_months, \"npv\": npv}\n\ncase = business_case(users=120, hours_saved_per_week=3, adoption=0.70,\n                     hourly_cost=55, build_cost=180_000, annual_run_cost=154_000)\nfor k, v in case.items():\n    print(f\"{k:15} {v:,.2f}\")\n\n# Output\n# annual_value    637,560.00\n# annual_net      483,560.00\n# roi             1.98\n# payback_months  4.47\n# npv             1,022,542.15\n\ndef npv_at(rate, flows):\n    \"\"\"flows[0] is today (year 0), flows[1] is end of year 1, ...\"\"\"\n    return sum(f / (1 + rate) ** t for t, f in enumerate(flows))\n\ndef irr(flows, lo=-0.99, hi=10.0):\n    \"\"\"Find the rate where NPV = 0 by bisection (flows start negative).\"\"\"\n    for _ in range(100):\n        mid = (lo + hi) / 2\n        if npv_at(mid, flows) > 0:\n            lo = mid          # still positive: the rate can go higher\n        else:\n            hi = mid\n    return (lo + hi) / 2\n\nflows = [-180_000, 483_560, 483_560, 483_560]    # build cost, then 3 years of net benefit\nprint(f\"NPV at 10%: {npv_at(0.10, flows):,.0f}\")\nprint(f\"IRR: {irr(flows):.0%}\")\n\n# A slower case: bigger build, smaller benefit\nslow = [-600_000, 250_000, 250_000, 250_000]\nprint(f\"Slow case IRR: {irr(slow):.1%}\")\n# Output:\n# NPV at 10%: 1,022,542\n# IRR: 263%\n# Slow case IRR: 12.0%",
+    "lang": "Python"
+   },
+   {
+    "title": "The full cost of an AI system",
+    "body": "Costs come in two kinds. One-time costs happen once, such as building, integrating and the initial security review. Recurring costs repeat every year, such as model or API usage, hosting, monitoring and the people who maintain the system.\n\nAI systems have costs that normal software often does not. LLM usage is priced per token and grows with volume and prompt size. Evaluation and monitoring need ongoing work because model behavior can change when you update prompts or models. Someone has to review flagged outputs.\n\nInclude the customer's own internal costs too: their staff time for data access, testing and training. Leaving these out makes the case look better on paper and damages trust when the CFO notices.\n\nDo not just state the LLM line; derive it, so anyone can check it and update it when volume or prices change. The formula is volume times tokens per item times price per token, done separately for input tokens (what the model reads) and output tokens (what it writes), because output usually costs more. The llmcost topic covers this method in depth, including caching and batch discounts.\n\nTCO, total cost of ownership, is the name finance teams use for the full cost picture over the life of the system: one-time plus recurring costs, including the customer's own staff time. When a CFO asks for TCO, they mean this whole table over the case's horizon, not only the licence or API bill.",
+    "example": "For the claims summarizer, the one-time build is 180,000, covering integration with the document store, the review screen, evaluation and security review. The recurring cost is 154,000 a year: 60,000 of LLM API usage for about 400,000 documents, 24,000 of hosting and monitoring, and 70,000 for half a full-time engineer to maintain prompts, evals and integrations. The 60,000 LLM line comes from: 400,000 documents a year, each about 35 pages or roughly 45,000 input tokens including instructions, plus about 1,000 output tokens for the summary and extracted fields. At an assumed 3 per million input tokens and 15 per million output tokens, that is 54,000 plus 6,000, so 60,000 a year. If the claim volume grows 20%, so does this line.",
+    "code": "LLM usage line (assumed prices; check the provider's current price list)\nInput : 400,000 docs x 45,000 tokens = 18,000,000,000 tokens\n        18,000 million x 3 per million  = 54,000\nOutput: 400,000 docs x 1,000 tokens  = 400,000,000 tokens\n        400 million x 15 per million    = 6,000\nTotal : 60,000 per year\n\nTCO over 3 years = 180,000 build + 3 x 154,000 run = 642,000\n                   (plus customer staff time, listed separately)",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Cost line",
+      "Type",
+      "Example amount",
+      "Driver"
+     ],
+     "rows": [
+      [
+       "Build and integration",
+       "One-time",
+       "180,000",
+       "Team weeks"
+      ],
+      [
+       "LLM API usage",
+       "Recurring",
+       "60,000 / year",
+       "Documents x tokens"
+      ],
+      [
+       "Hosting and monitoring",
+       "Recurring",
+       "24,000 / year",
+       "Uptime needs"
+      ],
+      [
+       "Maintenance (0.5 FTE)",
+       "Recurring",
+       "70,000 / year",
+       "Prompts, evals, fixes"
+      ],
+      [
+       "User training",
+       "One-time + new starters",
+       "Staff hours",
+       "Headcount"
+      ],
+      [
+       "Customer staff time",
+       "One-time",
+       "Staff hours",
+       "Data access, testing"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Realised value",
+    "The value actually delivered after go-live, measured against the forecast in the business case."
+   ],
+   [
+    "Control group",
+    "A similar team without the tool, used to separate the tool's effect from other changes."
+   ],
+   [
+    "Attribution",
+    "Deciding how much of a measured change was caused by the project."
+   ],
+   [
+    "IRR",
+    "Internal rate of return: the discount rate at which a project's NPV is exactly zero."
+   ],
+   [
+    "Hurdle rate",
+    "The minimum return a company expects before it funds an investment."
+   ],
+   [
+    "TCO",
+    "Total cost of ownership: all one-time and recurring costs over the life of a system."
+   ],
+   [
+    "Cost of quality",
+    "The money lost to errors, such as rework, penalties and refunds, which a tool can reduce."
+   ]
+  ],
+  "add_practice": [
+   "Add a quality line (errors avoided x cost per error) and a do-nothing and non-AI option to your business case, then compute the IRR of your cash flows with the bisection function.",
+   "Derive the LLM cost line of a case from volume x tokens x price, and write how you would track realised value monthly with a control group."
+  ]
+ },
+ "arc": {
+  "replace_subtopics": [
+   {
+    "title": "Weeks 1-2: find the pain and the baseline",
+    "body": "Scoping starts with discovery: interviewing the people who do the work and the leaders who pay for it. You map the workflow step by step, note which systems hold the data, and learn who makes decisions.\n\nThe most important output of discovery is a baseline, which is a measured number describing how things work today. Without a baseline you cannot prove improvement later. Get it from the customer's own systems where possible, because they will trust their own data.\n\nStart data access requests on day one. In large companies, getting access to a database can take weeks, and it often becomes the critical path (the chain of tasks that sets the earliest finish date).\n\nThe engagement opens with a kick-off meeting, usually 60 to 90 minutes with the sponsor, the team lead of the pilot users, customer IT and your pod. A simple agenda: introductions and roles; the problem in the sponsor's words; a read-back of the draft success criteria, where you say them aloud and ask 'is this what you will judge us on?'; the 12-week plan; the dependency list; and how you will communicate (weekly demo, status report, shared channel).\n\nAgree a RACI chart (who is Responsible, Accountable, Consulted and Informed) for the main activities, so it is clear who approves data access and who signs off results. The dependency list names everything you need from the customer, with an owner and a date: accounts, data extracts, a test environment, time with users. Send notes with decisions and owners the same day. The pod topic covers RACI in more detail, and the asyncwriting topic covers writing clear follow-up notes.",
+    "example": "At a motor insurer, handlers say triage is slow. You pull timestamps from the claims system and find the median time from 'claim received' to 'claim triaged' is 4.1 hours over the last 90 days, and 6.8 hours on Mondays. That number becomes the baseline for the whole engagement. At the kick-off with the insurer, you read back 'cut median motor triage time from about 4 hours to 1 hour by week 10'. The claims director corrects you: she cares about the p90 as well, because the slowest claims cause complaints. You add p90 to the criteria before anyone builds anything.",
+    "code": "-- Baseline: median and p90 time to triage, last 90 days (PostgreSQL)\nSELECT\n  team,\n  COUNT(*) AS claims,\n  percentile_cont(0.5) WITHIN GROUP (\n    ORDER BY EXTRACT(EPOCH FROM triaged_at - received_at) / 3600\n  ) AS median_hours,\n  percentile_cont(0.9) WITHIN GROUP (\n    ORDER BY EXTRACT(EPOCH FROM triaged_at - received_at) / 3600\n  ) AS p90_hours\nFROM claims\nWHERE received_at >= CURRENT_DATE - INTERVAL '90 days'\n  AND triaged_at IS NOT NULL\nGROUP BY team\nORDER BY median_hours DESC;\n\nKICK-OFF AGENDA (75 min)\n 1. Introductions and roles                                 10 min\n 2. The problem, in the sponsor's words                      10 min\n 3. Read-back of success criteria: 'Is this how you will     15 min\n    judge us?'\n 4. 12-week plan and phase gates                            10 min\n 5. Dependency list: owner and date for each                 15 min\n    D-1 Read access to claims DB     owner: IT (J. Park)    by Wk1 Fri\n    D-2 Service account for policy API owner: IAM team      by Wk2 Wed\n    D-3 Two hours a week with handlers owner: Tom (lead)    from Wk3\n 6. RACI and how we communicate (demo, status, channel)     10 min\n 7. Actions read back, notes sent same day                    5 min",
+    "lang": "SQL"
+   },
+   {
+    "title": "Weeks 7-10: harden for production",
+    "body": "Hardening turns a prototype into something people can depend on. It covers error handling (what happens when a call fails), logging (recording what happened for later debugging), data-quality checks, latency and caching, security review, and SLAs (service level agreements, the promised uptime and response times).\n\nA common pattern is to wrap every call to an external system with retries and a timeout, log each attempt in a structured format, and check incoming data before using it. Bad data should be rejected loudly at the edge instead of producing wrong answers quietly.\n\nAlso agree who is on call, meaning who gets woken up if something breaks, and write that into a runbook (a step-by-step guide for operating and fixing the system).\n\nOnly retry errors that can fix themselves. A timeout, a dropped connection, a 429 (too many requests) or a 5xx server error may succeed a second later. A 400 (bad request), 401 (not logged in) or 404 (not found) will fail the same way every time, so retrying only adds delay and extra load. The retry_if_exception filter in the code does exactly this. Note also that stop_after_attempt(3) means three attempts in total, which is two retries, not three.",
+    "example": "During hardening you find that the policy lookup service times out about once per 500 calls, and that 2% of claims arrive with an empty vehicle registration. You allow up to three attempts (the first try plus two retries) with exponential backoff, only for timeouts and server errors, and route claims with a missing registration to a manual queue. Both show up as counts on the monitoring dashboard.",
+    "code": "import logging\nimport httpx\nfrom tenacity import (retry, retry_if_exception, stop_after_attempt,\n                      wait_exponential)\n\nlog = logging.getLogger(\"triage\")\n\ndef is_retryable(e: BaseException) -> bool:\n    \"\"\"Retry network errors, rate limits and server errors; never 400/401/404.\"\"\"\n    if isinstance(e, httpx.TransportError):          # timeouts, dropped connections\n        return True\n    return (isinstance(e, httpx.HTTPStatusError)\n            and e.response.status_code in (429, 500, 502, 503, 504))\n\n@retry(retry=retry_if_exception(is_retryable),\n       stop=stop_after_attempt(3),                      # 3 attempts = up to 2 retries\n       wait=wait_exponential(multiplier=0.5, max=8),    # waits 0.5s, then 1s\n       reraise=True)\ndef get_policy(policy_id: str) -> dict:\n    r = httpx.get(f\"https://policy.internal/api/policies/{policy_id}\", timeout=5.0)\n    r.raise_for_status()\n    return r.json()\n\ndef check_claim(claim: dict) -> list[str]:\n    \"\"\"Return a list of data-quality problems (empty list = OK).\"\"\"\n    problems = []\n    if not claim.get(\"vehicle_reg\"):\n        problems.append(\"missing vehicle_reg\")\n    if claim.get(\"estimated_cost\", 0) < 0:\n        problems.append(\"negative estimated_cost\")\n    if problems:\n        log.warning(\"dq_fail\", extra={\"claim_id\": claim[\"id\"], \"problems\": problems})\n    return problems",
+    "lang": "Python"
+   },
+   {
+    "title": "Measure against the criteria",
+    "body": "At the end of hardening, measure the result the same way you measured the baseline: same query, same data source, same definition. Changing the definition midway makes the comparison meaningless and the customer will notice.\n\nReport the number, the comparison to the target, and anything that affected it, such as a holiday week or a system outage. If you missed the target, say so plainly and explain what you learned. A clear miss with a credible plan is better than a fuzzy success.\n\nThis measured result is the evidence your account team uses to renew and expand the contract.\n\nCheck that both periods have a start and an end date. A filter such as 'everything before 5 January' silently includes years of old claims, which is not the 90-day baseline you agreed in week 1. Both windows in the query below are bounded on both sides.",
+    "example": "Using the week-1 query restricted to the pilot team and weeks 9-10, the median motor triage time is 0.9 hours against a 4.1-hour baseline and a 1-hour target. The p90 dropped from 9.5 to 3.2 hours. You present both numbers to the sponsor along with the list of claims still handled manually.",
+    "code": "-- Same definition as the baseline, before vs. after\nWITH t AS (\n  SELECT\n    CASE WHEN received_at >= DATE '2026-01-05' - INTERVAL '90 days'\n              AND received_at <  DATE '2026-01-05' THEN 'baseline'   -- same 90 days as week 1\n         WHEN received_at >= DATE '2026-03-02'\n              AND received_at <  DATE '2026-03-16' THEN 'pilot_wk9_10'\n    END AS period,\n    EXTRACT(EPOCH FROM triaged_at - received_at) / 3600 AS hours\n  FROM claims\n  WHERE team = 'motor' AND triaged_at IS NOT NULL\n)\nSELECT period,\n       COUNT(*) AS claims,\n       percentile_cont(0.5) WITHIN GROUP (ORDER BY hours) AS median_hours,\n       percentile_cont(0.9) WITHIN GROUP (ORDER BY hours) AS p90_hours\nFROM t\nWHERE period IS NOT NULL\nGROUP BY period;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Weeks 11-12: handover and a client CoE",
+    "body": "Handover means the customer can run, fix and extend the system without you. The course calls the receiving team a client Center of Excellence (CoE): a small group of trained owners inside the customer who become the local experts.\n\nA handover package includes documentation, a runbook, access and credentials transferred to customer owners, a training session with a recorded walkthrough, and a support path for the first few weeks.\n\nFinally, write up what you learned for your own product team. Which parts did you have to build that the product should have had? This is the discovery half of the dual-value loop: delivery for the customer, and discovery for your company.\n\nHypercare is the period of extra support right after go-live. It should end on agreed exit criteria, not on a date alone. Typical criteria: two weeks in a row with no SEV1 (the most severe incident level), the CoE has resolved at least one drill or real incident using the runbook without your help, open defects are below an agreed number, and the usage metric is stable.\n\nAfter handover, support is usually split into levels. L1 (level 1) is the first contact, often the customer's service desk or CoE: they answer how-to questions and run known fixes from the runbook. L2 is the customer's technical owners: they investigate logs, data problems and configuration. L3 is your company's engineering or product team, for real bugs in the product. Write down who is L1, L2 and L3 and how a ticket moves between them. The supportops topic covers support tiers and SLAs in depth, and the enablement topic covers training the CoE.",
+    "example": "In week 11 you train two engineers and one claims lead at the insurer. They run the weekly retraining themselves while you watch, then fix a staged failure using the runbook. In week 12 you hand over on-call and send your product team a note: three other customers will need the same policy-lookup connector. Hypercare at the insurer was planned to end on 20 April. On 14 April the criteria are met: no SEV1 since 30 March, the CoE fixed a staged policy API outage alone, and only two low defects are open. The sponsor signs the hypercare exit note and L3 tickets now go through the vendor support portal.",
+    "code": "handover:\n  coe_members:\n    - {name: \"R. Osei\", role: \"platform engineer\", trained: 2026-03-17}\n    - {name: \"L. Chen\", role: \"data engineer\", trained: 2026-03-17}\n    - {name: \"T. Hale\", role: \"claims lead (business owner)\", trained: 2026-03-18}\n  documents:\n    - architecture.md\n    - runbook.md            # alerts, first checks, rollback steps\n    - retraining_guide.md\n  access_transferred: [cloud_project, monitoring, model_registry]\n  drills:\n    - \"Policy API outage: CoE restored service in 18 min using runbook\"\n  on_call_owner_from: 2026-03-23\n  hypercare_until: 2026-04-20   # vendor support window after go-live\nproduct_feedback:\n  - \"Policy lookup connector: 3 more customers use the same system\"\n  - \"Manual-queue routing rules should be configurable, not coded\"\n\nHYPERCARE EXIT CRITERIA            status\n[x] 2 weeks with no SEV1           since 30 Mar\n[x] CoE solved a drill alone        policy API outage, 18 min\n[x] Open defects <= 3, none high    2 low\n[x] Usage stable for 2 weeks        acceptance 71%, 73%\n\nSUPPORT LEVELS AFTER HANDOVER\nL1  Customer service desk / CoE    how-to, runbook fixes\nL2  Customer platform + data eng   logs, data, configuration\nL3  Vendor engineering             product bugs (via support portal)",
+    "lang": "YAML"
+   }
+  ],
+  "add_subtopics": [
+   {
+    "title": "Go-live: readiness and cutover",
+    "body": "Between hardening (weeks 7-10) and measuring there is a launch step: moving from a pilot that some people try to a system people depend on. Skipping it is how good pilots fail on the first day.\n\nThe usual path is: UAT (user acceptance testing), where the pilot users run agreed test scripts and sign off that it works for them; a go/no-go meeting, where the sponsor, customer IT and your pod check a readiness list and decide; then a staged rollout. Staged means you widen use step by step. First shadow mode, where the AI makes suggestions in the background and nobody acts on them, so you can compare them with what people actually did. Then one team uses it for real. Then all teams.\n\nEvery step needs a rollback plan: how to switch back to the old way of working in minutes, and who is allowed to decide that. On launch day, a run sheet lists each task with a time and an owner, so nobody wonders what happens next.\n\nThis is a short summary. The golive topic (Implementation: UAT, cutover and go-live) covers environments, data migration, UAT scripts, the customer's change board, cutover plans and the first week live in full detail.",
+    "example": "At the insurer, handlers sign UAT on 24 test claims in week 10. Shadow mode runs for three days and agrees with the handlers on 88% of claims. The go/no-go meeting says go for team A only. On day 2 the policy API slows down, the on-call engineer follows the rollback plan and switches team A back to manual triage for 40 minutes, then re-enables it.",
+    "code": "GO / NO-GO CHECKLIST (week 10)\n[x] UAT signed by pilot team lead\n[x] Shadow mode: agreement with handlers >= 85%   (88%)\n[x] Rollback tested: switch to manual triage in < 15 min\n[x] Runbook and on-call rota named\n[ ] Home team trained        -> not needed: team A only\nDecision: GO for team A; all teams after 2 clean weeks\n\nLAUNCH-DAY RUN SHEET\n08:00 Turn on suggestions for team A      owner: Ravi\n08:15 Check dashboard and error rate      owner: Jo\n09:00 Check-in with team lead Tom         owner: Maya\n12:00 Go/rollback review                  owner: sponsor + Maya\n17:00 Day-1 note to sponsor               owner: Maya",
+    "lang": "Text",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "hard",
+       90,
+       70,
+       "Hardening done",
+       "weeks 7-10"
+      ],
+      [
+       "uat",
+       265,
+       70,
+       "UAT sign-off",
+       "users run test scripts"
+      ],
+      [
+       "gng",
+       440,
+       70,
+       "Go/no-go",
+       "check readiness list"
+      ],
+      [
+       "shadow",
+       615,
+       70,
+       "Shadow mode",
+       "suggest, nobody acts"
+      ],
+      [
+       "one",
+       615,
+       220,
+       "One team live",
+       "rollback ready"
+      ],
+      [
+       "all",
+       440,
+       220,
+       "All teams live",
+       "after clean weeks"
+      ],
+      [
+       "hyper",
+       265,
+       220,
+       "Hypercare",
+       "until exit criteria"
+      ]
+     ],
+     "edges": [
+      [
+       "hard",
+       "uat"
+      ],
+      [
+       "uat",
+       "gng"
+      ],
+      [
+       "gng",
+       "shadow",
+       0,
+       "go"
+      ],
+      [
+       "shadow",
+       "one"
+      ],
+      [
+       "one",
+       "all"
+      ],
+      [
+       "all",
+       "hyper"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Kick-off meeting",
+    "The first meeting of an engagement, where goals, success criteria, plan, roles and dependencies are agreed."
+   ],
+   [
+    "UAT",
+    "User acceptance testing: real users run agreed test scripts and sign off that the system works for them."
+   ],
+   [
+    "Go/no-go meeting",
+    "A decision meeting before launch where owners check a readiness list and decide to launch or wait."
+   ],
+   [
+    "Shadow mode",
+    "Running the new system in the background so its outputs can be compared, without anyone acting on them."
+   ],
+   [
+    "Rollback plan",
+    "The steps and owner for switching back to the previous way of working if a launch goes wrong."
+   ],
+   [
+    "Hypercare",
+    "A period of extra support right after go-live, ended by agreed exit criteria."
+   ],
+   [
+    "L1, L2, L3 support",
+    "Support levels: first contact and known fixes, then technical investigation, then product engineering."
+   ]
+  ],
+  "add_practice": [
+   "For a made-up pilot, write a kick-off agenda with a success-criteria read-back and a dependency list, then a go/no-go checklist with a rollback step and three hypercare exit criteria."
+  ]
+ },
+ "pod": {
+  "replace_subtopics": [
+   {
+    "title": "Pod anatomy: one Echo, two Deltas",
+    "body": "The Echo is the Deployment Strategist. They own the customer relationship, run scoping, manage stakeholders, write status reports, chase access requests and handle contracts and scheduling. They are technical enough to understand trade-offs but spend most of their time with people.\n\nThe Deltas are the engineers. They build, integrate, debug and deploy. Two engineers give the pod enough capacity to build and cover for each other, while staying small enough that coordination is cheap.\n\nA clear split of responsibilities avoids confusion. A RACI chart is a simple tool for this: for each activity it names who is Responsible (does the work), Accountable (owns the outcome), Consulted and Informed.\n\nEcho and Delta are Palantir's internal names, which this course borrows. Other companies shape FDE work differently. A common shape is a customer team where the FDE is paired with an account executive (who owns the commercial relationship and the contract) and a solutions engineer (who runs technical sales and demos before the deal is signed), so the account executive and FDE share the Echo's work. Some companies have a solo FDE who covers several smaller accounts at once and relies on the customer's own engineers. Larger teams have an FDE manager who looks after many pods or accounts, handles staffing and escalations, and coaches the engineers. The role names change, but the questions a RACI chart answers do not: who owns the customer, who builds, and who decides on scope.",
+    "example": "A pod starts at a national grocery chain. The Echo, Maya, runs the weekly steering meeting with the supply chain director and handles the security questionnaire. The Deltas, Ravi and Jo, build the demand forecast pipeline. When the director asks for a new report, Maya takes the request, checks it against the success metric and decides with the sponsor before it reaches the engineers. At a software company selling to mid-sized retailers, one FDE, Sam, supports four accounts. For each account an account executive handles renewals and pricing, so Sam spends his week building and fixing integrations. His FDE manager oversees eight FDEs and steps in when two accounts need Sam in the same week.",
+    "code": "# RACI for one pod (R = does it, A = owns outcome, C = consulted, I = informed)\nactivity:                 echo   delta_1  delta_2  customer_sponsor\n  scoping_and_metrics:     A,R     C        C        C\n  stakeholder_updates:     A,R     I        I        I\n  access_and_security:     A,R     C        C        C\n  data_pipeline:           I       A,R      R        I\n  model_and_app:           I       R        A,R      I\n  weekly_user_demo:        A       R        R        C\n  scope_changes:           R       C        C        A\n\nOTHER COMMON SHAPES\nshape                         who owns customer       who builds\nAE + SE + FDE (per account)   account executive (AE)  FDE (SE before signing)\nSolo FDE, 3-5 small accounts  AE for each account     FDE + customer engineers\nFDE manager over many pods    each pod lead           pods; manager staffs and escalates",
+    "lang": "YAML"
+   },
+   {
+    "title": "Darwinistic adoption: ship small, keep what lives",
+    "body": "Darwinistic adoption is the course's name for letting users decide which features survive. The pod ships small features quickly to real users, measures who uses them, keeps the ones that get adopted and removes the rest.\n\nThis replaces a big up-front roadmap inside the account. Instead of predicting what users want, you observe it. It requires instrumentation, meaning the product logs events like 'feature opened' or 'suggestion accepted' so you can count usage.\n\nSet a rule before shipping, such as 'kill it if fewer than 20% of eligible users try it twice within three weeks'. Deciding the threshold in advance stops the team from keeping pet features alive.\n\nLow usage does not always mean low value. Users may not know the feature exists (poor discoverability, for example a button hidden in a menu), or nobody showed them how to use it (missing training). Before removing a feature, talk to three to five eligible users who did not use it. If they say 'I never saw it' or 'I did not know what it was for', fix the placement or the training and measure again. Remove it only if people who know about it still choose not to use it.\n\nBe careful with the time window in the query. A rolling 21-day window (now minus 21 days) can touch four calendar weeks when you group by date_trunc('week', ...), because it starts part-way through one week and ends part-way through the current one. Then '2 of 3 weeks' is really '2 of up to 4'. Use full, completed weeks instead: from the start of the current week minus 21 days, up to (not including) the start of the current week. The query below does this.",
+    "example": "At the grocery chain the pod ships three features in two weeks: a forecast chart, a suggested order quantity and an email alert for likely stockouts. After three weeks, 78% of store managers use suggested orders weekly, 41% open the chart and 6% open the email. The email is removed and suggested orders get the next round of work. Before removing the email alert, Jo calls four store managers who never opened it. Three say it went to a shared inbox nobody reads, so the pod tries sending it to personal inboxes for two weeks. Usage stays under 10%, so the alert is removed with a clear reason.",
+    "code": "-- Weekly adoption per feature over the last 3 full weeks\nWITH eligible AS (\n  SELECT COUNT(*) AS n FROM users WHERE role = 'store_manager'\n),\nweeks AS (                      -- the last 3 full, completed weeks\n  SELECT date_trunc('week', now()) - INTERVAL '21 days' AS start_ts,\n         date_trunc('week', now())                      AS end_ts\n),\nactive AS (\n  SELECT feature, user_id\n  FROM (\n    SELECT feature, user_id, date_trunc('week', ts) AS wk\n    FROM events, weeks\n    WHERE ts >= weeks.start_ts AND ts < weeks.end_ts\n    GROUP BY feature, user_id, date_trunc('week', ts)\n  ) w\n  GROUP BY feature, user_id\n  HAVING COUNT(*) >= 2          -- used in at least 2 of the 3 full weeks\n)\nSELECT feature,\n       COUNT(*)::float / (SELECT n FROM eligible) AS adoption,\n       CASE WHEN COUNT(*)::float / (SELECT n FROM eligible) < 0.2\n            THEN 'remove' ELSE 'keep' END AS decision\nFROM active\nGROUP BY feature\nORDER BY adoption DESC;",
+    "lang": "SQL"
+   }
+  ],
+  "add_subtopics": [
+   {
+    "title": "Pod rituals and the home team",
+    "body": "A pod works at the customer, but it still belongs to a home team: the product, platform engineering and other pods at your own company. Good rituals keep both sides connected.\n\nA daily pod sync is 15 minutes: what each person did, what they will do, and what is blocked. Blockers that need the customer go to the Echo; blockers inside your own product go to the home team. A weekly sync with product and platform engineering shares what customers are asking for and what broke.\n\nWhen you find a bug in your company's platform, escalate it properly. Write a ticket with steps to reproduce, the impact on the customer, the version, and a workaround if you have one. Tag the owning team and agree a severity. A clear ticket gets fixed; a message that only says 'it is broken' gets lost.\n\nCode review happens inside the pod too. One Delta reviews the other's changes before they reach the customer, even under time pressure. Pods also share a knowledge base of connectors, prompts, runbooks and lessons learned, so the next pod does not solve the same problem again.\n\nPeople rotate between accounts. Handing an account over means a written handover note (the customer's people, open risks, promises made, where the code and docs are) and at least one joint customer meeting where the new person is introduced. The asyncwriting topic covers writing handover notes and end-of-day updates.",
+    "example": "At the grocery chain, Ravi finds that the platform's CSV importer drops rows with accented store names. He writes a ticket with a 5-row sample file, notes that 40 stores are affected and that renaming the file encoding is a workaround, and tags platform engineering as severity 2. It is fixed in the next release, and the workaround is added to the shared knowledge base.",
+    "code": "PLATFORM BUG TICKET\nTitle:     CSV importer drops rows with accented characters\nSeverity:  2 (customer impact, workaround exists)\nCustomer:  grocery chain pilot, 40 of 310 stores affected\nVersion:   platform 4.12.1\nSteps:     1. Import stores_sample.csv (attached, 5 rows)\n           2. Rows 2 and 4 (e.g. 'Café Nord') are missing\nExpected:  5 rows imported; Actual: 3 rows, no error shown\nWorkaround: save the file as UTF-8 before import\nOwner:     platform engineering; pod contact: Ravi\n\nWEEKLY RHYTHM\nDaily   15-min pod sync (done / next / blocked)\nTue     sync with product and platform engineering\nThu     code review slot; update shared knowledge base\nOn rotation: handover note + joint customer meeting",
+    "lang": "Text",
+    "checklist": [
+     "Daily pod sync with blockers named",
+     "Weekly sync with product and platform engineering",
+     "Platform bugs filed with steps, impact, version and workaround",
+     "Every change reviewed by a second pod member",
+     "Reusable pieces added to the shared knowledge base",
+     "Handover note and joint customer meeting before anyone rotates off"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Account executive",
+    "The salesperson who owns the commercial relationship and contract with a customer."
+   ],
+   [
+    "Solutions engineer",
+    "A technical pre-sales person who runs demos and answers technical questions before a deal is signed."
+   ],
+   [
+    "Discoverability",
+    "How easily users can find that a feature exists and what it does."
+   ],
+   [
+    "Escalation",
+    "Passing a problem to a team or person with more authority or knowledge, with enough detail to act on it."
+   ],
+   [
+    "Knowledge base",
+    "A shared collection of reusable code, runbooks and lessons that other pods can search."
+   ],
+   [
+    "Home team",
+    "The product, platform and other teams at your own company that a pod relies on."
+   ]
+  ],
+  "add_practice": [
+   "Write a platform bug ticket for a problem you have met in any tool (steps, impact, version, workaround), then write a half-page handover note for an account you are rotating off."
+  ]
+ }
+}

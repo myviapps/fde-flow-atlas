@@ -1,0 +1,182 @@
+{
+ "docai": {
+  "title": "Quillmere Freight: reading 9,000 carrier invoices a month",
+  "company": "Quillmere Freight Forwarding (made up), freight forwarder, 650 staff, Canada",
+  "situation": "Quillmere's accounts payable team of six keyed about 9,000 carrier invoices a month into their ERP by hand. Each took around 4 minutes, invoices waited up to 9 days, and about 2 percent were paid with a keying error, mostly wrong amounts or duplicate payments.",
+  "problem": "The invoices came from over 300 carriers in different layouts, and roughly a third were scans or phone photos from small trucking firms. A template-per-carrier OCR tool the team had tried earlier broke every time a carrier changed its layout, and simply sending every file to an LLM with 'return JSON' gave tidy output with no way to catch its mistakes.",
+  "approach": [
+   "Sampled 400 invoices, labelled the correct fields for 150 of them, and found that 64 percent had a usable text layer, which could skip OCR entirely.",
+   "Built a page classifier (text, scan, empty) so text-layer PDFs went straight to extraction and scans were rendered at 300 DPI for a vision-capable model.",
+   "Wrote one Pydantic schema for carrier invoices, including shipment reference, currency and line items, and used a forced tool call so every result matched it.",
+   "Added business rules: line items sum to the total, the shipment reference exists in the transport system, the carrier is in the vendor master, and the invoice number is not already paid.",
+   "Built a review screen showing the page image next to the fields, with failing fields highlighted, and fed every correction back into the labelled test set weekly.",
+   "Agreed go-live targets with the AP manager: 99 percent on invoice number and total on the test set, and no auto-approval above 20,000 dollars."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "def route(inv, tms_refs: set[str], vendors: set[str], paid: set[tuple]) -> tuple[str, list[str]]:\n    reasons = []\n    if abs(sum(l.amount for l in inv.lines) - inv.total) > 0.01:\n        reasons.append(\"lines do not sum to total\")\n    if inv.shipment_ref not in tms_refs:\n        reasons.append(\"unknown shipment reference\")\n    if inv.carrier_id not in vendors:\n        reasons.append(\"carrier not in vendor master\")\n    if (inv.carrier_id, inv.invoice_number) in paid:\n        reasons.append(\"possible duplicate\")\n    if inv.total > 20_000:\n        reasons.append(\"above auto-approval limit\")\n    return (\"review\" if reasons else \"auto\"), reasons"
+  },
+  "outcome": "After eight weeks, 71 percent of invoices passed all checks and went to the ERP without typing, and the rest reached a reviewer with reasons attached. Average handling time fell from about 4 minutes to about 1 minute per invoice, invoices waited 3 days instead of 9, and the rules caught 38 duplicate invoices in the first month.",
+  "lessons": [
+   "Check for a text layer first; many PDFs never need OCR.",
+   "The schema and the business rules are what make LLM extraction safe to use.",
+   "A good review screen and a growing labelled test set matter as much as the model.",
+   "Agree accuracy targets and approval limits with the business before go-live."
+  ],
+  "discuss": [
+   "How would you decide the right auto-approval limit, and who should own that decision?",
+   "A new carrier sends invoices with two totals, before and after fuel surcharge. How should the pipeline handle it?",
+   "How would you prove to the finance auditor that auto-approved invoices are accurate?"
+  ]
+ },
+ "serving": {
+  "title": "Kestrova Health Network: an on-prem model for clinical letters",
+  "company": "Kestrova Health Network (made up), regional hospital group, 7 hospitals, Germany",
+  "situation": "Doctors at Kestrova spent around 20 minutes per discharge letter summarising notes, and the group wrote about 1,500 letters a day. A pilot using a hosted API worked well on synthetic data, but the data protection officer ruled that real patient notes could not leave the group's own data centre.",
+  "problem": "The team had to run a capable open-weight model on hardware inside the hospital network, serve up to about 120 doctors at peak, and keep responses fast enough to use during rounds. The first attempt, a 70B model loaded with a plain transformers script on one GPU, ran out of memory, and a smaller model on the same script handled only one request at a time.",
+  "approach": [
+   "Built a 300-case evaluation set with senior doctors, scoring summaries for missing medications, wrong dates and invented findings, and ran it on three open models.",
+   "Did the VRAM math on a whiteboard: a 70B model in 16-bit needs about 140 GB for weights alone, while a 4-bit AWQ version needs about 40 GB, leaving room for KV cache on an 80 GB GPU.",
+   "Compared the 4-bit 70B model against a 16-bit mid-size model on the evaluation set; the 4-bit 70B model kept a clear lead on missed medications, so it was chosen.",
+   "Deployed vLLM on two 80 GB GPUs as two replicas behind the hospital's API gateway, with an OpenAI-compatible endpoint so the letter app only changed its base URL.",
+   "Load tested at 1, 16, 48 and 96 concurrent requests and set max model length to 16,000 tokens, which covered 99 percent of patient notes.",
+   "Added dashboards for time to first token, tokens per second per request, queue depth and GPU memory, with an alert when the queue stayed above 20."
+  ],
+  "artifact": {
+   "lang": "bash",
+   "code": "# One replica per GPU; the gateway balances between ports 8001 and 8002\nCUDA_VISIBLE_DEVICES=0 vllm serve /models/clinical-70b-awq \\\n  --quantization awq \\\n  --max-model-len 16000 \\\n  --gpu-memory-utilization 0.92 \\\n  --port 8001 --api-key \"$VLLM_KEY\" &\n\nCUDA_VISIBLE_DEVICES=1 vllm serve /models/clinical-70b-awq \\\n  --quantization awq \\\n  --max-model-len 16000 \\\n  --gpu-memory-utilization 0.92 \\\n  --port 8002 --api-key \"$VLLM_KEY\" &\n\n# Smoke test through the gateway\ncurl -s https://llm-gw.internal/v1/models -H \"Authorization: Bearer $APP_KEY\""
+  },
+  "outcome": "At a peak of 90 concurrent requests, median time to first token was 0.8 seconds and a full draft letter took about 20 seconds. Doctors reported spending about 8 minutes per letter reviewing and editing drafts instead of 20 writing from scratch, and no patient data left the data centre.",
+  "lessons": [
+   "Do the memory math before choosing hardware or models: weights plus KV cache plus headroom.",
+   "Quantization is a trade-off you measure on the customer's own evaluation set.",
+   "An inference server with batching turns one GPU into a shared service for many users.",
+   "OpenAI-compatible endpoints make it cheap to move from a hosted prototype to self-hosting."
+  ],
+  "discuss": [
+   "How would you plan for model upgrades in a data centre that allows no direct internet downloads?",
+   "Demand doubles next year. Would you add GPUs, use a smaller model, or change batching settings first, and how would you decide?",
+   "What would you monitor to catch a drop in summary quality, not just a drop in speed?"
+  ]
+ },
+ "frameworks": {
+  "title": "Palvena Home Lending: untangling a document-chasing agent",
+  "company": "Palvena Home Lending (made up), mortgage lender, 900 staff, United States",
+  "situation": "Palvena's in-house team had built an agent that reads a mortgage file, works out which documents are missing and drafts emails to borrowers. It handled about 600 files a week, but loan officers rejected 30 percent of its drafts, and when it failed nobody could say why.",
+  "problem": "The agent was built from several stacked framework components copied from tutorials, each adding its own prompt templates and memory. The team's instinct was to switch to another framework with more features, which would add new layers without making the behaviour any easier to see or test.",
+  "approach": [
+   "Added tracing first, so every prompt, tool call and model response for a file could be read in order, and collected 120 failed files with the loan officers' reasons.",
+   "Found that a default memory component summarised earlier steps and dropped the list of documents already received, so the agent asked borrowers for documents they had already sent.",
+   "Listed which framework features were actually used: one model call, three tools and a document loader. Rewrote the core as a plain SDK tool loop of about 80 lines, keeping the framework's PDF loader.",
+   "Kept the list of received documents in structured state passed explicitly to every call, instead of relying on conversation memory.",
+   "Moved the approval step, where a loan officer edits and sends the email, into a small LangGraph graph with a checkpointer, because drafts often waited overnight for review.",
+   "Built a 200-file evaluation set that runs on every change, independent of any framework."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "FRAMEWORK REVIEW: document-chasing agent\n\nFeature                    Used?   Keep / replace\n-------------------------  ------  --------------------------------\nModel call wrapper         yes     replace: direct SDK call\nTool calling (3 tools)     yes     replace: plain loop, same tools\nConversation memory        yes     replace: explicit received_docs state\nPDF loader                 yes     keep (saves real work)\nPrompt templates           yes     replace: one versioned prompt file\nMulti-agent router         no      remove\nHuman approval, resume     needed  add: LangGraph + checkpointer\nTracing                    no      add: trace every call\n\nDecision: plain loop for the agent, LangGraph only for approval,\nevals run on every pull request."
+  },
+  "outcome": "Over the next month the loan officers' rejection rate for drafts fell from 30 percent to 9 percent, mostly because the agent stopped asking for documents already received. The core code shrank by roughly half, and the team fixed the next two bugs themselves in under a day each using the traces.",
+  "lessons": [
+   "Add tracing before changing frameworks, so you fix the real cause.",
+   "List the framework features you actually use; often the core loop is small.",
+   "Mixing is fine: plain code for the loop, a library for loaders, LangGraph for pause and resume.",
+   "Evaluations that do not depend on the framework let you change tools safely."
+  ],
+  "discuss": [
+   "The customer's architecture board wants one approved framework for all teams. How would you respond?",
+   "What would make you move the whole agent into LangGraph rather than only the approval step?",
+   "How would you explain this change to a VP who reads that the old framework is the industry standard?"
+  ]
+ },
+ "graphrag": {
+  "title": "Vantrell Components: which cars stop if one supplier floods?",
+  "company": "Vantrell Components (made up), automotive parts maker, 4,200 staff, Japan",
+  "situation": "After heavy rain hit a region where several sub-suppliers had plants, Vantrell's supply risk team needed two days and about a dozen people to work out which customer programmes were exposed. The facts were spread across 3,800 supplier contracts, a bill-of-materials system and a supplier register.",
+  "problem": "A RAG assistant over the contracts already existed and answered single-document questions well. But on questions like 'which products depend on suppliers in this prefecture?' it found at most a few relevant chunks and gave incomplete lists, because the answer needed chains of facts from different sources.",
+  "approach": [
+   "Collected 60 real questions from the risk team and tested the existing RAG: it did well on lookups but got only 11 of 25 multi-hop questions fully right.",
+   "Defined a small ontology with the team: Company, Site, Part, Product and the relationships LOCATED_IN, SUPPLIES, PART_OF and SUBSIDIARY_OF.",
+   "Seeded the graph from structured data first: the supplier register for locations and the bill of materials for PART_OF, which needed no LLM at all.",
+   "Used an LLM with a forced tool call to extract SUPPLIES and SUBSIDIARY_OF facts from contracts, storing the source contract and page on every edge.",
+   "Resolved company names against the supplier master IDs, and sent the 6 percent of names that did not match to a buyer for review.",
+   "Added a router: questions naming places, suppliers or parts with words like 'depend' or 'affected' use Cypher traversal; everything else goes to the existing RAG."
+  ],
+  "artifact": {
+   "lang": "Cypher",
+   "code": "// Products exposed to suppliers located in a given prefecture,\n// including sub-suppliers up to two tiers away\nMATCH (site:Site {prefecture: $prefecture})<-[:LOCATED_IN]-(sup:Company)\nMATCH (sup)-[:SUPPLIES]->(p1:Part)\nMATCH (p1)-[:PART_OF*1..3]->(prod:Product)\nWITH prod, collect(DISTINCT sup.name) AS suppliers,\n     collect(DISTINCT p1.part_no) AS parts\nRETURN prod.name AS product,\n       prod.customer_programme AS programme,\n       suppliers, parts\nORDER BY size(parts) DESC\nLIMIT 100;"
+  },
+  "outcome": "On the 25 multi-hop test questions, fully correct answers rose from 11 to 21, and every answer listed the contracts behind each link. In the next weather alert, the risk team produced an exposure list in about 40 minutes instead of two days. Single-document questions stayed on plain RAG, where accuracy was already good.",
+  "lessons": [
+   "Measure plain RAG first and use a graph only for the questions it fails.",
+   "Seed the graph from structured data the customer already has before extracting from text.",
+   "Entity resolution against reference data is what makes the graph connected.",
+   "Store the source on every edge so answers can be checked."
+  ],
+  "discuss": [
+   "How would you keep the graph current as contracts are signed, amended and ended?",
+   "Would you let an LLM write Cypher queries directly for the risk team? What safeguards would you require?",
+   "What would you do if two contracts give conflicting facts about the same supplier?"
+  ]
+ },
+ "multimodal": {
+  "title": "Ferrowen Water: a voice agent for leak reports",
+  "company": "Ferrowen Water (made up), regional water utility, 1.1 million customers, Australia",
+  "situation": "Ferrowen's contact centre took about 42,000 calls a month, and during storms callers to report leaks waited over 15 minutes on average. Leak reports were about 18 percent of calls and followed a simple script: address, what is leaking, how bad, and a safety question.",
+  "problem": "An earlier menu-based phone system (press 1 for leaks) failed because callers described problems in their own words and addresses were often misheard. A chat-style LLM prompt reused for voice produced long, formatted replies, and a first prototype took about 3 seconds to respond each turn, so callers talked over it.",
+  "approach": [
+   "Limited scope to leak reports only, with a transfer to a person for any other reason or whenever the caller asked for one.",
+   "Tested two streaming STT options on 150 recorded calls, measuring word error rate and, separately, whether street names and house numbers were exactly right.",
+   "Checked every spoken address against the utility's address database and read the matched address back to the caller for confirmation.",
+   "Rewrote the prompt for speech: one question at a time, replies under two sentences, no lists, numbers spoken digit by digit.",
+   "Set a latency budget per stage and streamed every stage, starting text-to-speech on the first sentence and saying a short holding line while the work order was created.",
+   "Added an AI disclosure at the start of each call, redacted card numbers from transcripts and logged per-stage timings for every turn."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "voice_agent: leak_reports\ndisclosure: \"You're speaking with Ferrowen's automated assistant. Say 'person' at any time.\"\nlatency_budget_ms:\n  end_of_turn_silence: 300\n  stt_finalise: 150\n  llm_first_sentence: 450\n  tts_first_audio: 150\n  alert_if_total_p95_over: 1500\nprompt_rules:\n  - one question per turn\n  - at most two sentences\n  - read addresses back and wait for yes or no\nhandoff:\n  triggers: [caller_asks_for_person, not_a_leak, two_failed_confirmations]\n  pass_to_agent: [summary, confirmed_address, severity]\ndata:\n  redact: [card_numbers]\n  transcript_retention_days: 90"
+  },
+  "outcome": "In the first three months the agent completed 62 percent of leak calls without a person, with confirmed addresses on 97 percent of those work orders. Median response time per turn was 1.0 seconds against a 2.9-second prototype, and average wait for the remaining calls during storms fell from over 15 minutes to about 6.",
+  "lessons": [
+   "Start voice projects with one narrow call reason and a clean handoff.",
+   "Measure the fields that matter, like addresses, not only overall word error rate.",
+   "Latency is designed: set a budget per stage and stream everything.",
+   "Voice needs its own prompt style; chat prompts sound wrong read aloud."
+  ],
+  "discuss": [
+   "How would you decide which call reason to automate next?",
+   "What would you do if older callers were transferred to a person much more often than younger callers?",
+   "When would a speech-to-speech model be worth trying instead of the cascaded pipeline?"
+  ]
+ },
+ "responsibleai": {
+  "title": "Caldrenne Staffing: governance for AI candidate screening",
+  "company": "Caldrenne Staffing (made up), recruitment agency, 1,800 staff, France",
+  "situation": "Caldrenne received about 25,000 applications a month, and recruiters spent most mornings reading CVs. The operations director asked for an LLM that would score and rank every applicant so recruiters only read the top 20 percent, and wanted it live within a quarter.",
+  "problem": "AI used to filter or rank job applicants is listed as high-risk under the EU AI Act, and French and EU anti-discrimination law applies. A score-and-rank system would also make recruiters likely to ignore most candidates without ever checking the AI's judgement. Simply adding a disclaimer would not address the risk or the legal duties.",
+  "approach": [
+   "Ran a governance workshop with operations, legal, the data protection officer and two recruiters, using a checklist mapped to Govern, Map, Measure and Manage.",
+   "Asked legal to confirm the risk classification; they agreed ranking would be high-risk and asked for a lower-risk design to be explored first.",
+   "Redesigned the use case: the LLM writes a structured summary of each CV against the job's stated requirements, with evidence quotes, and does not score or rank. Recruiters still read every application's summary and decide.",
+   "Removed names, photos, ages and addresses before the LLM saw a CV, and tested summaries for differences in quality across age bands, genders and CVs written in French and English.",
+   "Measured shortlist rates per group before and after the pilot, using the four-fifths ratio as a screening signal for investigation.",
+   "Wrote a system card, added a notice to candidates explaining how AI assists recruiters, and set up monthly audits of 100 summaries against the original CVs."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "SYSTEM CARD (excerpt): CV summary assistant v1.0\n\nPurpose:      Summarise a CV against the job's listed requirements,\n              quoting evidence from the CV for each requirement\nNot for:      Scoring, ranking or rejecting candidates\nDecision:     Recruiter reads every summary and decides; can open the full CV\nInputs:       CV text with name, photo, age, address removed\nTesting:      400 CVs: 96% of requirement matches correct\n              French 96%, English 95%; no gap above 3 points by age band\nFairness:     Monthly shortlist rate per group; ratio below 0.8 triggers review\nTransparency: Candidate notice on the application page\nOversight:    Monthly audit of 100 summaries by a senior recruiter\nOwners:       Operations director (business), data team lead (technical)\nLegal review: Classification and design reviewed by in-house counsel"
+  },
+  "outcome": "In a two-month pilot with 40 recruiters, time spent per application fell by about 35 percent while every candidate's summary was still read by a person. Shortlist rates across age bands stayed within the four-fifths ratio, the audits found 4 percent of summaries needing correction, and the design passed the legal and works council review needed for wider rollout.",
+  "lessons": [
+   "Governance changes the design; sometimes the right answer is a lower-risk use case.",
+   "Leave legal classification to lawyers, but bring the frameworks and questions early.",
+   "Fairness needs measurement per group, before and after launch.",
+   "Real human oversight means people see evidence and still make the decision."
+  ],
+  "discuss": [
+   "The operations director still wants ranking in phase two. What evidence and controls would you ask for first?",
+   "How would you detect if recruiters start relying on summaries without opening CVs at all?",
+   "Which parts of this governance process would you reuse for a low-risk internal tool, and which would you skip?"
+  ]
+ }
+}

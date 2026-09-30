@@ -1,0 +1,613 @@
+{
+ "dimred": {
+  "plain": "Dimensionality reduction means describing each row of data with fewer numbers while keeping as much of the useful information as possible. A dimension is simply a column (a feature): a customer described by 300 columns lives in a 300-dimensional space. PCA (principal component analysis) builds new combined columns, called principal components, ordered by how much of the data's spread they capture, so you can keep a handful and drop the rest. t-SNE and UMAP are different tools that squash data into 2 dimensions only to draw a picture in which similar rows land near each other.",
+  "analogy": "PCA is like photographing a teapot from its most informative angle: from the side one flat picture shows the spout, handle and height, while a photo from directly above hides most of the shape. t-SNE and UMAP are more like a wedding seating plan: people who know each other sit together, but the distance between two tables tells you nothing.",
+  "why": "Customers bring wide data, such as 400 sensor columns per machine or 1,536-number text embeddings, and ask for models and pictures. An FDE needs to compress it safely before modelling, and to stop an executive from reading a t-SNE plot of support tickets as proof that there are exactly five kinds of customer.",
+  "subtopics": [
+   {
+    "title": "The curse of dimensionality",
+    "body": "Each column you add is another direction the data can spread in. With 2 columns, 500 points fill a square nicely. With 100 columns, the same 500 points are spread so thinly that almost every point is far from every other point. This is called the curse of dimensionality.\n\nTwo practical problems follow. First, methods built on distance, such as k-nearest neighbours and clustering (see the knnsvm and clustering topics), get worse, because the nearest and the farthest neighbour end up almost the same distance away, so 'nearest' stops meaning much. Second, models need many more rows to learn reliably, and they overfit easily when there are many columns and few rows.\n\nThe cure is fewer, better columns: drop useless ones (see featureeng), or combine correlated ones into a few summary directions, which is what PCA does.",
+    "example": "A wind-farm operator, Stellwick Renewables (made up), logs 400 sensor readings per turbine per hour but has only 900 labelled hours. A k-nearest-neighbours model on all 400 columns does barely better than guessing, because every hour looks about equally far from every other hour. The code shows the effect with random points: in 2 dimensions the farthest point is about 40 times farther away than the nearest; in 1,000 dimensions the ratio drops to about 1.1.",
+    "code": "import numpy as np\n\nrng = np.random.default_rng(0)\nfor dims in [2, 10, 100, 1000]:\n    X = rng.random((500, dims))              # 500 random points in a unit cube\n    q = rng.random(dims)                     # one query point\n    d = np.linalg.norm(X - q, axis=1)        # distance from query to every point\n    ratio = d.max() / d.min()                # farthest vs nearest neighbour\n    print(f\"{dims:>5} dims: nearest {d.min():.2f}, farthest {d.max():.2f}, ratio {ratio:.1f}\")\n\n# Output:\n#     2 dims: nearest 0.03, farthest 1.27, ratio 41.7\n#    10 dims: nearest 0.34, farthest 1.91, ratio 5.7\n#   100 dims: nearest 3.39, farthest 4.60, ratio 1.4\n#  1000 dims: nearest 12.32, farthest 13.63, ratio 1.1",
+    "lang": "Python"
+   },
+   {
+    "title": "PCA intuition: the direction of most spread",
+    "body": "Picture the height and weight of 300 people as a cloud of dots. The cloud is a long, tilted oval, because taller people tend to be heavier. PCA asks: if I could draw only one line through the cloud and describe each person by where they sit along it, which line keeps the most information? The answer is the long axis of the oval. That line is the first principal component (PC1). The second component (PC2) sits at a right angle to it and captures what is left.\n\nThe maths, gently. First centre each column by subtracting its mean. Then compute the covariance matrix, a small table saying how each pair of columns moves together. Its eigenvectors are the directions of the oval's axes, and its eigenvalues are the variance (spread) along each one. Sort by eigenvalue, biggest first, and you have the components in order of importance.\n\nEach component is a weighted mix of the original columns. Here PC1 is roughly 0.67 x height + 0.74 x weight, a 'body size' score. The sign is arbitrary: a library may return -0.67 and -0.74, which is the same line pointing the other way.",
+    "example": "The code builds the height and weight cloud, finds the axes by hand with numpy and checks the answer against scikit-learn. Both find the same first axis, and PC1 holds about 94 percent of the variance, so one number per person describes this data almost as well as two. The widget on this page lets you change how tightly the two columns are linked and watch that share move.",
+    "code": "import numpy as np\nfrom sklearn.decomposition import PCA\n\nrng = np.random.default_rng(1)\nheight = rng.normal(170, 10, 300)                   # cm\nweight = 0.9 * height - 85 + rng.normal(0, 5, 300)  # kg, tied to height\nX = np.column_stack([height, weight])\n\nXc = X - X.mean(axis=0)                  # 1. centre each column at zero\ncov = np.cov(Xc, rowvar=False)           # 2. 2x2 covariance matrix\nvals, vecs = np.linalg.eigh(cov)         # 3. eigenvalues = variance along each axis\norder = vals.argsort()[::-1]             #    sort biggest first\nvals, vecs = vals[order], vecs[:, order]\nprint(\"share of variance:\", np.round(vals / vals.sum(), 3))\nprint(\"first axis (by hand):\", np.round(vecs[:, 0], 3))\n\npca = PCA(n_components=2).fit(X)         # scikit-learn does the same steps\nprint(\"first axis (sklearn):\", np.round(pca.components_[0], 3))\nprint(\"explained_variance_ratio_:\", np.round(pca.explained_variance_ratio_, 3))\n\n# Output:\n# share of variance: [0.938 0.062]\n# first axis (by hand): [0.673 0.74 ]\n# first axis (sklearn): [0.673 0.74 ]\n# explained_variance_ratio_: [0.938 0.062]",
+    "lang": "Python"
+   },
+   {
+    "title": "Explained variance and choosing k",
+    "body": "The attribute explained_variance_ratio_ lists the share of total variance each component holds. Add them up in order (a cumulative sum) and you get a curve that rises quickly and then flattens. You choose k, the number of components to keep, where the curve is high enough for your purpose.\n\nThe table shows the usual rules. In scikit-learn you can also pass a fraction, PCA(n_components=0.90), and it picks k for you.\n\nRemember what variance means here: spread, which is not the same as usefulness. A small component can still carry the signal that separates fraud from normal. Explained variance tells you how much of the data's shape you kept, not how much predictive power you kept.",
+    "example": "The digits dataset has 1,797 handwritten digits, each an 8 by 8 image, so 64 pixel columns. Two components keep only 29 percent of the variance: enough for a rough picture and little else. Twenty-one components keep 90 percent, so a team storing millions of such images could cut storage by about two thirds and still keep most of the detail.",
+    "code": "import numpy as np\nfrom sklearn.datasets import load_digits\nfrom sklearn.decomposition import PCA\n\nX, y = load_digits(return_X_y=True)       # 1,797 images of 8x8 = 64 pixels\npca = PCA().fit(X)                        # keep all 64 components for now\ncum = np.cumsum(pca.explained_variance_ratio_)\n\nfor k in [2, 10, 20, 30]:\n    print(f\"{k:>2} components keep {cum[k-1]:.0%} of the variance\")\nk90 = int(np.argmax(cum >= 0.90)) + 1     # first k that reaches 90 percent\nprint(\"components needed for 90%:\", k90)\n\npca90 = PCA(n_components=0.90).fit(X)     # or ask sklearn for the 90% cut directly\nprint(\"sklearn picked:\", pca90.n_components_)\n\n# Output:\n#  2 components keep 29% of the variance\n# 10 components keep 74% of the variance\n# 20 components keep 89% of the variance\n# 30 components keep 96% of the variance\n# components needed for 90%: 21\n# sklearn picked: 21",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Rule",
+      "How it works",
+      "Use it when"
+     ],
+     "rows": [
+      [
+       "Variance target",
+       "Smallest k reaching 90 or 95 percent",
+       "Compressing data for storage or speed"
+      ],
+      [
+       "Elbow",
+       "Stop where the curve flattens",
+       "Exploring, with no model yet"
+      ],
+      [
+       "Validation score",
+       "Try several k, keep the best model score",
+       "PCA feeds a model"
+      ],
+      [
+       "Fixed 2 or 3",
+       "Keep 2 or 3 components",
+       "Only to draw a quick plot"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Using PCA before a model",
+    "body": "PCA is often one step in a pipeline: scale the columns, reduce with PCA, then train a model on the components. Good reasons: many strongly correlated columns (50 sensors that all measure the same vibration), a model that is slow or unstable with many columns, or a need to shrink data.\n\nThree rules keep it honest. Scale first: PCA follows variance, so a column in pounds with values in the thousands swamps a column in percent unless you standardise. Fit PCA on the training rows only, inside a Pipeline, so no information from the test rows leaks into the components. And compare against the same model without PCA, because on many tabular problems tree models such as gradient boosting (see boosting) do better on the raw columns.\n\nThe cost is interpretability. A component is a blend of dozens of columns, so 'PC3 raised the risk score' is hard to explain. If people must understand the model, prefer selecting a few original columns.",
+    "example": "The code trains logistic regression on the digits with 5, 10 and 20 components and with all 64 pixels. Test accuracy climbs from 0.815 to 0.952 as k grows, and the full 64 pixels still win at 0.972. On this small dataset PCA buys smaller, faster data at a cost of about two points of accuracy. That trade-off is the conversation to have with the customer.",
+    "code": "from sklearn.datasets import load_digits\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.decomposition import PCA\nfrom sklearn.linear_model import LogisticRegression\n\nX, y = load_digits(return_X_y=True)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, random_state=0, stratify=y)\n\nfor k in [5, 10, 20, None]:               # None = no PCA, all 64 pixels\n    steps = [StandardScaler()]\n    if k:\n        steps.append(PCA(n_components=k, random_state=0))\n    steps.append(LogisticRegression(max_iter=2000))\n    model = make_pipeline(*steps)         # PCA is fitted on the training rows only\n    model.fit(X_tr, y_tr)\n    print(f\"{'all 64' if k is None else k:>6} features: test accuracy {model.score(X_te, y_te):.3f}\")\n\n# Output:\n#      5 features: test accuracy 0.815\n#     10 features: test accuracy 0.876\n#     20 features: test accuracy 0.952\n# all 64 features: test accuracy 0.972",
+    "lang": "Python",
+    "checklist": [
+     "Scale the columns before PCA (StandardScaler)",
+     "Put PCA inside a Pipeline so it is fitted on training rows only",
+     "Choose k with validation scores, not only the variance rule",
+     "Compare against the same model with no PCA",
+     "Ask whether stakeholders need to explain individual features",
+     "Save the fitted scaler and PCA with the model for inference"
+    ]
+   },
+   {
+    "title": "t-SNE and UMAP for visualising embeddings",
+    "body": "PCA draws straight lines, so it cannot unroll curved or tangled structure. t-SNE (t-distributed stochastic neighbour embedding) and UMAP (uniform manifold approximation and projection) are nonlinear methods built for one job: placing each row as a dot on a 2D map so that rows which are neighbours in the original space stay neighbours on the map.\n\nThey are popular for embeddings, the long lists of numbers (often 768 or 1,536 values) that language models produce for each piece of text (see embeddings). A map of support-ticket embeddings coloured by product quickly shows whether topics group together and which tickets sit in the wrong group.\n\nThe main knob in t-SNE is perplexity, roughly how many neighbours each point pays attention to (commonly 5 to 50). In UMAP it is n_neighbors, plus min_dist for how tightly points pack. t-SNE ships with scikit-learn; UMAP lives in the separate umap-learn package and is usually faster on large data. A common recipe for big embeddings is PCA to about 50 dimensions first, then t-SNE or UMAP down to 2.",
+    "example": "The code maps the 1,797 digit images to 2D with t-SNE. For 98.8 percent of images, the closest dot on the map is the same digit, so the map keeps local neighbourhoods very well. That makes it a good tool for spotting mislabelled data: a '7' sitting inside the cluster of '1's is worth a look.",
+    "code": "import numpy as np\nfrom sklearn.datasets import load_digits\nfrom sklearn.manifold import TSNE\n\nX, y = load_digits(return_X_y=True)\nemb = TSNE(n_components=2, perplexity=30, init=\"pca\", random_state=0).fit_transform(X)\nprint(emb.shape)                          # one 2D point per image\n\n# How often is a point's nearest 2D neighbour the same digit?\nd = ((emb[:, None, :] - emb[None, :, :]) ** 2).sum(-1)\nnp.fill_diagonal(d, np.inf)\nnn = d.argmin(axis=1)\nprint(\"same-digit nearest neighbour:\", round((y[nn] == y).mean(), 3))\n# To plot: plt.scatter(emb[:, 0], emb[:, 1], c=y, s=5)\n\n# Output:\n# (1797, 2)\n# same-digit nearest neighbour: 0.988",
+    "lang": "Python"
+   },
+   {
+    "title": "Traps when reading t-SNE and UMAP plots",
+    "body": "These maps are persuasive and easy to over-read. They keep local neighbours and deliberately distort everything else. Cluster sizes on the map say nothing about how spread out the groups really are. Distances between clusters mean little. The picture changes with perplexity, n_neighbors and even the random seed, and pure noise can form convincing blobs.\n\nSo use a map to raise a question, then test the question another way. If a cluster looks interesting, read 20 of its rows, or run a clustering method on the original or PCA-reduced data and check it with a proper score. Never feed t-SNE coordinates into a model as features. t-SNE also has no way to place new rows on an existing map; UMAP can, but its axes still have no units or meaning.\n\nWhen you show a map to a customer, say in one sentence what it can and cannot show.",
+    "example": "The code makes one very tight cluster and one cluster 30 times wider, in 10 dimensions. On the t-SNE map both clusters come out about the same size (a spread ratio near 1 instead of 0.03), and the ratio shifts with perplexity. An analyst who read the map literally would conclude the two groups are equally varied, which is false.",
+    "code": "import numpy as np\nfrom sklearn.manifold import TSNE\n\nrng = np.random.default_rng(0)\ntight = rng.normal(0, 0.1, (100, 10))     # a very tight cluster\nloose = rng.normal(5, 3.0, (100, 10))     # a loose cluster, 30x wider\nX = np.vstack([tight, loose])\n\nprint(\"real spread  tight/loose:\", round(tight.std() / loose.std(), 2))\nfor perp in [5, 50]:\n    emb = TSNE(perplexity=perp, init=\"pca\", random_state=0).fit_transform(X)\n    ratio = emb[:100].std() / emb[100:].std()\n    print(f\"t-SNE perplexity {perp:>2} tight/loose:\", round(ratio, 2))\n\n# Output:\n# real spread  tight/loose: 0.03\n# t-SNE perplexity  5 tight/loose: 0.96\n# t-SNE perplexity 50 tight/loose: 1.13",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "On the map",
+      "Trust it?",
+      "Why"
+     ],
+     "rows": [
+      [
+       "Points close together",
+       "Mostly",
+       "Local neighbours are what the method keeps"
+      ],
+      [
+       "Size of a cluster",
+       "No",
+       "Density is evened out"
+      ],
+      [
+       "Gap between clusters",
+       "No",
+       "Global distances are not kept"
+      ],
+      [
+       "Number of clusters",
+       "Only as a hint",
+       "Changes with perplexity and seed"
+      ],
+      [
+       "Axis values",
+       "No",
+       "The axes have no units"
+      ],
+      [
+       "A lone far-away point",
+       "Check it",
+       "May be real or an artefact"
+      ]
+     ]
+    }
+   }
+  ],
+  "glossary": [
+   [
+    "Dimension",
+    "One column (feature) of the data; a row with 64 columns is a point in 64-dimensional space."
+   ],
+   [
+    "Curse of dimensionality",
+    "As columns grow, data becomes sparse and distances between points become nearly equal, which hurts many methods."
+   ],
+   [
+    "Principal component",
+    "A new axis made as a weighted mix of the original columns, chosen to capture as much variance as possible."
+   ],
+   [
+    "Explained variance ratio",
+    "The share of the data's total variance held by one principal component."
+   ],
+   [
+    "Covariance matrix",
+    "A square table showing how each pair of columns varies together."
+   ],
+   [
+    "Eigenvector and eigenvalue",
+    "For a covariance matrix: a direction through the data and the amount of variance along it."
+   ],
+   [
+    "Embedding",
+    "A list of numbers representing an item, such as a text, so that similar items have similar numbers."
+   ],
+   [
+    "t-SNE",
+    "A nonlinear method that places points on a 2D map so that close neighbours stay close; for pictures only."
+   ],
+   [
+    "UMAP",
+    "A faster nonlinear mapping method with similar uses and traps to t-SNE; it can also map new points."
+   ],
+   [
+    "Perplexity",
+    "The t-SNE setting that controls roughly how many neighbours each point considers."
+   ]
+  ],
+  "practice": [
+   "Load sklearn's load_wine. Run PCA with and without StandardScaler and report how many components reach 90 percent of the variance each way. Explain in two sentences why the unscaled result is misleading.",
+   "Build a Pipeline of StandardScaler, PCA and LogisticRegression on load_breast_cancer. Try k = 2, 5, 10 and no PCA with 5-fold cross-validation, then write a three-line recommendation for a customer who cares about both accuracy and explainability.",
+   "Stretch: run t-SNE on the digits with perplexity 5, 30 and 100 and two random seeds each. Save the six plots and write a half-page 'how to read this map' note for a non-technical audience."
+  ]
+ },
+ "anomaly": {
+  "plain": "Anomaly detection finds the rows or moments that do not fit the usual pattern: a card payment unlike anything the customer has made before, a server whose error rate jumps, a sensor reading that drifts. Most anomaly work is unsupervised, meaning you have few or no labelled examples of 'bad', so the method learns what normal looks like and scores how far each point is from it. The output is usually a score and a ranked list for a person to check, rather than a final verdict.",
+  "analogy": "A night security guard does anomaly detection. They do not have a list of every possible burglary; they know what the building normally sounds like at 2am and walk over when something is different. A good guard also learns that the boiler clanking at 6am every day is normal, which is the time-of-day part.",
+  "why": "Fraud, monitoring and quality teams all ask FDEs to 'find the weird stuff' in data with almost no labels. The FDE must pick a method that fits the data, set a threshold the review team can cope with, and measure it honestly with precision at k, because an alert system that cries wolf 200 times a day gets switched off.",
+  "subtopics": [
+   {
+    "title": "Kinds of anomalies",
+    "body": "Before choosing a method, name the kind of anomaly you are hunting. A point anomaly is one value that is odd on its own: a 9,000 euro coffee-shop payment. A contextual anomaly is a value that is normal in one context and odd in another: 290 logins is ordinary at noon and alarming at 3am. A collective anomaly is a group of points that is odd together even if each one looks fine: fifty 1 euro payments from one card in ten minutes, a classic card-testing pattern.\n\nThen check what you have. How many columns? Is there a time order? Do you have any confirmed bad cases, and are they recent? Is there a clean stretch of normal data? The answers point to a method, as the table shows.\n\nFinally, agree what happens to a flagged case. A fraud alert might block a payment, a monitoring alert might page an engineer, and a data-quality alert might just go in a report. The action decides how many false alarms are acceptable.",
+    "example": "A payments startup, Orvella Payments (made up), asks for 'AI fraud detection'. In the first meeting the FDE sorts their worries into the three kinds: single huge refunds (point), card payments at unusual hours for that merchant (contextual) and bursts of tiny test payments (collective). Each gets a different detector, and the burst rule turns out to be a simple count per card per 10 minutes.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Kind",
+      "Example",
+      "Good first method"
+     ],
+     "rows": [
+      [
+       "Point",
+       "One 9,000 euro refund",
+       "z-score or IQR on the column"
+      ],
+      [
+       "Point, many columns",
+       "Odd mix of amount, hour, country",
+       "Isolation forest"
+      ],
+      [
+       "Contextual",
+       "Normal value at the wrong hour",
+       "Compare with a same-hour baseline"
+      ],
+      [
+       "Collective",
+       "50 tiny payments in 10 minutes",
+       "Counts in a time window"
+      ],
+      [
+       "Only normal data known",
+       "Healthy pump readings",
+       "One-class model"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Z-scores and IQR fences",
+    "body": "The simplest detector asks how many standard deviations a value sits from the mean. That number is the z-score: z = (x - mean) / sd. With roughly bell-shaped data, |z| above 3 happens about 3 times in 1,000, so 3 is a common first threshold.\n\nThe z-score has a weakness called masking: big anomalies inflate the mean and standard deviation they are measured against, which hides smaller anomalies. The IQR method is more robust. Take the 25th percentile (Q1) and the 75th percentile (Q3); the interquartile range is IQR = Q3 - Q1. Tukey's fences flag anything below Q1 - 1.5 x IQR or above Q3 + 1.5 x IQR. Percentiles barely move when a few extreme values appear. A related robust option is the modified z-score, built from the median and the median absolute deviation (MAD).\n\nBoth methods look at one number at a time. They are ideal for a first pass, for data-quality checks and for explaining an alert in one sentence.",
+    "example": "A café chain, Pembrook Cafés (made up), sees 12 to 16 refunds a day at one shop, then 95 on one day and 60 on another. The 95 inflates the standard deviation so much that the 60 gets a z-score of only 1.6 and is missed. The IQR fences (8.1 to 19.1) flag both days. The 60 turned out to be a staff member refunding cash sales to themselves.",
+    "code": "import numpy as np\n\n# Daily card refunds at one store (count per day); two suspicious days\nrefunds = np.array([12, 15, 11, 14, 13, 16, 12, 95, 14, 13, 15, 60, 12, 14])\n\nz = (refunds - refunds.mean()) / refunds.std()\nprint(\"z-scores of spikes:\", np.round(z[[7, 11]], 2))\nprint(\"flagged by |z| > 3:\", np.where(np.abs(z) > 3)[0])\n\nq1, q3 = np.percentile(refunds, [25, 75])\niqr = q3 - q1\nlow, high = q1 - 1.5 * iqr, q3 + 1.5 * iqr    # Tukey fences\nprint(f\"IQR fences: {low:.1f} to {high:.1f}\")\nprint(\"flagged by IQR:\", np.where((refunds < low) | (refunds > high))[0])\n\n# Output:\n# z-scores of spikes: [3.09 1.6 ]\n# flagged by |z| > 3: [7]\n# IQR fences: 8.1 to 19.1\n# flagged by IQR: [ 7 11]",
+    "lang": "Python"
+   },
+   {
+    "title": "Isolation forest",
+    "body": "Real fraud rarely shows in one column. A 700 euro payment is fine at noon from a regular shopper and odd at 3am from a new card. Isolation forest handles many columns at once with a neat idea: anomalies are few and different, so they are easy to isolate.\n\nIt builds many random trees. Each tree picks a random column and a random split value, again and again, until every point sits alone. A normal point, deep inside a crowd, needs many splits to separate. An anomaly, out on its own, gets isolated after only a few. The average path length across all trees becomes the anomaly score: a short path means more unusual.\n\nThe contamination setting is your guess at the share of anomalies. It only sets the cut-off used by predict(); the scores themselves do not change. In practice, rank by score_samples and choose the cut-off from how many cases the team can review. Isolation forest needs no scaling, copes with many columns and is fast, which makes it a strong default for tabular data.",
+    "example": "A payments company scores 1,000 card payments on amount and hour of day. Ten are large night-time payments planted as fraud. With contamination set to 1 percent, the model flags 10 payments and all 10 are the planted ones. Real data is messier, but the pattern holds: rows that are odd in combination rise to the top of the list.",
+    "code": "import numpy as np\nfrom sklearn.ensemble import IsolationForest\n\nrng = np.random.default_rng(42)\n# Two features per card payment: amount (EUR) and hour of day\nnormal = np.column_stack([rng.gamma(2, 20, 990), rng.normal(14, 3, 990)])\nodd = np.column_stack([rng.uniform(600, 900, 10), rng.uniform(1, 4, 10)])  # big, at night\nX = np.vstack([normal, odd])\nis_odd = np.r_[np.zeros(990), np.ones(10)]\n\niso = IsolationForest(n_estimators=200, contamination=0.01, random_state=0).fit(X)\nscore = -iso.score_samples(X)          # higher = easier to isolate = more unusual\npred = iso.predict(X)                  # -1 = anomaly, 1 = normal\nprint(\"flagged:\", (pred == -1).sum())\nprint(\"true anomalies among flagged:\", int(is_odd[pred == -1].sum()))\ntop10 = np.argsort(score)[::-1][:10]\nprint(\"true anomalies in top 10 scores:\", int(is_odd[top10].sum()))\n\n# Output:\n# flagged: 10\n# true anomalies among flagged: 10\n# true anomalies in top 10 scores: 10",
+    "lang": "Python"
+   },
+   {
+    "title": "One-class and novelty approaches",
+    "body": "Sometimes you have a clean sample of normal data only: a month of readings from a healthy pump, or logins from before an attack. One-class methods learn the boundary of that normal set and flag new points that fall outside it. This is called novelty detection. Outlier detection is the other case, where the training data itself may already contain anomalies.\n\nTwo common tools in scikit-learn. OneClassSVM draws a flexible boundary around the training data; its nu setting is roughly the share of training points allowed outside. LocalOutlierFactor (LOF) compares each point's local density with its neighbours' density; set novelty=True to score new points. Both use distances, so scale the columns first.\n\nThe risk is that 'normal' changes. If the pump is serviced or the product launches in a new country, yesterday's boundary flags everything. Plan to retrain on fresh normal data and watch the daily alert rate.",
+    "example": "A water utility, Kestrelford Water (made up), trains on 500 hourly readings from a healthy pump: temperature around 60 C and vibration around 3 mm/s. Four new readings arrive. Both methods pass the first two and flag the third (vibration 5.5, a worn bearing) and the fourth (75 C, a blocked cooling line), without a single labelled failure.",
+    "code": "import numpy as np\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.svm import OneClassSVM\nfrom sklearn.neighbors import LocalOutlierFactor\n\nrng = np.random.default_rng(7)\n# Sensor readings (temperature C, vibration mm/s) from a healthy pump only\nhealthy = np.column_stack([rng.normal(60, 2, 500), rng.normal(3, 0.4, 500)])\nnew = np.array([[61, 3.1], [59, 2.8], [62, 5.5], [75, 3.0]])   # last two look wrong\n\nocsvm = make_pipeline(StandardScaler(), OneClassSVM(nu=0.01, gamma=\"scale\")).fit(healthy)\nprint(\"one-class SVM:\", ocsvm.predict(new))     # 1 = like training data, -1 = novel\n\nlof = make_pipeline(StandardScaler(), LocalOutlierFactor(n_neighbors=20, novelty=True)).fit(healthy)\nprint(\"LOF novelty:  \", lof.predict(new))\n\n# Output:\n# one-class SVM: [ 1  1 -1 -1]\n# LOF novelty:   [ 1  1 -1 -1]",
+    "lang": "Python"
+   },
+   {
+    "title": "Time-based anomalies",
+    "body": "Time series add context. 290 logins is normal at noon and alarming at 3am. A global z-score over all hours misses both kinds of problem, because the daily cycle itself makes the standard deviation large.\n\nThe fix is to compare each point with a baseline for its own context: the same hour of day, the same weekday, or a forecast. Compute the residual (actual minus expected) and score the residual instead of the raw value. Simple versions use the median of the same hour over recent weeks; stronger versions use a forecasting model (see timeseries) and flag points outside its prediction interval.\n\nAlso decide what counts as one incident. A 40-minute outage produces 40 anomalous minutes, so group consecutive flags into a single alert and add a short cool-down, so the on-call engineer gets one page, not forty.",
+    "example": "A software company monitors hourly logins over two weeks, with a strong daily cycle. Two problems are injected: an extra 150 logins at a busy noon, and 290 logins at 3am when about 100 is normal. A global z-score flags nothing. A same-hour baseline flags both, and the 3am burst turns out to be a credential-stuffing attack (someone trying stolen passwords).",
+    "code": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nidx = pd.date_range(\"2026-05-01\", periods=24 * 14, freq=\"h\")      # two weeks, hourly\nhour = idx.hour.to_numpy()\nlogins = 200 + 150 * np.sin((hour - 6) / 24 * 2 * np.pi) + rng.normal(0, 15, len(idx))\ns = pd.Series(logins, index=idx)\ns.iloc[300] = s.iloc[300] + 150        # a spike, but at a busy hour\ns.iloc[315] = 290                      # 3am: normal for noon, odd for night\n\nglob_z = (s - s.mean()) / s.std()      # global z-score ignores the daily cycle\nsame_hour = s.groupby(s.index.hour)\nctx_z = (s - same_hour.transform(\"median\")) / same_hour.transform(\"std\")\nprint(\"global |z|>3 flags:\", list(s.index[glob_z.abs() > 3].strftime(\"%d %H:00\")))\nprint(\"same-hour |z|>3 flags:\", list(s.index[ctx_z.abs() > 3].strftime(\"%d %H:00\")))\n\n# Output:\n# global |z|>3 flags: []\n# same-hour |z|>3 flags: ['13 12:00', '14 03:00']",
+    "lang": "Python"
+   },
+   {
+    "title": "Labelling and precision at k",
+    "body": "Anomaly models are judged by people. Analysts review the top of the list and mark each case as real or not, and those labels are gold. Because reviewers can only look at a fixed number of cases a day, the metric that matters is precision at k: of the top k cases, what share were real? Recall at k, the share of all real cases that appear in the top k, tells you what you are missing (see mlmetrics).\n\nSet k from the review budget, not from a statistical rule. If the fraud team can check 50 cases a day, measure precision at 50. As k grows, recall rises and precision falls; a small table of both for several values of k is the best chart to show a customer.\n\nFeed the labels back. After a few weeks you may have hundreds of confirmed cases, enough to train a supervised classifier (see logreg and boosting) using the anomaly score as one feature. Watch for bias: you only get labels for what you flagged, so frauds the model never ranks high never get labelled.",
+    "example": "A model scores 1,000 transactions, 31 of which are fraud. The top 10 are all fraud (precision 1.00). The top 50 hold 16 frauds (precision 0.32) and the top 200 hold 21 (precision 0.10, recall 21 of 31). With a team that can review 50 a day, the FDE reports 'about one in three alerts is real and we catch about half of all fraud', which is honest and plannable. The widget on this page shows the same trade-off as you move a z-score threshold.",
+    "code": "import numpy as np\n\ndef precision_at_k(scores, labels, k):\n    top = np.argsort(scores)[::-1][:k]        # the k highest-scoring cases\n    return labels[top].mean()\n\n# 1,000 transactions scored by a model; analysts labelled what they reviewed\nrng = np.random.default_rng(5)\nlabels = (rng.random(1000) < 0.02).astype(int)       # 2% are really fraud\nscores = rng.random(1000) + labels * rng.random(1000) * 1.2\n\nfor k in [10, 50, 200]:\n    p = precision_at_k(scores, labels, k)\n    caught = labels[np.argsort(scores)[::-1][:k]].sum()\n    print(f\"top {k:>3}: precision {p:.2f}, caught {caught} of {labels.sum()} frauds\")\n\n# Output:\n# top  10: precision 1.00, caught 10 of 31 frauds\n# top  50: precision 0.32, caught 16 of 31 frauds\n# top 200: precision 0.10, caught 21 of 31 frauds",
+    "lang": "Python",
+    "checklist": [
+     "Agree the daily review budget (k) with the team",
+     "Log every reviewed case with a label and a reason",
+     "Report precision at k and recall at k every week",
+     "Review a small random sample of unflagged cases to estimate what you miss",
+     "Group repeat alerts into one incident",
+     "Re-baseline or retrain when normal behaviour changes"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Anomaly",
+    "A data point or pattern that differs clearly from what is normal for that data."
+   ],
+   [
+    "Z-score",
+    "How many standard deviations a value is from the mean: (x - mean) / sd."
+   ],
+   [
+    "IQR",
+    "Interquartile range, Q3 minus Q1; the spread of the middle half of the data."
+   ],
+   [
+    "Masking",
+    "When large anomalies inflate the mean and spread so that smaller anomalies no longer stand out."
+   ],
+   [
+    "Isolation forest",
+    "An anomaly method that scores points by how few random splits it takes to isolate them."
+   ],
+   [
+    "Contamination",
+    "The expected share of anomalies, used by some models to set their flagging cut-off."
+   ],
+   [
+    "Novelty detection",
+    "Learning from clean normal data only, then flagging new points that do not fit it."
+   ],
+   [
+    "Contextual anomaly",
+    "A value that is normal in one context, such as noon, and abnormal in another, such as 3am."
+   ],
+   [
+    "Precision at k",
+    "Of the k highest-scoring cases, the share that turn out to be real anomalies."
+   ],
+   [
+    "Alert budget",
+    "The number of alerts a team can realistically review per day or per shift."
+   ]
+  ],
+  "practice": [
+   "Create a series of 60 daily values around 100 with two spikes of 400 and 170. Compute z-score and IQR flags, show that the z-score misses the smaller spike, and explain masking in two sentences.",
+   "Use sklearn's make_blobs to create 2,000 normal points, add 20 far-away points, and fit an IsolationForest. Report precision at 10, 20 and 50, and write the one-line summary you would give a review team that can check 20 cases a day.",
+   "Stretch: build an hourly series for four weeks with a daily cycle, inject three incidents (one lasting 5 hours), and write a detector that uses a same-hour median baseline, groups consecutive flags into incidents and prints one alert message per incident."
+  ]
+ },
+ "timeseries": {
+  "plain": "A time series is a sequence of measurements taken at regular times: daily sales, hourly electricity use, weekly sign-ups. Forecasting means predicting future values from past ones. Most series mix a trend (the long-run direction), seasonality (a pattern that repeats every day, week or year) and noise (random wiggle nobody can predict). Good forecasting starts with a simple baseline, tries models that might beat it, and tests them honestly by pretending to stand at earlier points in time.",
+  "analogy": "Forecasting is like a baker deciding how much bread to bake. They look at last Saturday (seasonality), notice the shop gets a bit busier every month (trend) and accept that some days are just random. A sensible baker would not trust a new method until it had beaten 'bake what we sold last Saturday' for several weeks.",
+  "why": "Demand planning, staffing, stock, energy and cash-flow questions are all forecasting, and customers often ask for 'AI' when a well-tested classic forecast is what they need. An FDE who can set up a baseline and a backtest in a day earns trust, and avoids the classic trap of a model that looked great only because it was accidentally tested on the past.",
+  "subtopics": [
+   {
+    "title": "Trend, seasonality and noise",
+    "body": "Start by plotting the series and naming its parts. The trend is the slow direction, for example up 0.3 units a day. Seasonality is a repeating shape with a fixed period: weekday versus weekend (period 7 for daily data) or summer versus winter (period 12 for monthly data). What is left after removing both is the residual, or noise.\n\nA simple decomposition by hand: take a centred 7-day moving average, which smooths away the weekly shape and leaves the trend. Subtract it, then average what is left for each weekday to get the weekly effect. The remainder is noise. Library tools such as statsmodels' seasonal_decompose and STL do the same thing more carefully.\n\nAlso look for changes in level (a new store opens, a price change) and special days (holidays, promotions). Write them down, because every model will struggle on them and the customer already knows about them.",
+    "example": "A bakery chain's daily sales for one shop over 24 weeks: the 7-day average rises from about 112 to about 158 loaves, the weekday effect runs from -29 on Sunday to +28 on Saturday, and the leftover noise has a standard deviation of about 5. That tells the FDE a very good forecast will still miss by around 5 loaves a day, a useful target to quote early.",
+    "code": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")      # 24 weeks of daily sales\ntrend = 100 + 0.3 * np.arange(168)                              # slow growth\nweekly = np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]    # Mon..Sun pattern\nsales = pd.Series(trend + weekly + rng.normal(0, 6, 168), index=idx).round()\n\ntrend_est = sales.rolling(7, center=True).mean()        # a 7-day average hides the weekly cycle\ndetrended = sales - trend_est\nseason_est = detrended.groupby(detrended.index.dayofweek).mean()\nprint(\"trend first/last week:\", round(trend_est.iloc[3]), round(trend_est.iloc[-4]))\nprint(\"weekday effect (Mon..Sun):\", season_est.round().astype(int).tolist())\nresid = detrended - season_est.reindex(detrended.index.dayofweek).to_numpy()\nprint(\"noise std:\", round(resid.std(), 1))\n\n# Output:\n# trend first/last week: 112 158\n# weekday effect (Mon..Sun): [-9, -6, -1, 1, 17, 28, -29]\n# noise std: 5.2",
+    "lang": "Python"
+   },
+   {
+    "title": "Naive and seasonal-naive baselines",
+    "body": "Before any model, build baselines. The naive forecast says every future value equals the last one seen. The seasonal-naive forecast says each value equals the value one season ago: next Monday equals last Monday. The mean forecast uses the average of all history.\n\nThey take two lines of code, need no training and are surprisingly hard to beat. A model that does not beat seasonal naive on an honest test is not worth its extra complexity.\n\nMeasure with MAE (mean absolute error, the average size of the miss in the series' own units; see mlmetrics). 'Off by 5 loaves a day' is easy for a customer to picture. Always hold out the most recent period as the test set, since the future is what you will be judged on.",
+    "example": "Holding out the last 14 days of bakery sales: naive is off by 32.9 loaves a day on average, because it copies a busy Saturday into quiet Sunday. The mean forecast is off by 24.6. Seasonal naive, which copies the same weekday from last week, is off by only 5.4. Any model the FDE proposes now has to beat 5.4.",
+    "code": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\nsales = pd.Series(100 + 0.3 * np.arange(168)\n                  + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n                  + rng.normal(0, 6, 168), index=idx).round()\n\ntrain, test = sales[:-14], sales[-14:]          # hold out the last 2 weeks\nh = len(test)\n\nnaive = np.repeat(train.iloc[-1], h)            # tomorrow = last value seen\nseasonal = np.tile(train.iloc[-7:].to_numpy(), 2)   # same weekday last week\nmean_fc = np.repeat(train.mean(), h)            # average of all history\n\nfor name, fc in [(\"naive\", naive), (\"seasonal naive\", seasonal), (\"mean\", mean_fc)]:\n    print(f\"{name:>15} MAE: {np.abs(test.to_numpy() - fc).mean():.1f}\")\n\n# Output:\n#           naive MAE: 32.9\n#  seasonal naive MAE: 5.4\n#            mean MAE: 24.6",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Baseline",
+      "Rule",
+      "Good when"
+     ],
+     "rows": [
+      [
+       "Naive",
+       "Repeat the last value",
+       "Random-walk data such as prices"
+      ],
+      [
+       "Seasonal naive",
+       "Repeat the value one season ago",
+       "Strong weekly or yearly pattern"
+      ],
+      [
+       "Mean",
+       "Average of all history",
+       "Stable series, no trend"
+      ],
+      [
+       "Drift",
+       "Last value plus average change",
+       "Steady trend, no season"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Moving averages and exponential smoothing",
+    "body": "A moving average forecasts the next value as the average of the last n values. It smooths noise, but it treats a value from n days ago the same as yesterday and ignores everything older.\n\nExponential smoothing gives recent values more weight and older values less, fading smoothly. The rule for simple exponential smoothing is: new level = alpha x latest value + (1 - alpha) x old level, where alpha is between 0 and 1. A high alpha such as 0.8 reacts fast and is jumpy; a low alpha such as 0.1 is smooth and slow to notice change.\n\nSimple smoothing knows nothing about trend or season, so it forecasts a flat line. Holt's method adds a trend term, and Holt-Winters adds a seasonal term; this family is often called ETS (error, trend, seasonality). Holt-Winters is a strong, cheap and explainable default for a business series with one clear season.",
+    "example": "On the bakery holdout, a 7-day moving average (MAE 13.9) and simple smoothing with alpha 0.3 (MAE 14.2) both lose badly to seasonal naive, because they draw a flat line through a strongly weekly pattern. Holt-Winters with an additive trend and weekly season gets 4.9 and beats the baseline. The widget on this page lets you drag alpha and watch this happen.",
+    "code": "import numpy as np\nimport pandas as pd\nfrom statsmodels.tsa.holtwinters import ExponentialSmoothing\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\nsales = pd.Series(100 + 0.3 * np.arange(168)\n                  + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n                  + rng.normal(0, 6, 168), index=idx).round()\ntrain, test = sales[:-14], sales[-14:]\n\ndef simple_smoothing(y, alpha):\n    level = y[0]\n    for v in y[1:]:\n        level = alpha * v + (1 - alpha) * level   # new level = blend of new value and old level\n    return level\n\nma7 = train.iloc[-7:].mean()                      # 7-day moving average\nses = simple_smoothing(train.to_numpy(), alpha=0.3)\nhw = ExponentialSmoothing(train, trend=\"add\", seasonal=\"add\", seasonal_periods=7).fit()\n\nfor name, fc in [(\"moving avg 7\", np.repeat(ma7, 14)), (\"simple smoothing\", np.repeat(ses, 14)),\n                 (\"Holt-Winters\", hw.forecast(14).to_numpy())]:\n    print(f\"{name:>16} MAE: {np.abs(test.to_numpy() - fc).mean():.1f}\")\n\n# Output:\n#     moving avg 7 MAE: 13.9\n# simple smoothing MAE: 14.2\n#     Holt-Winters MAE: 4.9",
+    "lang": "Python"
+   },
+   {
+    "title": "ARIMA at a high level",
+    "body": "ARIMA is a classic family of statistical models, and its name lists its three parts. AR (autoregressive, order p): today depends on the last p values. I (integrated, order d): difference the series d times (today minus yesterday) to remove trend, so its average stays stable. MA (moving average, order q): today depends on the last q forecast errors. This MA is about past errors, which is different from the moving average in the previous section.\n\nSeasonal ARIMA (SARIMA) adds the same three parts at the seasonal lag, written (P, D, Q, s), with s = 7 for a weekly pattern in daily data. Choosing orders used to be an art with ACF and PACF plots; today people usually try a few small orders and compare them with AIC (lower is better) and, more importantly, with a backtest.\n\nThe practical view for an FDE: ARIMA and ETS are well understood, fast and good on a single series with a few years of history. They get awkward with thousands of series, many outside drivers (price, weather, promotions) or messy data, which is where the next section comes in.",
+    "example": "A seasonal ARIMA with order (1, 0, 1), a weekly seasonal part (0, 1, 1, 7) and a trend term gets MAE 4.8 on the bakery holdout, very close to Holt-Winters at 4.9. When two sensible models agree this closely, pick the one the customer's team can maintain and explain.",
+    "code": "import warnings\nimport numpy as np\nimport pandas as pd\nfrom statsmodels.tsa.arima.model import ARIMA\nwarnings.filterwarnings(\"ignore\")                 # hide convergence chatter for the demo\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\nsales = pd.Series(100 + 0.3 * np.arange(168)\n                  + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n                  + rng.normal(0, 6, 168), index=idx).round()\ntrain, test = sales[:-14], sales[-14:]\n\n# (p, d, q) = (1, 0, 1) with a weekly seasonal part (P, D, Q, s) = (0, 1, 1, 7)\nmodel = ARIMA(train, order=(1, 0, 1), seasonal_order=(0, 1, 1, 7), trend=\"t\").fit()\nfc = model.forecast(14)\nprint(\"SARIMA MAE:\", round(np.abs(test - fc).mean(), 1))\nprint(\"AIC:\", round(model.aic))                  # lower is better when comparing orders\n\n# Output:\n# SARIMA MAE: 4.8\n# AIC: 961",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Letter",
+      "Name",
+      "Plain meaning"
+     ],
+     "rows": [
+      [
+       "p",
+       "Autoregressive order",
+       "How many past values feed today"
+      ],
+      [
+       "d",
+       "Differencing order",
+       "How many times to subtract yesterday"
+      ],
+      [
+       "q",
+       "Moving-average order",
+       "How many past errors feed today"
+      ],
+      [
+       "P, D, Q, s",
+       "Seasonal parts",
+       "The same ideas at the season length s"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Gradient boosting with lag features",
+    "body": "You can turn forecasting into ordinary supervised learning (see boosting). Each row is a day, the target is that day's value, and the features are things known before that day: lag features (the value 1, 7 or 14 days earlier), rolling averages of past values, the day of the week, holidays and planned promotions.\n\nThree details matter. Every feature must exist at forecast time: if you forecast 14 days ahead, yesterday's value does not exist yet, so use only lags of at least the horizon, or forecast one step at a time. Shift before rolling, so a rolling mean never includes the target day. And tree models cannot extrapolate: they never predict above the highest value seen in training, so with a rising trend predict the change from last week and add it back.\n\nThe big win is scale and outside drivers. One model can learn from thousands of shops or products at once, with price, weather and promotions as features, which classic single-series models find hard.",
+    "example": "Forecasting tomorrow's bakery sales each night over the last 28 days: boosting that predicts sales directly scores MAE 6.1, slightly worse than seasonal naive at 6.0, because the trees cannot follow the upward trend. Predicting the change versus last week instead scores 5.7. The gain is small because this synthetic series has no promotions or weather; on real data, those extra features are where boosting pulls ahead.",
+    "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.ensemble import HistGradientBoostingRegressor\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\nsales = pd.Series(100 + 0.3 * np.arange(168)\n                  + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n                  + rng.normal(0, 6, 168), index=idx).round()\n\n# Task: each night, forecast tomorrow. So any value up to today is allowed.\ndf = pd.DataFrame({\"y\": sales})\ndf[\"lag_1\"] = df[\"y\"].shift(1)            # yesterday\ndf[\"lag_7\"] = df[\"y\"].shift(7)            # same weekday last week\ndf[\"lag_14\"] = df[\"y\"].shift(14)\ndf[\"lag_21\"] = df[\"y\"].shift(21)\ndf[\"mean_7\"] = df[\"y\"].shift(1).rolling(7).mean()   # shift(1) first: never include the target day\ndf[\"dow\"] = df.index.dayofweek\ndf = df.dropna()\n\ntrain, test = df.iloc[:-28], df.iloc[-28:]    # split by time, never shuffle\nX_cols = [\"lag_1\", \"lag_7\", \"lag_14\", \"lag_21\", \"mean_7\", \"dow\"]\ngbm = HistGradientBoostingRegressor(max_iter=200, learning_rate=0.05, random_state=0)\nfor target in [\"level\", \"change\"]:\n    if target == \"level\":                     # predict sales directly\n        gbm.fit(train[X_cols], train[\"y\"])\n        pred = gbm.predict(test[X_cols])\n    else:                                     # predict change vs last week, then add it back\n        gbm.fit(train[X_cols], train[\"y\"] - train[\"lag_7\"])\n        pred = test[\"lag_7\"] + gbm.predict(test[X_cols])\n    print(f\"boosting ({target}) MAE:\", round(np.abs(test[\"y\"] - pred).mean(), 1))\nprint(\"seasonal naive MAE:\", round(np.abs(test[\"y\"] - test[\"lag_7\"]).mean(), 1))\n\n# Output:\n# boosting (level) MAE: 6.1\n# boosting (change) MAE: 5.7\n# seasonal naive MAE: 6.0",
+    "lang": "Python"
+   },
+   {
+    "title": "Backtesting and the MAPE trap",
+    "body": "A random train/test split leaks the future into training. For time series, always split by time. A backtest (also called time-series cross-validation or rolling-origin evaluation) repeats this several times: train up to a cut-off, forecast the next h periods, score, move the cut-off forward and repeat. Averaging over folds shows whether a model is reliably better or got lucky in one period. scikit-learn's TimeSeriesSplit produces these folds.\n\nChoose the error metric with care. MAPE (mean absolute percentage error) is popular because '8 percent off' sounds clear, but it divides by the actual value. One zero-sales day makes it infinite, low-volume items dominate the average, and it punishes over-forecasts more than under-forecasts, which quietly rewards forecasting too low. Safer choices: MAE in units; WAPE, the sum of absolute errors divided by the sum of actuals; or MASE, the error divided by the seasonal-naive error, so below 1 means you beat the baseline.\n\nFinally, agree with the customer on the horizon (next day or next month?) and the level (per shop, per product, or total). An accuracy number means nothing without both.",
+    "example": "Four folds of 14 days each give seasonal-naive MAE of 8.6, 8.1, 6.1 and 5.4. That spread shows how much results vary by period, so a model that beat the baseline only in the last fold proves little. For a slow-selling product with a zero day, MAPE comes out infinite, while WAPE gives a sensible 9 percent.",
+    "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.model_selection import TimeSeriesSplit\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\ny = pd.Series(100 + 0.3 * np.arange(168)\n              + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n              + rng.normal(0, 6, 168), index=idx).round().to_numpy()\n\ntss = TimeSeriesSplit(n_splits=4, test_size=14)       # each fold: train on the past, test on next 14 days\nfor i, (tr, te) in enumerate(tss.split(y)):\n    fc = y[tr][-7:][np.arange(len(te)) % 7]           # seasonal naive from the end of the train window\n    print(f\"fold {i}: train up to day {tr[-1]}, MAE {np.abs(y[te] - fc).mean():.1f}\")\n\nactual = np.array([0, 2, 50, 48])                     # a slow product with a zero day\npred = np.array([1, 1, 45, 50])\nwith np.errstate(divide=\"ignore\"):\n    print(\"MAPE:\", np.mean(np.abs(actual - pred) / actual))      # inf because of the zero\nprint(\"WAPE:\", round(np.abs(actual - pred).sum() / actual.sum(), 3))\n\n# Output:\n# fold 0: train up to day 111, MAE 8.6\n# fold 1: train up to day 125, MAE 8.1\n# fold 2: train up to day 139, MAE 6.1\n# fold 3: train up to day 153, MAE 5.4\n# MAPE: inf\n# WAPE: 0.09",
+    "lang": "Python",
+    "checklist": [
+     "Split by time and never shuffle",
+     "Backtest over at least 3 to 5 folds",
+     "Match the test horizon to how the forecast will be used",
+     "Report the baseline error next to the model error",
+     "Use MAE, WAPE or MASE; avoid MAPE when zeros or tiny values occur",
+     "Check every feature exists at forecast time",
+     "Note holidays and one-off events that explain big misses"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Time series",
+    "Measurements of one thing taken at regular time steps, such as daily sales."
+   ],
+   [
+    "Trend",
+    "The long-run upward or downward direction of a series."
+   ],
+   [
+    "Seasonality",
+    "A pattern that repeats over a fixed period, such as every week or every year."
+   ],
+   [
+    "Seasonal naive",
+    "A baseline forecast that repeats the value from one season earlier."
+   ],
+   [
+    "Exponential smoothing",
+    "Forecasting with a weighted average where weights fade for older values."
+   ],
+   [
+    "Alpha",
+    "The smoothing weight in exponential smoothing; higher means react faster to new data."
+   ],
+   [
+    "ARIMA",
+    "A statistical model family using past values (AR), differencing (I) and past errors (MA)."
+   ],
+   [
+    "Lag feature",
+    "A column holding the series' value from a fixed number of steps earlier."
+   ],
+   [
+    "Backtest",
+    "Testing a forecast by repeatedly training on the past and scoring on the period right after it."
+   ],
+   [
+    "WAPE",
+    "Weighted absolute percentage error: total absolute error divided by total actual value."
+   ]
+  ],
+  "practice": [
+   "Build a synthetic monthly series of 5 years with a yearly season and a trend. Hold out the last 12 months and report MAE for naive, seasonal naive and mean forecasts. Write one sentence on which baseline a model must beat.",
+   "Run a 5-fold backtest comparing seasonal naive with Holt-Winters on the same series. Report MAE per fold and on average, and write the recommendation you would send the customer, including when the baseline should stay as a fallback.",
+   "Stretch: generate daily sales for 20 shops with different sizes and a shared weekly pattern. Train one gradient boosting model with lag features for a 7-day horizon (lags of 7 days or more only) and compare it with per-shop seasonal naive using WAPE."
+  ]
+ },
+ "recsys": {
+  "plain": "A recommender system picks a short list of items, such as products, films, articles or help pages, that a particular user is likely to want. It learns from past behaviour (who bought, clicked or rated what) and from item details (category, description, price). Most real systems work in two stages: quickly gather a few hundred candidates, then rank them carefully and show the top few. Success is measured first offline on held-out history and then, for real, with an A/B test on live users.",
+  "analogy": "A good bookshop assistant is a recommender. They know what is selling this week (popularity), which books are like the one in your hand (content-based), and that people who loved your favourite author also loved another one (collaborative filtering). For a first-time visitor they start with the bestseller table (cold start).",
+  "why": "Retail, media and B2B software customers regularly ask an FDE to 'add recommendations', often with only purchase logs and a product catalogue. The FDE has to start from a popularity baseline, choose methods that fit sparse implicit data, handle new users and items, and prove value with offline metrics and an A/B test instead of a demo that merely looks plausible.",
+  "subtopics": [
+   {
+    "title": "The popularity baseline",
+    "body": "The simplest recommender shows everyone the most popular items they do not already have. It needs no model, works for brand-new users and is often a strong baseline, because popular items are popular for a reason.\n\nYou can make it smarter cheaply: count recent activity only (for example the last 30 days, so it follows trends), compute popularity within a segment (per country, or within the category being browsed), and filter out items the user already owns or that are out of stock.\n\nIts weakness is that everyone sees the same few items, so the long tail of the catalogue never gets shown and never gets a chance to become popular. Any personalised method has to beat this baseline on the same offline test before it goes any further.",
+    "example": "A kitchenware shop's log shows kettles bought 4 times, mugs 3, toasters 2 and teapots once. User u3 already has mugs and a teapot, so the baseline recommends a kettle and a toaster. A brand-new visitor gets kettle and mugs. It is crude, and it is exactly what the shop's 'best sellers' page already does, so it is the number to beat.",
+    "code": "import pandas as pd\n\n# Implicit feedback log: who bought what (one row per purchase)\nevents = pd.DataFrame({\n    \"user\": [\"u1\", \"u1\", \"u2\", \"u2\", \"u3\", \"u3\", \"u4\", \"u5\", \"u5\", \"u6\"],\n    \"item\": [\"kettle\", \"mugs\", \"kettle\", \"toaster\", \"mugs\", \"teapot\", \"kettle\", \"mugs\", \"kettle\", \"toaster\"],\n})\n\npopular = events[\"item\"].value_counts()          # most bought first\nprint(popular.to_dict())\n\ndef recommend_popular(user, k=2):\n    seen = set(events.loc[events[\"user\"] == user, \"item\"])\n    return [i for i in popular.index if i not in seen][:k]   # skip what they already have\n\nprint(\"u3 ->\", recommend_popular(\"u3\"))\nprint(\"new user ->\", recommend_popular(\"brand_new\"))\n\n# Output:\n# {'kettle': 4, 'mugs': 3, 'toaster': 2, 'teapot': 1}\n# u3 -> ['kettle', 'toaster']\n# new user -> ['kettle', 'mugs']",
+    "lang": "Python"
+   },
+   {
+    "title": "Content-based recommendations",
+    "body": "Content-based methods recommend items similar to ones the user liked, using the items' own attributes: text descriptions, categories, brand, price band, or embeddings of product text and images. Each item becomes a vector, and similarity is usually cosine similarity, the angle between two vectors, where 1 means the same direction and 0 means unrelated.\n\nTF-IDF is a simple way to turn text into vectors: words that are frequent in one description but rare across the catalogue get more weight. A modern alternative is to embed each description with a text embedding model (see embeddings) and compare those vectors.\n\nStrengths: it works for a brand-new item the moment it has a description, and every suggestion is easy to explain ('because you viewed Trail runner 2'). Weaknesses: it recommends more of the same and rarely surprises, and it is only as good as the catalogue data.",
+    "example": "At an outdoor shop, a user views 'Trail runner 2'. TF-IDF over five product descriptions ranks 'Road racer' first (similarity 0.40, sharing lightweight, running and shoe), then 'Running socks' (0.26), then 'Hiking boot' (0.14, sharing mud). The rain jacket shares no words and is not suggested.",
+    "code": "from sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\n\nitems = {\n    \"Trail runner 2\":   \"lightweight trail running shoe grip mud\",\n    \"Road racer\":       \"lightweight road running shoe racing\",\n    \"Hiking boot\":      \"waterproof hiking boot ankle support mud\",\n    \"Rain jacket\":      \"waterproof jacket hiking rain\",\n    \"Running socks\":    \"running socks lightweight blister\",\n}\nnames = list(items)\ntfidf = TfidfVectorizer().fit_transform(items.values())   # words -> weighted vectors\nsim = cosine_similarity(tfidf)                             # item x item similarity, 0 to 1\n\nliked = names.index(\"Trail runner 2\")\nranked = sim[liked].argsort()[::-1][1:4]                   # skip the item itself\nfor j in ranked:\n    print(f\"{names[j]:<14} {sim[liked, j]:.2f}\")\n\n# Output:\n# Road racer     0.40\n# Running socks  0.26\n# Hiking boot    0.14",
+    "lang": "Python"
+   },
+   {
+    "title": "Collaborative filtering: user and item similarity",
+    "body": "Collaborative filtering (CF) ignores item descriptions and uses behaviour only: people who bought this also bought that. Put interactions in a matrix with users as rows and items as columns. Two items are similar if the same users interact with both, which you can measure as the cosine similarity between their columns.\n\nItem-based CF then scores each candidate for a user by adding up its similarity to the items the user already has. User-based CF does the mirror image: find users with similar rows and recommend what they liked. Item-based is more common in shops because item relationships change slowly and there are usually fewer items than users.\n\nCF finds links no description would reveal (tents and head torches), and it improves as more people use the site. It can say nothing about an item nobody has touched yet, which is the cold-start problem.",
+    "example": "Five shoppers and five items. Some people buy kettles with mugs and teapots; others buy toasters with blenders. For a new basket holding only a kettle, item-based CF suggests mugs first (0.67), then blender and toaster tied at 0.41, because one shopper bought a kettle together with a toaster and a blender.",
+    "code": "import numpy as np\nfrom sklearn.metrics.pairwise import cosine_similarity\n\nitems = [\"kettle\", \"mugs\", \"teapot\", \"toaster\", \"blender\"]\n# rows = users, columns = items, 1 = bought (implicit feedback)\nR = np.array([\n    [1, 1, 1, 0, 0],\n    [1, 1, 0, 0, 0],\n    [0, 1, 1, 0, 0],\n    [1, 0, 0, 1, 1],\n    [0, 0, 0, 1, 1],\n])\nitem_sim = cosine_similarity(R.T)          # items are similar if the same people buy them\nnp.fill_diagonal(item_sim, 0)\n\nuser = np.array([1, 0, 0, 0, 0])           # a new basket: just a kettle\nscores = user @ item_sim                   # sum of similarities to what they have\nscores[user == 1] = -1                     # never recommend what they already own\nfor i in scores.argsort()[::-1][:3]:\n    print(f\"{items[i]:<8} {scores[i]:.2f}\")\n\n# Output:\n# mugs     0.67\n# blender  0.41\n# toaster  0.41",
+    "lang": "Python"
+   },
+   {
+    "title": "Matrix factorization",
+    "body": "The interaction matrix is mostly empty: a shop may have 100,000 products while a typical user bought 12. Matrix factorization fills in the blanks by assuming a few hidden 'taste' factors explain behaviour. Each user gets a short vector of factor scores (from 2 to a few hundred numbers) and so does each item. The predicted score for a user and an item is the dot product of their two vectors.\n\nThe maths: we want R to be approximately U x V transposed, where R is the ratings matrix, U holds the user factors and V the item factors. Training nudges U and V to shrink the error on the cells we do know, with a small penalty on large values (regularisation) to avoid overfitting. Gradient descent or alternating least squares (ALS) are the usual methods.\n\nYou rarely write this yourself: libraries such as implicit or Spark's ALS do it at scale. It is still worth understanding, because the item vectors it learns are embeddings, and the same idea sits inside many modern recommenders.",
+    "example": "Six users rate five films from 1 to 5. Users 0 to 2 like films 0 to 2 (dramas); users 3 to 5 like films 3 and 4 (action). With two factors, the model fits the known ratings with an error of about 0.27 stars and predicts that user 0 would give film 2 about 4.0 and film 4 about 1.0, which matches their taste for drama.",
+    "code": "import numpy as np\n\nrng = np.random.default_rng(0)\n# 6 users x 5 films, ratings 1-5, 0 = not rated\nR = np.array([[5, 4, 0, 1, 0],\n              [4, 0, 4, 1, 1],\n              [5, 5, 4, 0, 1],\n              [1, 0, 1, 5, 4],\n              [0, 1, 1, 4, 5],\n              [1, 1, 0, 5, 0]], dtype=float)\nknown = R > 0\nk, lr, reg = 2, 0.02, 0.05                   # 2 hidden \"taste\" factors\nU = rng.normal(0, 0.3, (6, k))               # user factors\nV = rng.normal(0, 0.3, (5, k))               # item factors\nfor epoch in range(3000):                    # gradient descent on known cells only\n    err = (R - U @ V.T) * known\n    U += lr * (err @ V - reg * U)\n    V += lr * (err.T @ U - reg * V)\n\npred = U @ V.T\nprint(\"fit error on known cells:\", round(np.sqrt((err[known] ** 2).mean()), 2))\nprint(\"user 0, film 2 (unrated):\", round(pred[0, 2], 1))\nprint(\"user 0, film 4 (unrated):\", round(pred[0, 4], 1))\n\n# Output:\n# fit error on known cells: 0.27\n# user 0, film 2 (unrated): 4.0\n# user 0, film 4 (unrated): 1.0",
+    "lang": "Python"
+   },
+   {
+    "title": "Implicit feedback and cold start",
+    "body": "Explicit feedback is a user stating a preference: a star rating or a thumbs up. It is clear but rare. Implicit feedback is behaviour: views, clicks, add-to-cart, purchases, minutes watched. It is plentiful but noisy. A missing interaction may mean 'not interested' or simply 'never saw it', and a click may be a mis-tap. Most business data is implicit, so treat it as a confidence signal (a purchase counts more than a view) and never treat unseen items as dislikes.\n\nCold start is the problem of new users and new items with no history. For new users, start with popularity for their region or entry page, ask two or three onboarding questions, or use what they have done in this session. For new items, lean on content-based similarity until they collect interactions, and reserve a small share of slots for fresh items so they get seen.\n\nMost production systems are hybrids: they combine popularity, content and CF signals, and a ranking model decides the final order.",
+    "example": "An online grocer, Tamberlin Fresh (made up), adds 300 new products a month. Pure CF never recommends them, because nobody has bought them yet, so they never get bought. The FDE adds a content-based candidate source for items under 30 days old and reserves 1 of every 10 slots for them. New products start collecting purchases within a week and move into the CF model naturally.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Signal",
+      "Type",
+      "How to use it"
+     ],
+     "rows": [
+      [
+       "Star rating",
+       "Explicit",
+       "Direct score; rare and biased to extremes"
+      ],
+      [
+       "Purchase",
+       "Implicit",
+       "Strong positive, high confidence"
+      ],
+      [
+       "Add to cart",
+       "Implicit",
+       "Medium positive"
+      ],
+      [
+       "Product view",
+       "Implicit",
+       "Weak positive, very common"
+      ],
+      [
+       "Shown, not clicked",
+       "Implicit",
+       "Weak negative at best"
+      ]
+     ]
+    },
+    "checklist": [
+     "New user: popularity for their region or entry page",
+     "New user: use this session's clicks straight away",
+     "New user: optional two or three onboarding questions",
+     "New item: content-based similarity from its description",
+     "New item: reserve a few slots so it gets exposure",
+     "Log impressions, not only clicks, so you know what was seen"
+    ]
+   },
+   {
+    "title": "Offline metrics and A/B testing",
+    "body": "To evaluate offline, hide each user's most recent interactions, recommend from their older history, and check how many hidden items appear in the top k. Precision@k is hits divided by k. Recall@k is hits divided by the number of hidden items. NDCG@k (normalised discounted cumulative gain) also rewards putting hits near the top: a hit at position i counts 1 / log2(i + 1), and the total is divided by the best possible score, so 1.0 is perfect.\n\nSplit by time, as in forecasting: train on events before a date and test on events after it, or the model learns from the future. Also check coverage (what share of the catalogue ever gets recommended), so you do not just rebuild the bestseller list.\n\nOffline metrics suggest value but do not prove it. The real test is an A/B test (see stats): randomly send some users to the new recommender and some to the old one, agree the primary metric in advance (for example revenue per session or add-to-cart rate), run for whole weeks to cover weekly cycles, and check guardrail metrics such as returns and page speed.",
+    "example": "A user's held-out week contains a tent and a stove. Model A recommends them in positions 1 and 2; model B in positions 4 and 5. Both have precision@5 of 0.40 and recall@5 of 1.00, but NDCG@5 is 1.00 for A and 0.50 for B, because few users scroll to position 5. NDCG captures the difference that precision misses.",
+    "code": "import numpy as np\n\ndef precision_recall_at_k(recs, relevant, k):\n    hits = len(set(recs[:k]) & relevant)\n    return hits / k, hits / len(relevant)\n\ndef ndcg_at_k(recs, relevant, k):\n    dcg = sum(1 / np.log2(i + 2) for i, r in enumerate(recs[:k]) if r in relevant)\n    ideal = sum(1 / np.log2(i + 2) for i in range(min(k, len(relevant))))\n    return dcg / ideal                      # 1.0 = hits all at the very top\n\nrelevant = {\"tent\", \"stove\"}               # what the user bought in the held-out week\nmodel_a = [\"tent\", \"stove\", \"lamp\", \"mat\", \"chair\"]\nmodel_b = [\"lamp\", \"mat\", \"chair\", \"tent\", \"stove\"]\nfor name, recs in [(\"A\", model_a), (\"B\", model_b)]:\n    p, r = precision_recall_at_k(recs, relevant, 5)\n    print(f\"model {name}: precision@5 {p:.2f}, recall@5 {r:.2f}, NDCG@5 {ndcg_at_k(recs, relevant, 5):.2f}\")\n\n# Output:\n# model A: precision@5 0.40, recall@5 1.00, NDCG@5 1.00\n# model B: precision@5 0.40, recall@5 1.00, NDCG@5 0.50",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Recommender system",
+    "Software that picks a short, personalised list of items for each user."
+   ],
+   [
+    "Explicit feedback",
+    "A preference the user states directly, such as a star rating."
+   ],
+   [
+    "Implicit feedback",
+    "Preference inferred from behaviour, such as views, clicks and purchases."
+   ],
+   [
+    "Cold start",
+    "The problem of recommending for new users or new items that have no history yet."
+   ],
+   [
+    "Content-based filtering",
+    "Recommending items whose attributes are similar to items the user liked."
+   ],
+   [
+    "Collaborative filtering",
+    "Recommending from patterns in many users' behaviour, without item descriptions."
+   ],
+   [
+    "Cosine similarity",
+    "A measure of how closely two vectors point the same way, from -1 to 1 (0 to 1 for counts)."
+   ],
+   [
+    "Matrix factorization",
+    "Explaining a user-item matrix with short hidden factor vectors for each user and item."
+   ],
+   [
+    "Precision@k",
+    "Of the top k recommendations, the share the user actually went on to use."
+   ],
+   [
+    "NDCG",
+    "A ranking score that rewards relevant items more when they appear near the top of the list."
+   ]
+  ],
+  "practice": [
+   "Generate a synthetic purchase log for 500 users and 50 items. Build a popularity baseline that uses only the last 30 days and filters owned items, and report precision@10 on the following week.",
+   "On the same data, build item-based collaborative filtering with cosine similarity and compare precision@10, recall@10 and NDCG@10 with the baseline, plus catalogue coverage for each.",
+   "Stretch: write a one-page A/B test plan for launching your better model: hypothesis, primary metric, two guardrail metrics, traffic split, minimum run length and the rule for deciding to ship."
+  ]
+ }
+}

@@ -1,0 +1,1546 @@
+<title>FDE Flow Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#EEF1F0; --surface:#FFFFFF; --ink:#17211D; --muted:#586964; --line:#D3DCD9; --line-strong:#8FA39D;
+  --accent:#1F5FD1; --accent-ink:#FFFFFF; --accent-soft:#E2EBFB; --packet:#D67C06; --done:#EAF0EE; --done-line:#7F9A93;
+  --code-bg:#F6F8F7; --hl:#FFF1D6;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0D1315; --surface:#141C1F; --ink:#E2EBE8; --muted:#93A6A0; --line:#27353A; --line-strong:#577069;
+    --accent:#6D9BFF; --accent-ink:#0B1220; --accent-soft:#1A2743; --packet:#F4A73A; --done:#18242A; --done-line:#6F8C85;
+    --code-bg:#10181B; --hl:#3A2D12;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0D1315; --surface:#141C1F; --ink:#E2EBE8; --muted:#93A6A0; --line:#27353A; --line-strong:#577069;
+  --accent:#6D9BFF; --accent-ink:#0B1220; --accent-soft:#1A2743; --packet:#F4A73A; --done:#18242A; --done-line:#6F8C85;
+  --code-bg:#10181B; --hl:#3A2D12;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;padding-inline:16px;padding-block:0 48px}
+.shell{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:230px minmax(0,1fr);gap:32px;padding-top:28px}
+header.top{max-width:1240px;margin:0 auto;padding-top:28px;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px}
+header.top h1{font-family:var(--display);font-weight:700;font-size:30px;letter-spacing:-.02em;margin:0}
+header.top p{margin:0;color:var(--muted);max-width:62ch}
+nav.index{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);align-self:start;display:flex;flex-direction:column;gap:16px;max-height:calc(100vh - 32px);overflow-y:auto;padding-right:4px}
+.picker{display:none}
+.picker span{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.picker select{font:inherit;font-size:15px;width:100%;background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);border-radius:6px;padding:8px 10px}
+.group-label .mnum{font-family:var(--mono);color:var(--accent);margin-right:6px}
+.group-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 6px}
+.group ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.group button{all:unset;cursor:pointer;display:block;box-sizing:border-box;width:100%;padding:6px 10px;border-radius:6px;font-size:14px;color:var(--ink)}
+.group button:hover{background:var(--surface)}
+.group button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.group button[aria-current="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+main{min-width:0;display:flex;flex-direction:column;gap:22px}
+.eyebrow{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.04em}
+h2.ctitle{font-family:var(--display);font-weight:700;font-size:clamp(26px,4vw,38px);letter-spacing:-.02em;line-height:1.1;margin:4px 0 8px;text-wrap:balance}
+.thesis{margin:0;font-size:17px;max-width:68ch}
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:10px;display:grid;grid-template-columns:minmax(0,1fr);overflow:hidden}
+.stage.has-code{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}
+.diagram{overflow-x:auto;padding:14px 10px 6px}
+.diagram svg{display:block;width:100%;min-width:560px;height:auto}
+.code{background:var(--code-bg);border-left:1px solid var(--line);overflow:auto;padding:14px 0;font-family:var(--mono);font-size:12.5px;line-height:1.7}
+.code .ln{display:block;padding:0 16px;white-space:pre;color:var(--muted);transition:background .3s,color .3s}
+.code .ln.on{background:var(--hl);color:var(--ink)}
+.code-title{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:0 16px 8px;font-family:var(--body);font-weight:600}
+.controls{grid-column:1/-1;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 16px}
+.btn{font:inherit;font-size:14px;font-weight:500;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:6px;padding:6px 12px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);min-width:84px}
+.dots{display:flex;gap:6px;flex-wrap:wrap}
+.dot{width:22px;height:6px;border-radius:3px;background:var(--line);border:0;padding:0;cursor:pointer}
+.dot.seen{background:var(--done-line)}
+.dot.cur{background:var(--accent)}
+.speed{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.speed select{font:inherit;font-size:13px;background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);border-radius:6px;padding:3px 6px}
+.narration{grid-column:1/-1;border-top:1px solid var(--line);padding:16px 18px 18px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px;min-height:118px}
+.stepno{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:500;padding-top:3px;font-variant-numeric:tabular-nums}
+.narration h3{margin:0;font-family:var(--display);font-size:20px;font-weight:600;letter-spacing:-.01em}
+.narration p{grid-column:2;margin:0;max-width:72ch}
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+.panel h4{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;font-weight:600}
+.panel ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px}
+.panel li::marker{color:var(--accent)}
+.qa{display:flex;flex-direction:column;gap:8px}
+.qa details{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.qa summary{cursor:pointer;font-weight:600}
+.qa summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.qa details p{margin:8px 0 2px;color:var(--ink)}
+.traps li{color:var(--ink)}
+/* svg */
+.node rect{fill:var(--surface);stroke:var(--line-strong);stroke-width:1.2;transition:fill .35s,stroke .35s}
+.node .lbl{font-family:var(--body);font-weight:600;font-size:14px;fill:var(--ink)}
+.node .sub{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+.node.done rect{fill:var(--done);stroke:var(--done-line)}
+.node.on rect{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2.2}
+.node.on .lbl{fill:var(--ink)}
+.node.ext rect{stroke-dasharray:4 3}
+.edge{fill:none;stroke:var(--line-strong);stroke-width:1.4;transition:stroke .35s}
+.edge.done{stroke:var(--done-line)}
+.edge.on{stroke:var(--accent);stroke-width:2.2;stroke-dasharray:6 5;animation:flow 0.9s linear infinite}
+.elabel{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+.elabel.on{fill:var(--accent)}
+.packet{fill:var(--packet)}
+.packet-halo{fill:var(--packet);opacity:.25}
+@keyframes flow{to{stroke-dashoffset:-22}}
+.pulse{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.55}}
+@media (prefers-reduced-motion: reduce){
+  .edge.on{animation:none;stroke-dasharray:none}
+  .pulse{animation:none}
+}
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:18px}
+  nav.index{display:none}
+  .picker{display:flex;flex-direction:column;gap:6px}
+  .stage.has-code{grid-template-columns:minmax(0,1fr)}
+  .code{border-left:0;border-top:1px solid var(--line);max-height:260px}
+  .cols{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:520px){
+  .narration{grid-template-columns:minmax(0,1fr)}
+  .narration p{grid-column:1}
+  .speed{margin-left:0}
+}
+</style>
+
+<header class="top">
+  <h1>FDE Flow Atlas</h1>
+  <p>The FDE Academy curriculum, module by module. Every concept is drawn as a moving flow: press play, or step through with the arrow keys.</p>
+</header>
+
+<div class="shell">
+  <nav class="index" id="index" aria-label="Concepts"></nav>
+  <label class="picker" for="picker"><span>Concept</span><select id="picker"></select></label>
+  <main>
+    <div>
+      <div class="eyebrow" id="eyebrow"></div>
+      <h2 class="ctitle" id="ctitle"></h2>
+      <p class="thesis" id="thesis"></p>
+    </div>
+    <section class="stage" id="stage" aria-label="Animated flow">
+      <div class="diagram"><svg id="svg" role="img"></svg></div>
+      <div class="code" id="code" hidden></div>
+      <div class="controls">
+        <button class="btn" id="prev" type="button" aria-label="Previous step">Back</button>
+        <button class="btn primary" id="play" type="button">Play</button>
+        <button class="btn" id="next" type="button" aria-label="Next step">Next</button>
+        <div class="dots" id="dots"></div>
+        <label class="speed" for="speedSel">Speed
+          <select id="speedSel">
+            <option value="1.6">Slow</option>
+            <option value="1" selected>Normal</option>
+            <option value="0.6">Fast</option>
+          </select>
+        </label>
+      </div>
+      <div class="narration" aria-live="polite">
+        <div class="stepno" id="stepno"></div>
+        <h3 id="stitle"></h3>
+        <p id="stext"></p>
+      </div>
+    </section>
+    <div class="cols">
+      <div class="panel"><h4>Key ideas</h4><ul id="ideas"></ul></div>
+      <div class="panel traps"><h4>Traps interviewers look for</h4><ul id="traps"></ul></div>
+    </div>
+    <div class="panel"><h4>Interview questions, with a strong answer</h4><div class="qa" id="qa"></div></div>
+  </main>
+</div>
+
+<script>
+const OLD = [
+/* ---------------------------------------------------------------- ARC */
+{id:"arc", group:"The role", name:"Engagement arc",
+ title:"How an FDE engagement actually runs",
+ thesis:"You are paid to turn a vague business ask into software running in production at the customer, then feed what you learned back into the product.",
+ vb:[710,300],
+ nodes:[
+  ["ask",90,70,"Vague ask","\"AI for claims\""],
+  ["discover",265,70,"Discover","users · data · flow"],
+  ["scope",440,70,"Scope","metric · non-goals"],
+  ["pilot",615,70,"Pilot build","real data · weeks"],
+  ["prod",615,230,"Production","SSO · audit · on-call"],
+  ["measure",440,230,"Measure","vs. baseline"],
+  ["handoff",265,230,"Hand off","train · runbooks"],
+  ["product",90,230,"Core product","generalize"]
+ ],
+ edges:[["ask","discover"],["discover","scope"],["scope","pilot"],["pilot","prod"],["prod","measure"],["measure","pilot",-40,"iterate"],["measure","handoff"],["handoff","product"]],
+ steps:[
+  {t:"A vague ask arrives", n:["ask"], d:"\"We want AI for our claims team.\" Treat it as a symptom. Nobody has told you the real problem, who feels it, or how you would know it got better."},
+  {t:"Discover on site", n:["discover"], e:["ask>discover"], d:"Sit with the people doing the work. Map the current workflow step by step, find where the data lives and who owns it, and write down one baseline number (for example, 4.2 days average claim cycle time)."},
+  {t:"Scope a thin slice", n:["scope"], e:["discover>scope"], d:"Pick one workflow you can change in weeks, not quarters. Agree a success metric, the non-goals, and an executive sponsor who signs off. This is where most engagements are won or lost."},
+  {t:"Build the pilot", n:["pilot"], e:["scope>pilot"], d:"Build on the platform with the customer's real data from day one. Demo to real users often, even daily. A demo on fake data proves nothing to the customer."},
+  {t:"Harden for production", n:["prod"], e:["pilot>prod"], d:"The unglamorous half: SSO and permissions, audit logs, security review, monitoring, alerting, a runbook and an on-call owner. Pilots that skip this never go live."},
+  {t:"Measure and loop", n:["measure","pilot"], e:["prod>measure","measure>pilot"], d:"Compare against the baseline you captured in discovery. Gaps go back into the pilot loop. The number is what gets you the next contract."},
+  {t:"Hand off", n:["handoff"], e:["measure>handoff"], d:"Train the customer's team, document it, and reduce their dependency on you. An FDE who stays forever is a services cost, not a product win."},
+  {t:"Feed the product", n:["product"], e:["handoff>product"], d:"Anything you built twice for two customers should become a product feature. This is how you avoid custom-code sprawl, the classic FDE failure mode."}
+ ],
+ ideas:["The FDE model started at Palantir: engineers embedded with customers, shipping on a shared platform instead of writing one-off consulting code.","FDE vs. SWE: a SWE builds for many users from a spec. An FDE finds the spec with one customer, then builds.","FDE vs. solutions architect: an SA designs and advises. An FDE writes and ships the production code.","Your two customers are the client and your own product team."],
+ traps:["Jumping to a solution (\"let's build a RAG bot\") before you have a baseline metric.","Building on fake data because real data access is slow. Start the access request on day one.","Letting the pilot become a bespoke fork no one else can maintain."],
+ qa:[["Walk me through how you'd run a new customer engagement.","Discover, scope, pilot, productionize, measure, hand off. The key is naming the baseline metric in discovery and the sponsor in scoping, because those two things decide whether the work ships and gets renewed."],
+     ["How do you avoid custom-code sprawl?","Build on the core platform, keep customer-specific logic in config or thin adapters, and flag any pattern you've built twice to the product team as a feature request with evidence."],
+     ["The customer keeps adding scope mid-pilot. What do you do?","Write each new ask down, tie it to the agreed metric, and trade: if it moves the metric, something else comes out; if it doesn't, it goes on the phase 2 list with the sponsor's agreement."]]
+},
+/* ---------------------------------------------------------------- CASE */
+{id:"case", group:"The role", name:"Case decomposition",
+ title:"Decomposing a customer case in an interview",
+ thesis:"Case rounds test whether you ask the right questions before you design. Work left to right and say each step out loud.",
+ vb:[710,300],
+ nodes:[
+  ["ask",90,70,"Vague ask","hospital discharges"],
+  ["who",265,70,"Who and why","users · sponsor"],
+  ["flow",440,70,"Current flow","steps · handoffs"],
+  ["data",615,70,"Data reality","EHR · beds · notes"],
+  ["metric",615,230,"Success metric","hrs to discharge"],
+  ["cons",440,230,"Constraints","PHI · on-prem"],
+  ["slice",265,230,"Thin slice","one ward · 6 wks"],
+  ["plan",90,230,"Plan and risks","demo · rollout"]
+ ],
+ edges:[["ask","who"],["who","flow"],["flow","data"],["data","metric"],["metric","cons"],["cons","slice"],["slice","plan"]],
+ steps:[
+  {t:"Restate the ask", n:["ask"], d:"Prompt: \"A hospital wants to use AI to reduce discharge delays.\" Restate it and confirm the goal: fewer hours between 'medically ready' and 'patient leaves'. Don't design yet."},
+  {t:"Who feels it, who pays", n:["who"], e:["ask>who"], d:"Users are nurses, case managers and doctors. The sponsor is the COO, who cares about bed capacity. Ask who will use the tool daily and who signs the contract."},
+  {t:"Map the current workflow", n:["flow"], e:["who>flow"], d:"Doctor writes the discharge order, pharmacy reconciles meds, transport is booked, family is called. Ask where the wait actually happens. It is often one handoff, such as pharmacy."},
+  {t:"Check the data reality", n:["data"], e:["flow>data"], d:"What's in the EHR, what's in free-text notes, what's on a whiteboard? How fresh is it, and can you get read access? Data access is usually the long pole."},
+  {t:"Define success", n:["metric"], e:["data>metric"], d:"Pick one number and its baseline: median hours from ready to discharge, currently 6.5. Add a guardrail metric such as 30-day readmissions so you can't 'win' by rushing patients out."},
+  {t:"Name the constraints", n:["cons"], e:["metric>cons"], d:"PHI and HIPAA, on-prem or VPC only, clinicians must stay in the loop, EHR integration limits. Say these before the design, not after."},
+  {t:"Propose a thin slice", n:["slice"], e:["cons>slice"], d:"One ward, one bottleneck: a queue that predicts tomorrow's likely discharges from notes and orders so pharmacy starts early. Six weeks, measurable, low risk."},
+  {t:"Plan, demo, risks", n:["plan"], e:["slice>plan"], d:"Week plan, what you demo and to whom, how you'd roll out to other wards, and the top risks (data access, clinician trust, model errors) with a mitigation each."}
+ ],
+ ideas:["Interviewers score the questions you ask as much as the design you land on.","Always pair a success metric with a guardrail metric.","A thin slice beats a platform pitch. Scope to what ships in weeks.","Say the constraints out loud: security, deployment location, humans in the loop."],
+ traps:["Opening with the model or architecture choice.","No baseline, so no way to prove value.","Ignoring the people who have to change their workflow."],
+ qa:[["What's the first thing you'd do on day one at this hospital?","Shadow a case manager through two or three discharges and file the data access request in parallel, because access will gate everything else."],
+     ["How would you measure success?","Median hours from medically-ready to discharge on the pilot ward against a pre-pilot baseline, with readmission rate as a guardrail and a comparison ward as control."],
+     ["The model makes a wrong prediction. What happens?","It's a prioritization aid, not a decision. A nurse confirms each item, we log overrides, and those overrides become labeled eval data."]]
+},
+/* ---------------------------------------------------------------- RAG */
+{id:"rag", group:"AI systems", name:"RAG pipeline",
+ title:"Retrieval-augmented generation, end to end",
+ thesis:"RAG answers questions from the customer's own documents by retrieving relevant chunks at query time and putting them in the prompt. Most failures are retrieval failures, not model failures.",
+ vb:[710,380],
+ codeTitle:"Assembled prompt",
+ code:`SYSTEM: Answer only from the sources below.
+Cite sources like [S1]. If they don't cover
+the question, say you don't know.
+
+<source id="S1" doc="refund-policy.pdf" p="4">
+Refunds are accepted within 30 days...
+</source>
+<source id="S2" doc="vip-terms.pdf" p="2">
+VIP customers may request refunds up to 60 days...
+</source>
+
+QUESTION: Can a VIP get a refund after 45 days?
+
+ANSWER: Yes. VIP customers have 60 days [S2],
+while the standard window is 30 days [S1].`,
+ nodes:[
+  ["docs",90,60,"Documents","PDF · wiki · tickets"],
+  ["chunk",265,60,"Parse and chunk","~500 tok · overlap"],
+  ["embedD",440,60,"Embed","vector per chunk"],
+  ["index",615,60,"Vector index","HNSW + BM25 + ACL"],
+  ["q",90,190,"User question","\"refund after 45d?\""],
+  ["embedQ",265,190,"Embed query","same model"],
+  ["retrieve",440,190,"Retrieve top-k","hybrid · filter"],
+  ["rerank",615,190,"Rerank","50 → 5"],
+  ["prompt",615,320,"Build prompt","rules + sources"],
+  ["llm",440,320,"LLM","grounded answer"],
+  ["answer",265,320,"Answer","with citations"],
+  ["log",90,320,"Log and eval","recall · faithful"]
+ ],
+ edges:[["docs","chunk"],["chunk","embedD"],["embedD","index"],["q","embedQ"],["embedQ","retrieve"],["index","retrieve",0,"search"],["retrieve","rerank"],["rerank","prompt"],["prompt","llm"],["llm","answer"],["answer","log"]],
+ steps:[
+  {t:"Ingest documents (offline)", n:["docs"], d:"Pull the customer's sources: PDFs, Confluence, tickets. Keep metadata with every document: source, date, and who is allowed to see it. Parsing tables and scanned PDFs well is half the battle."},
+  {t:"Chunk", n:["chunk"], e:["docs>chunk"], d:"Split into pieces of a few hundred tokens with some overlap, following structure (headings, sections) where possible. Bad chunk boundaries split the answer across two chunks and retrieval misses it."},
+  {t:"Embed and index", n:["embedD","index"], e:["chunk>embedD","embedD>index"], d:"An embedding model turns each chunk into a vector. Store vectors in an ANN index (HNSW), plus a keyword index (BM25) for exact terms like product codes, with ACL metadata on every row."},
+  {t:"A question arrives (online)", n:["q","embedQ"], e:["q>embedQ"], d:"Embed the question with the same model used for the chunks. Optionally rewrite it first, for example expanding acronyms or splitting a compound question."},
+  {t:"Retrieve", n:["retrieve","index"], e:["embedQ>retrieve","index>retrieve"], d:"Find nearest neighbours and keyword matches, fuse them (reciprocal rank fusion), and filter by the user's permissions. Filtering by ACL here is what stops the bot leaking HR documents."},
+  {t:"Rerank", n:["rerank"], e:["retrieve>rerank"], d:"A cross-encoder scores each (question, chunk) pair more accurately than vector similarity. Take roughly 50 candidates down to the best 5. Cheap and usually the biggest quality jump."},
+  {t:"Assemble the prompt", n:["prompt"], e:["rerank>prompt"], d:"System rules, the chunks with source IDs, then the question. Tell the model to cite and to say 'I don't know' when the sources don't cover it. See the prompt on the right.", l:[0,1,2,4,5,6,7,8,9,11]},
+  {t:"Generate a grounded answer", n:["llm","answer"], e:["prompt>llm","llm>answer"], d:"The model answers from the sources with citations the user can click to verify. Citations are what earn trust from a skeptical customer.", l:[13,14]},
+  {t:"Log and evaluate", n:["log"], e:["answer>log"], d:"Log question, retrieved chunks and answer. Measure retrieval recall@k and answer faithfulness separately. When quality drops, this tells you whether to fix chunking and retrieval or the prompt."}
+ ],
+ ideas:["RAG vs. fine-tuning: RAG adds knowledge that changes or needs citations. Fine-tuning changes behaviour, format or style. Most enterprise asks are knowledge problems, so start with RAG.","Hybrid search (vectors plus BM25) beats either alone on enterprise text full of IDs and jargon.","Permissions must be enforced at retrieval time, not in the prompt.","Evaluate retrieval and generation separately."],
+ traps:["Blaming the LLM when the right chunk was never retrieved.","Chunking tables and PDFs naively.","Stuffing 30 chunks into the prompt instead of reranking to a few."],
+ qa:[["Users say the RAG bot gives wrong answers. How do you debug it?","Pull the failing questions, check whether the right chunk was in the retrieved set. If not, it's ingestion, chunking or retrieval; if it was, it's the prompt or model. Turn those cases into an eval set before changing anything."],
+     ["When would you fine-tune instead of using RAG?","When the problem is behaviour, not knowledge: a strict output format, a domain style, or a small fast model for a narrow task. Often both: RAG for facts, a fine-tuned or well-prompted model for format."],
+     ["How do you stop the bot showing documents a user shouldn't see?","Store ACL metadata per chunk and filter at retrieval using the user's identity from SSO, so restricted text never reaches the prompt."]]
+},
+/* ---------------------------------------------------------------- TOOLS */
+{id:"tools", group:"AI systems", name:"Tool calling and agents",
+ title:"The agent loop behind LLM tool calling",
+ thesis:"The model never runs anything. It asks your code to call a tool, your code runs it and sends the result back, and this loops until the model answers.",
+ vb:[700,310],
+ codeTitle:"The loop in Python (Anthropic SDK)",
+ code:`tools = [{"name": "get_order",
+          "description": "Look up an order by id",
+          "input_schema": {"type": "object",
+             "properties": {"id": {"type": "string"}}}}]
+messages = [{"role": "user", "content": question}]
+
+while True:
+    resp = client.messages.create(model=MODEL,
+               max_tokens=1024, tools=tools, messages=messages)
+    if resp.stop_reason != "tool_use":
+        return resp.content[0].text
+    messages.append({"role": "assistant", "content": resp.content})
+    results = [{"type": "tool_result", "tool_use_id": b.id,
+                "content": run_tool(b.name, b.input)}
+               for b in resp.content if b.type == "tool_use"]
+    messages.append({"role": "user", "content": results})`,
+ nodes:[
+  ["user",90,80,"User","\"why late? #8841\""],
+  ["app",340,80,"Your app","the agent loop"],
+  ["llm",600,80,"LLM","decides next step"],
+  ["docs",170,250,"search_docs","tool",1],
+  ["db",340,250,"get_order","orders DB",1],
+  ["carrier",510,250,"track_shipment","carrier API",1]
+ ],
+ edges:[["user","app",14],["app","user",14],["app","llm",16,"messages + tools"],["llm","app",16,"tool_use"],["app","docs",12],["app","db",12],["db","app",12],["app","carrier",12],["carrier","app",12]],
+ steps:[
+  {t:"User asks", n:["user","app"], e:["user>app"], d:"\"Why did order 8841 ship late?\" The answer needs live data the model doesn't have."},
+  {t:"Send messages and tool schemas", n:["llm"], e:["app>llm"], d:"Your app sends the conversation plus tool definitions: a name, a description the model reads to decide when to use it, and a JSON schema for arguments. Descriptions are prompts. Write them carefully.", l:[0,1,2,3,4,6,7,8]},
+  {t:"Model asks for a tool", n:["llm","app"], e:["llm>app"], d:"The response stops with stop_reason 'tool_use' and a block like get_order({id: \"8841\"}). Nothing has executed yet. The model has only asked.", l:[9]},
+  {t:"Your code runs the tool", n:["db"], e:["app>db","db>app"], d:"Validate the arguments, check this user may see this order, call the database with a timeout. This is where security lives: the model's request is untrusted input.", l:[11,12,13,14]},
+  {t:"Return the result", n:["llm"], e:["app>llm"], d:"Append the assistant turn and a tool_result block tied to the tool_use id, then call the model again with the longer conversation.", l:[11,15]},
+  {t:"The loop continues", n:["carrier"], e:["llm>app","app>carrier","carrier>app","app>llm"], d:"The order shows a carrier hand-off, so the model calls track_shipment next. Agents are this loop repeated. Cap the number of iterations and total cost."},
+  {t:"Final answer", n:["llm","app"], e:["llm>app"], d:"With enough context the model returns plain text and stop_reason 'end_turn'. The loop exits.", l:[9,10]},
+  {t:"Reply and log the trace", n:["user"], e:["app>user"], d:"\"It left the warehouse on time but sat 2 days at the carrier's Memphis hub.\" Log every step of the trace. Traces are your debugging tool and your eval data."}
+ ],
+ ideas:["Tool use is structured output plus a loop in your code. The model proposes, your code disposes.","Tool descriptions and schemas are prompt engineering. Clear names and examples reduce wrong calls.","Treat tool arguments as untrusted input: validate, authorize, rate limit.","Workflow (fixed steps) vs. agent (model picks steps): prefer a workflow when the steps are known."],
+ traps:["Letting the model call write or delete tools without a human confirmation step.","No iteration cap, so a confused agent loops and burns money.","Giving the agent 40 overlapping tools instead of a few clear ones."],
+ qa:[["Explain how tool calling works to a customer's CTO.","The model reads the tool descriptions and returns a structured request to call one. Our code runs it with the user's permissions and feeds the result back. The model never touches your systems directly."],
+     ["When would you not use an agent?","When the steps are known in advance. A fixed pipeline is cheaper, faster, easier to test and easier to explain. Use an agent when the path depends on what it finds."],
+     ["How do you make a write action safe?","Split read and write tools, require a human confirmation for writes, make writes idempotent, and log who approved what."]]
+},
+/* ---------------------------------------------------------------- MCP */
+{id:"mcp", group:"AI systems", name:"Model Context Protocol",
+ title:"How MCP connects an AI app to a customer system",
+ thesis:"MCP is an open standard for exposing tools, resources and prompts to any AI host. Build one server for the customer's system and every MCP-capable app can use it.",
+ vb:[710,300],
+ codeTitle:"JSON-RPC messages on the wire",
+ code:`→ {"method":"initialize","id":1,
+    "params":{"protocolVersion":"2025-06-18",
+              "capabilities":{},"clientInfo":{...}}}
+← {"id":1,"result":{"capabilities":{"tools":{}},
+    "serverInfo":{"name":"crm-server"}}}
+→ {"method":"notifications/initialized"}
+
+→ {"method":"tools/list","id":2}
+← {"id":2,"result":{"tools":[{"name":"find_account",
+    "description":"Find a CRM account by domain",
+    "inputSchema":{"type":"object",...}}]}}
+
+→ {"method":"tools/call","id":3,"params":{
+    "name":"find_account",
+    "arguments":{"domain":"acme.com"}}}
+← {"id":3,"result":{"content":[{"type":"text",
+    "text":"Acme Corp · ARR $1.2M · owner: Priya"}]}}`,
+ nodes:[
+  ["host",90,70,"Host app","IDE · chat · agent"],
+  ["llm",360,70,"LLM","reads tool list"],
+  ["client",90,230,"MCP client","one per server"],
+  ["server",360,230,"MCP server","tools · resources"],
+  ["backend",615,230,"Customer system","CRM · DB · API",1]
+ ],
+ edges:[["host","client",14],["client","host",14],["client","server",16],["server","client",16],["host","llm",16],["llm","host",16],["server","backend",16],["backend","server",16]],
+ steps:[
+  {t:"Host starts a client", n:["host","client"], e:["host>client"], d:"The host (Claude Desktop, an IDE, your own agent) creates one MCP client per configured server. Transport is stdio for a local process or Streamable HTTP for a remote server."},
+  {t:"Initialize handshake", n:["server"], e:["client>server","server>client"], d:"Client and server agree a protocol version and declare capabilities. The server says it offers tools (and maybe resources and prompts).", l:[0,1,2,3,4,5]},
+  {t:"Discover tools", n:["server","client"], e:["client>server","server>client"], d:"tools/list returns each tool's name, description and JSON input schema. This is the same shape the model needs for tool calling.", l:[7,8,9,10]},
+  {t:"Tools go to the model", n:["llm"], e:["client>host","host>llm"], d:"The host passes the discovered tools to the LLM alongside the conversation."},
+  {t:"Model picks a tool", n:["host","client"], e:["llm>host","host>client"], d:"The model returns a tool_use for find_account. The host may ask the user to approve, then routes the call to the right client."},
+  {t:"Call the tool", n:["server"], e:["client>server"], d:"The client sends tools/call with the arguments as a JSON-RPC request.", l:[12,13,14]},
+  {t:"Server hits the real system", n:["backend"], e:["server>backend","backend>server"], d:"The server calls the customer's CRM with its own credentials, ideally OAuth scoped to the user. Auth, rate limits and data shaping live here."},
+  {t:"Result flows back", n:["llm"], e:["server>client","client>host","host>llm"], d:"The content comes back to the model, which uses it in its answer.", l:[15,16]}
+ ],
+ ideas:["MCP turns N apps × M systems integrations into N + M: one server per system, reusable by every host.","Three primitives: tools (model-invoked actions), resources (data the app can read), prompts (user-invoked templates).","It is JSON-RPC 2.0 over stdio or Streamable HTTP.","For an FDE, an MCP server is often the fastest way to plug a customer's internal system into an AI product."],
+ traps:["Confusing MCP with tool calling. Tool calling is the model API feature; MCP standardizes how tools are discovered and invoked.","Shipping a remote server without auth. Use OAuth and least-privilege scopes.","Exposing every API endpoint as a tool instead of a few task-shaped ones."],
+ qa:[["Why would a customer want an MCP server instead of a custom integration?","Build it once and it works in every MCP host they use: their chat app, IDE and internal agents. Auth and business rules live in one place."],
+     ["How would you secure a remote MCP server for an enterprise?","OAuth tied to the customer's IdP, per-user scopes, read and write tools separated, audit logging of every call, and rate limits."],
+     ["Tools vs. resources?","A tool is an action the model decides to call. A resource is data the host application chooses to load into context, like a file or a record."]]
+},
+/* ---------------------------------------------------------------- EVALS */
+{id:"evals", group:"AI systems", name:"Evals",
+ title:"An eval loop that makes LLM work shippable",
+ thesis:"Evals are unit tests for non-deterministic systems. Without them every prompt change is a guess and you can't prove value to the customer.",
+ vb:[720,280],
+ nodes:[
+  ["data",90,70,"Golden dataset","120 real cases"],
+  ["sut",270,70,"System version","prompt · model · k"],
+  ["out",450,70,"Outputs","+ full traces"],
+  ["code",630,40,"Code checks","schema · SQL runs"],
+  ["judge",630,130,"LLM judge","rubric · 1 to 5"],
+  ["human",630,220,"Human review","disagreements"],
+  ["scores",450,220,"Scores","per slice"],
+  ["gate",270,220,"CI gate","no regressions"],
+  ["prod",90,220,"Production","traces · feedback"]
+ ],
+ edges:[["data","sut"],["sut","out"],["out","code"],["out","judge"],["judge","human"],["code","scores"],["judge","scores"],["human","scores"],["scores","gate"],["gate","prod",0,"ship"],["prod","data",0,"new cases"]],
+ steps:[
+  {t:"Build a golden dataset", n:["data"], d:"Collect 50 to 200 real tasks from the customer with expected answers or grading notes. Include the hard edge cases users complain about. Tag each case by slice (topic, customer type, language)."},
+  {t:"Run a system version", n:["sut"], e:["data>sut"], d:"A 'version' is everything that affects output: prompt, model, retrieval settings, tools. Run the whole dataset through it."},
+  {t:"Capture outputs and traces", n:["out"], e:["sut>out"], d:"Save the answer plus every intermediate step: retrieved chunks, tool calls, tokens, latency. Traces tell you why a case failed."},
+  {t:"Deterministic checks first", n:["code"], e:["out>code"], d:"Cheap and exact: does the JSON match the schema, does the generated SQL execute, is the cited source real, is the answer under the length limit."},
+  {t:"LLM as judge", n:["judge"], e:["out>judge"], d:"For fuzzy qualities like correctness and helpfulness, a model grades against a written rubric. Calibrate it: check its scores agree with human labels on a sample before trusting it."},
+  {t:"Humans on the disagreements", n:["human"], e:["judge>human"], d:"Route low-confidence and disputed cases to a domain expert. Their labels improve the dataset and the judge rubric."},
+  {t:"Aggregate by slice", n:["scores"], e:["code>scores","judge>scores","human>scores"], d:"An overall 87% can hide a 40% on one important slice. Report per slice and compare against the previous version."},
+  {t:"Gate the release", n:["gate","prod"], e:["scores>gate","gate>prod"], d:"Run evals in CI on every prompt or model change. Block a merge if a key slice regresses."},
+  {t:"Close the loop", n:["data"], e:["prod>data"], d:"Production failures and thumbs-down feedback become new eval cases. The dataset grows with the customer's real usage."}
+ ],
+ ideas:["Offline evals (a fixed dataset) catch regressions. Online signals (feedback, A/B) confirm real value.","Grade in layers: code checks, then LLM judge, then humans.","An LLM judge must be calibrated against human labels.","Slice-level metrics are what customers actually care about."],
+ traps:["Vibe-checking five examples and calling it evaluated.","Using the same model as generator and unvalidated judge.","One aggregate score that hides a failing slice."],
+ qa:[["How do you know your LLM feature is good enough to ship?","A golden set built from real customer tasks, success thresholds agreed with the customer per slice, and a CI gate that shows the new version beats the old one without regressions."],
+     ["How do you trust an LLM judge?","Have humans label 50 to 100 cases, measure agreement with the judge, tighten the rubric until agreement is high, and re-check periodically."],
+     ["Where does the eval data come from on a new engagement?","From discovery: real historical tickets, documents and expert answers. Then production traces keep adding cases."]]
+},
+/* ---------------------------------------------------------------- SQL */
+{id:"sql", group:"Data", name:"SQL execution order",
+ title:"The order SQL really runs in",
+ thesis:"You write SELECT first, but the engine evaluates FROM first. Knowing the logical order explains most confusing SQL errors, and it's a favourite live-coding check.",
+ vb:[710,280],
+ codeTitle:"Top 3 regions by 2026 revenue",
+ code:`SELECT c.region,
+       COUNT(*)       AS orders,
+       SUM(o.amount)  AS revenue,
+       RANK() OVER (ORDER BY SUM(o.amount) DESC) AS rnk
+FROM   orders o
+JOIN   customers c ON c.id = o.customer_id
+WHERE  o.created_at >= '2026-01-01'
+GROUP  BY c.region
+HAVING COUNT(*) > 100
+ORDER  BY revenue DESC
+LIMIT  3;`,
+ nodes:[
+  ["from",90,70,"1 FROM","orders · 10,000"],
+  ["join",265,70,"2 JOIN ON","+ customers"],
+  ["where",440,70,"3 WHERE","→ 3,200 rows"],
+  ["group",615,70,"4 GROUP BY","→ 6 groups"],
+  ["having",615,210,"5 HAVING","→ 4 groups"],
+  ["select",440,210,"6 SELECT","aggs · window"],
+  ["order",265,210,"7 ORDER BY","revenue desc"],
+  ["limit",90,210,"8 LIMIT","→ 3 rows"]
+ ],
+ edges:[["from","join"],["join","where"],["where","group"],["group","having"],["having","select"],["select","order"],["order","limit"]],
+ steps:[
+  {t:"FROM", n:["from"], d:"Start from the orders table: 10,000 rows. Nothing else is known yet, including column aliases.", l:[4]},
+  {t:"JOIN", n:["join"], e:["from>join"], d:"Match each order to its customer. An inner join drops orders with no customer. A join on a non-unique key multiplies rows, which silently inflates SUMs.", l:[5]},
+  {t:"WHERE", n:["where"], e:["join>where"], d:"Filter individual rows: only 2026 orders survive, 3,200 rows. WHERE can't see aggregates or SELECT aliases because they don't exist yet.", l:[6]},
+  {t:"GROUP BY", n:["group"], e:["where>group"], d:"Collapse rows into one group per region: 6 groups. From here on, every column must be grouped or aggregated.", l:[7]},
+  {t:"HAVING", n:["having"], e:["group>having"], d:"Filter groups using aggregates: keep regions with more than 100 orders, 4 groups left. HAVING is WHERE for groups.", l:[8]},
+  {t:"SELECT and window functions", n:["select"], e:["having>select"], d:"Now compute the output columns and aliases. Window functions like RANK() run here, after grouping, over the grouped rows. DISTINCT also applies at this point.", l:[0,1,2,3]},
+  {t:"ORDER BY", n:["order"], e:["select>order"], d:"Sort the result. ORDER BY runs after SELECT, which is why it's the one clause that can use the alias 'revenue'.", l:[9]},
+  {t:"LIMIT", n:["limit"], e:["order>limit"], d:"Keep the first 3 rows. Without a deterministic ORDER BY, which 3 you get is undefined.", l:[10]}
+ ],
+ ideas:["Logical order: FROM, JOIN, WHERE, GROUP BY, HAVING, SELECT (including window functions and DISTINCT), ORDER BY, LIMIT.","Filter early (WHERE) instead of late (HAVING) when you can. It's clearer and usually faster.","Window functions keep rows; GROUP BY collapses them.","The optimizer may physically reorder work, but results must match this logical order."],
+ traps:["Using a SELECT alias in WHERE (error in most databases).","Fan-out joins that double-count revenue.","COUNT(col) vs COUNT(*): COUNT(col) skips NULLs."],
+ qa:[["Why can't I use a column alias in WHERE?","WHERE runs before SELECT, so the alias doesn't exist yet. Repeat the expression or wrap the query in a CTE."],
+     ["Top earner per department?","Use a window: ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) in a CTE, then filter rn = 1 in the outer query. Use RANK if ties should all be returned."],
+     ["Revenue looks double what finance reports. Where do you look?","A join that fans out: an order joined to multiple shipment or line-item rows before summing. Aggregate on the child table first, then join."]]
+},
+/* ---------------------------------------------------------------- FASTAPI */
+{id:"fastapi", group:"Shipping", name:"FastAPI request lifecycle",
+ title:"What happens to one request in FastAPI",
+ thesis:"Most FDE builds end up as an API in front of a model or data pipeline. Knowing where validation, auth and async happen lets you debug it under pressure.",
+ vb:[710,280],
+ codeTitle:"A small /ask endpoint",
+ code:`app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=ORIGINS)
+
+class AskIn(BaseModel):
+    question: str = Field(min_length=3)
+    top_k: int = 5
+
+class AskOut(BaseModel):
+    answer: str
+    sources: list[str]
+
+async def current_user(token: str = Depends(oauth2)) -> User:
+    return await verify_jwt(token)
+
+@app.post("/ask", response_model=AskOut)
+async def ask(body: AskIn, user: User = Depends(current_user)):
+    chunks = await retriever.search(body.question,
+                 k=body.top_k, groups=user.groups)
+    return await llm.answer(body.question, chunks)`,
+ nodes:[
+  ["client",90,70,"Client","POST /ask"],
+  ["server",265,70,"Uvicorn","ASGI server"],
+  ["mw",440,70,"Middleware","CORS · logging"],
+  ["router",615,70,"Router","match path+method"],
+  ["deps",615,210,"Dependencies","auth · db session"],
+  ["valid",440,210,"Validation","Pydantic → 422"],
+  ["handler",265,210,"Handler","async def ask"],
+  ["ser",90,210,"Response model","filter · JSON"]
+ ],
+ edges:[["client","server"],["server","mw"],["mw","router"],["router","deps"],["deps","valid"],["valid","handler"],["handler","ser"],["ser","client",0,"200 JSON"]],
+ steps:[
+  {t:"Request arrives", n:["client","server"], e:["client>server"], d:"Uvicorn, an ASGI server, accepts the HTTP connection and hands FastAPI an ASGI scope. Running several workers (processes) gives you parallelism across CPU cores."},
+  {t:"Middleware", n:["mw"], e:["server>mw"], d:"Middleware wraps every request and response: CORS, request IDs, timing, logging. It runs before routing and again on the way out.", l:[1]},
+  {t:"Routing", n:["router"], e:["mw>router"], d:"FastAPI matches method and path to the ask function. No match gives 404, wrong method gives 405.", l:[13]},
+  {t:"Dependencies resolve", n:["deps"], e:["router>deps"], d:"Depends() runs current_user, which verifies the JWT. Failing auth raises 401 before your handler runs. Dependencies are also where you open DB sessions and clean them up.", l:[10,11,14]},
+  {t:"Body validation", n:["valid"], e:["deps>valid"], d:"Pydantic parses the JSON into AskIn. A missing question or a too-short one returns a 422 with field-level errors. You get this for free.", l:[3,4,5,14]},
+  {t:"Handler runs", n:["handler"], e:["valid>handler"], d:"The async handler awaits retrieval and the LLM call. Awaiting I/O frees the event loop for other requests. A blocking call here (sync DB driver, CPU work) stalls every request on that worker.", l:[14,15,16,17]},
+  {t:"Response model", n:["ser"], e:["handler>ser"], d:"The return value is validated against AskOut, which also strips any fields you didn't declare, then serialized to JSON.", l:[7,8,9,13]},
+  {t:"Back to the client", n:["client"], e:["ser>client"], d:"Middleware sees the response on the way out and adds headers and timing. The client gets 200 with typed JSON and the docs at /docs stay in sync automatically."}
+ ],
+ ideas:["Validation errors are 422, auth failures 401 or 403, missing routes 404.","async only helps if everything inside is non-blocking. Use run_in_threadpool or a sync def for blocking work.","Dependencies are FastAPI's dependency injection: auth, DB sessions, settings, all testable by override.","Stream long LLM answers with StreamingResponse or server-sent events."],
+ traps:["Calling a blocking SDK inside async def and wondering why throughput collapses.","Returning ORM objects with fields that leak (no response_model).","Doing long LLM jobs inline instead of a background queue when they take minutes."],
+ qa:[["Your FastAPI service is slow under load but CPU is low. Why?","Probably blocking I/O inside async handlers stalling the event loop. Profile, switch to async clients or move the call to a thread pool, and add workers."],
+     ["How do you add auth to all routes?","A dependency that validates the token, applied at the router level with dependencies=[Depends(current_user)], and overridden in tests."],
+     ["How would you serve an LLM answer that takes 20 seconds?","Stream tokens back with server-sent events so users see progress, and set timeouts and retries on the upstream call."]]
+},
+/* ---------------------------------------------------------------- DEPLOY */
+{id:"deploy", group:"Shipping", name:"Docker to Kubernetes",
+ title:"From code to pods: shipping a service",
+ thesis:"Customers judge you on whether it runs in their environment. Containers make the build reproducible; Kubernetes keeps the right number of healthy copies running.",
+ vb:[710,380],
+ codeTitle:"Dockerfile and deployment excerpt",
+ code:`FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# deployment.yaml (excerpt)
+replicas: 3
+image: registry.acme.io/ask-api:1.4.2
+readinessProbe: {httpGet: {path: /healthz, port: 8000}}
+strategy: {rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}`,
+ nodes:[
+  ["code",90,70,"Dockerfile","code @ sha a1b2c3"],
+  ["build",265,70,"docker build","cached layers"],
+  ["image",440,70,"Image","ask-api:1.4.2"],
+  ["registry",615,70,"Registry","customer's ECR/ACR"],
+  ["deploy",615,210,"Deployment","replicas: 3"],
+  ["pods",440,210,"Pods","3 × container"],
+  ["svc",265,210,"Service","stable IP · LB"],
+  ["ingress",90,210,"Ingress","TLS · /api"],
+  ["users",90,340,"Users","https requests",1]
+ ],
+ edges:[["code","build"],["build","image"],["image","registry",0,"push"],["registry","deploy",0,"pull"],["deploy","pods"],["users","ingress"],["ingress","svc"],["svc","pods"]],
+ steps:[
+  {t:"Write the Dockerfile", n:["code"], d:"Start from a slim base, install dependencies, copy code, set the start command. Copy requirements before the code so dependency layers stay cached.", l:[0,1,2,3,4,5,6]},
+  {t:"Build the image", n:["build","image"], e:["code>build","build>image"], d:"Each instruction becomes a cached layer. Changing app code only rebuilds the last layers, so builds take seconds instead of minutes.", l:[2,3,4]},
+  {t:"Push to a registry", n:["registry"], e:["image>registry"], d:"Tag with an immutable version or git SHA, never just 'latest'. In FDE work this is often the customer's own registry inside their cloud account.", l:[10]},
+  {t:"Declare desired state", n:["deploy"], e:["registry>deploy"], d:"A Deployment says: run 3 replicas of this image. Kubernetes continuously reconciles the actual state toward it and replaces pods that die.", l:[9,10]},
+  {t:"Pods start and get checked", n:["pods"], e:["deploy>pods"], d:"The scheduler places pods on nodes. A pod only receives traffic once its readiness probe passes, so a slow model load doesn't serve errors.", l:[11]},
+  {t:"Traffic comes in", n:["users","ingress","svc"], e:["users>ingress","ingress>svc"], d:"The Ingress terminates TLS and routes /api to a Service. The Service gives the pods one stable address and load-balances across the ready ones."},
+  {t:"Requests reach pods", n:["pods"], e:["svc>pods"], d:"Pods are cattle: any one can die and be replaced. Keep them stateless and put state in a database or object store."},
+  {t:"Rolling update", n:["deploy","pods"], e:["registry>deploy","deploy>pods"], d:"Ship 1.4.3 by changing the image tag. With maxUnavailable 0, Kubernetes starts a new pod, waits for it to be ready, then retires an old one. Roll back by reverting the tag.", l:[12]}
+ ],
+ ideas:["Image = the build artifact. Container = a running image. Pod = one or more containers scheduled together.","Deployment manages replicas and rollouts. Service gives stable networking. Ingress exposes HTTP from outside.","Config goes in ConfigMaps, secrets in Secrets or the cloud secret manager, never baked into the image.","FDE reality: customer VPCs, private registries, sometimes air-gapped installs. Ask early."],
+ traps:["Tagging images 'latest' so you can't tell what's running or roll back.","No readiness probe, so users hit pods still loading a model.","Baking API keys into the image."],
+ qa:[["Container vs. VM?","A container shares the host kernel and packages just the app and its dependencies, so it starts in seconds and is small. A VM virtualizes hardware and runs a full OS."],
+     ["How do you deploy with zero downtime?","Rolling update with readiness probes and maxUnavailable 0, plus backward-compatible database migrations so old and new pods can run side by side."],
+     ["The customer won't allow outbound internet. How do you deploy?","Mirror images into their private registry, bundle model weights and dependencies, use their internal package mirrors, and document an offline install path."]]
+}
+];
+
+const NEW = [
+/* ================================================= MODULE 1 */
+{id:"genesis", mod:1, sec:"1.1 and 1.3", name:"Palantir origin and roles",
+ title:"Echoes, Deltas and the FDE as a human API",
+ thesis:"Palantir invented the role because its customers' problems didn't fit a spec. A strategist and a small team of engineers sat inside the customer and turned the mission into software on a shared platform.",
+ vb:[710,290],
+ nodes:[
+  ["mission",90,70,"Client mission","analysts · ops"],
+  ["echo",265,70,"Echo","deployment strategist"],
+  ["delta",440,70,"Deltas","FDE engineers"],
+  ["platform",615,70,"Platform","Gotham · Foundry"],
+  ["live",615,220,"Live workflow","in production"],
+  ["feedback",440,220,"Field feedback","gaps · workarounds"],
+  ["product",265,220,"Core product","new capability"],
+  ["nextc",90,220,"Next customer","less custom work"]
+ ],
+ edges:[["mission","echo"],["echo","delta"],["delta","platform"],["platform","live"],["live","feedback"],["feedback","product"],["product","nextc"]],
+ steps:[
+  {t:"A mission, not a spec", n:["mission"], d:"Palantir's first customers were intelligence and defense agencies (Gotham), later commercial firms (Foundry). Their problems were urgent and messy, and nobody could write a clean requirements document for them."},
+  {t:"The Echo frames the problem", n:["echo"], e:["mission>echo"], d:"The Echo, or Deployment Strategist, lives with the customer. They learn the mission, the users and the politics, own the relationship, and decide which problem is worth solving first."},
+  {t:"Deltas build it", n:["delta"], e:["echo>delta"], d:"Deltas are the Forward Deployed Software Engineers. They integrate the customer's data, write the code and ship. Together, Echo and Deltas act as a human API between the customer's reality and the product."},
+  {t:"On a shared platform", n:["platform"], e:["delta>platform"], d:"Deltas build on Gotham or Foundry instead of from scratch. That is what separates an FDE from a consultant: the work compounds into a product."},
+  {t:"Running in production", n:["live"], e:["platform>live"], d:"The output is a workflow people use every day, not a slide deck or a proof of concept."},
+  {t:"Field feedback", n:["feedback"], e:["live>feedback"], d:"The field sees what the product can't do yet: missing connectors, awkward workflows, repeated workarounds."},
+  {t:"Back into the product", n:["product"], e:["feedback>product"], d:"Repeated field work becomes a core capability. The FDE team is effectively paid discovery for the product roadmap."},
+  {t:"The next deployment is cheaper", n:["nextc"], e:["product>nextc"], d:"Each customer needs less custom work than the last. This is the loop every FDE org is trying to run."}
+ ],
+ ideas:["SWE: one capability, many customers. FDE: one customer, many capabilities.","FDE vs. Customer Success Engineer: a CSE drives adoption and health after the sale and rarely ships production code.","FDE vs. Solutions Architect: an SA designs and advises, mostly pre-sale. An FDE writes and ships the code.","FDE vs. tech consultant: a consultant bills hours and hands over artifacts. An FDE builds on a product and feeds it back.","A typical FDE spends 70 to 80% of their time on code and model work."],
+ traps:["Describing the FDE as a sales engineer or support role.","Forgetting the product feedback half of the job.","Treating 'human API' as meaning you just relay requests. You translate and build."],
+ qa:[["What's the difference between an FDE and a solutions architect?","An SA designs the solution and advises, usually before the sale. An FDE owns delivery: writes and ships production code inside the customer and feeds what they learn back to the product."],
+     ["Why did Palantir split Echoes and Deltas?","Framing the problem and building the solution are different skills, and both are full-time jobs on a hard deployment. The Echo keeps the Deltas focused on the right problem and shields them from admin drag."],
+     ["What does 'human API' mean to you?","The FDE is the interface between a messy customer environment and a clean product: they take unstructured needs in and return working software, and pass structured feedback to the product team."]]
+},
+{id:"slg", mod:1, sec:"1.2", name:"Services-led growth",
+ title:"The services-led growth flywheel",
+ thesis:"FDEs cost money up front, which lowers gross margin. Companies accept that because deep deployments create usage, proprietary data and expansion revenue. That is the margin-for-moat trade.",
+ vb:[710,290],
+ nodes:[
+  ["invest",90,70,"FDE investment","lower gross margin"],
+  ["deploy",265,70,"Deep deploy","real workflows"],
+  ["usage",440,70,"Usage uplift","adoption depth"],
+  ["data",615,70,"Process data","proprietary"],
+  ["product",615,220,"Better product","models · features"],
+  ["nrr",440,220,"Expansion","NRR above 100%"],
+  ["moat",265,220,"Switching cost","the moat"],
+  ["funds",90,220,"Funds more FDEs","next accounts"]
+ ],
+ edges:[["invest","deploy"],["deploy","usage"],["usage","data"],["data","product"],["product","nrr"],["nrr","moat"],["moat","funds"],["funds","invest",0,"repeat"]],
+ steps:[
+  {t:"Spend on FDEs", n:["invest"], d:"Engineers embedded with customers are expensive and don't scale like software. Gross margin drops compared with pure self-serve SaaS. This is the 'margin' side of the trade."},
+  {t:"Go deep, not wide", n:["deploy"], e:["invest>deploy"], d:"FDEs wire the product into the customer's core workflows and data, the part a self-serve customer never gets to."},
+  {t:"Usage goes up", n:["usage"], e:["deploy>usage"], d:"More teams, more workflows, more daily users. Adoption depth is the metric: how central the product is to how the customer operates."},
+  {t:"Proprietary process data", n:["data"], e:["usage>data"], d:"Every workflow generates data about how work actually gets done: decisions, exceptions, corrections. Competitors can't buy this."},
+  {t:"The product improves", n:["product"], e:["data>product"], d:"That data trains better models and shows which features to build. This is the data flywheel."},
+  {t:"Expansion revenue", n:["nrr"], e:["product>nrr"], d:"Net Revenue Retention = (starting ARR + expansion − contraction − churn) / starting ARR. Above 100% means existing customers grow even with no new logos. FDE-heavy companies aim well above it."},
+  {t:"The moat", n:["moat"], e:["nrr>moat"], d:"A product woven into core workflows, tuned on the customer's own data, is very hard to rip out. This is the 'moat' side of the trade."},
+  {t:"Reinvest", n:["funds","invest"], e:["moat>funds","funds>invest"], d:"Expansion revenue pays for the next FDE deployments, and each one is cheaper because the product has absorbed earlier field work."}
+ ],
+ ideas:["Services-Led Growth (SLG): use hands-on delivery to land and expand, instead of product-led self-serve.","Margin-for-moat: accept lower early margins for stickier, larger accounts.","NRR is the headline metric FDE orgs move.","The trade only works if field work flows back into the product. Otherwise it's just a consulting business."],
+ traps:["Calling FDEs a cost center without mentioning NRR and the data flywheel.","Ignoring that margins must improve over time as the product absorbs custom work."],
+ qa:[["Why would a software company accept lower margins to run an FDE team?","Because deep deployments raise NRR and switching costs, and the field work becomes product. Margin is traded now for a durable moat and expansion revenue later."],
+     ["What is NRR and how does an FDE influence it?","Revenue from existing customers this year over last year, including expansion and churn. FDEs raise it by driving adoption into new teams and workflows and by preventing churn on hard deployments."],
+     ["When does services-led growth fail?","When every deployment is bespoke and nothing flows back to the product, so margins never improve and the company becomes a consultancy."]]
+},
+/* ================================================= MODULE 2 */
+{id:"resilient", mod:2, sec:"2.1", name:"Resilient API ingestion",
+ title:"Clean code against unreliable customer APIs",
+ thesis:"Customer systems rate limit, time out and return bad data. Defensive code expects all three: retry what's transient, validate at the boundary, and never drop a bad record silently.",
+ vb:[710,420],
+ codeTitle:"Python: retries, validation, dead letters",
+ code:`@retry(wait=wait_exponential_jitter(initial=1, max=30),
+       stop=stop_after_attempt(5),
+       retry=retry_if_exception_type(RetryableError))
+def fetch_page(cursor: str | None) -> dict:
+    r = session.get(URL, params={"cursor": cursor}, timeout=10)
+    if r.status_code == 429:
+        raise RetryableError(r.headers.get("Retry-After"))
+    if r.status_code >= 500:
+        raise RetryableError(r.status_code)
+    r.raise_for_status()          # 4xx: a bug, don't retry
+    return r.json()
+
+def load(rows):
+    for row in rows:
+        try:
+            yield Order.model_validate(row)   # pydantic schema
+        except ValidationError as e:
+            dead_letter.put(row, str(e))
+
+# test_ingest.py: mock 429, 500 and malformed rows first (TDD)`,
+ nodes:[
+  ["caller",90,70,"Your pipeline","paginated pull"],
+  ["client",265,70,"API client","timeout 10s"],
+  ["api",440,70,"Customer API","rate limited",1],
+  ["resp",615,70,"Response","status?"],
+  ["retry",615,210,"429 / 5xx","backoff + jitter"],
+  ["validate",440,210,"Validate","schema · nulls"],
+  ["store",265,210,"Clean records","typed · tested"],
+  ["dlq",440,350,"Dead letter","bad rows kept"]
+ ],
+ edges:[["caller","client"],["client","api"],["api","resp"],["resp","retry"],["retry","client",0,"retry"],["resp","validate",0,"200"],["validate","store"],["validate","dlq"]],
+ steps:[
+  {t:"Pull a page", n:["caller","client"], e:["caller>client"], d:"Paginate with a cursor, not an offset, so rows inserted mid-pull don't shift pages. Wrap the customer's API in a small client class (the adapter pattern) so the rest of your code never sees its quirks.", l:[3,4]},
+  {t:"Always set a timeout", n:["api"], e:["client>api"], d:"A request with no timeout can hang a worker forever. Every outbound call gets one.", l:[4]},
+  {t:"Classify the response", n:["resp"], e:["api>resp"], d:"429 and 5xx are transient and worth retrying. Other 4xx errors mean your request is wrong, so retrying only hides a bug.", l:[5,6,7,8,9]},
+  {t:"Back off and retry", n:["retry","client"], e:["resp>retry","retry>client"], d:"Wait 1s, 2s, 4s... with random jitter so parallel workers don't retry in lockstep. Honour the Retry-After header. Stop after a few attempts and alert. Writes need idempotency keys so a retry can't double-charge.", l:[0,1,2,6]},
+  {t:"Validate at the boundary", n:["validate"], e:["resp>validate"], d:"Parse every record into a typed schema. Missing fields, wrong types and nulls fail here, loudly, instead of three steps downstream.", l:[12,13,14,15]},
+  {t:"Keep the good rows", n:["store"], e:["validate>store"], d:"Clean, typed records flow on. Decide per field how to handle missing data: reject, default, or impute, and document the choice."},
+  {t:"Never drop bad rows silently", n:["dlq"], e:["validate>dlq"], d:"Bad rows go to a dead-letter queue or table with the error, so you can report data quality to the customer and replay after a fix.", l:[16,17]},
+  {t:"Test the failure paths first", n:["client","validate"], d:"In TDD you write tests for the 429, the 500 and the malformed row before the code. Mock the API. Complexity check: the pipeline is O(n) in rows; keep it that way.", l:[19]}
+ ],
+ ideas:["Transient (retry): 429, 502, 503, 504, timeouts. Permanent (fix): 400, 401, 403, 404, 422.","Exponential backoff with jitter, capped attempts, Retry-After honoured.","Idempotency keys on any write that could be retried.","Validate at the boundary; quarantine bad data instead of dropping it.","Git hygiene: small commits, feature branches, PRs with tests."],
+ traps:["Retrying 400s forever.","No timeout on HTTP calls.","Swallowing exceptions with a bare except and moving on."],
+ qa:[["The customer API rate limits you at 100 requests a minute and you need 2 million records. What do you do?","Ask for a bulk export or webhook first. Otherwise paginate with large pages, use a token-bucket limiter under the limit, back off on 429, checkpoint the cursor so the job can resume, and run it incrementally after the first backfill."],
+     ["How do you handle missing data in a pipeline?","Validate at ingestion, decide per field whether to reject, default or impute, quarantine rejects with reasons, and report data-quality metrics to the customer."],
+     ["What design pattern would you use to integrate a flaky customer API?","An adapter: one client class that hides auth, pagination, retries and field mapping, with an interface the rest of the code depends on so it can be mocked in tests."]]
+},
+{id:"planner", mod:2, sec:"2.2", name:"Query planning and indexes",
+ title:"How a database plans and runs your query",
+ thesis:"The same SQL can take 2 ms or 2 minutes depending on the plan. Reading EXPLAIN ANALYZE and choosing the right index is one of the most practical skills an FDE brings to a customer's database.",
+ vb:[710,290],
+ codeTitle:"PostgreSQL: EXPLAIN ANALYZE",
+ code:`EXPLAIN ANALYZE
+SELECT * FROM orders
+WHERE customer_id = 42 AND created_at >= '2026-09-01';
+
+Index Scan using idx_orders_cust_created on orders
+  (cost=0.43..8.61 rows=12 width=64)
+  (actual time=0.031..0.058 rows=11 loops=1)
+  Index Cond: ((customer_id = 42) AND
+               (created_at >= '2026-09-01'))
+Planning Time: 0.210 ms
+Execution Time: 0.081 ms
+
+CREATE INDEX idx_orders_cust_created
+    ON orders (customer_id, created_at);   -- B-tree
+CREATE INDEX ON docs USING gin (tags);     -- arrays, JSONB
+CREATE TABLE events (...) PARTITION BY RANGE (created_at);`,
+ nodes:[
+  ["sql",90,70,"SQL text","your query"],
+  ["parser",265,70,"Parser","syntax → tree"],
+  ["rewriter",440,70,"Rewriter","views expanded"],
+  ["planner",615,70,"Planner","cost-based"],
+  ["stats",615,220,"Statistics","row estimates",1],
+  ["plan",440,220,"Plan choice","seq vs. index"],
+  ["index",265,220,"B-tree index","(customer, date)"],
+  ["exec",90,220,"Executor","11 rows out"]
+ ],
+ edges:[["sql","parser"],["parser","rewriter"],["rewriter","planner"],["stats","planner",0,"estimates"],["planner","plan"],["plan","index"],["index","exec"]],
+ steps:[
+  {t:"Parse", n:["sql","parser"], e:["sql>parser"], d:"The parser checks syntax and builds a tree. Typos fail here, before anything touches data.", l:[1,2]},
+  {t:"Rewrite", n:["rewriter"], e:["parser>rewriter"], d:"Views are expanded into their underlying queries and rules applied. A query on a view is really a query on its base tables."},
+  {t:"Plan by cost", n:["planner","stats"], e:["rewriter>planner","stats>planner"], d:"The planner enumerates ways to run the query (scan types, join orders, join algorithms) and estimates each one's cost from table statistics: row counts and value distributions."},
+  {t:"Seq scan or index scan?", n:["plan"], e:["planner>plan"], d:"If the filter matches a small fraction of rows, an index scan wins. If it matches most of the table, reading everything sequentially is cheaper. Bad statistics lead to the wrong choice; run ANALYZE.", l:[4,5]},
+  {t:"Walk the B-tree", n:["index"], e:["plan>index"], d:"A B-tree finds the first matching key in O(log n) and then reads a range. In a composite index put equality columns first (customer_id), then the range column (created_at).", l:[7,8,12,13]},
+  {t:"Execute and compare", n:["exec"], e:["index>exec"], d:"EXPLAIN ANALYZE shows estimated rows (12) next to actual rows (11). A large gap between them is the first thing to look for when a query is slow.", l:[6,9,10]},
+  {t:"Other index types", n:["index"], d:"Hash indexes handle equality only. GIN is an inverted index for arrays, JSONB and full-text search. Every index speeds reads but slows writes and costs storage.", l:[14]},
+  {t:"Partitioning", n:["plan"], d:"Split a huge table by a key such as month. The planner skips partitions that can't match (partition pruning), and old partitions can be dropped instantly.", l:[15]}
+ ],
+ ideas:["Read plans bottom-up; compare estimated and actual rows.","B-tree: equality, ranges and sorting (the default). Hash: equality only. GIN: contains-style lookups on arrays, JSONB and text.","Composite index order matters: equality columns first, then range.","Functions on an indexed column (WHERE lower(email) = ...) skip the index unless you index the expression."],
+ traps:["Adding an index for every slow query without checking write load.","Leading-wildcard LIKE '%abc' expecting a B-tree to help.","Trusting EXPLAIN without ANALYZE (estimates only)."],
+ qa:[["A report query went from 2 seconds to 2 minutes overnight. How do you debug it?","Run EXPLAIN ANALYZE, look for a plan change and a big gap between estimated and actual rows. Usually stale stats after a bulk load (run ANALYZE), data growth tipping an index scan into a seq scan, or a new join. Then fix the stats, index or query."],
+     ["When would the database ignore your index?","When the filter matches a large share of rows, when you wrap the column in a function or cast, when the leading column of a composite index isn't filtered, or when stats are wrong."],
+     ["B-tree vs. GIN?","B-tree for ordered lookups on scalar values. GIN for 'does this array or document contain X' queries, such as JSONB keys, tags or full-text search."]]
+},
+{id:"acid", mod:2, sec:"2.2", name:"Transactions and ACID",
+ title:"What a transaction guarantees",
+ thesis:"ACID is why a bank transfer can't half-happen. You'll need it when an AI workflow writes back to a customer's system of record.",
+ vb:[710,290],
+ codeTitle:"A transfer, and a concurrent reader",
+ code:`-- Transaction A
+BEGIN;
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+-- CHECK (balance >= 0) is enforced on each row
+COMMIT;            -- or ROLLBACK if anything failed
+
+-- Transaction B, at the same time (READ COMMITTED)
+SELECT balance FROM accounts WHERE id = 1;
+-- sees the last committed value until A commits`,
+ nodes:[
+  ["ta",90,70,"Transaction A","transfer $100"],
+  ["begin",265,70,"BEGIN","two updates"],
+  ["locks",440,70,"Row locks","acct 1 and 2"],
+  ["wal",615,70,"WAL","logged first"],
+  ["commit",615,220,"COMMIT","durable"],
+  ["rollback",440,220,"ROLLBACK","on any error"],
+  ["mvcc",265,220,"MVCC snapshot","old version"],
+  ["tb",90,220,"Transaction B","reads balance"]
+ ],
+ edges:[["ta","begin"],["begin","locks"],["locks","wal"],["wal","commit"],["locks","rollback"],["tb","mvcc"],["mvcc","locks",0,"no wait"]],
+ steps:[
+  {t:"Start a transaction", n:["ta","begin"], e:["ta>begin"], d:"Both updates belong to one unit of work. Atomicity: either both apply or neither does.", l:[1,2,3]},
+  {t:"Lock the rows being changed", n:["locks"], e:["begin>locks"], d:"Writers lock the rows they change, so two transfers can't both subtract from the same balance and lose an update."},
+  {t:"A reader arrives", n:["tb","mvcc"], e:["tb>mvcc","mvcc>locks"], d:"With MVCC (PostgreSQL, Oracle, MySQL InnoDB) the reader sees the last committed version of the row and doesn't wait for the writer. Isolation: nobody sees A's half-finished work.", l:[7,8,9]},
+  {t:"Constraints hold", n:["locks"], d:"Consistency: CHECK, foreign key and unique constraints are enforced. A transfer that would make a balance negative fails.", l:[4]},
+  {t:"Write-ahead log", n:["wal"], e:["locks>wal"], d:"Changes go to the write-ahead log and are flushed to disk before COMMIT returns. After a crash, the database replays the log."},
+  {t:"Commit", n:["commit"], e:["wal>commit"], d:"Durability: once COMMIT returns, the change survives a crash. Now new readers see the new balances.", l:[5]},
+  {t:"Or roll back", n:["rollback"], e:["locks>rollback"], d:"If anything fails, ROLLBACK undoes everything since BEGIN. The database is exactly as it was.", l:[5]}
+ ],
+ ideas:["Atomicity, Consistency, Isolation, Durability.","Isolation levels: READ COMMITTED (PostgreSQL default), REPEATABLE READ, SERIALIZABLE. Higher means fewer anomalies and more retries.","Anomalies to know: dirty read, non-repeatable read, phantom, lost update, write skew.","Normalization (1NF to 3NF) removes duplicated data for transactional systems; analytics tables are often denormalized on purpose."],
+ traps:["Doing read-modify-write in application code without a lock or SELECT ... FOR UPDATE.","Holding a transaction open while calling an LLM or external API.","Assuming SERIALIZABLE never needs retry logic."],
+ qa:[["Two agents approve the same refund at the same moment. How do you prevent a double refund?","Do it in one transaction with a row lock (SELECT ... FOR UPDATE) or a conditional update (UPDATE ... WHERE status = 'pending'), plus a unique constraint or idempotency key on the refund."],
+     ["Why not hold a transaction open during an LLM call?","It holds locks for seconds, blocking other writers and exhausting connections. Call the model first, then open a short transaction to write the result."],
+     ["Normalize or denormalize?","Normalize the operational database to keep writes consistent. Denormalize into wide tables or marts for analytics and AI retrieval, where reads dominate."]]
+},
+{id:"spark", mod:2, sec:"2.2", name:"Spark execution",
+ title:"How a Spark job runs across a cluster",
+ thesis:"Spark splits data into partitions and runs the same work on each in parallel. Performance lives or dies on shuffles, partition sizes and skew.",
+ vb:[710,290],
+ codeTitle:"PySpark: spend per customer",
+ code:`df = (spark.read.parquet("s3://lake/events/")       # 2,000 files
+        .filter(F.col("date") >= "2026-09-01")       # narrow
+        .withColumn("amt", F.col("amt").cast("double")))
+agg = (df.groupBy("customer_id")                     # wide: shuffle
+         .agg(F.sum("amt").alias("spend")))
+out = agg.join(F.broadcast(customers), "customer_id")  # small side copied
+spark.conf.set("spark.sql.shuffle.partitions", "400")
+spark.conf.set("spark.sql.adaptive.enabled", "true")   # AQE: skew, coalesce
+out.write.partitionBy("region").parquet("s3://lake/marts/spend/")  # action`,
+ nodes:[
+  ["code",90,70,"PySpark code","lazy transforms"],
+  ["driver",265,70,"Driver","plan → DAG"],
+  ["stages",440,70,"Stages","split at shuffle"],
+  ["tasks",615,70,"Tasks","1 per partition"],
+  ["exec",615,220,"Executors","cores · memory"],
+  ["shuffle",440,220,"Shuffle","network · disk"],
+  ["stage2",265,220,"Stage 2","aggregate + join"],
+  ["write",90,220,"Write","partitioned parquet"]
+ ],
+ edges:[["code","driver"],["driver","stages"],["stages","tasks"],["tasks","exec"],["exec","shuffle"],["shuffle","stage2"],["stage2","write"]],
+ steps:[
+  {t:"Transformations are lazy", n:["code"], d:"filter, withColumn and groupBy only build a plan. Nothing runs until an action such as write, count or collect.", l:[0,1,2,3,4]},
+  {t:"The driver plans", n:["driver"], e:["code>driver"], d:"On the action, the driver's Catalyst optimizer rewrites the plan (for example pushing the date filter into the Parquet read) and builds a DAG.", l:[8]},
+  {t:"Stages split at shuffles", n:["stages"], e:["driver>stages"], d:"Narrow operations (filter, cast) run in one pass on each partition. A wide operation (groupBy, join) needs data from every partition, which ends a stage.", l:[1,3]},
+  {t:"One task per partition", n:["tasks","exec"], e:["stages>tasks","tasks>exec"], d:"Each partition becomes a task on an executor core. Aim for partitions around 100 to 200 MB. Thousands of tiny files mean scheduling overhead; a few huge ones mean idle cores and spills."},
+  {t:"The shuffle", n:["shuffle"], e:["exec>shuffle"], d:"Rows are redistributed by customer_id across the network and disk. Data is serialized (Kryo is faster than Java serialization). This is usually the most expensive step.", l:[6]},
+  {t:"Skew", n:["stage2"], e:["shuffle>stage2"], d:"If one customer has 40% of events, one task gets 40% of the work and the job waits on it. Fix with Adaptive Query Execution's skew handling or by salting the key.", l:[7]},
+  {t:"Broadcast small tables", n:["stage2"], d:"Joining to a small customers table? Broadcast it to every executor so the big side never shuffles.", l:[5]},
+  {t:"Write partitioned output", n:["write"], e:["stage2>write"], d:"Partitioning output by region lets downstream readers skip whole folders, the same idea as partition pruning in a database.", l:[8]}
+ ],
+ ideas:["Narrow vs. wide transformations; every wide one costs a shuffle.","Memory: executors spill to disk when a partition doesn't fit. More, smaller partitions often beat more memory.","cache() only data you reuse, and unpersist it after.","Hadoop MapReduce wrote to disk between every step; Spark keeps intermediate data in memory where it can."],
+ traps:["collect() on a big DataFrame, pulling everything into the driver.","Python UDFs where a built-in function exists (slow serialization).","Leaving shuffle partitions at the default for every data size."],
+ qa:[["A Spark job has 199 tasks finish in a minute and one that runs for an hour. What's happening?","Data skew on the shuffle key. Confirm in the Spark UI task metrics, then enable AQE skew join, salt the hot key, or pre-aggregate before the join."],
+     ["How do you speed up a join between a 2 TB table and a 50 MB table?","Broadcast the small table so the large one isn't shuffled."],
+     ["Narrow vs. wide transformation?","Narrow: each output partition depends on one input partition (filter, map). Wide: it depends on many (groupBy, join, distinct), which requires a shuffle."]]
+},
+{id:"etl", mod:2, sec:"2.2", name:"ETL and ELT pipelines",
+ title:"Moving customer data into something usable",
+ thesis:"Almost every FDE engagement starts with getting data out of the customer's systems into a clean, modeled form. ELT is today's default; ETL still wins when data must be cleaned or masked before it lands.",
+ vb:[710,290],
+ nodes:[
+  ["sources",90,70,"Sources","ERP · CRM · files"],
+  ["extract",265,70,"Extract","CDC · API · batch"],
+  ["raw",440,70,"Raw layer","as landed"],
+  ["transform",615,70,"Transform","SQL · dbt · Spark"],
+  ["checks",615,220,"Quality checks","nulls · dupes · keys"],
+  ["marts",440,220,"Marts","modeled tables"],
+  ["consumers",265,220,"Consumers","BI · ML · agents"],
+  ["orch",90,220,"Orchestrator","Airflow · schedules",1]
+ ],
+ edges:[["sources","extract"],["extract","raw"],["raw","transform"],["transform","checks"],["checks","marts"],["marts","consumers"],["orch","extract",0,"triggers"]],
+ steps:[
+  {t:"Find the sources", n:["sources"], d:"ERP, CRM, spreadsheets, a legacy Oracle database, an SFTP drop. Discovery tells you which ones are the real source of truth."},
+  {t:"Extract incrementally", n:["extract","orch"], e:["sources>extract","orch>extract"], d:"Full loads first, then incremental by a watermark (updated_at) or change data capture from the database log. An orchestrator schedules runs and retries failures."},
+  {t:"Land it raw (the L in ELT)", n:["raw"], e:["extract>raw"], d:"Store exactly what arrived, unchanged, in the lake or warehouse. You can always replay transformations from it. In classic ETL you transform before this step instead."},
+  {t:"Transform in the warehouse", n:["transform"], e:["raw>transform"], d:"Clean, deduplicate, conform types and join, in SQL (often dbt) or Spark. Transformations are code, version-controlled and tested."},
+  {t:"Check data quality", n:["checks"], e:["transform>checks"], d:"Not-null, uniqueness, referential integrity and freshness tests. A failing check stops bad data from reaching dashboards and models."},
+  {t:"Publish marts", n:["marts"], e:["checks>marts"], d:"Clean, modeled tables per business domain, such as orders or claims. These are what people and AI systems query."},
+  {t:"Serve consumers", n:["consumers"], e:["marts>consumers"], d:"Dashboards, ML features and RAG or agent tools all read from the same trusted marts."}
+ ],
+ ideas:["ETL: transform before loading. Use it when PII must be masked before landing or targets can't do heavy compute.","ELT: load raw, transform in the warehouse. Cheap storage and replayability make it the default.","Loads should be idempotent: re-running a day's job gives the same result.","Medallion naming: bronze (raw), silver (clean), gold (marts)."],
+ traps:["Transforming in place with no raw copy to replay from.","No freshness monitoring, so a silently stalled pipeline feeds stale data to an AI agent.","Non-idempotent appends that duplicate rows on retry."],
+ qa:[["ETL or ELT for this customer?","ELT by default for replayability and speed. ETL where regulations require masking or filtering before data leaves a zone, or when the destination can't run the transformations."],
+     ["How do you make a pipeline safe to re-run?","Partition by date, overwrite the partition or MERGE on a key instead of appending, and keep extraction watermarks in state."],
+     ["What data quality checks would you add first?","Row counts against the source, not-null and unique on keys, referential integrity between facts and dimensions, and freshness on every table a user or model depends on."]]
+}
+];
+
+NEW.push(
+{id:"cloud", mod:2, sec:"2.3", name:"Cloud and Terraform",
+ title:"Infrastructure as code in the customer's cloud",
+ thesis:"FDEs often deploy into the customer's AWS, GCP or Azure account. Terraform makes that repeatable and reviewable: the network, permissions and gateway are code in git, not clicks in a console.",
+ vb:[710,420],
+ codeTitle:"Terraform (AWS)",
+ code:`terraform {
+  backend "s3" { bucket = "acme-tfstate"
+                 key    = "ask-api/terraform.tfstate"
+                 dynamodb_table = "tf-locks" }
+}
+resource "aws_vpc" "main" {
+  cidr_block = "10.20.0.0/16"
+}
+resource "aws_iam_role" "ask_api" {
+  name               = "ask-api"
+  assume_role_policy = data.aws_iam_policy_document.eks.json
+}
+resource "aws_iam_role_policy" "read_docs" {
+  role   = aws_iam_role.ask_api.id
+  policy = jsonencode({ Statement = [{ Effect = "Allow",
+    Action   = ["s3:GetObject"],
+    Resource = "arn:aws:s3:::acme-docs/*" }] })
+}
+resource "aws_apigatewayv2_api" "ask" {
+  name          = "ask-api"
+  protocol_type = "HTTP"
+}`,
+ nodes:[
+  ["hcl",90,100,"Terraform code","*.tf in git"],
+  ["plan",265,100,"terraform plan","diff vs. state"],
+  ["review",440,100,"PR review","+3 ~1 -0"],
+  ["state",615,100,"State file","remote · locked",1],
+  ["apply",440,230,"terraform apply","make it so"],
+  ["airgap",90,360,"Air-gapped site","no internet",1],
+  ["vpc",265,360,"VPC","private subnets"],
+  ["iam",440,360,"IAM role","least privilege"],
+  ["gw",615,360,"API gateway","auth · throttling"]
+ ],
+ edges:[["hcl","plan"],["state","plan",100,"refresh"],["plan","review"],["review","apply"],["apply","state",0,"write"],["apply","vpc"],["apply","iam"],["apply","gw"],["apply","airgap"]],
+ steps:[
+  {t:"Describe the infrastructure", n:["hcl"], d:"Resources are declared, not scripted: 'there is a VPC with this CIDR'. The code lives in git next to the app.", l:[5,6,7]},
+  {t:"Plan against state", n:["plan","state"], e:["hcl>plan","state>plan"], d:"Terraform compares your code with the recorded state and the real cloud, and prints exactly what it will create, change or destroy. State lives in a remote backend with a lock so two people can't apply at once.", l:[0,1,2,3,4]},
+  {t:"Review the plan", n:["review"], e:["plan>review"], d:"The plan output goes into the pull request. A reviewer sees '+3 to add, 1 to change, 0 to destroy' before anything touches the customer's account. Watch for unexpected destroys."},
+  {t:"Apply", n:["apply","state"], e:["review>apply","apply>state"], d:"Terraform makes the changes in dependency order and records the new state."},
+  {t:"Network: the VPC", n:["vpc"], e:["apply>vpc"], d:"A private network with subnets. Databases and model servers sit in private subnets with no public IP; only the gateway or load balancer faces users.", l:[5,6,7]},
+  {t:"Permissions: IAM roles", n:["iam"], e:["apply>iam"], d:"The service gets a role, not long-lived keys, with only the actions it needs: here, read one S3 bucket. Least privilege is what gets you through the customer's security review.", l:[8,9,10,11,12,13,14,15,16,17]},
+  {t:"Entry point: API gateway", n:["gw"], e:["apply>gw"], d:"Auth, rate limiting and routing in front of your service, managed by the cloud provider.", l:[18,19,20,21]},
+  {t:"Air-gapped deployments", n:["airgap"], e:["apply>airgap"], d:"Some customers (defense, banks) allow no internet. Palantir built Apollo to ship and update software across many such environments. The lesson: package everything (images, models, providers) so it installs offline, and automate upgrades."}
+ ],
+ ideas:["Declarative infrastructure, reviewed as a plan in a PR, applied by CI.","Remote state with locking; never commit state files (they contain secrets).","IAM roles over access keys; least privilege per service.","AWS, GCP and Azure name things differently (IAM roles, service accounts, managed identities) but the concepts map one to one."],
+ traps:["Clicking changes in the console so code and reality drift.","Wildcard IAM policies like Action: '*'.","Applying without reading the plan's destroy lines."],
+ qa:[["How would you deploy your service into a customer's AWS account securely?","Terraform in their account via a role they grant, private subnets, IAM roles with least privilege, secrets in their secret manager, an API gateway or ALB with their SSO in front, and plans reviewed with their platform team."],
+     ["What is Terraform state and why does it matter?","The record of which real resources map to which code. Terraform diffs against it; if it's lost or edited by two people at once you get drift or duplicate resources, hence remote state with locking."],
+     ["How would you ship updates to an air-gapped site?","Signed bundles of images, model weights and config, mirrored into the site's internal registry, with an automated, versioned upgrade and rollback process. That's the Apollo idea."]]
+},
+/* ================================================= MODULE 3 */
+{id:"transformer", mod:3, sec:"3.1", name:"Transformer forward pass",
+ title:"Inside a transformer, one token at a time",
+ thesis:"Every LLM you deploy is this loop: turn text into tokens, let tokens attend to each other through N layers, predict the next token, append it and repeat.",
+ vb:[710,290],
+ codeTitle:"One decoder layer in numpy-style code",
+ code:`ids = bpe.encode("refund after 45")        # e.g. [19651, 1306, 2548]
+x   = E[ids]                                # (T, d_model) embeddings
+
+# ---- attention (per head; positions via RoPE on Q and K) ----
+Q, K, V = x @ Wq, x @ Wk, x @ Wv
+Q, K    = rope(Q), rope(K)
+scores  = Q @ K.T / sqrt(d_k)               # (T, T)
+scores += causal_mask                        # can't see the future
+w       = softmax(scores, axis=-1)          # rows sum to 1
+attn    = w @ V                              # weighted mix of values
+# multi-head: h heads in parallel, concat, project with Wo
+
+x = x + attn_block(rms_norm(x))             # residual connection
+x = x + ffn(rms_norm(x))                    # per-token MLP (SwiGLU)
+# ... repeat for N layers ...
+
+logits = rms_norm(x)[-1] @ W_vocab          # scores for next token
+next_id = sample(softmax(logits / temperature))`,
+ nodes:[
+  ["text",90,70,"Text","\"refund after 45\""],
+  ["tok",265,70,"BPE tokenizer","→ token ids"],
+  ["emb",440,70,"Embeddings","+ RoPE positions"],
+  ["attn",615,70,"Self-attention","multi-head"],
+  ["add1",615,220,"Add + RMSNorm","residual"],
+  ["ffn",440,220,"Feed-forward","per-token MLP"],
+  ["add2",265,220,"Add + RMSNorm","× N layers"],
+  ["logits",90,220,"Next token","softmax · sample"]
+ ],
+ edges:[["text","tok"],["tok","emb"],["emb","attn"],["attn","add1"],["add1","ffn"],["ffn","add2"],["add2","logits"],["logits","text",0,"append, repeat"]],
+ steps:[
+  {t:"Tokenize", n:["text","tok"], e:["text>tok"], d:"Byte-Pair Encoding merges frequent byte sequences into tokens. Cost, latency and context limits are all counted in tokens, and code, numbers and non-English text often need more tokens per word.", l:[0]},
+  {t:"Embed", n:["emb"], e:["tok>emb"], d:"Each token id becomes a vector. Similar meanings end up close together, measured by cosine similarity, dot product or Euclidean distance. The same idea powers embedding search in RAG.", l:[1]},
+  {t:"Queries, keys, values", n:["attn"], e:["emb>attn"], d:"Each token produces a query (what I'm looking for), a key (what I contain) and a value (what I pass on). RoPE rotates Q and K by position so attention knows word order.", l:[3,4,5]},
+  {t:"Scaled dot-product attention", n:["attn"], d:"Scores are Q·Kᵀ divided by √d_k so the softmax doesn't saturate as dimensions grow. The causal mask stops a token looking at later tokens. Each token's output is a weighted mix of the others' values.", l:[6,7,8,9]},
+  {t:"Many heads", n:["attn"], d:"Multi-head attention runs several attention patterns in parallel, one might track syntax, another references, then concatenates and projects them.", l:[10]},
+  {t:"Residual and normalization", n:["add1"], e:["attn>add1"], d:"The attention output is added back to the input (a residual connection) so information and gradients flow through deep stacks. RMSNorm keeps activations in a stable range.", l:[12]},
+  {t:"Feed-forward", n:["ffn","add2"], e:["add1>ffn","ffn>add2"], d:"A two-layer MLP applied to each token separately. Much of the model's stored knowledge lives in these weights. Then another residual add, and the whole block repeats N times.", l:[13,14]},
+  {t:"Predict, append, repeat", n:["logits","text"], e:["add2>logits","logits>text"], d:"The last position's vector is projected to a score per vocabulary token, sampled with a temperature, appended, and the loop runs again. A KV cache stores past keys and values so each new token is cheap.", l:[16,17]}
+ ],
+ ideas:["Encoder-only (BERT): sees both directions; used for embeddings and classification.","Decoder-only (GPT, Claude, Llama): causal; used for generation.","Encoder-decoder (T5): encoder reads input, decoder generates; translation and summarization.","Attention cost grows with the square of sequence length, which is why long contexts are slower and pricier.","Latency has two parts: prefill (reading the prompt, parallel) and decode (one token at a time)."],
+ traps:["Saying the model 'looks up' facts; it predicts tokens from learned weights.","Estimating cost in words instead of tokens.","Confusing embeddings from an embedding model with a chat model's internal states."],
+ qa:[["Why divide attention scores by the square root of d_k?","Dot products grow with dimension; large scores push softmax into near one-hot outputs with tiny gradients. Scaling keeps them in a trainable range."],
+     ["Why does a long prompt raise latency and cost?","You pay per input token, prefill compute grows with length (attention is quadratic), and the KV cache uses more memory, which limits batch size."],
+     ["Cosine similarity vs. dot product for embeddings?","Cosine ignores vector length and compares direction only. Dot product includes magnitude. For normalized embeddings they rank the same."]]
+},
+{id:"context", mod:3, sec:"3.2", name:"Context engineering",
+ title:"Context engineering: the window is RAM, the model is CPU",
+ thesis:"Prompt engineering tunes the wording of one instruction. Context engineering decides everything the model sees on every call. Most 'hallucinations' in production are missing or wrong context.",
+ vb:[720,420],
+ codeTitle:"A context budget for one call",
+ code:`CONTEXT BUDGET   (window 200k · target under 60k)
+  system instructions ........  1,800 tok
+  dialogue history ...........  6,000 tok  older turns summarized
+  RAG chunks (top 5) .........  3,500 tok  reranked, with ids
+  tool schemas (6 tools) .....  2,400 tok
+  tool outputs ...............  9,000 tok  large JSON trimmed
+  user state / profile .......    300 tok  role, region, perms
+  output constraints .........    400 tok  JSON schema
+  -------------------------------------------
+  total ......................  23,400 tok
+
+"Hallucinated a refund policy" -> was the policy chunk
+in the window?  No  -> fix retrieval, not the wording.`,
+ nodes:[
+  ["instr",90,40,"Instructions","system prompt"],
+  ["hist",90,105,"History","summarized"],
+  ["rag",90,170,"RAG chunks","retrieved"],
+  ["tools",90,235,"Tool schemas","+ tool outputs"],
+  ["state",90,300,"User state","role · perms"],
+  ["fmt",90,365,"Output format","schema"],
+  ["window",310,202,"Context window","the RAM"],
+  ["llm",480,202,"LLM","the CPU"],
+  ["out",650,202,"Output","or runtime error"]
+ ],
+ edges:[["instr","window",-40],["hist","window"],["rag","window"],["tools","window"],["state","window"],["fmt","window",40],["window","llm"],["llm","out"],["out","window",-120,"debug context"]],
+ steps:[
+  {t:"From vibes to engineering", n:["instr"], d:"Vibe coding iterates by feel. Prompt engineering tunes the wording of instructions. Context engineering designs the whole input: what goes in, in what order, within what budget.", l:[1]},
+  {t:"Dialogue history", n:["hist"], e:["hist>window"], d:"Keep recent turns verbatim and summarize older ones. Unbounded history crowds out everything else.", l:[2]},
+  {t:"Retrieved knowledge", n:["rag"], e:["rag>window"], d:"A few reranked chunks with source ids beat thirty raw ones. Relevance per token is the goal.", l:[3]},
+  {t:"Tools and their outputs", n:["tools"], e:["tools>window"], d:"Tool schemas cost tokens on every call, and tool outputs can be huge. Trim JSON to the fields the model needs.", l:[4,5]},
+  {t:"User state and output constraints", n:["state","fmt"], e:["state>window","fmt>window"], d:"Who the user is and what they're allowed to see, plus the exact output shape you'll parse.", l:[6,7]},
+  {t:"The window is RAM", n:["window"], d:"Karpathy's mental model: the LLM is a CPU and the context window is its RAM. It's finite, everything competes for it, and position matters: models attend less reliably to the middle of long contexts.", l:[0,8,9]},
+  {t:"Context as a compiler", n:["llm","out"], e:["window>llm","llm>out"], d:"Treat the assembled context like source code and the model like a compiler: the same model gives a correct or broken output depending on what you fed it."},
+  {t:"Hallucination as a runtime error", n:["window","out"], e:["out>window"], d:"When the output is wrong, inspect what was actually in the window before rewording anything. Usually the needed fact was missing, stale or buried.", l:[11,12]}
+ ],
+ ideas:["Components: instructions, dialogue history, RAG chunks, tool schemas and outputs, user state, output constraints.","Budget tokens per component and log the assembled context for every call.","Debug by reading the exact context the model saw.","Less, more relevant context usually beats more context."],
+ traps:["Rewording the prompt to fix what is really a retrieval bug.","Pasting whole documents because the window is large.","Not logging assembled context, so failures can't be reproduced."],
+ qa:[["Prompt engineering vs. context engineering?","Prompt engineering optimizes the wording of instructions. Context engineering is the system that decides everything in the window per call: history, retrieval, tools, state and format, within a token budget."],
+     ["The agent invented a policy that doesn't exist. How do you fix it?","Pull the trace and check whether the real policy was in the context. If not, fix retrieval or tool access; if it was buried, rerank and trim; then add an instruction to say 'I don't know' and an eval case."],
+     ["Why not just use a 1M-token window?","Cost and latency grow with tokens, and accuracy drops when the relevant fact is buried among irrelevant text. Curated context is cheaper and more accurate."]]
+},
+{id:"ace", mod:3, sec:"3.3", name:"Agentic Context Engineering",
+ title:"ACE: contexts that learn without collapsing",
+ thesis:"Stanford's Agentic Context Engineering treats the context as an evolving playbook. Three roles generate, reflect and curate, and changes are small deltas, so hard-won detail isn't lost.",
+ vb:[710,290],
+ codeTitle:"An evolving playbook",
+ code:`## PLAYBOOK  (itemized · grows by delta updates)
+[str-012] helpful=7 harmful=0
+  For invoice APIs, page with a cursor, not an offset.
+[err-004] helpful=3 harmful=1
+  Vendor feed dates are DD/MM; parse explicitly.
+[tool-021] helpful=5 harmful=0
+  Call get_schema before writing SQL on a new table.
+
+## DELTA from the Curator (this run)
++ [err-009] On 429, wait for Retry-After before retrying.
+~ [err-004] harmful += 1   (US vendor uses MM/DD)`,
+ nodes:[
+  ["task",90,70,"New task","query or job"],
+  ["gen",265,70,"Generator","solves with playbook"],
+  ["traj",440,70,"Trajectory","steps · outcome"],
+  ["refl",615,70,"Reflector","what worked, failed"],
+  ["ins",615,220,"Insights","concrete lessons"],
+  ["cur",440,220,"Curator","delta updates"],
+  ["book",265,220,"Playbook","itemized bullets"],
+  ["collapse",90,220,"Context collapse","avoided",1]
+ ],
+ edges:[["task","gen"],["gen","traj"],["traj","refl"],["refl","ins"],["ins","cur"],["cur","book"],["book","gen",0,"context"]],
+ steps:[
+  {t:"Two failure modes", n:["collapse"], d:"Brevity bias: prompt optimizers compress instructions into short, generic advice and drop domain detail. Context collapse: when a model rewrites the whole context each round, it gradually erodes into something much shorter and worse."},
+  {t:"A task arrives", n:["task","gen"], e:["task>gen"], d:"The Generator tackles it using the current playbook as context.", l:[0]},
+  {t:"Record the trajectory", n:["traj"], e:["gen>traj"], d:"Every step, tool call and outcome is kept, including failures and execution feedback."},
+  {t:"Reflect", n:["refl","ins"], e:["traj>refl","refl>ins"], d:"The Reflector critiques the trajectory and extracts specific lessons: what worked, what failed and why. Separating reflection from generation gives better lessons."},
+  {t:"Curate as deltas", n:["cur"], e:["ins>cur"], d:"The Curator turns lessons into small, itemized edits: add a bullet, bump a helpful or harmful counter. It never rewrites the whole playbook.", l:[8,9,10]},
+  {t:"The playbook grows", n:["book"], e:["cur>book"], d:"Bullets have ids and counters, get deduplicated, and accumulate detail over time instead of being summarized away.", l:[1,2,3,4,5,6,7]},
+  {t:"Loop", n:["gen","book"], e:["book>gen"], d:"The next task runs with a better playbook. Because updates are deltas, context collapse doesn't happen.", l:[0]}
+ ],
+ ideas:["Roles: Generator, Reflector, Curator.","Evolving playbook of itemized strategies, not one monolithic prompt.","Delta updates preserve detail and are cheap to apply.","Letta's Context-Bench evaluates agents on multi-hop retrieval over files using tools like grep_files and open_files: a test of how well a model manages its own context."],
+ traps:["Letting an LLM rewrite a long system prompt end to end every iteration.","Keeping lessons with no counters, so bad advice never gets pruned."],
+ qa:[["What's context collapse and how do you prevent it?","Iteratively rewriting the full context makes it shrink and lose detail. Prevent it with itemized delta updates, as in ACE, and by keeping history of what each change did."],
+     ["How would you apply ACE to a customer's support agent?","Log every resolved and failed ticket trajectory, have a reflector extract lessons, have a curator add them as tagged playbook items with counters, and gate new items through evals before they go live."],
+     ["Why separate Reflector and Curator?","Reflection is analysis; curation is editing with rules (dedupe, merge, prune). Splitting them keeps each prompt focused and the playbook consistent."]]
+},
+{id:"skills", mod:3, sec:"3.3", name:"Agent Skills",
+ title:"Agent Skills and progressive disclosure",
+ thesis:"Anthropic's Agent Skills keep context small by loading knowledge in layers: a one-line description up front, the full SKILL.md only when relevant, and extra files or scripts only when needed.",
+ vb:[710,290],
+ codeTitle:"skills/pdf-forms/SKILL.md",
+ code:`---
+name: pdf-forms
+description: Fill and validate PDF forms. Use when the
+  user asks to fill, read or flatten a PDF form.
+---
+# Filling PDF forms
+1. Run scripts/extract_fields.py on the PDF.
+2. Map the user's data to the field names.
+3. For XFA forms, read reference/xfa.md first.
+4. Run scripts/fill.py, then scripts/validate.py.`,
+ nodes:[
+  ["start",90,70,"Session start","agent boots"],
+  ["meta",265,70,"Skill metadata","name + 1 line each"],
+  ["req",440,70,"User request","\"fill this PDF form\""],
+  ["match",615,70,"Match","model picks skill"],
+  ["body",615,220,"Load SKILL.md","full instructions"],
+  ["refs",440,220,"Load references","only if needed"],
+  ["scripts",265,220,"Run scripts","output, not source"],
+  ["done",90,220,"Result","lean context"]
+ ],
+ edges:[["start","meta"],["meta","req"],["req","match"],["match","body"],["body","refs"],["refs","scripts"],["scripts","done"]],
+ steps:[
+  {t:"Only metadata at startup", n:["start","meta"], e:["start>meta"], d:"Level 1: the agent's context holds just each skill's name and description. That's a few dozen tokens per skill, so hundreds can be installed.", l:[0,1,2,3,4]},
+  {t:"A request comes in", n:["req"], e:["meta>req"], d:"\"Fill in this vendor onboarding PDF.\""},
+  {t:"The model picks a skill", n:["match"], e:["req>match"], d:"The description is what the model matches on, so write it like a trigger: what it does and when to use it.", l:[2,3]},
+  {t:"Load the body", n:["body"], e:["match>body"], d:"Level 2: the full SKILL.md is read into context only now.", l:[5,6,7,8,9]},
+  {t:"Load references lazily", n:["refs"], e:["body>refs"], d:"Level 3: extra files such as reference/xfa.md are read only if this case needs them.", l:[8]},
+  {t:"Run code instead of reading it", n:["scripts"], e:["refs>scripts"], d:"Scripts execute and only their output enters context. Deterministic work stays in code, not in tokens.", l:[6,9]},
+  {t:"Lean context, better answers", n:["done"], e:["scripts>done"], d:"The agent had specialist knowledge available without paying for it on every call. The same RAM idea from context engineering."}
+ ],
+ ideas:["Three levels: metadata always, SKILL.md on match, bundled files on demand.","The description is the trigger; write it precisely.","Put deterministic steps in scripts.","For FDEs: package a customer's procedures as skills instead of one giant system prompt."],
+ traps:["Stuffing every procedure into the system prompt.","Vague descriptions, so the right skill never loads."],
+ qa:[["What problem does progressive disclosure solve?","Context is finite and costly. Loading knowledge only when it's relevant lets an agent carry many specialties without diluting attention or paying tokens on every call."],
+     ["How would you use skills in a customer deployment?","Turn each of the customer's recurring procedures (close the books, onboard a vendor) into a skill with precise descriptions, scripts for the deterministic steps, and evals per skill."]]
+},
+{id:"finetune", mod:3, sec:"3.4", name:"LoRA, QLoRA, distillation",
+ title:"Adapting a model: LoRA, QLoRA and distillation",
+ thesis:"When prompting and RAG aren't enough, you change the model. LoRA trains a tiny add-on instead of all the weights, QLoRA does it on a 4-bit base to fit one GPU, and distillation teaches a small model to imitate a big one.",
+ vb:[710,290],
+ codeTitle:"QLoRA setup with Hugging Face PEFT",
+ code:`bnb = BitsAndBytesConfig(load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16)
+model = AutoModelForCausalLM.from_pretrained(BASE,
+        quantization_config=bnb)            # frozen, 4-bit
+
+cfg = LoraConfig(r=16, lora_alpha=32, lora_dropout=0.05,
+        target_modules=["q_proj", "v_proj"])
+model = get_peft_model(model, cfg)
+model.print_trainable_parameters()          # well under 1%
+
+# distillation: student matches teacher's distribution
+loss = kl_div(log_softmax(student_logits / T),
+              softmax(teacher_logits / T)) * T**2`,
+ nodes:[
+  ["base",90,70,"Base model","frozen W · 8B"],
+  ["quant",265,70,"4-bit quantize","QLoRA · NF4"],
+  ["lora",440,70,"LoRA adapters","W + B·A, r=16"],
+  ["train",615,70,"Train","your labeled data"],
+  ["adapter",615,220,"Adapter file","tens of MB"],
+  ["serve",440,220,"Serve","base + adapter"],
+  ["student",265,220,"Student model","small · fast"],
+  ["teacher",90,220,"Teacher model","large · slow"]
+ ],
+ edges:[["base","quant"],["quant","lora"],["lora","train"],["train","adapter"],["adapter","serve"],["teacher","student",0,"soft labels"],["student","serve"]],
+ steps:[
+  {t:"Start from a frozen base", n:["base"], d:"Full fine-tuning updates billions of weights and needs a lot of GPU memory. LoRA leaves them untouched."},
+  {t:"QLoRA: quantize to 4-bit", n:["quant"], e:["base>quant"], d:"Load the base in 4-bit NF4 so an 8B model fits on one GPU. Compute runs in bfloat16; only storage is 4-bit.", l:[0,1,2,3,4]},
+  {t:"Add low-rank adapters", n:["lora"], e:["quant>lora"], d:"For chosen weight matrices W, add a trainable product B·A of rank r (say 16). The update is tiny compared to W, often well under 1% of parameters.", l:[6,7,8,9]},
+  {t:"Train on your data", n:["train"], e:["lora>train"], d:"Hundreds to thousands of high-quality examples of the behaviour you want: a format, a tone, a domain task. Quality beats volume."},
+  {t:"Ship a small adapter", n:["adapter","serve"], e:["train>adapter","adapter>serve"], d:"The result is an adapter file of tens of MB. Serve it on top of the base; one base can host many customers' adapters."},
+  {t:"Distillation", n:["teacher","student"], e:["teacher>student"], d:"A large teacher model produces outputs or probability distributions; a small student learns to match them. You get most of the quality at a fraction of the latency and cost.", l:[11,12,13]},
+  {t:"Serve the cheap model", n:["serve"], e:["student>serve"], d:"Distilled or adapted small models are how you hit tight latency, cost or on-prem constraints."},
+  {t:"RAG or fine-tune?", n:["serve"], d:"Objective: RAG adds knowledge, fine-tuning changes behaviour. Cost: fine-tuning is up-front CapEx, RAG is per-query OpEx. Updates: RAG reindexes in minutes, fine-tuning needs retraining. Explainability: RAG cites sources, fine-tuned knowledge is opaque."}
+ ],
+ ideas:["LoRA: train low-rank adapters, keep the base frozen.","QLoRA: LoRA on a 4-bit quantized base; fits big models on one GPU.","Distillation: student imitates teacher, for speed and cost.","Most enterprise asks are knowledge problems; start with RAG and fine-tune for behaviour."],
+ traps:["Fine-tuning to add facts that change weekly.","Training on a few hundred noisy examples and expecting magic.","Skipping evals before and after tuning."],
+ qa:[["Why LoRA instead of full fine-tuning?","Far less memory and compute, tiny artifacts, many adapters per base model, and less risk of damaging general capabilities."],
+     ["When would you distill?","When a large model does the task well but is too slow or expensive at production volume, or must run on-prem on small hardware."],
+     ["The customer wants the model to know their product catalog. Fine-tune?","No. The catalog changes and needs citations; use RAG. Fine-tune only if they also need a specific output behaviour the base model can't follow."]]
+}
+);
+
+NEW.push(
+/* ================================================= MODULE 4 */
+{id:"exec", mod:4, sec:"4.1", name:"Executive communication",
+ title:"Debug the tech, de-escalate the CIO",
+ thesis:"When something breaks at a customer, you run two tracks at once: fix the system, and keep the executive's trust by speaking in business outcomes, answer first.",
+ vb:[710,290],
+ codeTitle:"Metric translation and an exec update",
+ code:`TECH METRIC               ->  BUSINESS OUTCOME
+p95 latency 8s -> 1.2s        agents clear ~20% more claims/hr
+retrieval recall 71% -> 93%   far fewer wrong-policy answers
+pipeline freshness < 15 min   claims team never waits on data
+
+EXEC UPDATE  (answer first, SCQA)
+Answer:       Fixed at 13:40. No data lost.
+Situation:    Claims assistant slowed 10:00-13:40 Tuesday.
+Complication: About 1,100 claims took 3x longer to process.
+Cause:        A vendor API began rate limiting our calls.
+Prevention:   Caching + alert added; failover drill Friday.
+Ask:          30 min with your vendor manager on API limits.`,
+ nodes:[
+  ["esc",90,70,"Escalation","CIO: 'it's broken'"],
+  ["listen",265,70,"Listen","restate impact"],
+  ["triage",440,70,"Triage","logs · repro"],
+  ["fix",615,70,"Workaround","hours, not days"],
+  ["translate",615,220,"Translate","metric → outcome"],
+  ["update",440,220,"Exec update","answer first"],
+  ["prevent",265,220,"Prevent","test · alert"],
+  ["trust",90,220,"Trust kept","renewal safe"]
+ ],
+ edges:[["esc","listen"],["listen","triage"],["triage","fix"],["fix","translate"],["translate","update"],["update","prevent"],["prevent","trust"]],
+ steps:[
+  {t:"The escalation", n:["esc"], d:"The CIO emails your sponsor: the assistant is 'completely broken'. The facts are unclear and the emotion is real."},
+  {t:"Listen before you explain", n:["listen"], e:["esc>listen"], d:"Restate the business impact in their words, say what you're doing next and when they'll hear from you. Active listening lowers the temperature faster than a technical explanation."},
+  {t:"Triage like an engineer", n:["triage"], e:["listen>triage"], d:"Scope it: which users, since when, what changed. Pull logs and traces, reproduce, and find the blocker. Peel the onion past the first symptom."},
+  {t:"Restore service first", n:["fix"], e:["triage>fix"], d:"A workaround in hours beats a perfect fix in days. Root-cause fixes can follow."},
+  {t:"Translate the metrics", n:["translate"], e:["fix>translate"], d:"Executives don't buy latency or recall; they buy throughput, risk and cost. Convert each technical number into its business effect.", l:[0,1,2,3]},
+  {t:"Send the update, answer first", n:["update"], e:["translate>update"], d:"Lead with the answer, then situation, complication, cause, prevention and one clear ask. Five to seven lines. This is structured storytelling.", l:[5,6,7,8,9,10,11]},
+  {t:"Prevent recurrence", n:["prevent"], e:["update>prevent"], d:"Add the test, alert or cache that would have caught it, and tell them you did. Follow-through is what rebuilds trust."},
+  {t:"Trust kept", n:["trust"], e:["prevent>trust"], d:"Handled well, an incident can strengthen the relationship. Negotiation follows the same rule: anchor on the agreed metric, and trade scope for time rather than quality."}
+ ],
+ ideas:["Two tracks at once: fix the tech and manage the people.","Answer first; the pyramid principle and SCQA give updates a shape.","Every technical metric needs a business translation.","Negotiate with trades: if scope goes up, time or something else moves."],
+ traps:["Opening with a technical deep-dive to an angry executive.","Promising a root cause before you have one.","Going quiet while you debug."],
+ qa:[["The customer's CIO says your system is broken and threatens to cancel. What do you do in the first hour?","Acknowledge and restate the impact, commit to an update time, triage with logs to scope it, restore service with a workaround if possible, and send a short answer-first update. Root cause and prevention follow."],
+     ["How do you explain a 93% retrieval recall to an executive?","In their terms: out of 100 questions, the system finds the right policy 93 times, up from 71, which means far fewer wrong answers reaching customers and fewer escalations."],
+     ["The customer wants three more features before go-live. How do you negotiate?","Tie each to the success metric, offer trades (move the date, drop a lower-value item, or phase 2), and get the sponsor to choose, in writing."]]
+},
+{id:"moat", mod:4, sec:"4.3", name:"Product judgment and moats",
+ title:"Custom request or core product? The judgment call",
+ thesis:"Every FDE hears 'can you just build this for us'. Good product judgment keeps one-offs isolated, promotes repeated needs into the platform, and turns deployments into proprietary data.",
+ vb:[710,420],
+ nodes:[
+  ["req",90,70,"Customer ask","custom feature"],
+  ["seen",265,70,"Seen before?","2+ customers"],
+  ["adapter",440,70,"Config/adapter","isolated · owned"],
+  ["sprawl",615,70,"Sprawl risk","if unmanaged",1],
+  ["core",265,220,"Core product","R&D roadmap"],
+  ["deploy",440,220,"Deployments","each runs on core"],
+  ["data",615,220,"Process data","proprietary"],
+  ["mlops",615,360,"MLOps loop","retrain · evaluate"],
+  ["moat",440,360,"Moat","hard to copy"]
+ ],
+ edges:[["req","seen"],["seen","adapter",0,"no"],["adapter","sprawl"],["seen","core",0,"yes"],["core","deploy"],["deploy","data"],["data","mlops"],["mlops","moat"],["moat","core",0,"funds R&D"]],
+ steps:[
+  {t:"A custom request", n:["req"], d:"\"Can you add a special approval step just for our EMEA team?\" Saying yes is easy. The judgment is where the code lives."},
+  {t:"Is it a pattern?", n:["seen"], e:["req>seen"], d:"Have two or more customers needed something like this? Would a generalized version be valuable to the product?"},
+  {t:"No: isolate it", n:["adapter"], e:["seen>adapter"], d:"Put it in configuration or a thin adapter at the edge, with an owner and a test, never forked into the core."},
+  {t:"The dark side: sprawl", n:["sprawl"], e:["adapter>sprawl"], d:"Unowned one-offs pile up into custom-solution sprawl and tech debt. Two other failure modes from the Blueprint deck: FDEs becoming an escalation crutch, and discovery bottlenecks when only one FDE understands the account."},
+  {t:"Yes: promote it", n:["core"], e:["seen>core"], d:"Take it to the product team with evidence. The FDE org acts as an R&D engine: field work is paid discovery, and generalizing it moves cost from per-customer COGS to shared R&D."},
+  {t:"Deployments run on core", n:["deploy"], e:["core>deploy"], d:"Every new customer gets the capability for free, and time-to-value drops."},
+  {t:"Process data accumulates", n:["data"], e:["deploy>data"], d:"Each deployment records how work actually gets done: decisions, corrections, exceptions. That data is proprietary."},
+  {t:"The MLOps loop", n:["mlops"], e:["data>mlops"], d:"Label, retrain, evaluate and redeploy models on that data. The product gets better with each customer."},
+  {t:"The moat", n:["moat","core"], e:["mlops>moat","moat>core"], d:"A competitor can copy features but not years of process data and tuned models. The advantage funds more R&D."}
+ ],
+ ideas:["Default to config or an adapter; promote to core on evidence of repetition.","R&D vs. COGS: generalized work is investment; bespoke work is cost of delivery.","Process data plus an MLOps loop is the durable moat in AI products.","Watch for sprawl, escalation crutch and discovery bottlenecks."],
+ traps:["Forking the core for one customer.","Building a 'platform' before any repetition exists.","Letting FDEs become the permanent support desk."],
+ qa:[["How do you decide whether a customer request goes into the core product?","Look for repetition across customers, fit with the product direction and the cost to generalize. If it's a one-off, isolate it in config or an adapter with an owner; if it repeats, bring the product team evidence and a draft design."],
+     ["What is a data moat?","Proprietary data generated by using the product, like corrections and decisions in real workflows, fed back through an MLOps loop so the product improves in ways competitors can't copy."],
+     ["What does 'escalation crutch' mean?","Customers and internal teams routing every problem to the FDE instead of the product or support, which stops the FDE from building and hides product gaps."]]
+},
+/* ================================================= MODULE 5 */
+{id:"arc", mod:5, sec:"5.1", name:"12-week engagement arc",
+ title:"The four-phase, 12-week engagement",
+ thesis:"The course's operating model for an engagement: scope in two weeks, prototype fast with users, harden for production, then hand over and feed the product.",
+ vb:[710,290],
+ nodes:[
+  ["pain",90,70,"Pain points","stakeholder map"],
+  ["scope",265,70,"Scope","wk 1-2 · SMART"],
+  ["proto",440,70,"Prototype","wk 3-6 · speed"],
+  ["users",615,70,"End users","side by side",1],
+  ["harden",615,220,"Harden","wk 7-10 · SLAs"],
+  ["measure",440,220,"Measure","vs. baseline"],
+  ["handover",265,220,"Handover","wk 11-12 · CoE"],
+  ["product",90,220,"Feedback","to product platform"]
+ ],
+ edges:[["pain","scope"],["scope","proto"],["proto","users",14],["users","proto",14],["proto","harden"],["harden","measure"],["measure","handover"],["handover","product"]],
+ steps:[
+  {t:"Find the real pain", n:["pain"], d:"Interview users and leaders, map the workflow, the tech stack and who has power over decisions. Capture a baseline number."},
+  {t:"Phase 1, weeks 1-2: scope", n:["scope"], e:["pain>scope"], d:"Write SMART success criteria: Specific, Measurable, Achievable, Relevant, Time-bound. For example, 'cut median claim triage time from 4 hours to 1 for the motor team by week 10'. Choose one pilot."},
+  {t:"Phase 2, weeks 3-6: prototype", n:["proto","users"], e:["scope>proto","proto>users","users>proto"], d:"Speed over elegance. Work beside the end users on real data, demo often and change direction quickly."},
+  {t:"Phase 3, weeks 7-10: harden", n:["harden"], e:["proto>harden"], d:"Error handling, logging, data-quality checks, latency and caching, security review and agreed SLAs. This turns a demo into something people can depend on."},
+  {t:"Measure against the criteria", n:["measure"], e:["harden>measure"], d:"Report the result against the SMART target from week 2. This is the evidence for expansion."},
+  {t:"Phase 4, weeks 11-12: hand over", n:["handover"], e:["measure>handover"], d:"Stand up a client Center of Excellence: trained owners, documentation and runbooks, so the customer can run and extend it without you."},
+  {t:"Feed the product", n:["product"], e:["handover>product"], d:"The dual-value loop: delivery for the customer, discovery for the company, and platform synthesis of what repeated."}
+ ],
+ ideas:["Phases: scope (1-2), prototype (3-6), harden (7-10), hand over (11-12).","SMART criteria and one pilot come out of week 2.","Prototype with users, not for them.","Handover means a client CoE, not a zip file."],
+ traps:["Hardening a prototype nobody uses yet.","Skipping the baseline, so week 10 has nothing to compare to.","Handing over without trained owners."],
+ qa:[["Walk me through a 12-week engagement.","Two weeks to find the pain and agree SMART criteria and a pilot; four weeks prototyping with users on real data; four weeks hardening (errors, logging, data quality, latency, security, SLAs); two weeks handing over to a client CoE and feeding the product team."],
+     ["What does 'hardening' include?","Error handling and retries, structured logging and monitoring, data-quality checks, latency work and caching, security review and access control, and agreed SLAs with an on-call owner."],
+     ["Give me a SMART success criterion.","Reduce median time from claim received to triaged from 4 hours to 1 hour for the motor claims team by the end of week 10, measured from the claims system timestamps."]]
+},
+{id:"pod", mod:5, sec:"5.2 and 5.3", name:"Pod operating model",
+ title:"How an FDE pod runs: autonomy and time-to-value",
+ thesis:"Leadership sets the what and the why; a small pod owns the how. Features survive by being used, and the scoreboard is time-to-value.",
+ vb:[710,290],
+ nodes:[
+  ["lead",90,70,"Leadership","what + why"],
+  ["echo",265,70,"Echo","strategist · 1"],
+  ["deltas",440,70,"Deltas","engineers · 2"],
+  ["how",615,70,"Pod owns how","Auftragstaktik"],
+  ["ship",615,220,"Ship small","to real users"],
+  ["adopt",440,220,"Adoption?","used or dropped"],
+  ["survive",265,220,"Survivors","to the platform"],
+  ["ttv",90,220,"Time to value","the scoreboard"]
+ ],
+ edges:[["lead","echo"],["echo","deltas",0,"shields"],["deltas","how"],["how","ship"],["ship","adopt"],["adopt","survive"],["survive","ttv"],["adopt","deltas",0,"iterate"]],
+ steps:[
+  {t:"Leadership sets intent", n:["lead"], d:"Auftragstaktik, or mission-type tactics, from Prussian military doctrine: leaders state the objective and why it matters, not the steps."},
+  {t:"The Echo", n:["echo"], e:["lead>echo"], d:"One Deployment Strategist per pod owns the customer relationship, scoping and the administrative load."},
+  {t:"Protecting the Deltas", n:["deltas"], e:["echo>deltas"], d:"Two FDEs write code. Without protection, admin (status meetings, access tickets, reporting) can eat 40 to 60% of an engineer's time. The Echo absorbs it."},
+  {t:"The pod owns the how", n:["how"], e:["deltas>how"], d:"The people closest to the problem choose the technical approach. No central sign-off on every design."},
+  {t:"Ship small, to real users", n:["ship"], e:["how>ship"], d:"Put small features in front of users quickly rather than building a big plan."},
+  {t:"Darwinistic adoption", n:["adopt","deltas"], e:["ship>adopt","adopt>deltas"], d:"Features that users adopt survive; unused ones get dropped. Bottom-up selection replaces top-down roadmaps inside the account."},
+  {t:"Survivors go to the platform", n:["survive"], e:["adopt>survive"], d:"What proves itself in several pods becomes a platform feature."},
+  {t:"Measure time-to-value", n:["ttv"], e:["survive>ttv"], d:"TTV: time from contract to the customer getting measurable value. Supporting metrics from the Blueprint deck: usage uplift, adoption depth and revenue protection."}
+ ],
+ ideas:["Pod: 1 Echo + 2 Deltas.","Mission-type tactics: central intent, local execution.","Protect engineers from the 40-60% admin drag.","TTV is the headline delivery metric."],
+ traps:["Central architecture review for every pod decision.","Measuring the pod by features shipped instead of value delivered."],
+ qa:[["How would you structure a team for a new strategic account?","A pod of one deployment strategist and two engineers, with a clear objective from leadership, autonomy on approach, and TTV plus adoption as success measures."],
+     ["What's Auftragstaktik and why does it suit FDE work?","Leaders give intent, teams choose the method. Field conditions change too fast for central planning, and the engineers on site have the best information."]]
+},
+/* ================================================= MODULE 6 */
+{id:"lastmile", mod:6, sec:"6.1 and 6.2", name:"Last-mile onboarding",
+ title:"Closing the last-mile implementation gap",
+ thesis:"The product works in the demo, then meets undocumented APIs, broken schemas and workflow exceptions. FDEs fix those in real time and capture each fix so the next onboarding is faster.",
+ vb:[710,420],
+ nodes:[
+  ["signed",90,70,"Contract signed","product 'works'"],
+  ["api",265,70,"No API docs","undocumented"],
+  ["schema",440,70,"Broken schema","nulls · drift"],
+  ["exc",615,70,"Exceptions","odd workflows"],
+  ["wrap",265,220,"API wrapper","typed · retried"],
+  ["repair",440,220,"Schema repair","map · validate"],
+  ["pipe",615,220,"Custom pipeline","rules · routing"],
+  ["play",265,360,"Playbook","fix → template"],
+  ["portal",440,360,"Client portal","shared status"],
+  ["live",615,360,"Live + adopted","TTV down"]
+ ],
+ edges:[["signed","api"],["api","schema"],["schema","exc"],["api","wrap"],["schema","repair"],["exc","pipe"],["wrap","play"],["play","portal"],["portal","live"],["pipe","live"]],
+ steps:[
+  {t:"The delivery gap", n:["signed"], d:"The sale assumed clean integrations. Reality: AI complexity, messy data and an R&D team too stretched to help each customer. Onboarding stalls here."},
+  {t:"Undocumented APIs", n:["api","wrap"], e:["signed>api","api>wrap"], d:"The customer's system has no spec. Probe it, capture real responses, and write a typed wrapper with retries and tests so the product sees a clean interface."},
+  {t:"Broken schemas", n:["schema","repair"], e:["api>schema","schema>repair"], d:"Columns that mean different things per region, nulls in keys, types that drift. Map, validate and repair at the boundary."},
+  {t:"Workflow exceptions", n:["exc","pipe"], e:["schema>exc","exc>pipe"], d:"'Except for claims over £50k, which go to Jane.' Encode the exceptions as rules and routing in the pipeline instead of forking the product."},
+  {t:"Capture it as a playbook", n:["play"], e:["wrap>play"], d:"Each fix becomes a template in a dynamic playbook, so the next customer with the same system starts from it. Professional services automation (PSA) tools such as Rocketlane provide unified workspaces for this."},
+  {t:"Shared visibility", n:["portal"], e:["play>portal"], d:"A client portal shows plan, status and open tasks to both sides, which removes a lot of status meetings. AI-powered automation drafts plans and updates."},
+  {t:"Live and adopted", n:["live"], e:["portal>live","pipe>live"], d:"Onboarding done when people use it, not when it's installed. Each captured fix lowers the next customer's time-to-value."}
+ ],
+ ideas:["Why onboarding fails: undocumented APIs, broken schemas, workflow exceptions.","Real-time fixes: wrappers, schema repair, pipeline customization.","Capture every fix as a reusable template.","PSA automation: unified workspaces, dynamic playbooks, client portals, AI automation."],
+ traps:["Fixing the same integration from scratch for every customer.","Encoding exceptions by forking product code."],
+ qa:[["The customer's API has no documentation. How do you integrate?","Get sample traffic or a sandbox, probe endpoints, record real responses as fixtures, write a typed wrapper with tests against them, and confirm edge cases with their engineers."],
+     ["How do you make the tenth onboarding faster than the first?","Turn every fix into a template or connector in a shared playbook, track which ones recur, and push the common ones into the product."]]
+},
+/* ================================================= MODULE 7 */
+{id:"interview", mod:7, sec:"7.3", name:"Interview blueprint",
+ title:"What an FDE interview loop scores",
+ thesis:"LeetCode-only prep fails because FDE loops weight depth, building and customer skills. Prepare in proportion to the four evaluation pillars.",
+ vb:[710,290],
+ nodes:[
+  ["prep",90,70,"Preparation","not LeetCode-only"],
+  ["deep",265,70,"Technical depth","40%"],
+  ["build",440,70,"Practical build","30%"],
+  ["cust",615,70,"Customer case","20%"],
+  ["biz",615,220,"Business acumen","10%"],
+  ["port",440,220,"Portfolio proof","Projects A and B"],
+  ["story",265,220,"Your stories","Vukti · DATAVORE"],
+  ["offer",90,220,"Offer","comp benchmarks"]
+ ],
+ edges:[["prep","deep"],["deep","build"],["build","cust"],["cust","biz"],["biz","port"],["port","story"],["story","offer"]],
+ steps:[
+  {t:"Why LeetCode-only fails", n:["prep"], d:"Algorithm puzzles are a small part of an FDE loop. Keep DSA warm, but most of the score comes from the four pillars below."},
+  {t:"Deep technical understanding (40%)", n:["deep"], e:["prep>deep"], d:"Explain how things work under follow-up questions: attention, RAG failure modes, query plans, transactions, Kubernetes networking. The guides in this atlas map to this pillar."},
+  {t:"Practical implementation (30%)", n:["build"], e:["deep>build"], d:"A 60 to 90 minute build against an API or dataset: working code, tests for failure paths, and talking through trade-offs as you go. Practice timed."},
+  {t:"Customer scenario and communication (20%)", n:["cust"], e:["build>cust"], d:"A role-played customer with a vague ask. Scored on discovery questions, scoping, and explaining trade-offs to a non-engineer. See Problem decomposition."},
+  {t:"Business acumen (10%)", n:["biz"], e:["cust>biz"], d:"NRR, time-to-value, margin-for-moat, custom sprawl. Show you know why the company funds FDEs."},
+  {t:"Portfolio as proof", n:["port"], e:["biz>port"], d:"Project A: an agentic RAG system with a QLoRA-tuned open model, a vector DB, and evals for faithfulness, latency and token cost. Project B: a context-as-a-compiler coding agent in LangGraph using ACE's three roles and file-system tools."},
+  {t:"Your own stories", n:["story"], e:["port>story"], d:"Map Vukti, DATAVORE and your MCP work to each pillar as short STAR stories with numbers: situation, task, action, result."},
+  {t:"The offer", n:["offer"], e:["story>offer"], d:"Know compensation benchmarks for FDE roles at your target companies before the recruiter call, and negotiate on total compensation."}
+ ],
+ ideas:["Pillars: depth 40%, build 30%, customer 20%, business 10%.","Learning paths: DeepLearning.AI, Andrew Ng's ML Specialization, Fast.ai, Salesforce Trailhead (Agentforce), Zapier's 4-tier AI fluency framework.","Anthropic's 4Ds of AI fluency: Delegation, Description, Discernment, Diligence.","T-shaped: broad across the stack, deep in one AI area you can defend."],
+ traps:["Spending most prep time on DSA.","Portfolio projects with no evals or numbers.","Stories that describe the team's work, not yours."],
+ qa:[["Why do you want to be an FDE rather than a SWE?","Tie it to your history: you like owning outcomes with real users and messy data, and you've done it (Vukti, DATAVORE). FDE is where engineering depth and customer impact are the same job."],
+     ["Tell me about a time a customer's requirements were unclear.","Pick one real story, show the questions you asked, the metric you agreed, the thin slice you shipped, and the measured result."],
+     ["What are Anthropic's 4Ds?","Delegation (deciding what to hand to AI), Description (communicating the task clearly), Discernment (judging the output critically), Diligence (using it responsibly and owning the result)."]]
+},
+{id:"projecta", mod:7, sec:"7.2", name:"Project A: Agentic RAG",
+ title:"Portfolio Project A: an agentic RAG service",
+ thesis:"The course's flagship portfolio build, and a good shape for your Vukti service: an agent that retrieves, checks its own evidence, retries, and reports quality, latency and cost.",
+ vb:[710,290],
+ codeTitle:"LangGraph wiring (sketch)",
+ code:`g = StateGraph(RAGState)
+g.add_node("retrieve", retrieve)        # pgvector hybrid search
+g.add_node("grade", grade_chunks)       # LLM: relevant yes/no
+g.add_node("rewrite", rewrite_query)
+g.add_node("generate", generate)        # QLoRA-tuned Llama 3 / Mistral
+g.add_node("check", grounding_check)    # faithfulness vs. chunks
+g.add_edge(START, "retrieve")
+g.add_edge("retrieve", "grade")
+g.add_conditional_edges("grade", route,
+    {"relevant": "generate", "retry": "rewrite"})
+g.add_edge("rewrite", "retrieve")
+g.add_edge("generate", "check")
+g.add_edge("check", END)
+# log per request: faithfulness, p95 latency, tokens and cost`,
+ nodes:[
+  ["q",90,70,"User query","via FastAPI"],
+  ["agent",265,70,"Agent graph","LangGraph"],
+  ["retrieve",440,70,"pgvector search","hybrid + ACL"],
+  ["grade",615,70,"Grade chunks","relevant?"],
+  ["rewrite",615,220,"Rewrite query","then retry"],
+  ["gen",440,220,"Tuned model","QLoRA Llama 3"],
+  ["check",265,220,"Grounding check","faithful?"],
+  ["out",90,220,"Answer","+ latency, tokens"]
+ ],
+ edges:[["q","agent"],["agent","retrieve"],["retrieve","grade"],["grade","rewrite",0,"retry"],["rewrite","retrieve",0],["grade","gen",0,"relevant"],["gen","check"],["check","out"]],
+ steps:[
+  {t:"Request in", n:["q","agent"], e:["q>agent"], d:"A FastAPI endpoint hands the question to a LangGraph state machine. This reuses the FastAPI guide.", l:[0,6]},
+  {t:"Retrieve", n:["retrieve"], e:["agent>retrieve"], d:"Hybrid search in pgvector (vectors plus keyword), filtered by the user's permissions. Pinecone or Milvus work too; pgvector keeps it in one Postgres.", l:[1,7]},
+  {t:"Grade the evidence", n:["grade"], e:["retrieve>grade"], d:"A cheap model call judges whether the chunks actually answer the question. This is what makes it agentic rather than a fixed pipeline.", l:[2,8,9,10]},
+  {t:"Rewrite and retry", n:["rewrite","retrieve"], e:["grade>rewrite","rewrite>retrieve"], d:"If the evidence is weak, rewrite the query and search again, with a retry cap.", l:[3,11]},
+  {t:"Generate", n:["gen"], e:["grade>gen"], d:"A QLoRA-tuned open model (Llama 3 or Mistral) answers in the customer's format with citations. See the fine-tuning guide.", l:[4,12]},
+  {t:"Check grounding", n:["check"], e:["gen>check"], d:"Verify every claim is supported by the retrieved chunks. Unsupported answers are blocked or flagged.", l:[5,13]},
+  {t:"Answer and measure", n:["out"], e:["check>out"], d:"Return the answer and log faithfulness, p95 latency, tokens and cost per request. Those numbers are what make this a portfolio piece instead of a demo. Deploy it with Docker and Kubernetes and you've covered the RAG, agents, FastAPI, MLOps and evals items in your plan in one service.", l:[14]}
+ ],
+ ideas:["Agentic RAG = retrieval plus self-checks and retries, as a graph.","Measure faithfulness, latency and token cost from day one.","One deployed service covering RAG, agents, FastAPI, MLOps and evals tells a stronger story than five small demos."],
+ traps:["No retry cap on the rewrite loop.","A demo with no eval numbers."],
+ qa:[["Walk me through your RAG project's architecture.","FastAPI in front of a LangGraph agent: hybrid pgvector retrieval with ACL filters, an LLM grader that triggers query rewrites, a QLoRA-tuned model for generation, a grounding check, and per-request metrics for faithfulness, latency and cost."],
+     ["What did the evals show?","Have real numbers ready: baseline vs. with reranking or grading, faithfulness, p95 latency, cost per 1,000 queries, and the biggest failure category you fixed."]]
+}
+);
+
+const MODS = {
+  1:"FDE Paradigm and Genesis",
+  2:"Technical and Data Foundations",
+  3:"Enterprise AI and GenAI",
+  4:"Human Stack and Business Acumen",
+  5:"FDE Operational Playbook",
+  6:"AI Onboarding and Services",
+  7:"Portfolio and Interviews"
+};
+const PATCH = {
+  sql:{mod:2, sec:"2.2"},
+  fastapi:{mod:2, sec:"2.1"},
+  deploy:{mod:2, sec:"2.3", extraIdeas:["Multi-stage builds: compile or install in a 'builder' stage, copy only the result into a slim final image. Smaller images pull faster and have fewer vulnerabilities.","StatefulSets give pods stable names and their own volumes, for databases and vector stores. Deployments are for stateless services.","Service discovery: pods reach a Service by DNS name, such as ask-api.default.svc.cluster.local."]},
+  rag:{mod:3, sec:"3.2 and 7.2"},
+  tools:{mod:3, sec:"3.3"},
+  mcp:{mod:3, sec:"your action plan"},
+  evals:{mod:3, sec:"7.2"},
+  "case":{mod:4, sec:"4.2", name:"Problem decomposition", extraIdeas:["Peel the onion: keep asking why until you reach the real blocker, which is often a handoff or a data owner, not a model.","Map power dynamics: who decides, who blocks, who benefits.","Find the 80/20 leverage point: the one change that moves most of the metric."]}
+};
+const ORDER = ["genesis","slg","resilient","sql","planner","acid","spark","etl","fastapi","deploy","cloud","transformer","context","ace","skills","rag","tools","mcp","finetune","evals","case","exec","moat","arc","pod","lastmile","interview","projecta"];
+const ALL = {};
+OLD.forEach(c=>{ if(PATCH[c.id]) ALL[c.id]=c; });
+NEW.forEach(c=>{ ALL[c.id]=c; });
+for (const id in PATCH){ const p=PATCH[id], c=ALL[id]; c.mod=p.mod; c.sec=p.sec; if(p.name)c.name=p.name; if(p.extraIdeas)c.ideas=c.ideas.concat(p.extraIdeas); }
+const C = ORDER.map(id=>{ if(!ALL[id]) throw new Error("missing "+id); return ALL[id]; });
+
+
+const W=136,H=54;
+const svg=document.getElementById('svg');
+const NS='http://www.w3.org/2000/svg';
+let cur=null, step=0, playing=false, timer=null, animToken=0, speed=1;
+const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;}
+function trim(cx,cy,tx,ty,gap){const dx=tx-cx,dy=ty-cy;const t=Math.min(dx?(W/2)/Math.abs(dx):Infinity,dy?(H/2)/Math.abs(dy):Infinity);const len=Math.hypot(dx,dy)||1;return [cx+dx*t+dx/len*gap,cy+dy*t+dy/len*gap];}
+
+function buildIndex(){
+  const nav=document.getElementById('index');const groups={};
+  const pick=document.getElementById('picker');
+  C.forEach(c=>{(groups[c.mod]=groups[c.mod]||[]).push(c)});
+  for(const g in groups){
+    const og=document.createElement('optgroup');og.label='Module '+g+' · '+MODS[g];
+    groups[g].forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;og.appendChild(o)});
+    pick.appendChild(og);
+    const d=document.createElement('div');d.className='group';
+    d.innerHTML='<p class="group-label"><span class="mnum">'+g+'</span>'+MODS[g]+'</p>';
+    const ul=document.createElement('ul');
+    groups[g].forEach(c=>{const li=document.createElement('li');const b=document.createElement('button');b.type='button';b.textContent=c.name;b.dataset.id=c.id;b.onclick=()=>load(c.id,true);li.appendChild(b);ul.appendChild(li)});
+    d.appendChild(ul);nav.appendChild(d);
+  }
+}
+
+function load(id,fromUser){
+  const c=C.find(x=>x.id===id)||C[0];cur=c;step=0;
+  document.querySelectorAll('.group button').forEach(b=>b.setAttribute('aria-current',b.dataset.id===c.id?'true':'false'));
+  document.getElementById('picker').value=c.id;
+  const idx=C.indexOf(c);
+  document.getElementById('eyebrow').textContent='MODULE '+c.mod+' · '+MODS[c.mod].toUpperCase()+' · '+c.sec;
+  document.getElementById('ctitle').textContent=c.title;
+  document.getElementById('thesis').textContent=c.thesis;
+  const list=(id,arr)=>{const u=document.getElementById(id);u.innerHTML='';arr.forEach(t=>{const li=document.createElement('li');li.textContent=t;u.appendChild(li)})};
+  list('ideas',c.ideas);list('traps',c.traps);
+  const qa=document.getElementById('qa');qa.innerHTML='';
+  c.qa.forEach(([q,a])=>{const d=document.createElement('details');const s=document.createElement('summary');s.textContent=q;const p=document.createElement('p');p.textContent=a;d.append(s,p);qa.appendChild(d)});
+  // code
+  const code=document.getElementById('code'),stage=document.getElementById('stage');
+  if(c.code){code.hidden=false;stage.classList.add('has-code');code.innerHTML='';const tt=document.createElement('div');tt.className='code-title';tt.textContent=c.codeTitle||'Code';code.appendChild(tt);
+    c.code.split('\n').forEach((ln,i)=>{const s=document.createElement('span');s.className='ln';s.dataset.i=i;s.textContent=ln||' ';code.appendChild(s)});}
+  else{code.hidden=true;stage.classList.remove('has-code');}
+  drawDiagram(c);
+  const dots=document.getElementById('dots');dots.innerHTML='';
+  c.steps.forEach((s,i)=>{const b=document.createElement('button');b.type='button';b.className='dot';b.setAttribute('aria-label','Step '+(i+1)+': '+s.t);b.onclick=()=>{stop();go(i)};dots.appendChild(b)});
+  try{history.replaceState(null,'','#'+c.id)}catch(e){}
+  try{localStorage.setItem('fde-atlas-last',c.id)}catch(e){}
+  go(0);
+  if(!reduced) play(); else stop();
+  if(fromUser) window.scrollTo({top:0,behavior:reduced?'auto':'smooth'});
+}
+
+function drawDiagram(c){
+  svg.innerHTML='';svg.setAttribute('viewBox','0 0 '+c.vb[0]+' '+c.vb[1]);
+  svg.setAttribute('aria-label',c.title);
+  const defs=el('defs',{},svg);
+  [['ar','var(--line-strong)'],['ar-done','var(--done-line)'],['ar-on','var(--accent)']].forEach(([id,col])=>{
+    const m=el('marker',{id,viewBox:'0 0 10 10',refX:'8',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'},defs);
+    const p=el('path',{d:'M0,0 L10,5 L0,10 z'},m);p.style.fill=col;});
+  const pos={};c.nodes.forEach(n=>pos[n[0]]=[n[1],n[2]]);
+  const gE=el('g',{},svg),gL=el('g',{},svg),gN=el('g',{},svg);
+  c._edges={};
+  c.edges.forEach(e=>{
+    const [f,t,bend=0,label]=e;const a=pos[f],b=pos[t];
+    let d,mid;
+    if(bend){const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);const nx=-dy/len,ny=dx/len;
+      const cx=(a[0]+b[0])/2+nx*bend,cy=(a[1]+b[1])/2+ny*bend;
+      const s=trim(a[0],a[1],cx,cy,3),en=trim(b[0],b[1],cx,cy,5);
+      d='M'+s[0]+','+s[1]+' Q'+cx+','+cy+' '+en[0]+','+en[1];mid=[(s[0]+2*cx+en[0])/4,(s[1]+2*cy+en[1])/4];}
+    else{const s=trim(a[0],a[1],b[0],b[1],3),en=trim(b[0],b[1],a[0],a[1],5);d='M'+s[0]+','+s[1]+' L'+en[0]+','+en[1];mid=[(s[0]+en[0])/2,(s[1]+en[1])/2];}
+    const p=el('path',{d,class:'edge','marker-end':'url(#ar)'},gE);
+    let lt=null;
+    if(label){const off=bend?(bend>0?-6:12):-7;lt=el('text',{x:mid[0],y:mid[1]+off,'text-anchor':'middle',class:'elabel'},gL);lt.textContent=label;}
+    c._edges[f+'>'+t]={p,lt};
+  });
+  c._nodes={};
+  c.nodes.forEach(n=>{
+    const [id,x,y,lbl,sub,ext]=n;
+    const g=el('g',{class:'node'+(ext?' ext':'')},gN);
+    el('rect',{x:x-W/2,y:y-H/2,width:W,height:H,rx:8},g);
+    const t1=el('text',{x,y:y-3,'text-anchor':'middle',class:'lbl'},g);t1.textContent=lbl;
+    const t2=el('text',{x,y:y+14,'text-anchor':'middle',class:'sub'},g);t2.textContent=sub;
+    [t1,t2].forEach(t=>{try{if(t.getComputedTextLength()>W-12){t.setAttribute('textLength',W-12);t.setAttribute('lengthAdjust','spacingAndGlyphs');}}catch(e){}});
+    c._nodes[id]=g;
+  });
+  const pk=el('g',{},svg);
+  c._halo=el('circle',{r:11,class:'packet-halo',cx:-50,cy:-50},pk);
+  c._dot=el('circle',{r:5.5,class:'packet',cx:-50,cy:-50},pk);
+}
+
+function go(i){
+  const c=cur;step=Math.max(0,Math.min(c.steps.length-1,i));
+  const seenN=new Set(),seenE=new Set();
+  for(let k=0;k<step;k++){(c.steps[k].n||[]).forEach(x=>seenN.add(x));(c.steps[k].e||[]).forEach(x=>seenE.add(x));}
+  const s=c.steps[step];const onN=new Set(s.n||[]),onE=new Set(s.e||[]);
+  for(const id in c._nodes){const g=c._nodes[id];g.classList.toggle('on',onN.has(id));g.classList.toggle('done',!onN.has(id)&&seenN.has(id));g.classList.toggle('pulse',onN.has(id)&&!(s.e||[]).length);}
+  for(const k in c._edges){const {p,lt}=c._edges[k];const on=onE.has(k),dn=!on&&seenE.has(k);
+    p.classList.toggle('on',on);p.classList.toggle('done',dn);
+    p.setAttribute('marker-end','url(#'+(on?'ar-on':dn?'ar-done':'ar')+')');
+    if(lt)lt.classList.toggle('on',on);}
+  document.getElementById('stepno').textContent=String(step+1).padStart(2,'0')+' / '+String(c.steps.length).padStart(2,'0');
+  document.getElementById('stitle').textContent=s.t;
+  document.getElementById('stext').textContent=s.d;
+  const lines=new Set(s.l||[]);let first=null;
+  document.querySelectorAll('#code .ln').forEach(ln=>{const on=lines.has(+ln.dataset.i);ln.classList.toggle('on',on);if(on&&!first)first=ln;});
+  if(first){const box=document.getElementById('code');const top=first.offsetTop-box.offsetTop-40;box.scrollTo({top:Math.max(0,top),behavior:reduced?'auto':'smooth'});}
+  document.querySelectorAll('#dots .dot').forEach((d,k)=>{d.classList.toggle('cur',k===step);d.classList.toggle('seen',k<step);d.setAttribute('aria-current',k===step?'step':'false')});
+  animatePackets(s.e||[]);
+  if(playing) schedule();
+}
+
+function animatePackets(keys){
+  const c=cur,tok=++animToken;const dot=c._dot,halo=c._halo;
+  const paths=keys.map(k=>c._edges[k]&&c._edges[k].p).filter(Boolean);
+  const hide=()=>{dot.setAttribute('cx',-50);dot.setAttribute('cy',-50);halo.setAttribute('cx',-50);halo.setAttribute('cy',-50);};
+  if(!paths.length||reduced){hide();return;}
+  let idx=0,t0=null;const dur=950*speed;
+  function frame(ts){
+    if(tok!==animToken)return;
+    if(t0===null)t0=ts;
+    const p=paths[idx];const L=p.getTotalLength();let u=(ts-t0)/dur;
+    if(u>=1){idx++;t0=ts;if(idx>=paths.length){idx=0;hide();t0=ts+500*speed;}requestAnimationFrame(frame);return;}
+    if(u<0){requestAnimationFrame(frame);return;}
+    const e=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;
+    const pt=p.getPointAtLength(L*e);
+    dot.setAttribute('cx',pt.x);dot.setAttribute('cy',pt.y);halo.setAttribute('cx',pt.x);halo.setAttribute('cy',pt.y);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+function dwell(){const s=cur.steps[step];return (Math.max(4200,(s.e||[]).length*1100+s.d.length*42))*speed;}
+function schedule(){clearTimeout(timer);timer=setTimeout(()=>{if(step<cur.steps.length-1)go(step+1);else stop(true);},dwell());}
+function play(){if(step>=cur.steps.length-1)go(0);playing=true;document.getElementById('play').textContent='Pause';schedule();}
+function stop(ended){playing=false;clearTimeout(timer);document.getElementById('play').textContent=ended?'Replay':'Play';}
+
+document.getElementById('play').onclick=()=>playing?stop():play();
+document.getElementById('next').onclick=()=>{stop();go(step+1)};
+document.getElementById('prev').onclick=()=>{stop();go(step-1)};
+document.getElementById('speedSel').onchange=e=>{speed=+e.target.value;if(playing)schedule();};
+document.addEventListener('keydown',e=>{
+  if(e.target.closest&&e.target.closest('select,summary,input'))return;
+  if(e.key==='ArrowRight'){stop();go(step+1);e.preventDefault();}
+  else if(e.key==='ArrowLeft'){stop();go(step-1);e.preventDefault();}
+  else if(e.key===' '&&e.target===document.body){playing?stop():play();e.preventDefault();}
+});
+
+buildIndex();
+document.getElementById('picker').onchange=e=>load(e.target.value,true);
+let start=(location.hash||'').slice(1);
+if(!C.some(c=>c.id===start)){try{start=localStorage.getItem('fde-atlas-last')||''}catch(e){start=''}}
+load(C.some(c=>c.id===start)?start:'genesis',false);
+</script>

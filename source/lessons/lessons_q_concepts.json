@@ -1,0 +1,525 @@
+[
+ {
+  "id": "pandas",
+  "mod": 0,
+  "sec": "0.5",
+  "name": "Data wrangling with pandas",
+  "title": "Data wrangling with pandas",
+  "thesis": "Customer data always arrives messier than promised. pandas lets you clean it in a repeatable script: read and inspect, fix types and text, handle missing values and dates, remove duplicates, merge lookups without fan-out, summarise, and validate before anyone else sees the numbers.",
+  "format": "animation",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "A cleaning pipeline in 10 lines",
+  "code": "import io\nimport pandas as pd\n\nraw = \"\"\"order_id,customer_id,order_date,region,amount\n1001,C1,2026-03-02,North,120.50\n1002,C2,2026-03-04,south,\n1003,C1,2026-03-05, North ,\"1,250.00\"\n1003,C1,2026-03-05, North ,\"1,250.00\"\n\"\"\"\ncustomers = pd.DataFrame({\"customer_id\": [\"C1\", \"C2\"], \"segment\": [\"Retail\", \"Trade\"]})\n\ndf = pd.read_csv(io.StringIO(raw))\nprint(df.shape, df[\"amount\"].dtype)                  # (4, 5) str\ndf[\"region\"] = df[\"region\"].str.strip().str.title()\ndf[\"amount\"] = pd.to_numeric(df[\"amount\"].str.replace(\",\", \"\"), errors=\"coerce\")\ndf[\"order_date\"] = pd.to_datetime(df[\"order_date\"], format=\"%Y-%m-%d\")\ndf = df.drop_duplicates()\ndf = df.merge(customers, on=\"customer_id\", how=\"left\", validate=\"many_to_one\")\nsummary = df.groupby(\"segment\")[\"amount\"].sum()      # sum skips NaN\nassert df[\"order_id\"].is_unique, \"duplicate orders\"\nprint(summary.to_dict(), \"missing amounts:\", int(df[\"amount\"].isna().sum()))\n# {'Retail': 1370.5, 'Trade': 0.0} missing amounts: 1   <- Trade 0.0 is really \"unknown\"",
+  "nodes": [
+   [
+    "read",
+    90,
+    70,
+    "Read file",
+    "read_csv, Excel"
+   ],
+   [
+    "inspect",
+    265,
+    70,
+    "Inspect",
+    "shape, dtypes, head"
+   ],
+   [
+    "types",
+    440,
+    70,
+    "Fix types",
+    "text to numbers"
+   ],
+   [
+    "missing",
+    615,
+    70,
+    "Missing values",
+    "flag, do not guess"
+   ],
+   [
+    "dates",
+    615,
+    210,
+    "Parse dates",
+    "explicit format"
+   ],
+   [
+    "dedupe",
+    440,
+    210,
+    "Duplicates",
+    "drop_duplicates"
+   ],
+   [
+    "merge",
+    265,
+    210,
+    "Merge lookups",
+    "validate keys"
+   ],
+   [
+    "summary",
+    90,
+    210,
+    "Summarise",
+    "groupby, pivot"
+   ],
+   [
+    "validate",
+    90,
+    350,
+    "Validate",
+    "checks, handoff"
+   ]
+  ],
+  "edges": [
+   [
+    "read",
+    "inspect"
+   ],
+   [
+    "inspect",
+    "types"
+   ],
+   [
+    "types",
+    "missing"
+   ],
+   [
+    "missing",
+    "dates"
+   ],
+   [
+    "dates",
+    "dedupe"
+   ],
+   [
+    "dedupe",
+    "merge"
+   ],
+   [
+    "merge",
+    "summary"
+   ],
+   [
+    "summary",
+    "validate"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Read the export",
+    "n": [
+     "read"
+    ],
+    "e": [],
+    "d": "read_csv loads the customer's file into a DataFrame. Here io.StringIO makes a string act like a file so the example runs anywhere.",
+    "l": [
+     11
+    ]
+   },
+   {
+    "t": "Look before you touch",
+    "n": [
+     "read",
+     "inspect"
+    ],
+    "e": [
+     "read>inspect"
+    ],
+    "d": "shape and dtypes show 4 rows and an amount column stored as text, a sure sign that some values are not clean numbers.",
+    "l": [
+     12
+    ]
+   },
+   {
+    "t": "Fix text and types",
+    "n": [
+     "inspect",
+     "types"
+    ],
+    "e": [
+     "inspect>types"
+    ],
+    "d": "Strip spaces and fix capitals in region, then remove thousands separators and convert amount to a number with pd.to_numeric.",
+    "l": [
+     13,
+     14
+    ]
+   },
+   {
+    "t": "Handle missing values",
+    "n": [
+     "types",
+     "missing"
+    ],
+    "e": [
+     "types>missing"
+    ],
+    "d": "errors=\"coerce\" turned the blank amount into NaN. Count it and keep it visible rather than filling a guess such as 0.",
+    "l": [
+     14
+    ]
+   },
+   {
+    "t": "Parse dates explicitly",
+    "n": [
+     "missing",
+     "dates"
+    ],
+    "e": [
+     "missing>dates"
+    ],
+    "d": "to_datetime with an explicit format turns text into real dates, so 03/04 cannot be misread as the wrong month.",
+    "l": [
+     15
+    ]
+   },
+   {
+    "t": "Remove duplicates",
+    "n": [
+     "dates",
+     "dedupe"
+    ],
+    "e": [
+     "dates>dedupe"
+    ],
+    "d": "Order 1003 was exported twice. drop_duplicates removes exact copies so it is not counted twice.",
+    "l": [
+     16
+    ]
+   },
+   {
+    "t": "Merge without fan-out",
+    "n": [
+     "dedupe",
+     "merge"
+    ],
+    "e": [
+     "dedupe>merge"
+    ],
+    "d": "Join the customer lookup to add each order's segment. validate=\"many_to_one\" raises an error if a customer ID appears twice in the lookup, instead of silently copying rows.",
+    "l": [
+     17
+    ]
+   },
+   {
+    "t": "Summarise",
+    "n": [
+     "merge",
+     "summary"
+    ],
+    "e": [
+     "merge>summary"
+    ],
+    "d": "groupby adds up revenue per segment. Note that sum skips NaN, so Trade shows 0.0 when its only amount is really unknown.",
+    "l": [
+     18
+    ]
+   },
+   {
+    "t": "Validate and hand off",
+    "n": [
+     "summary",
+     "validate"
+    ],
+    "e": [
+     "summary>validate"
+    ],
+    "d": "Assert the rules the business cares about, print the counts and totals, and send them with a short note of every change you made.",
+    "l": [
+     19,
+     20
+    ]
+   }
+  ],
+  "ideas": [
+   "Always inspect first: shape, dtypes, head and isna().sum() reveal most cleaning work in a minute.",
+   "A number column that loads as text means at least one value is not a clean number, such as \"1,250.00\" or \"n/a\".",
+   "Parse dates with an explicit format agreed with the customer; day-first and month-first dates look identical.",
+   "Check the row count after every merge, and use validate= so duplicate keys fail loudly instead of inflating totals.",
+   "Put the whole cleaning job in one script with checks at the end, so next month's export takes seconds, not a day."
+  ],
+  "traps": [
+   "Filling missing amounts with 0 so the totals look complete, which silently changes sums and averages.",
+   "Merging a lookup table with duplicate keys, so rows multiply and revenue is overstated with no error.",
+   "Cleaning by hand in Excel before loading, so nobody can repeat or audit the steps next month."
+  ],
+  "qa": [
+   [
+    "A customer's revenue total from your cleaned file is 4 percent higher than their finance report. Where do you look first?",
+    "I compare row counts at each step, starting with every merge, because fan-out from a lookup table with duplicate keys inflates totals without any error. I also check for duplicate order IDs from a double export. Once I find the step where the count grows, I show the customer the duplicate keys and agree which record is right, then rerun with validate= on the merge."
+   ],
+   [
+    "How do you handle missing values in a dataset you will hand to a customer's analyst?",
+    "I count them per column, find out why they are missing, and ask the customer what a blank means. I only fill or drop with their agreement, keep a flag column so the gap stays visible, and list the counts in the handoff note. Guessing a 0 or a mean changes the numbers people will make decisions on."
+   ],
+   [
+    "Why write the cleaning in pandas instead of fixing the spreadsheet by hand?",
+    "Because the export will come again next month. A script is repeatable, reviewable and fast, it records every change, and its checks catch new problems automatically. Manual edits cannot be audited and are easy to get slightly different each time."
+   ]
+  ]
+ },
+ {
+  "id": "debugging",
+  "mod": 2,
+  "sec": "2.1",
+  "name": "Debugging unfamiliar code",
+  "title": "Debugging and unfamiliar code",
+  "thesis": "Debugging is a method, not luck: reproduce the bug on demand, read the evidence from the first real error, shrink the problem, test one hypothesis at a time with a debugger, then fix the cause with a regression test and write it up so others can act.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Confirming a hypothesis with breakpoint()",
+  "code": "import json\n\ndef parse_total(line):\n    if \",\" in line[\"total\"]:          # conditional breakpoint: only the odd row\n        breakpoint()                  # pdb opens here; try: p line, w, c\n    return float(line[\"total\"])\n\ndef load(text):\n    rows = json.loads(text)\n    return sum(parse_total(r) for r in rows)\n\npayload = '[{\"total\": \"120.50\"}, {\"total\": \"1,250.00\"}]'   # saved from the failing run\nprint(load(payload))\n# ValueError: could not convert string to float: '1,250.00'\n\n# Fix, once the hypothesis is confirmed:\n#     return float(line[\"total\"].replace(\",\", \"\"))\n# Regression test so it never comes back:\ndef test_parse_total_with_thousands_separator():\n    assert parse_total({\"total\": \"1,250.00\"}) == 1250.0",
+  "nodes": [
+   [
+    "report",
+    90,
+    70,
+    "Bug report",
+    "symptom, ticket",
+    1
+   ],
+   [
+    "repro",
+    265,
+    70,
+    "Reproduce",
+    "same input, env"
+   ],
+   [
+    "evidence",
+    440,
+    70,
+    "Read evidence",
+    "traceback, logs"
+   ],
+   [
+    "isolate",
+    615,
+    70,
+    "Isolate",
+    "min repro, bisect"
+   ],
+   [
+    "hypo",
+    615,
+    220,
+    "Hypothesis",
+    "one testable guess"
+   ],
+   [
+    "test",
+    440,
+    220,
+    "Test it",
+    "breakpoint, pdb"
+   ],
+   [
+    "fix",
+    265,
+    220,
+    "Fix + test",
+    "regression test"
+   ],
+   [
+    "writeup",
+    90,
+    220,
+    "Verify, write up",
+    "note, PR, ticket"
+   ]
+  ],
+  "edges": [
+   [
+    "report",
+    "repro"
+   ],
+   [
+    "repro",
+    "evidence"
+   ],
+   [
+    "evidence",
+    "isolate"
+   ],
+   [
+    "isolate",
+    "hypo"
+   ],
+   [
+    "hypo",
+    "test",
+    14
+   ],
+   [
+    "test",
+    "hypo",
+    14,
+    "wrong: new guess"
+   ],
+   [
+    "test",
+    "fix",
+    0,
+    "confirmed"
+   ],
+   [
+    "fix",
+    "writeup"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A symptom arrives",
+    "n": [
+     "report"
+    ],
+    "e": [],
+    "d": "A customer reports that a weekly invoice total is too low. A symptom is where you start, not a diagnosis."
+   },
+   {
+    "t": "Reproduce on demand",
+    "n": [
+     "report",
+     "repro"
+    ],
+    "e": [
+     "report>repro"
+    ],
+    "d": "Save the exact payload from the failing run and replay it locally. A bug you can trigger with one command is half solved.",
+    "l": [
+     11,
+     12
+    ]
+   },
+   {
+    "t": "Read the first real error",
+    "n": [
+     "repro",
+     "evidence"
+    ],
+    "e": [
+     "repro>evidence"
+    ],
+    "d": "Read the traceback from the bottom: a ValueError on the value '1,250.00' inside parse_total. In logs, search for the first error, not the last.",
+    "l": [
+     13
+    ]
+   },
+   {
+    "t": "Isolate the smallest case",
+    "n": [
+     "evidence",
+     "isolate"
+    ],
+    "e": [
+     "evidence>isolate"
+    ],
+    "d": "Shrink the input to the one row that fails. If it used to work, git bisect run can find the commit that broke it in a handful of tests."
+   },
+   {
+    "t": "Write one hypothesis",
+    "n": [
+     "isolate",
+     "hypo"
+    ],
+    "e": [
+     "isolate>hypo"
+    ],
+    "d": "Guess something specific and testable: totals with a thousands separator cannot be parsed."
+   },
+   {
+    "t": "Test it in the debugger",
+    "n": [
+     "hypo",
+     "test"
+    ],
+    "e": [
+     "hypo>test"
+    ],
+    "d": "A conditional breakpoint pauses only on the odd row. In pdb, p line shows the raw value and w shows how the code got there.",
+    "l": [
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "t": "Wrong guess? Loop back",
+    "n": [
+     "test",
+     "hypo"
+    ],
+    "e": [
+     "test>hypo"
+    ],
+    "d": "If the evidence disagrees, cross the guess out and form a new one. Changing code before a guess is confirmed only adds new bugs."
+   },
+   {
+    "t": "Fix the cause, add a test",
+    "n": [
+     "test",
+     "fix"
+    ],
+    "e": [
+     "test>fix"
+    ],
+    "d": "Strip the separator before float(), and add a regression test with the exact value that failed so it can never quietly return.",
+    "l": [
+     15,
+     16,
+     17,
+     18,
+     19
+    ]
+   },
+   {
+    "t": "Verify and write it up",
+    "n": [
+     "fix",
+     "writeup"
+    ],
+    "e": [
+     "fix>writeup"
+    ],
+    "d": "Rerun the original repro, confirm the total now matches the ledger, and write a short note or ticket: impact, cause, fix and evidence."
+   }
+  ],
+  "ideas": [
+   "Reproduce first: a bug you can trigger with one command can be tested, bisected and fixed with confidence.",
+   "Read tracebacks from the bottom up, and in logs find the first error, because later errors are usually consequences.",
+   "Change one thing at a time and write down each hypothesis and result, so you never repeat an experiment.",
+   "A minimal repro plus git bisect run turns \"it worked last month\" into the exact commit in a few minutes.",
+   "Every fix ships with a regression test and a short write-up someone else can act on."
+  ],
+  "traps": [
+   "Adding a retry or a broad try/except that makes the error disappear while data is silently lost.",
+   "Editing several things at once in a stranger's repo, so you cannot tell which change mattered or what you broke.",
+   "Chasing the last or loudest error in a log when the first one caused all the others."
+  ],
+  "qa": [
+   [
+    "A customer's nightly job failed and you have never seen the codebase. What do you do in the first hour?",
+    "I get the logs and the exact input of the failed run, find the first error and its traceback, and reproduce it locally or on staging. Then I grep for the error message and the failing function to find the entry point and the path the job takes, and run the tests to see what already fails. Only then do I form a hypothesis and change code, one thing at a time."
+   ],
+   [
+    "It worked last month and nothing errors now, but the numbers are wrong. How do you find the cause?",
+    "I write a small repro script that exits non-zero when the number is wrong, using fake or saved data. Then I run git bisect with a known good release and the current commit, and let git bisect run test each step. That names the first bad commit, and its diff is usually small enough to spot the cause."
+   ],
+   [
+    "Why not just wrap the failing call in try/except and move on?",
+    "Because it hides the cause and usually turns a loud failure into silent data loss. I would only catch an exception I understand, handle it on purpose, and log it. The real fix addresses why the input or code is wrong, with a test that proves it."
+   ]
+  ]
+ }
+]

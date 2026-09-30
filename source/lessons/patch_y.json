@@ -1,0 +1,388 @@
+{
+ "security": {
+  "add_subtopics": [
+   {
+    "title": "Application security: the OWASP Top 10 for FDEs",
+    "body": "OWASP (the Open Worldwide Application Security Project) publishes a Top 10 list of the most common web application risks. Security reviewers use it as a checklist, so learn the items that show up most in FDE code.\n\nBroken access control is number one. The classic form is IDOR (insecure direct object reference): the API takes an id such as /orders/2 and returns it without checking that the caller owns order 2. Logging in is authentication; checking ownership on every request is authorization, and it must happen on the server.\n\nInjection happens when user text becomes part of a command: SQL, a shell command, or a template. The fix is to pass data as parameters, never by building strings. SSRF (server-side request forgery) happens when your server fetches a URL the user chose, for example a \"summarize this link\" tool, and an attacker points it at an internal address such as the cloud metadata service at 169.254.169.254. Allowlist hosts and block private addresses. XSS (cross-site scripting) happens when user text or model output is inserted into a page as HTML; escape it, or let a framework such as React do so.\n\nSecurity misconfiguration (debug mode on, default passwords, open admin pages) rounds out the list of findings you will see most.",
+    "example": "An FDE ships an order-status bot for Brisslow Tiles (made up). The pen tester logs in as a test user and changes /orders/1041 to /orders/1042 in the browser: another customer's address appears. That is an IDOR. The fix adds \"AND owner_id = current_user\" to the query and returns 404 when nothing matches, so the attacker cannot even learn which ids exist. The same tester then asks the bot's URL-fetch tool to read http://169.254.169.254/, which the new allowlist blocks.",
+    "code": "import html, ipaddress, sqlite3\nfrom urllib.parse import urlparse\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE orders (id INTEGER, owner TEXT, total REAL)\")\ndb.executemany(\"INSERT INTO orders VALUES (?, ?, ?)\",\n               [(1, \"alice\", 40.0), (2, \"bob\", 99.5)])\n\n# 1) SQL injection\ndef find_bad(owner):   # VULNERABLE: user text glued into the SQL\n    return db.execute(f\"SELECT id FROM orders WHERE owner = '{owner}'\").fetchall()\n\ndef find_good(owner):  # FIXED: ? parameter is sent as data, not SQL\n    return db.execute(\"SELECT id FROM orders WHERE owner = ?\", (owner,)).fetchall()\n\nattack = \"x' OR '1'='1\"\nprint(\"sql bad :\", find_bad(attack))    # sql bad : [(1,), (2,)]\nprint(\"sql good:\", find_good(attack))   # sql good: []\n\n# 2) IDOR on GET /orders/{id}\ndef get_bad(user, order_id):   # VULNERABLE: never checks the owner\n    return db.execute(\"SELECT * FROM orders WHERE id = ?\", (order_id,)).fetchone()\n\ndef get_good(user, order_id):  # FIXED: the row must belong to the caller\n    row = db.execute(\"SELECT * FROM orders WHERE id = ? AND owner = ?\",\n                     (order_id, user)).fetchone()\n    return row or \"404\"\n\nprint(\"idor bad :\", get_bad(\"alice\", 2))   # idor bad : (2, 'bob', 99.5)\nprint(\"idor good:\", get_good(\"alice\", 2))  # idor good: 404\n\n# 3) XSS: escape user text before putting it in HTML\nname = '<script>alert(1)</script>'\nprint(\"xss good:\", f\"<p>Hi {html.escape(name)}</p>\")\n# xss good: <p>Hi &lt;script&gt;alert(1)&lt;/script&gt;</p>\n\n# 4) SSRF: only https, only allowlisted hosts, never raw private IPs\nALLOWED = {\"docs.example.com\"}\n\ndef safe_url(url):\n    p = urlparse(url)\n    if p.scheme != \"https\" or not p.hostname:\n        return False\n    try:\n        ip = ipaddress.ip_address(p.hostname)\n        if ip.is_private or ip.is_link_local or ip.is_loopback:\n            return False\n    except ValueError:\n        pass  # a host name, not an IP; the allowlist decides\n    return p.hostname in ALLOWED\n\nfor u in [\"https://docs.example.com/a\",\n          \"http://169.254.169.254/latest/meta-data/\",\n          \"https://10.0.0.5/admin\"]:\n    print(safe_url(u), u)\n# True https://docs.example.com/a\n# False http://169.254.169.254/latest/meta-data/\n# False https://10.0.0.5/admin",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Risk",
+      "What it looks like",
+      "Fix"
+     ],
+     "rows": [
+      [
+       "Broken access control / IDOR",
+       "GET /orders/2 works for any user",
+       "Check ownership on the server, every request"
+      ],
+      [
+       "Injection",
+       "f\"... WHERE name = '{x}'\"",
+       "Parameterized queries, no shell=True"
+      ],
+      [
+       "SSRF",
+       "Tool fetches any URL, even 169.254.169.254",
+       "Host allowlist, block private IPs"
+      ],
+      [
+       "XSS",
+       "User or model text rendered as HTML",
+       "Escape output, avoid innerHTML"
+      ],
+      [
+       "Misconfiguration",
+       "Debug mode, default passwords",
+       "Hardened config, reviewed per env"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "A quick threat model and passing a customer pen test",
+    "body": "A threat model is a short, structured look at how a system could be attacked, done before the customer's security team asks. For a typical FDE deployment it takes 30 to 60 minutes.\n\nFirst draw the data flows: user, browser, your API, the LLM provider, the customer's database, and any tools the model can call. Mark each trust boundary, the places where data crosses from one owner or network to another. Then walk each boundary with STRIDE, a mnemonic from Microsoft: Spoofing, Tampering, Repudiation, Information disclosure, Denial of service and Elevation of privilege. For each letter ask \"could this happen here, and what stops it?\" Write the answers in a table and fix the gaps you can.\n\nA customer pen test (penetration test) is an outside tester trying to break in. The common findings are rarely exotic: missing security headers, CORS set to allow any origin, stack traces in error responses, an admin or docs endpoint open to the internet, and old dependencies with known CVEs. Run the checklist below the week before, so the report lists low findings instead of highs. When findings arrive, reply with a fix date per item and retest.",
+    "example": "Before the pen test for Quillmoor Insurance (made up), the FDE runs STRIDE on the claims assistant. Information disclosure flags that FastAPI's /docs page is public and that 500 errors print stack traces. Elevation of privilege flags that the agent's SQL tool uses an admin account. She moves /docs behind login, returns a generic error with a request id, and gives the tool a read-only role. The pen test report comes back with two low findings, both about headers.",
+    "code": "",
+    "lang": "",
+    "table": {
+     "headers": [
+      "STRIDE letter",
+      "Question at each boundary",
+      "Typical control"
+     ],
+     "rows": [
+      [
+       "Spoofing",
+       "Can someone pretend to be a user or service?",
+       "SSO, signed tokens, mTLS"
+      ],
+      [
+       "Tampering",
+       "Can data be changed in transit or at rest?",
+       "TLS, checksums, write permissions"
+      ],
+      [
+       "Repudiation",
+       "Can someone deny doing an action?",
+       "Audit logs with user and time"
+      ],
+      [
+       "Information disclosure",
+       "Can data leak to the wrong person?",
+       "Authorization checks, redaction"
+      ],
+      [
+       "Denial of service",
+       "Can someone exhaust it or run up cost?",
+       "Rate limits, size limits, budgets"
+      ],
+      [
+       "Elevation of privilege",
+       "Can a user or agent gain more power?",
+       "Least privilege, read-only tools"
+      ]
+     ]
+    },
+    "checklist": [
+     "Every endpoint checks authorization, not just login",
+     "Security headers set: HSTS, Content-Security-Policy, X-Content-Type-Options",
+     "CORS allows only the customer's origins",
+     "Errors return a generic message and a request id, no stack traces",
+     "Admin, /docs and health-detail endpoints are not public",
+     "Dependencies scanned and high CVEs patched",
+     "Secrets in a secrets manager, none in the repo or image",
+     "Rate limits and request size limits on public routes",
+     "LLM tools use least-privilege accounts and URL allowlists"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "OWASP Top 10",
+    "A widely used list of the ten most common web application security risks, published by the OWASP foundation."
+   ],
+   [
+    "IDOR",
+    "Insecure direct object reference: an API returns a record by id without checking that the caller may see it."
+   ],
+   [
+    "SSRF",
+    "Server-side request forgery: tricking a server into fetching a URL the attacker chooses, often an internal address."
+   ],
+   [
+    "XSS",
+    "Cross-site scripting: attacker text runs as script in another user's browser because it was inserted as HTML."
+   ],
+   [
+    "STRIDE",
+    "A threat-modeling mnemonic: Spoofing, Tampering, Repudiation, Information disclosure, Denial of service, Elevation of privilege."
+   ]
+  ]
+ },
+ "llmapi": {
+  "add_subtopics": [
+   {
+    "title": "Choosing a model: capability, latency, cost, context and data terms",
+    "body": "\"Which model should we use?\" is usually the first question. Public leaderboards are a weak answer, because they test tasks that are not the customer's. Choose with the criteria in the table, then prove it with a small bake-off.\n\nStart with hard constraints, which rule models out: data terms (is the model available under the customer's contract, cloud and region, with the retention they require?), modalities (does it read images or PDFs?), and context length (does the largest real input fit?). Then trade off the soft criteria: quality on the task, latency, and cost per task.\n\nA bake-off takes a day. Collect 50 to 200 real inputs with known good answers or a grading rubric (see the evals lesson). Run every candidate on the same prompt, and log accuracy, median and p95 latency, and tokens. Multiply tokens by current prices to get cost per task, not cost per token, since models use different numbers of tokens for the same job. Often a smaller model is good enough for routing or extraction and a larger one earns its price only on the hard step; the llmcost lesson covers routing between them.\n\nRe-run the bake-off when a new model version ships, since the answer changes over time.",
+    "example": "Harrowvale Home (made up) wants a returns assistant that answers in under 2 seconds. The FDE runs two candidates on 120 real questions. The larger model scores 96 percent at a median of 2.1 seconds; the smaller scores 91 percent at 0.7 seconds and one fifth of the cost. Most misses by the smaller model are multi-item returns, so she sends those to the larger model and the rest to the smaller one, meeting the latency target with 95 percent accuracy.",
+    "code": "import statistics\n\n# Real customer questions with known answers (use 50 to 200; 4 shown)\nevals = [\n    {\"q\": \"Refund window for opened items?\", \"gold\": \"30 days\"},\n    {\"q\": \"Do you ship to Iceland?\", \"gold\": \"no\"},\n    {\"q\": \"Warranty on the X2 kettle?\", \"gold\": \"2 years\"},\n    {\"q\": \"Can I change the delivery address?\", \"gold\": \"yes\"},\n]\n\n# Stand-in results. In real use, call each candidate model on every\n# question and record its answer, latency and token counts.\nruns = {\n    \"model_a\": [(\"30 days\", 1.9, 900), (\"no\", 2.1, 850),\n                (\"2 years\", 2.4, 950), (\"yes\", 2.0, 880)],\n    \"model_b\": [(\"30 days\", 0.7, 820), (\"yes\", 0.6, 800),\n                (\"2 years\", 0.8, 860), (\"yes\", 0.7, 830)],\n}\nprice_per_1k_tokens = {\"model_a\": 0.010, \"model_b\": 0.002}  # EXAMPLE prices\n\nfor name, rows in runs.items():\n    correct = sum(ans == e[\"gold\"] for (ans, _, _), e in zip(rows, evals))\n    p50 = statistics.median(lat for _, lat, _ in rows)\n    cost = sum(tok for _, _, tok in rows) / 1000 * price_per_1k_tokens[name]\n    print(f\"{name}: accuracy {correct}/{len(evals)}, \"\n          f\"median latency {p50:.2f}s, cost ${cost:.4f}\")\n# model_a: accuracy 4/4, median latency 2.05s, cost $0.0358\n# model_b: accuracy 3/4, median latency 0.70s, cost $0.0066",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Criterion",
+      "Question to ask",
+      "How to check"
+     ],
+     "rows": [
+      [
+       "Data terms",
+       "Allowed under the customer's contract, cloud and region?",
+       "Contract, DPA, cloud catalog"
+      ],
+      [
+       "Context length",
+       "Does the largest real input fit with room to spare?",
+       "Count tokens on real samples"
+      ],
+      [
+       "Modalities",
+       "Needs images, PDFs, audio or tool use?",
+       "Provider docs, a quick test"
+      ],
+      [
+       "Quality",
+       "How often is it right on this task?",
+       "Bake-off on the customer's evals"
+      ],
+      [
+       "Latency",
+       "Time to first token and total time?",
+       "Median and p95 in the bake-off"
+      ],
+      [
+       "Cost",
+       "Cost per completed task at expected volume?",
+       "Tokens times current price"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "When reasoning (extended thinking) models are worth it",
+    "body": "Some models can reason step by step before they answer. Providers call this extended thinking, reasoning or thinking mode. The model writes intermediate reasoning tokens (often hidden or summarized for you) and then the final answer. Those tokens are usually billed as output, and they add waiting time.\n\nReasoning tends to pay off on tasks with several dependent steps: multi-step math, tricky code changes, planning an agent's next tool calls, or reconciling conflicting documents. It rarely helps on short lookups, classification, extraction into a fixed format, or chat where speed matters most; there it mainly adds latency and cost.\n\nMost APIs give you a control for how much the model thinks, such as an effort level or a token budget. Parameter names and defaults differ by provider and change between model generations, and on some newer models thinking is always on and only the effort can be lowered, so check the current docs instead of copying old code. Treat the setting like any other parameter: run your eval at two or three levels and pick the lowest one where quality stops improving. Set timeouts and use streaming, because a single hard request can take much longer than usual.",
+    "example": "A tax-document agent for Pellbrook Accounting (made up) must reconcile a form against three receipts. With reasoning off, it gets 70 percent of the eval cases right; with a medium effort setting, 90 percent; with maximum effort, 91 percent at twice the time. The FDE picks medium for that route. The same app's \"which document type is this?\" classifier stays at the lowest setting, where quality is identical and responses are fast.",
+    "code": "",
+    "lang": "",
+    "table": {
+     "headers": [
+      "Task type",
+      "Reasoning usually",
+      "Why"
+     ],
+     "rows": [
+      [
+       "Multi-step math or logic",
+       "Worth it",
+       "Steps depend on earlier steps"
+      ],
+      [
+       "Complex code changes, agents planning",
+       "Worth it",
+       "Planning cuts wasted tool calls"
+      ],
+      [
+       "Classification, extraction",
+       "Rarely",
+       "Answer is short and pattern-like"
+      ],
+      [
+       "Real-time chat, autocomplete",
+       "Rarely",
+       "Latency matters most"
+      ]
+     ]
+    },
+    "checklist": [
+     "Measure on your own evals at two or three effort levels",
+     "Compare cost per completed task, not per request",
+     "Set timeouts and stream long responses",
+     "Check current docs for the thinking parameters of your exact model",
+     "Tune the setting per route, not once for the whole app"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Bake-off",
+    "A side-by-side test of candidate models on the same real inputs, scored for quality, latency and cost."
+   ],
+   [
+    "Time to first token (TTFT)",
+    "How long until the first piece of the answer arrives; what users feel as responsiveness."
+   ],
+   [
+    "Extended thinking",
+    "A mode where the model produces reasoning tokens before its final answer, trading time and tokens for accuracy on hard tasks."
+   ],
+   [
+    "Effort level",
+    "A setting on some models that controls how much reasoning and output the model spends on a request."
+   ]
+  ]
+ },
+ "exec": {
+  "add_subtopics": [
+   {
+    "title": "Running customer meetings: agenda, notes, recap email, saying no",
+    "body": "Most FDE weeks have several customer meetings, and the ones that go well follow the same pattern.\n\nBefore: send an agenda a day ahead with the goal, the topics with time boxes, and the decisions you need. A meeting without a stated decision tends to become a status tour. Invite the people who can make those decisions.\n\nDuring: one person runs the agenda and one takes notes (if you are alone, say so and pause to write). Capture three things only: decisions, action items with an owner and a date, and open questions. Read the action items back in the last five minutes.\n\nAfter: send a recap email the same day, while memories agree. Keep it short and put decisions and owners at the top. The recap becomes the record when someone later asks \"when did we agree to that?\"\n\nSaying no is part of the job. Customers ask for new features in the middle of a pilot. Do not say yes on the spot and do not flatly refuse. Restate the goal behind the request, name the tradeoff, and offer an option: later, smaller, or in exchange for something else (see negotiating scope with trades above).",
+    "example": "In a weekly pilot call with Oakhollow Clinics (made up), the operations lead asks to add Spanish support \"this week\". The FDE says: \"I understand patients need Spanish. If we add it now, the go-live on the 14th slips about a week. We could keep the 14th and add Spanish in phase two, or move the date. Which matters more?\" The lead picks phase two. That evening's recap lists it as a decision with an owner and a date.",
+    "code": "AGENDA  (send a day ahead)\nSubject: Agenda: Oakhollow pilot weekly, Tue 10:00\nGoal: agree go-live scope for the 14th\n1. Eval results since last week        (10 min)\n2. Open issue: SSO group mapping       (10 min)  decision needed\n3. Go-live checklist and owners        (15 min)\n4. Anything else                       (5 min)\n\nRECAP  (send the same day)\nSubject: Recap: Oakhollow pilot weekly, Tue\nDecisions\n- Go-live stays on the 14th with English only.\n- Spanish moves to phase two, target the 28th.\nAction items\n- Priya (Oakhollow): map SSO groups to roles, by Thu\n- Sam (FDE): rerun evals on new triage prompts, by Fri\n- Dana (Oakhollow): confirm support rota for launch week, by Mon\nOpen questions\n- Do after-hours calls need the assistant? (Dana to check)\nNext meeting: Tue 10:00. Reply by Thu if anything here is wrong.",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Instead of",
+      "Say",
+      "Why it works"
+     ],
+     "rows": [
+      [
+       "\"No, we can't do that.\"",
+       "\"Help me understand the goal behind it.\"",
+       "Often a smaller fix meets the goal"
+      ],
+      [
+       "\"Sure, we'll add it.\"",
+       "\"Let me check the impact and confirm by Thursday.\"",
+       "Buys time, no silent scope creep"
+      ],
+      [
+       "\"That's out of scope.\"",
+       "\"We can do it in phase two, or swap it for X now.\"",
+       "Offers a choice, not a wall"
+      ],
+      [
+       "\"It's impossible.\"",
+       "\"Doing it now moves go-live by about a week.\"",
+       "Names the real tradeoff"
+      ]
+     ]
+    },
+    "checklist": [
+     "Agenda sent a day ahead, with the decisions needed",
+     "Decision makers invited",
+     "Notes capture decisions, owners with dates, open questions",
+     "Action items read back before the end",
+     "Recap email sent the same day",
+     "Any 'no' comes with an option and the tradeoff"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Agenda",
+    "A short list of a meeting's goal, topics with time boxes and the decisions needed, sent in advance."
+   ],
+   [
+    "Action item",
+    "A task agreed in a meeting, with one named owner and a due date."
+   ],
+   [
+    "Recap email",
+    "A same-day summary of decisions, action items and open questions that becomes the meeting's record."
+   ]
+  ]
+ },
+ "pandas": {
+  "add_subtopics": [
+   {
+    "title": "Quick charts to show findings",
+    "body": "Before any dashboard exists, a customer often needs one picture that makes a finding obvious. pandas can draw it directly: every Series and DataFrame has a .plot method built on matplotlib (install it once with pip install matplotlib).\n\nThree charts answer most questions. A bar chart compares categories: which team, region or product has the most. Sort the bars, and use horizontal bars when labels are long. A line chart shows change over time: put dates on the index, and each column becomes one line. A histogram shows how values are spread: are most tickets closed in a few hours with a long tail, or evenly spread?\n\nEach .plot call returns an Axes object, the chart area, which you use to set labels. Always give a title and axis labels with units. Save with plt.savefig(\"name.png\", dpi=120), then plt.close() so the next chart starts fresh. In a script or on a server with no screen, call matplotlib.use(\"Agg\") before importing pyplot so it draws straight to files. In a Jupyter notebook the chart appears under the cell automatically.\n\nKeep it honest: bar charts should start at zero, and one clear chart beats four busy ones. Paste the PNG into the recap email or slide with a one-line takeaway.",
+    "example": "Tamsley Freightworks (made up) believes Returns gets the most tickets. The FDE groups eight weeks of ticket data by team and draws a sorted bar chart: Billing has 465, Shipping 442 and Returns 316. A line chart shows that Billing jumped after a price change, and a histogram shows most tickets close within 20 hours. She pastes the bar chart into the recap with one line: \"Billing, not Returns, is the busiest queue.\"",
+    "code": "import matplotlib\nmatplotlib.use(\"Agg\")          # draw to files, no window needed\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(7)\ntickets = pd.DataFrame({\n    \"week\": pd.date_range(\"2026-01-05\", periods=8, freq=\"W-MON\").repeat(3),\n    \"team\": [\"Billing\", \"Returns\", \"Shipping\"] * 8,\n    \"count\": rng.integers(20, 80, size=24),\n})\ntickets[\"hours_to_close\"] = rng.gamma(2.0, 6.0, size=24).round(1)\n\n# 1) Bar: compare categories\nby_team = tickets.groupby(\"team\")[\"count\"].sum().sort_values()\nax = by_team.plot.barh(title=\"Tickets by team, 8 weeks\")\nax.set_xlabel(\"tickets\")\nplt.tight_layout(); plt.savefig(\"bar.png\", dpi=120); plt.close()\n\n# 2) Line: change over time, one line per team\nwide = tickets.pivot_table(index=\"week\", columns=\"team\", values=\"count\")\nax = wide.plot(title=\"Weekly tickets\", marker=\"o\")\nax.set_ylabel(\"tickets\")\nplt.tight_layout(); plt.savefig(\"line.png\", dpi=120); plt.close()\n\n# 3) Histogram: how values are spread\nax = tickets[\"hours_to_close\"].plot.hist(bins=8, title=\"Hours to close\")\nax.set_xlabel(\"hours\")\nplt.tight_layout(); plt.savefig(\"hist.png\", dpi=120); plt.close()\n\nprint(by_team.to_string())\nprint(wide.shape)\n# team\n# Returns     316\n# Shipping    442\n# Billing     465\n# (8, 3)",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Question",
+      "Chart",
+      "pandas call"
+     ],
+     "rows": [
+      [
+       "Which category is biggest?",
+       "Bar (sorted)",
+       "s.sort_values().plot.barh()"
+      ],
+      [
+       "How did it change over time?",
+       "Line",
+       "df.plot() with dates as index"
+      ],
+      [
+       "How are values spread?",
+       "Histogram",
+       "s.plot.hist(bins=20)"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "matplotlib",
+    "Python's standard plotting library; pandas .plot uses it underneath."
+   ],
+   [
+    "Axes",
+    "The matplotlib object for one chart area, returned by .plot, used to set titles and labels."
+   ],
+   [
+    "Histogram",
+    "A chart that counts how many values fall into each range (bin), showing the shape of a distribution."
+   ],
+   [
+    "Agg backend",
+    "A matplotlib setting that draws charts to image files without needing a screen, for scripts and servers."
+   ]
+  ]
+ },
+ "frontend": {
+  "add_subtopics": [
+   {
+    "title": "TypeScript on the server: a Node API route that calls an LLM",
+    "body": "Node.js runs JavaScript outside the browser, so the same language can power your API. Many customer stacks do this, often with Express or Next.js. The key reason for a server route is the API key: it must never reach the browser, so the page calls your route and your route calls the LLM.\n\nThe basics: npm installs packages listed in package.json (npm install express @anthropic-ai/sdk). Development-only tools go in with -D, such as typescript, tsx (runs .ts files directly) and @types packages, which give TypeScript the types for libraries written in JavaScript. A tsconfig.json turns on strict checking; run npx tsc --noEmit to type-check without building.\n\nThe route below validates input, calls the model named by the MODEL environment variable, and returns only the text and usage. It logs error details on the server and sends a generic message to the browser, which also helps with the pen test checklist in the security lesson. In Next.js the same logic lives in app/api/ask/route.ts as an exported POST function that returns a Response.\n\nRequires Node and an API key. Set ANTHROPIC_API_KEY and MODEL, then run npx tsx server.ts.",
+    "example": "Larkwhistle Freight (made up) runs a Next.js site, so the FDE builds the policy-answer demo in TypeScript instead of adding a Python service. The browser posts {question} to /api/ask; the route checks length, calls the model and returns {answer}. A teammate tries to read msg.content[0].text directly and tsc refuses, because a content block might not be text. The type check caught a bug that would otherwise have appeared only when the model used a tool.",
+    "code": "// server.ts  (requires Node 18+ and an API key)\n// npm install express @anthropic-ai/sdk\n// npm install -D typescript tsx @types/express @types/node\nimport express, { Request, Response } from \"express\";\nimport Anthropic from \"@anthropic-ai/sdk\";\n\nconst MODEL = process.env.MODEL;           // copy an id from the provider's models page\nif (!MODEL) throw new Error(\"Set the MODEL environment variable\");\n\nconst client = new Anthropic();            // reads ANTHROPIC_API_KEY from the environment\nconst app = express();\napp.use(express.json({ limit: \"100kb\" }));\n\ninterface AskBody {\n  question: string;\n}\n\napp.post(\"/api/ask\", async (req: Request<{}, {}, AskBody>, res: Response) => {\n  const question = req.body?.question;\n  if (typeof question !== \"string\" || question.length === 0 || question.length > 2000) {\n    return res.status(400).json({ error: \"question must be 1 to 2000 characters\" });\n  }\n  try {\n    const msg = await client.messages.create({\n      model: MODEL,\n      max_tokens: 1024,\n      system: \"You answer questions about Larkwhistle Freight's shipping policy. Be brief.\",\n      messages: [{ role: \"user\", content: question }],\n    });\n    const answer = msg.content\n      .map((block) => (block.type === \"text\" ? block.text : \"\"))\n      .join(\"\");\n    return res.json({ answer, usage: msg.usage });\n  } catch (err) {\n    if (err instanceof Anthropic.APIError) {\n      console.error(\"LLM error\", err.status, err.message);   // log details on the server\n      return res.status(502).json({ error: \"upstream model error\" });  // generic to the client\n    }\n    throw err;\n  }\n});\n\napp.listen(3000, () => console.log(\"listening on http://localhost:3000\"));",
+    "lang": "TypeScript",
+    "checklist": [
+     "API key only on the server, read from the environment",
+     "Model id from a MODEL environment variable, not hard-coded",
+     "Validate request body type and size before calling the model",
+     "Log error details on the server, return a generic error to the client",
+     "npx tsc --noEmit passes with strict mode on"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Node.js",
+    "A runtime that executes JavaScript outside the browser, used to build servers and tools."
+   ],
+   [
+    "npm",
+    "Node's package manager; installs the libraries listed in package.json."
+   ],
+   [
+    "Express",
+    "A small, widely used Node library for defining HTTP routes and middleware."
+   ],
+   [
+    "API route",
+    "A server endpoint, such as POST /api/ask, that the browser calls so secrets stay on the server."
+   ]
+  ]
+ }
+}

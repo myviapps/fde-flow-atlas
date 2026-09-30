@@ -1,0 +1,485 @@
+[
+ {
+  "id": "discovery",
+  "mod": 4,
+  "sec": "4.2",
+  "name": "Customer discovery",
+  "title": "Customer discovery interviews",
+  "thesis": "Before you build anything, you find out what actually hurts, for whom, and why, in the user's own words. Good discovery is a prepared conversation with open questions, repeated whys and direct observation, ending in a one-paragraph problem statement everyone agrees with.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Prepare a guide with goals and open questions, then let the conversation wander where the pain is.",
+   "Open questions ask about past behavior (tell me about the last time...). Leading questions push the person toward your answer.",
+   "The five whys: keep asking why until you reach a cause you can act on, usually three to five levels down.",
+   "Shadowing (watching someone do the work) shows workarounds people forget to mention.",
+   "Write down pain in the user's exact words, then turn the findings into a short problem statement the sponsor signs off on."
+  ],
+  "traps": [
+   "Pitching your solution during the interview, which turns answers into polite agreement.",
+   "Only talking to the executive sponsor and never to the people who do the daily work.",
+   "Asking about hypothetical futures (would you use...?) instead of what people did last week."
+  ],
+  "qa": [
+   [
+    "A VP says 'we need an AI chatbot for support'. How do you start?",
+    "Treat it as a proposed solution. I would ask what outcome they want, look at recent ticket data, and interview and shadow two or three agents. Then I write a problem statement with a baseline metric, for example handle time, and check it with the VP before choosing any design."
+   ],
+   [
+    "How do you avoid leading questions?",
+    "Ask about specific past events and let the person describe them: 'Walk me through the last claim you processed.' Avoid questions that contain the answer, such as 'Wouldn't it help if this were automated?'. Then stay quiet and follow up on what they bring up."
+   ],
+   [
+    "How do you know discovery is done?",
+    "When I can write a problem statement naming the user, the pain, its cost or frequency and a success metric, and the sponsor and the users both agree it is accurate. New interviews stop producing new themes."
+   ]
+  ]
+ },
+ {
+  "id": "docs",
+  "mod": 4,
+  "sec": "4.1",
+  "name": "SOWs, PRDs, design docs",
+  "title": "SOWs, PRDs and design docs",
+  "thesis": "Three documents answer three questions: the SOW says what we promised to deliver and for how much, the PRD says what problem we solve and how we know it worked, and the design doc says how we will build it. A decision log keeps track of why things changed.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "SOW (statement of work): a contract attachment with scope, deliverables, timeline, acceptance criteria and price. Read by legal, procurement and the sponsor.",
+   "PRD (product requirements document): the problem, users, goals, requirements and success metrics. Read by product, the customer and the team.",
+   "Design doc: the technical plan, with options considered, architecture, risks and rollout. Read by engineers and security reviewers.",
+   "A decision log records each significant choice with date, options, reason and owner, so nobody re-argues settled points.",
+   "Short and specific beats long and vague. A one-page PRD that people read is more useful than a long one nobody opens."
+  ],
+  "traps": [
+   "A SOW with vague deliverables ('an AI solution') and no acceptance criteria, which invites scope creep and payment disputes.",
+   "Writing the design doc after the code, so it never influences the decision.",
+   "Changing scope in a hallway conversation without updating the SOW or logging the decision."
+  ],
+  "qa": [
+   [
+    "What goes into acceptance criteria in a SOW?",
+    "Testable conditions the customer can check, for example 'the pipeline loads the daily claims file by 6am on 20 consecutive business days' or 'the assistant answers the agreed 100-question test set with at least the agreed accuracy'. Each deliverable gets one."
+   ],
+   [
+    "The customer asks for a new feature mid-project. What do you do?",
+    "Thank them, write it down, estimate its impact on time and cost, and decide with the sponsor: swap it for something in scope, raise a change order, or park it for a later phase. The decision goes into the decision log."
+   ],
+   [
+    "Why write a design doc for a small project?",
+    "It forces me to compare options and name risks before I commit, and it gives security and the customer's engineers something to review early. For a small project it can be one or two pages."
+   ]
+  ]
+ },
+ {
+  "id": "demo",
+  "mod": 4,
+  "sec": "4.1",
+  "name": "Demos and storytelling",
+  "title": "Demos and storytelling",
+  "thesis": "A good demo tells the story of one real user's day: how the task works today, the moment it gets easier, and what that is worth. Plan for failure so a broken live step becomes a calm switch to a backup.",
+  "format": "flowchart",
+  "note": "Read left to right on the top row, then right to left on the bottom row. The live step splits: if it works you go straight to the aha moment, and if it fails you go through the dashed fallback and rejoin the story.",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "audience",
+    90,
+    70,
+    "Know audience",
+    "execs or end users"
+   ],
+   [
+    "before",
+    265,
+    70,
+    "Before story",
+    "today's pain"
+   ],
+   [
+    "workflow",
+    440,
+    70,
+    "User workflow",
+    "their real task"
+   ],
+   [
+    "live",
+    615,
+    70,
+    "Live step",
+    "the key action"
+   ],
+   [
+    "fallback",
+    615,
+    220,
+    "If it breaks",
+    "recording, cached",
+    1
+   ],
+   [
+    "aha",
+    440,
+    220,
+    "Aha moment",
+    "task gets easy"
+   ],
+   [
+    "after",
+    265,
+    220,
+    "After story",
+    "metric that moved"
+   ],
+   [
+    "ask",
+    90,
+    220,
+    "Close with ask",
+    "next step, owner"
+   ]
+  ],
+  "edges": [
+   [
+    "audience",
+    "before"
+   ],
+   [
+    "before",
+    "workflow"
+   ],
+   [
+    "workflow",
+    "live"
+   ],
+   [
+    "live",
+    "aha",
+    0,
+    "works"
+   ],
+   [
+    "live",
+    "fallback",
+    0,
+    "fails"
+   ],
+   [
+    "fallback",
+    "aha",
+    0,
+    "resume"
+   ],
+   [
+    "aha",
+    "after"
+   ],
+   [
+    "after",
+    "ask"
+   ]
+  ],
+  "ideas": [
+   "Structure the demo around a user's workflow, in their order and with their data where allowed, instead of touring features.",
+   "Before and after: show the painful current way first, so the improvement is obvious.",
+   "Executives want the outcome, cost and risk in a few minutes. End users want to see their exact task and edge cases.",
+   "Always have a fallback: a recorded video, cached responses or screenshots of the same flow.",
+   "End with a specific ask: a pilot, a data access request, a date for the next meeting."
+  ],
+  "traps": [
+   "Feature tours: clicking through every screen with no story or user in mind.",
+   "Using live, unrehearsed data or an unstable network with no backup.",
+   "Running over time, so the closing ask gets cut."
+  ],
+  "qa": [
+   [
+    "Your live LLM call fails in front of the CFO. What do you do?",
+    "Say plainly what happened in one sentence, switch to the recording of the same step, and keep the story going. Afterwards I find the cause and send a short note. Staying calm and on-message matters more than the glitch."
+   ],
+   [
+    "How would you change a demo for executives versus end users?",
+    "For executives I lead with the business result and one short workflow, then cost, risk and the ask, in about ten minutes. For end users I spend most of the time in their daily task, including edge cases, and ask for feedback on the details."
+   ],
+   [
+    "What makes a demo memorable?",
+    "One clear before-and-after on a task the audience recognizes, with a number attached, for example 'this reconciliation took 40 minutes and now takes 5'. People remember the story and the number."
+   ]
+  ]
+ },
+ {
+  "id": "builddrill",
+  "mod": 7,
+  "sec": "7.3",
+  "name": "Timed build drill",
+  "title": "The 60 to 90 minute build drill",
+  "thesis": "Timed builds score judgment as much as code: did you clarify the problem, ship a working core path with tests, cut sensibly and explain your trade-offs? A time-boxed plan keeps you out of rabbit holes.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "A minimal FastAPI service with tests",
+  "code": "# app/main.py  (minutes 15-25: scaffold)\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel, Field\n\napp = FastAPI(title=\"Ticket triage\")\n\nclass TicketIn(BaseModel):\n    text: str = Field(min_length=1, max_length=5000)\n\nclass TicketOut(BaseModel):\n    category: str\n    confidence: float\n\n@app.get(\"/health\")\ndef health():\n    return {\"status\": \"ok\"}\n\n@app.post(\"/triage\", response_model=TicketOut)\ndef triage(t: TicketIn) -> TicketOut:\n    # core path first: a simple rule, swap in an LLM later\n    if \"refund\" in t.text.lower():\n        return TicketOut(category=\"billing\", confidence=0.9)\n    return TicketOut(category=\"general\", confidence=0.5)\n\n# tests/test_main.py  (minutes 55-70)\nfrom fastapi.testclient import TestClient\nfrom app.main import app\nclient = TestClient(app)\n\ndef test_refund_is_billing():\n    r = client.post(\"/triage\", json={\"text\": \"I want a refund\"})\n    assert r.status_code == 200 and r.json()[\"category\"] == \"billing\"\n\ndef test_empty_text_rejected():\n    assert client.post(\"/triage\", json={\"text\": \"\"}).status_code == 422",
+  "nodes": [
+   [
+    "read",
+    90,
+    70,
+    "Read prompt",
+    "min 0-5"
+   ],
+   [
+    "clarify",
+    265,
+    70,
+    "Clarify",
+    "min 5-10"
+   ],
+   [
+    "plan",
+    440,
+    70,
+    "Plan and cut",
+    "min 10-15"
+   ],
+   [
+    "scaffold",
+    615,
+    70,
+    "Scaffold",
+    "min 15-25"
+   ],
+   [
+    "core",
+    615,
+    220,
+    "Core path",
+    "min 25-55"
+   ],
+   [
+    "tests",
+    440,
+    220,
+    "Tests",
+    "min 55-70"
+   ],
+   [
+    "readme",
+    265,
+    220,
+    "README",
+    "min 70-80"
+   ],
+   [
+    "present",
+    90,
+    220,
+    "Present",
+    "min 80-90"
+   ]
+  ],
+  "edges": [
+   [
+    "read",
+    "clarify"
+   ],
+   [
+    "clarify",
+    "plan"
+   ],
+   [
+    "plan",
+    "scaffold"
+   ],
+   [
+    "scaffold",
+    "core"
+   ],
+   [
+    "core",
+    "tests"
+   ],
+   [
+    "tests",
+    "readme"
+   ],
+   [
+    "readme",
+    "present"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Read the whole prompt",
+    "n": [
+     "read"
+    ],
+    "d": "Read everything twice and underline the inputs, outputs and any stated constraints. Note what is ambiguous before touching the keyboard."
+   },
+   {
+    "t": "Ask clarifying questions",
+    "n": [
+     "clarify"
+    ],
+    "e": [
+     "read>clarify"
+    ],
+    "d": "Ask a few focused questions: who uses this, what input looks like, what matters most. If nobody can answer, write your assumption down and move on."
+   },
+   {
+    "t": "Plan and decide what to cut",
+    "n": [
+     "plan"
+    ],
+    "e": [
+     "clarify>plan"
+    ],
+    "d": "Write a short list of must-haves and nice-to-haves. The must-have is one working end-to-end path. Everything else is optional."
+   },
+   {
+    "t": "Scaffold fast",
+    "n": [
+     "scaffold"
+    ],
+    "e": [
+     "plan>scaffold"
+    ],
+    "d": "Create the app, one input model with validation and a health endpoint. Use a layout you have practiced so this takes minutes.",
+    "l": [
+     1,
+     2,
+     4,
+     6,
+     7,
+     13,
+     14,
+     15
+    ]
+   },
+   {
+    "t": "Build the core path",
+    "n": [
+     "core"
+    ],
+    "e": [
+     "scaffold>core"
+    ],
+    "d": "Make the main endpoint work end to end with the simplest logic that is correct. A rule-based stand-in is fine if it can be swapped for an LLM later.",
+    "l": [
+     17,
+     18,
+     19,
+     20,
+     21,
+     22
+    ]
+   },
+   {
+    "t": "Add a few meaningful tests",
+    "n": [
+     "tests"
+    ],
+    "e": [
+     "core>tests"
+    ],
+    "d": "Test the happy path and one failure case. Two good tests that run beat ten that do not.",
+    "l": [
+     25,
+     26,
+     27,
+     29,
+     30,
+     31,
+     33,
+     34
+    ]
+   },
+   {
+    "t": "Write the README",
+    "n": [
+     "readme"
+    ],
+    "e": [
+     "tests>readme"
+    ],
+    "d": "How to run it, what you assumed, what you cut and what you would do next. Reviewers often read this first."
+   },
+   {
+    "t": "Present the trade-offs",
+    "n": [
+     "present"
+    ],
+    "e": [
+     "readme>present"
+    ],
+    "d": "Demo the working path, run the tests, then explain each shortcut and how you would harden it with more time."
+   }
+  ],
+  "ideas": [
+   "Interviewers usually score problem understanding, working code, code quality, tests and communication, not just completion.",
+   "One working end-to-end path beats several half-built features.",
+   "Timebox each phase and check the clock at every boundary.",
+   "Write assumptions down as you make them. They become your trade-off discussion.",
+   "Practice the scaffold beforehand so setup takes minutes, not half the session."
+  ],
+  "traps": [
+   "Spending 40 minutes on setup, framework choice or a fancy architecture.",
+   "Never running the code until the last five minutes.",
+   "Staying silent in a live build, so the interviewer cannot see your reasoning."
+  ],
+  "qa": [
+   [
+    "You are 45 minutes in and the core feature is not working. What do you do?",
+    "Cut scope to the smallest version that can work, say so out loud, and get it running. Then note what I dropped and why in the README. A small working thing with a clear explanation scores better than an ambitious broken one."
+   ],
+   [
+    "What would you test first?",
+    "The main happy path end to end, then the most likely bad input, for example empty or oversized text returning a 422. Those two catch most breakages."
+   ],
+   [
+    "How do you present trade-offs?",
+    "For each shortcut I name what I did, why it was right for 90 minutes, the risk it carries, and what I would do in production, such as adding auth, persistence, retries or an evaluation set for the model."
+   ]
+  ]
+ },
+ {
+  "id": "career",
+  "mod": 7,
+  "sec": "7.3",
+  "name": "Resume and job search",
+  "title": "Resume, story bank and job search",
+  "thesis": "An FDE application proves three things: you ship technical work, you create measurable impact for users, and you can tell that story clearly. A focused resume, a bank of STAR stories and a targeted search turn your experience into interviews and offers.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Resume bullets follow action, what you built, and the measurable result, with numbers wherever you honestly have them.",
+   "A story bank is 8 to 12 prepared STAR stories (Situation, Task, Action, Result) mapped to the four interview pillars.",
+   "Search under several titles: Forward Deployed Engineer, Solutions Engineer, AI Engineer, Deployment Strategist, Solutions Architect.",
+   "Warm introductions and referrals usually beat cold applications, so networking is part of the plan.",
+   "Negotiate on the whole package (base, equity, bonus, level, start date) and only after you have a written offer."
+  ],
+  "traps": [
+   "Listing duties ('responsible for pipelines') instead of results.",
+   "Inventing or inflating numbers you cannot explain in an interview.",
+   "Applying only to jobs literally titled Forward Deployed Engineer and missing similar roles."
+  ],
+  "qa": [
+   [
+    "Tell me about a time you worked directly with a customer to solve an unclear problem.",
+    "Use a STAR story from your bank: the situation and why it was unclear, your specific task, the actions you took (discovery, prototype, iteration), and the result with a number. Close with what you learned."
+   ],
+   [
+    "Why FDE instead of a pure software role?",
+    "Give a genuine reason tied to your history, for example that you enjoy owning a problem from the customer conversation to production, with one short example from your own projects as proof."
+   ],
+   [
+    "What are your salary expectations?",
+    "Early on, say you want to learn more about the role and level first and ask for the budgeted range. If pushed, give a researched range for that level and location, and say you will evaluate the whole package."
+   ]
+  ]
+ }
+]

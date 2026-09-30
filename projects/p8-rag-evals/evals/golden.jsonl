@@ -1,0 +1,15 @@
+{"id": "q01", "question": "How many PTO days do full-time employees get per year?", "groups": [], "expected_doc": "pto", "fact": "20 days"}
+{"id": "q02", "question": "How many unused PTO days carry over to next year?", "groups": [], "expected_doc": "pto", "fact": "5 unused"}
+{"id": "q03", "question": "How many days per week can I work remotely?", "groups": [], "expected_doc": "remote_work", "fact": "3 days"}
+{"id": "q04", "question": "How much is the home office stipend?", "groups": [], "expected_doc": "remote_work", "fact": "500"}
+{"id": "q05", "question": "Within how many days must I submit an expense report?", "groups": [], "expected_doc": "expenses", "fact": "30 days"}
+{"id": "q06", "question": "When is an itemized receipt required for an expense?", "groups": [], "expected_doc": "expenses", "fact": "25 dollars"}
+{"id": "q07", "question": "What is the hotel limit per night when traveling?", "groups": [], "expected_doc": "travel", "fact": "250"}
+{"id": "q08", "question": "Which flights allow premium economy?", "groups": [], "expected_doc": "travel", "fact": "6 hours"}
+{"id": "q09", "question": "How long must passwords be?", "groups": [], "expected_doc": "security", "fact": "14 characters"}
+{"id": "q10", "question": "How do I report a phishing email?", "groups": [], "expected_doc": "security", "fact": "Report Phishing"}
+{"id": "q11", "question": "How many weeks of parental leave do primary caregivers get?", "groups": [], "expected_doc": "parental_leave", "fact": "16 weeks"}
+{"id": "q12", "question": "What is the salary band for L3 engineers?", "groups": ["hr"], "expected_doc": "salary_bands", "fact": "95,000"}
+{"id": "q13", "question": "How often are performance reviews held?", "groups": ["hr"], "expected_doc": "performance_reviews", "fact": "April and October"}
+{"id": "q14", "question": "Who must approve a purchase over 10,000 dollars?", "groups": ["finance"], "expected_doc": "budget_approval", "fact": "CFO"}
+{"id": "q15", "question": "What is the salary band for L4 engineers?", "groups": [], "expected_doc": null, "fact": null, "forbidden_doc": "salary_bands"}

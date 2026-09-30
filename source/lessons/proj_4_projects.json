@@ -1,0 +1,307 @@
+[
+ {
+  "id": "p9-capstone",
+  "mod": 8,
+  "sec": "8.9",
+  "name": "Capstone: agentic RAG",
+  "title": "Capstone: an agentic RAG service for an insurer's claims-policy assistant",
+  "thesis": "You build Project A as one deployable service: a FastAPI /ask endpoint driven by a LangGraph loop that retrieves only documents the caller may see, rewrites weak queries, refuses when unsupported, and logs cost and quality per request. It is the shape of most real FDE deployments: useful answers, provable safety, and numbers the customer's IT team can monitor.",
+  "format": "project",
+  "project": {
+   "level": "Advanced",
+   "time": "6-8 hours",
+   "skills": [
+    "LangGraph StateGraph",
+    "RAG with ACL filters",
+    "FastAPI",
+    "Offline fake LLM mode",
+    "Grounding guardrail",
+    "JSON metrics and cost",
+    "Golden-set evals",
+    "Docker compose"
+   ],
+   "concepts": [
+    "projecta",
+    "rag",
+    "embeddings",
+    "multiagent",
+    "tools",
+    "fastapi",
+    "evals",
+    "guardrails",
+    "llmcost",
+    "observability",
+    "security",
+    "deploy",
+    "demo",
+    "case",
+    "finetune",
+    "tdd",
+    "prompting"
+   ],
+   "folder": "fde-atlas/projects/p9-capstone",
+   "tree": "p9-capstone/\n  README.md\n  requirements.txt\n  .env.example\n  Dockerfile\n  docker-compose.yml\n  app/\n    __init__.py\n    corpus.py      # generated docs + ACL-filtered vector search\n    llm.py         # fake and real LLM modes, token + cost counting\n    graph.py       # LangGraph StateGraph: retrieve, grade, rewrite, generate, check\n    main.py        # FastAPI /ask + JSON metrics log\n  data/\n    golden.jsonl   # 10 golden questions\n  eval.py          # golden-set scorecard, CI gate\n  demo.py          # scripted customer demo\n  tests/\n    test_graph.py\n    test_api.py",
+   "setup": [
+    {
+     "title": "Create the folder and a virtual environment",
+     "body": "Everything runs offline by default. A virtual environment keeps these packages separate from the rest of your machine.",
+     "code": "mkdir p9-capstone && cd p9-capstone\npython3 -m venv .venv\nsource .venv/bin/activate",
+     "lang": "bash"
+    },
+    {
+     "title": "Windows PowerShell variant",
+     "body": "Same idea on Windows. If activation is blocked, run Set-ExecutionPolicy -Scope CurrentUser RemoteSigned once.",
+     "code": "mkdir p9-capstone; cd p9-capstone\npy -m venv .venv\n.venv\\Scripts\\Activate.ps1",
+     "lang": "powershell"
+    },
+    {
+     "title": "Install dependencies",
+     "body": "Create requirements.txt with these lines, then install. The anthropic package is only used when LLM_MODE=real.",
+     "code": "fastapi>=0.110\nuvicorn>=0.29\npydantic>=2.6\nlanggraph>=0.2\nanthropic>=0.40\nhttpx>=0.27\npytest>=8.0\n\npip install -r requirements.txt",
+     "lang": "bash"
+    },
+    {
+     "title": "Environment file",
+     "body": "Copy .env.example to .env. Leave LLM_MODE=fake to work offline. For real mode, fill ANTHROPIC_API_KEY and MODEL (a model id from the Anthropic docs), and set the price variables from the current price sheet. Never commit .env.",
+     "code": "# fake = offline rule-based mode (default). real = call the Anthropic API.\nLLM_MODE=fake\n# Only needed when LLM_MODE=real. Never commit a real key.\nANTHROPIC_API_KEY=\n# Model name from the Anthropic docs, for example a current Sonnet or Haiku model id.\nMODEL=\n# Max query rewrites before the graph gives up and refuses.\nMAX_REWRITES=2\n# Prices in USD per million tokens for the cost estimate. Copy from your provider's price sheet.\nPRICE_IN_PER_MTOK=3.0\nPRICE_OUT_PER_MTOK=15.0\n",
+     "lang": "bash"
+    }
+   ],
+   "steps": [
+    {
+     "title": "Generate the document set and a retriever with ACL filters",
+     "body": "The customer's knowledge is eight short synthetic policy snippets, each tagged with who may read it: public, adjuster or fraud. The embed() function uses the hashing trick to turn text into a 256-number vector, which is enough to practise the retrieval flow without downloading a model.\n\nThe key design choice is in search(): the ACL filter runs before ranking. If you ranked first and filtered after, a restricted document could still influence results or leak through a bug. This is exactly the WHERE acl && groups clause you would write in pgvector.",
+     "code": "\"\"\"Synthetic claims-policy documents plus a tiny vector retriever with ACL filters.\n\nThe retriever mirrors what pgvector would do: embed text into a fixed-size vector,\nfilter rows by access groups, then rank by cosine similarity.\n\"\"\"\nimport math\nimport re\nimport zlib\n\nDIM = 256\nSTOPWORDS = set(\n    \"a an the is are was were be to of in on for and or if my i do does can what how \"\n    \"when who which it this that with from by at as up any not have has you your me\".split()\n)\n\nDOCS = [\n    {\"id\": \"POL-AUTO-01\", \"acl\": [\"public\"], \"text\": \"Auto collision claims must be reported within 30 days of the accident. A police report number is required when another vehicle is involved. The deductible applies before any payout.\"},\n    {\"id\": \"POL-HOME-02\", \"acl\": [\"public\"], \"text\": \"Home water damage from a sudden burst pipe is covered. Gradual leaks are excluded. Flood from rising surface water is excluded unless the flood rider was purchased.\"},\n    {\"id\": \"POL-HOME-03\", \"acl\": [\"public\"], \"text\": \"Theft of personal property from the home is covered up to 5000 dollars per item. A police report is required within 7 days of discovering the theft.\"},\n    {\"id\": \"POL-TRAVEL-04\", \"acl\": [\"public\"], \"text\": \"Trip cancellation is covered when the traveler or an immediate family member has a documented illness. Cancellation for a change of mind is not covered.\"},\n    {\"id\": \"ADJ-AUTH-05\", \"acl\": [\"adjuster\"], \"text\": \"Adjusters can approve claims up to 25000 dollars without supervisor sign-off. Claims above 25000 dollars require approval from a senior adjuster.\"},\n    {\"id\": \"ADJ-RENTAL-06\", \"acl\": [\"adjuster\"], \"text\": \"Rental car reimbursement is paid at up to 40 dollars per day for a maximum of 30 days while the insured vehicle is being repaired.\"},\n    {\"id\": \"ADJ-SUBRO-07\", \"acl\": [\"adjuster\"], \"text\": \"When another party is at fault the adjuster opens a subrogation file within 14 days to recover the payout from the at-fault insurer.\"},\n    {\"id\": \"FRAUD-08\", \"acl\": [\"fraud\"], \"text\": \"Flag a claim for special investigation when the loss is reported more than 60 days late, the policy is less than 30 days old, or the claimant has three or more claims in 12 months.\"},\n]\n\n\ndef tokens(text: str) -> list[str]:\n    \"\"\"Lowercase, drop stopwords, and apply a crude suffix stemmer.\"\"\"\n    out = []\n    for w in re.findall(r\"[a-z0-9]+\", text.lower()):\n        if w in STOPWORDS:\n            continue\n        for suffix in (\"ing\", \"ed\", \"s\"):\n            if w.endswith(suffix) and len(w) > len(suffix) + 3:\n                w = w[: -len(suffix)]\n                break\n        out.append(w)\n    return out\n\n\ndef embed(text: str) -> list[float]:\n    \"\"\"Hashing-trick bag of words, L2-normalised. Swap for a real embedding model later.\"\"\"\n    vec = [0.0] * DIM\n    for t in tokens(text):\n        vec[zlib.crc32(t.encode()) % DIM] += 1.0\n    norm = math.sqrt(sum(v * v for v in vec)) or 1.0\n    return [v / norm for v in vec]\n\n\nINDEX = [(doc, embed(doc[\"text\"])) for doc in DOCS]\n\n\ndef search(query: str, groups: list[str], k: int = 3) -> list[dict]:\n    \"\"\"ACL filter first (like WHERE acl && :groups), then cosine ranking.\"\"\"\n    q = embed(query)\n    allowed = [(d, v) for d, v in INDEX if set(d[\"acl\"]) & set(groups)]\n    scored = [(sum(a * b for a, b in zip(q, v)), d) for d, v in allowed]\n    scored.sort(key=lambda x: x[0], reverse=True)\n    return [d for score, d in scored[:k] if score > 0]\n",
+     "lang": "Python",
+     "file": "app/corpus.py"
+    },
+    {
+     "title": "An LLM wrapper with fake and real modes",
+     "body": "The graph needs four skills: grade a document, rewrite a query, generate an answer, and check grounding. Each has a real version (Anthropic Messages API, model from the MODEL env var) and a fake version made of simple rules, so tests run with no key and no network.\n\nThe wrapper also counts tokens (real usage numbers in real mode, a 4-characters-per-token estimate in fake mode) and turns them into an estimated dollar cost using prices from env vars. Create an empty app/__init__.py too so app is a package.",
+     "code": "\"\"\"LLM wrapper with two modes.\n\nLLM_MODE=fake (default): rule-based, offline, deterministic. Used by tests and eval.\nLLM_MODE=real: Anthropic Messages API, model name from the MODEL env var.\nBoth modes count tokens so the service can log cost per request.\n\"\"\"\nimport os\nimport re\n\nfrom app.corpus import tokens\n\nREFUSAL = \"I don't know based on the policy documents you have access to.\"\nSYNONYMS = {\n    \"car\": \"auto vehicle\", \"crash\": \"collision accident\", \"hit\": \"collision accident\",\n    \"stolen\": \"theft police report\", \"robbed\": \"theft\", \"flood\": \"flood rider water\",\n    \"leak\": \"water damage pipe\", \"rental\": \"rental car reimbursement\",\n    \"sick\": \"illness cancellation\", \"limit\": \"approve claim dollars\",\n}\n\n\nclass LLM:\n    def __init__(self, mode: str | None = None):\n        self.mode = mode or os.getenv(\"LLM_MODE\", \"fake\")\n        self.tokens_in = 0\n        self.tokens_out = 0\n        if self.mode == \"real\":\n            import anthropic  # imported lazily so fake mode needs no key\n\n            self.client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY\n            self.model = os.environ[\"MODEL\"]\n\n    # ---- plumbing -------------------------------------------------------\n    def _call(self, prompt: str, max_tokens: int = 300) -> str:\n        msg = self.client.messages.create(\n            model=self.model, max_tokens=max_tokens,\n            messages=[{\"role\": \"user\", \"content\": prompt}],\n        )\n        self.tokens_in += msg.usage.input_tokens\n        self.tokens_out += msg.usage.output_tokens\n        return msg.content[0].text.strip()\n\n    def _count_fake(self, prompt: str, output: str) -> None:\n        self.tokens_in += len(prompt) // 4  # rough 4 chars per token\n        self.tokens_out += len(output) // 4\n\n    def cost_usd(self) -> float:\n        price_in = float(os.getenv(\"PRICE_IN_PER_MTOK\", \"3.0\"))\n        price_out = float(os.getenv(\"PRICE_OUT_PER_MTOK\", \"15.0\"))\n        return round((self.tokens_in * price_in + self.tokens_out * price_out) / 1e6, 6)\n\n    # ---- the four skills the graph needs --------------------------------\n    def grade(self, query: str, doc: dict) -> bool:\n        if self.mode == \"real\":\n            p = f\"Document:\\n{doc['text']}\\n\\nQuestion: {query}\\nIs this document useful for answering the question? Reply only yes or no.\"\n            return self._call(p, 5).lower().startswith(\"yes\")\n        overlap = set(tokens(query)) & set(tokens(doc[\"text\"]))\n        self._count_fake(query + doc[\"text\"], \"yes\")\n        return len(overlap) >= 2\n\n    def rewrite(self, query: str) -> str:\n        if self.mode == \"real\":\n            p = f\"Rewrite this question as a keyword search query for insurance claims-policy documents. Return only the query.\\n\\n{query}\"\n            return self._call(p, 60)\n        extra = [SYNONYMS[t] for t in tokens(query) if t in SYNONYMS]\n        out = \" \".join([query] + extra)\n        self._count_fake(query, out)\n        return out\n\n    def generate(self, question: str, docs: list[dict]) -> str:\n        context = \"\\n\".join(f\"[{d['id']}] {d['text']}\" for d in docs)\n        if self.mode == \"real\":\n            p = (f\"Answer the question using only these documents. Cite doc ids in square brackets. \"\n                 f\"If the documents do not contain the answer, reply exactly: {REFUSAL}\\n\\n{context}\\n\\nQuestion: {question}\")\n            return self._call(p)\n        # Extractive fake answer: the (up to) two sentences that overlap the question most.\n        q = set(tokens(question))\n        scored = [(len(q & set(tokens(sent))), sent, d[\"id\"])\n                  for d in docs for sent in re.split(r\"(?<=\\.)\\s+\", d[\"text\"])]\n        scored.sort(key=lambda x: x[0], reverse=True)\n        picked = [scored[0]] + [x for x in scored[1:2] if x[0] >= max(2, scored[0][0] / 2)]\n        answer = \" \".join(f\"{sent} [{doc_id}]\" for _, sent, doc_id in picked)\n        self._count_fake(context + question, answer)\n        return answer\n\n    def is_grounded(self, answer: str, docs: list[dict]) -> bool:\n        if self.mode == \"real\":\n            context = \"\\n\".join(d[\"text\"] for d in docs)\n            p = f\"Documents:\\n{context}\\n\\nAnswer:\\n{answer}\\n\\nIs every claim in the answer supported by the documents? Reply only yes or no.\"\n            return self._call(p, 5).lower().startswith(\"yes\")\n        words = tokens(re.sub(r\"\\[[^\\]]*\\]\", \"\", answer))\n        support = set(t for d in docs for t in tokens(d[\"text\"]))\n        self._count_fake(answer, \"yes\")\n        return bool(words) and sum(w in support for w in words) / len(words) >= 0.8\n",
+     "lang": "Python",
+     "file": "app/llm.py"
+    },
+    {
+     "title": "Wire the agentic loop as a LangGraph StateGraph",
+     "body": "State flows through five nodes. After grade, a conditional edge decides: generate if any document is relevant, otherwise rewrite and retrieve again, but only up to max_rewrites times. That retry cap is what stops an agent from looping forever and burning tokens.\n\nThe check node is a guardrail. If the draft answer is not supported by the retrieved text, the service replaces it with a refusal and records grounded=False, so you can alert on it.",
+     "code": "\"\"\"The agentic RAG loop as a LangGraph StateGraph.\n\nretrieve -> grade -> (relevant? generate : rewrite -> retrieve, max N times) -> check -> END\n\"\"\"\nfrom typing import TypedDict\n\nfrom langgraph.graph import END, START, StateGraph\n\nfrom app.corpus import search\nfrom app.llm import LLM, REFUSAL\n\n\nclass RAGState(TypedDict, total=False):\n    question: str\n    query: str\n    groups: list[str]\n    rewrites: int\n    docs: list[dict]\n    relevant: list[dict]\n    answer: str\n    sources: list[str]\n    grounded: bool\n\n\ndef build_graph(llm: LLM, max_rewrites: int = 2):\n    def retrieve(s: RAGState) -> dict:\n        return {\"docs\": search(s[\"query\"], s[\"groups\"], k=3)}\n\n    def grade(s: RAGState) -> dict:\n        return {\"relevant\": [d for d in s[\"docs\"] if llm.grade(s[\"query\"], d)]}\n\n    def route(s: RAGState) -> str:\n        if s[\"relevant\"]:\n            return \"generate\"\n        return \"rewrite\" if s[\"rewrites\"] < max_rewrites else \"generate\"\n\n    def rewrite(s: RAGState) -> dict:\n        return {\"query\": llm.rewrite(s[\"query\"]), \"rewrites\": s[\"rewrites\"] + 1}\n\n    def generate(s: RAGState) -> dict:\n        if not s[\"relevant\"]:\n            return {\"answer\": REFUSAL, \"sources\": []}\n        return {\"answer\": llm.generate(s[\"question\"], s[\"relevant\"]),\n                \"sources\": [d[\"id\"] for d in s[\"relevant\"]]}\n\n    def check(s: RAGState) -> dict:\n        if s[\"answer\"] == REFUSAL:\n            return {\"grounded\": True}\n        if llm.is_grounded(s[\"answer\"], s[\"relevant\"]):\n            return {\"grounded\": True}\n        # Guardrail: never ship an unsupported answer.\n        return {\"grounded\": False, \"answer\": REFUSAL, \"sources\": []}\n\n    g = StateGraph(RAGState)\n    for name, fn in [(\"retrieve\", retrieve), (\"grade\", grade), (\"rewrite\", rewrite),\n                     (\"generate\", generate), (\"check\", check)]:\n        g.add_node(name, fn)\n    g.add_edge(START, \"retrieve\")\n    g.add_edge(\"retrieve\", \"grade\")\n    g.add_conditional_edges(\"grade\", route, {\"generate\": \"generate\", \"rewrite\": \"rewrite\"})\n    g.add_edge(\"rewrite\", \"retrieve\")\n    g.add_edge(\"generate\", \"check\")\n    g.add_edge(\"check\", END)\n    return g.compile()\n",
+     "lang": "Python",
+     "file": "app/graph.py"
+    },
+    {
+     "title": "Expose /ask and log one JSON metrics line per request",
+     "body": "The endpoint builds a fresh LLM object per request so token counts never mix between users, runs the graph, and logs latency, tokens, estimated cost, rewrites and grounded as one JSON line. JSON logs can be shipped straight to any log tool and queried later.\n\nNote the comment on user_groups: taking groups from the request body is fine for a demo, but in production they must come from a verified login token, or anyone can claim to be an adjuster.",
+     "code": "\"\"\"FastAPI service: POST /ask runs the graph and logs one JSON metrics line per request.\"\"\"\nimport json\nimport logging\nimport os\nimport time\nimport uuid\n\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel, Field\n\nfrom app.graph import build_graph\nfrom app.llm import LLM\n\nlogging.basicConfig(level=logging.INFO, format=\"%(message)s\")\nlog = logging.getLogger(\"rag.metrics\")\napp = FastAPI(title=\"Claims Policy Assistant\")\n\n\nclass AskRequest(BaseModel):\n    question: str = Field(min_length=3, max_length=500)\n    # Demo only: in production, derive groups from the verified auth token, never the body.\n    user_groups: list[str] = [\"public\"]\n\n\n@app.get(\"/health\")\ndef health() -> dict:\n    return {\"status\": \"ok\", \"llm_mode\": os.getenv(\"LLM_MODE\", \"fake\")}\n\n\n@app.post(\"/ask\")\ndef ask(req: AskRequest) -> dict:\n    start = time.perf_counter()\n    llm = LLM()\n    graph = build_graph(llm, max_rewrites=int(os.getenv(\"MAX_REWRITES\", \"2\")))\n    out = graph.invoke({\"question\": req.question, \"query\": req.question,\n                        \"groups\": req.user_groups, \"rewrites\": 0})\n    metrics = {\n        \"request_id\": uuid.uuid4().hex[:12],\n        \"latency_ms\": round((time.perf_counter() - start) * 1000, 1),\n        \"tokens_in\": llm.tokens_in,\n        \"tokens_out\": llm.tokens_out,\n        \"est_cost_usd\": llm.cost_usd(),\n        \"rewrites\": out[\"rewrites\"],\n        \"grounded\": out[\"grounded\"],\n        \"llm_mode\": llm.mode,\n    }\n    log.info(json.dumps(metrics))\n    return {\"answer\": out[\"answer\"], \"sources\": out[\"sources\"], \"metrics\": metrics}\n",
+     "lang": "Python",
+     "file": "app/main.py"
+    },
+    {
+     "title": "Write the tests",
+     "body": "The graph tests prove the behaviours the customer cares about: ACL hides restricted documents, a direct question needs no rewrite, casual wording is rescued by a rewrite, an off-topic question hits the retry cap and refuses, and the grounding check rejects an invented answer. The API tests check the response shape, the JSON log line and input validation.",
+     "code": "# tests/test_graph.py\nfrom app.corpus import search\nfrom app.graph import build_graph\nfrom app.llm import LLM, REFUSAL\n\n\ndef run(question, groups, max_rewrites=2):\n    return build_graph(LLM(\"fake\"), max_rewrites).invoke(\n        {\"question\": question, \"query\": question, \"groups\": groups, \"rewrites\": 0})\n\n\ndef test_acl_filter_hides_restricted_docs():\n    ids = [d[\"id\"] for d in search(\"adjusters approve claims supervisor\", [\"public\"], k=8)]\n    assert \"ADJ-AUTH-05\" not in ids\n    assert \"ADJ-AUTH-05\" in [d[\"id\"] for d in search(\"adjusters approve claims supervisor\", [\"adjuster\"])]\n\n\ndef test_direct_hit_needs_no_rewrite():\n    out = run(\"How many days do I have to report an auto collision claim?\", [\"public\"])\n    assert out[\"sources\"][0] == \"POL-AUTO-01\" and out[\"rewrites\"] == 0 and out[\"grounded\"]\n\n\ndef test_rewrite_rescues_casual_wording():\n    out = run(\"How long do I have to report a car crash?\", [\"public\"])\n    assert out[\"rewrites\"] >= 1 and \"POL-AUTO-01\" in out[\"sources\"]\n\n\ndef test_retry_cap_then_refusal():\n    out = run(\"What is the capital of France?\", [\"public\"], max_rewrites=2)\n    assert out[\"rewrites\"] == 2 and out[\"answer\"] == REFUSAL\n\n\ndef test_grounding_check_rejects_made_up_answer():\n    llm = LLM(\"fake\")\n    docs = search(\"theft police report\", [\"public\"])\n    assert not llm.is_grounded(\"The moon is made of green cheese [POL-HOME-03]\", docs)\n    assert llm.is_grounded(\"A police report is required within 7 days of discovering the theft. [POL-HOME-03]\", docs)\n\n\n# tests/test_api.py\nimport json\nimport logging\n\nfrom fastapi.testclient import TestClient\n\nfrom app.main import app\n\nclient = TestClient(app)\n\n\ndef test_health():\n    assert client.get(\"/health\").json()[\"status\"] == \"ok\"\n\n\ndef test_ask_returns_answer_sources_and_metrics(caplog):\n    with caplog.at_level(logging.INFO, logger=\"rag.metrics\"):\n        r = client.post(\"/ask\", json={\"question\": \"Is flood damage from surface water covered?\"})\n    assert r.status_code == 200\n    body = r.json()\n    assert \"POL-HOME-02\" in body[\"sources\"]\n    for key in (\"latency_ms\", \"tokens_in\", \"tokens_out\", \"est_cost_usd\", \"grounded\"):\n        assert key in body[\"metrics\"]\n    logged = json.loads(caplog.records[-1].getMessage())\n    assert logged[\"request_id\"] == body[\"metrics\"][\"request_id\"]\n\n\ndef test_validation_rejects_empty_question():\n    assert client.post(\"/ask\", json={\"question\": \"\"}).status_code == 422\n",
+     "lang": "Python",
+     "file": "tests/"
+    },
+    {
+     "title": "Build a golden set and an eval script",
+     "body": "The golden set is ten questions with the document that should be cited, or null when the right answer is a refusal (including one ACL case: a policyholder asking an adjuster-only question). eval.py sends each through the real HTTP endpoint and prints accuracy, grounded rate, average latency and total cost.\n\nIt exits with code 1 below the thresholds, so the same script can block a bad change in CI. Run it in both fake and real mode before any demo.",
+     "code": "# data/golden.jsonl\n{\"question\": \"How many days do I have to report an auto collision claim?\", \"groups\": [\"public\"], \"expect_source\": \"POL-AUTO-01\"}\n{\"question\": \"How long do I have to report a car crash?\", \"groups\": [\"public\"], \"expect_source\": \"POL-AUTO-01\"}\n{\"question\": \"Is flood damage from surface water covered?\", \"groups\": [\"public\"], \"expect_source\": \"POL-HOME-02\"}\n{\"question\": \"My laptop was stolen from my home, what do I need?\", \"groups\": [\"public\"], \"expect_source\": \"POL-HOME-03\"}\n{\"question\": \"Is trip cancellation covered if my mother has a documented illness?\", \"groups\": [\"public\"], \"expect_source\": \"POL-TRAVEL-04\"}\n{\"question\": \"What claim amount can adjusters approve without supervisor sign-off?\", \"groups\": [\"adjuster\"], \"expect_source\": \"ADJ-AUTH-05\"}\n{\"question\": \"What claim amount can adjusters approve without supervisor sign-off?\", \"groups\": [\"public\"], \"expect_source\": null}\n{\"question\": \"How much rental car reimbursement per day while the vehicle is repaired?\", \"groups\": [\"adjuster\", \"public\"], \"expect_source\": \"ADJ-RENTAL-06\"}\n{\"question\": \"When should a claim be flagged for special investigation?\", \"groups\": [\"fraud\"], \"expect_source\": \"FRAUD-08\"}\n{\"question\": \"What is the capital of France?\", \"groups\": [\"public\", \"adjuster\", \"fraud\"], \"expect_source\": null}\n\n# eval.py\n\"\"\"Run the golden set through the real HTTP endpoint and print a scorecard.\n\nExit code 1 if quality drops below the thresholds, so CI can use it as a gate.\nUsage: python eval.py            (uses LLM_MODE from the environment, default fake)\n\"\"\"\nimport json\nimport logging\nimport sys\nfrom pathlib import Path\n\nfrom fastapi.testclient import TestClient\n\nfrom app.llm import REFUSAL\nfrom app.main import app\n\nMIN_ACCURACY, MIN_GROUNDED = 0.9, 1.0\nlogging.disable(logging.INFO)  # hide per-request log lines; the scorecard is enough\n\n\ndef main() -> int:\n    client = TestClient(app)\n    rows = [json.loads(l) for l in Path(\"data/golden.jsonl\").read_text().splitlines() if l.strip()]\n    correct = grounded = 0\n    latency = cost = 0.0\n    for row in rows:\n        r = client.post(\"/ask\", json={\"question\": row[\"question\"], \"user_groups\": row[\"groups\"]}).json()\n        if row[\"expect_source\"] is None:\n            ok = r[\"answer\"] == REFUSAL\n        else:\n            ok = row[\"expect_source\"] in r[\"sources\"]\n        correct += ok\n        grounded += r[\"metrics\"][\"grounded\"]\n        latency += r[\"metrics\"][\"latency_ms\"]\n        cost += r[\"metrics\"][\"est_cost_usd\"]\n        print(f\"{'PASS' if ok else 'FAIL'}  {row['groups']}  {row['question']}\")\n    n = len(rows)\n    acc, grd = correct / n, grounded / n\n    print(f\"\\naccuracy {acc:.0%}  grounded {grd:.0%}  avg latency {latency / n:.1f} ms  total est cost ${cost:.4f}\")\n    return 0 if acc >= MIN_ACCURACY and grd >= MIN_GROUNDED else 1\n\n\nif __name__ == \"__main__\":\n    sys.exit(main())\n",
+     "lang": "Python",
+     "file": "eval.py"
+    },
+    {
+     "title": "Script the customer demo",
+     "body": "A demo should be repeatable, not improvised. demo.py walks through five beats: a plain question, a rewrite, an adjuster query, the same query blocked for a policyholder, and a polite refusal. Each line shows the metrics so the customer sees cost and grounding, not just a nice answer.",
+     "code": "\"\"\"Scripted 3-minute customer demo. Run: python demo.py\"\"\"\nimport logging\n\nfrom fastapi.testclient import TestClient\n\nfrom app.main import app\n\nlogging.disable(logging.INFO)  # hide per-request log lines; metrics are printed below\nclient = TestClient(app)\n\nSCRIPT = [\n    (\"A policyholder asks a plain question\", \"How many days do I have to report an auto collision claim?\", [\"public\"]),\n    (\"Casual wording forces a query rewrite\", \"How long do I have to report a car crash?\", [\"public\"]),\n    (\"An adjuster asks about authority limits\", \"What claim amount can adjusters approve without supervisor sign-off?\", [\"adjuster\"]),\n    (\"Same question from a policyholder: ACL blocks it\", \"What claim amount can adjusters approve without supervisor sign-off?\", [\"public\"]),\n    (\"Off-topic question: the assistant says it does not know\", \"What is the capital of France?\", [\"public\"]),\n]\n\nfor i, (beat, question, groups) in enumerate(SCRIPT, 1):\n    r = client.post(\"/ask\", json={\"question\": question, \"user_groups\": groups}).json()\n    m = r[\"metrics\"]\n    print(f\"\\n{i}. {beat}\\n   Q ({', '.join(groups)}): {question}\\n   A: {r['answer']}\")\n    print(f\"   sources={r['sources']} rewrites={m['rewrites']} grounded={m['grounded']} \"\n          f\"tokens={m['tokens_in']}+{m['tokens_out']} cost=${m['est_cost_usd']} latency={m['latency_ms']}ms\")\n",
+     "lang": "Python",
+     "file": "demo.py"
+    },
+    {
+     "title": "Package it with Docker and docker compose",
+     "body": "The Dockerfile starts the API in fake mode by default. docker compose runs it on port 8000 and reads LLM_MODE, ANTHROPIC_API_KEY and MODEL from your shell or .env. A pgvector Postgres service sits behind a profile, so it only starts when you ask for it.\n\nTo move to pgvector: create a table with id, acl text[], body and embedding vector(256), then replace search() with SELECT id, body FROM docs WHERE acl && $1 ORDER BY embedding <=> $2 LIMIT 3. The graph does not change. The README also documents QLoRA fine-tuning as an optional stretch; do not run it here.",
+     "code": "# Dockerfile\nFROM python:3.11-slim\nWORKDIR /srv\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY app ./app\nCOPY data ./data\nCOPY eval.py demo.py ./\nENV LLM_MODE=fake\nEXPOSE 8000\nCMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\n\n# docker-compose.yml\nservices:\n  api:\n    build: .\n    ports:\n      - \"8000:8000\"\n    environment:   # values come from your shell or the .env file next to this file\n      LLM_MODE: ${LLM_MODE:-fake}\n      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}\n      MODEL: ${MODEL:-}\n  # Optional: start with `docker compose --profile pgvector up` to try the Postgres path.\n  # The app uses the in-memory index by default; see README \"Moving to pgvector\".\n  db:\n    image: pgvector/pgvector:pg16\n    profiles: [\"pgvector\"]\n    environment:\n      POSTGRES_PASSWORD: devpassword\n      POSTGRES_DB: rag\n    ports:\n      - \"5432:5432\"\n",
+     "lang": "yaml",
+     "file": "Dockerfile, docker-compose.yml"
+    }
+   ],
+   "run": {
+    "code": "uvicorn app.main:app --reload     # open http://127.0.0.1:8000/docs\ncurl -X POST localhost:8000/ask -H \"Content-Type: application/json\" \\\n  -d '{\"question\": \"Is flood damage from surface water covered?\", \"user_groups\": [\"public\"]}'\n# {\"answer\":\"Home water damage from a sudden burst pipe is covered. [POL-HOME-02] Flood from rising\n#  surface water is excluded unless the flood rider was purchased. [POL-HOME-02]\",\"sources\":[\"POL-HOME-02\"],\n#  \"metrics\":{\"latency_ms\":6.8,\"tokens_in\":...,\"est_cost_usd\":...,\"rewrites\":0,\"grounded\":true,...}}\n\npython demo.py\n# 2. Casual wording forces a query rewrite\n#    A: Auto collision claims must be reported within 30 days of the accident. [POL-AUTO-01]\n#    sources=['POL-AUTO-01'] rewrites=1 grounded=True ...\n# 4. Same question from a policyholder: ACL blocks it\n#    A: I don't know based on the policy documents you have access to.\n\npython eval.py\n# PASS  ['public']  How many days do I have to report an auto collision claim?\n# ...\n# accuracy 100%  grounded 100%  avg latency 4.9 ms  total est cost $0.0135\n\ndocker compose up --build          # same API in a container",
+    "lang": "bash"
+   },
+   "tests": {
+    "code": "python -m pytest -q\n# ........   8 passed in 0.7s   (no network, LLM_MODE=fake)",
+    "lang": "bash"
+   },
+   "stretch": [
+    "Replace the hashing embedder with a real embedding model and the pgvector query from the README.",
+    "Run eval.py in GitHub Actions on every pull request and fail the build below threshold.",
+    "Add a /feedback endpoint and turn thumbs-down answers into new golden-set rows.",
+    "Document only: a QLoRA fine-tune of a small open model for the grading step, compared on the same golden set before any switch."
+   ],
+   "interview": "I built an agentic RAG service for a claims-policy assistant: FastAPI in front of a LangGraph loop that filters by ACL before ranking, rewrites weak queries with a retry cap, and refuses when a grounding check fails. Every request logs latency, tokens, cost and grounded as JSON, and a golden-set eval gates changes. Trade-offs I would name: the extra grade and grounding calls roughly double cost and latency in exchange for fewer wrong answers, in-memory search is fine for eight documents but pgvector is needed at scale, and fine-tuning was deliberately left for later because retrieval plus evals fixed most errors."
+  },
+  "ideas": [
+   "Apply access control inside retrieval, before ranking, so restricted text never reaches the model.",
+   "A retry cap turns an open-ended agent loop into a bounded, predictable cost.",
+   "A grounding check plus a refusal message is cheaper than a wrong answer about coverage.",
+   "Per-request JSON metrics and a golden-set eval are what make an LLM service operable by the customer."
+  ],
+  "traps": [
+   "Trusting user_groups from the request body in production; groups must come from a verified auth token.",
+   "Letting rewrite loop without a cap, so one odd question costs dozens of LLM calls.",
+   "Only testing with a live API key, so tests are slow, flaky and cost money; keep a fake mode."
+  ],
+  "qa": [
+   [
+    "Why filter by ACL before ranking instead of after?",
+    "Filtering first means restricted documents are never scored, returned, or sent to the model, so a later bug cannot leak them. It also keeps top-k honest: if you filter after ranking, the user might get fewer results than k because restricted ones took the slots."
+   ],
+   [
+    "How would you know this service is getting worse after a change?",
+    "Run the golden-set eval in CI and fail the build when accuracy or grounded rate drops below threshold, and watch the JSON metrics in production for rising grounded=false rates, rewrite counts, latency or cost per request. Bad answers from users go into the golden set so the same mistake is caught next time."
+   ]
+  ]
+ },
+ {
+  "id": "p10-drill",
+  "mod": 8,
+  "sec": "8.10",
+  "name": "Timed drill: 90-min build",
+  "title": "Timed drill: build a support-ticket triage API in 90 minutes",
+  "thesis": "Against a 90-minute timer you ingest a messy CSV of support tickets, classify priority with rules (an LLM is optional), and serve a summary endpoint, then score yourself with a rubric. It rehearses the build interview and the first week on site, where speed, scoping and clear trade-offs matter more than clever code.",
+  "format": "project",
+  "project": {
+   "level": "Intermediate",
+   "time": "90 minutes, plus 30 minutes review",
+   "skills": [
+    "Scoping under time pressure",
+    "CSV parsing and validation",
+    "Rules-based classification",
+    "FastAPI endpoints",
+    "Test-first delivery",
+    "Demo and trade-offs"
+   ],
+   "concepts": [
+    "builddrill",
+    "interview",
+    "fastapi",
+    "tdd",
+    "python2",
+    "etl",
+    "prompting",
+    "resilient",
+    "demo",
+    "http"
+   ],
+   "folder": "fde-atlas/projects/p10-drill",
+   "tree": "p10-drill/\n  README.md            # brief, minute plan, rubric\n  requirements.txt\n  .env.example\n  data/\n    tickets.csv        # 21 synthetic tickets, one broken row on purpose\n  starter/             # you work here, against the clock\n    app/__init__.py\n    app/classifier.py  # TODO stubs\n    app/main.py        # TODO stubs\n    tests/test_app.py  # acceptance tests (fail at the start)\n  solution/            # reference, open only after 90 minutes\n    app/__init__.py\n    app/classifier.py\n    app/main.py\n    tests/test_app.py",
+   "setup": [
+    {
+     "title": "Create the folder and a virtual environment",
+     "body": "Do setup before you start the timer. The drill measures building, not installing.",
+     "code": "mkdir p10-drill && cd p10-drill\npython3 -m venv .venv\nsource .venv/bin/activate",
+     "lang": "bash"
+    },
+    {
+     "title": "Windows PowerShell variant",
+     "body": "Same steps on Windows.",
+     "code": "mkdir p10-drill; cd p10-drill\npy -m venv .venv\n.venv\\Scripts\\Activate.ps1",
+     "lang": "powershell"
+    },
+    {
+     "title": "Install dependencies",
+     "body": "Create requirements.txt and install. anthropic is only needed for the optional LLM stretch.",
+     "code": "fastapi>=0.110\nuvicorn>=0.29\nhttpx>=0.27\npytest>=8.0\nanthropic>=0.40\n\npip install -r requirements.txt",
+     "lang": "bash"
+    },
+    {
+     "title": "Add the data file",
+     "body": "Save this as data/tickets.csv. It is synthetic. Row T-1099 has a bad date on purpose: your API must report it, not crash.",
+     "code": "ticket_id,created_at,customer,tier,subject,body,status\nT-1001,2026-09-13,Contoso,pro,Export button shows an error,\"Clicking export gives an error message, other features fine.\",closed\nT-1002,2026-09-18,Acme Corp,enterprise,Cannot log in after password reset,Several staff cannot log in after resetting passwords.,open\nT-1003,2026-09-02,Contoso,pro,Data loss after import,After importing the CSV some records disappeared. Data loss is serious for us.,closed\nT-1004,2026-09-03,Bluebird Cafe,free,Site is down for all users,Our whole dashboard returns 500 since 9am. Outage for every user.,open\nT-1005,2026-09-08,Dune Labs,pro,Cannot log in after password reset,Several staff cannot log in after resetting passwords.,open\nT-1006,2026-09-02,Evergreen Bank,enterprise,Possible security issue with shared links,Shared links seem to work without login. Could be a security problem.,closed\nT-1007,2026-09-21,Acme Corp,enterprise,Reports are slow to load,The monthly report takes two minutes to load.,closed\nT-1008,2026-09-19,Evergreen Bank,enterprise,Site is down for all users,Our whole dashboard returns 500 since 9am. Outage for every user.,closed\nT-1009,2026-09-08,Dune Labs,pro,Site is down for all users,Our whole dashboard returns 500 since 9am. Outage for every user.,open\nT-1010,2026-09-10,Evergreen Bank,enterprise,Export button shows an error,\"Clicking export gives an error message, other features fine.\",open\nT-1011,2026-09-04,Bluebird Cafe,free,Question about user limits,How many users can we add on our plan?,closed\nT-1012,2026-09-06,Contoso,pro,Question about user limits,How many users can we add on our plan?,open\nT-1099,not-a-date,Fable Books,free,Broken row,This row has a bad date on purpose.,open\nT-1013,2026-09-21,Evergreen Bank,enterprise,Data loss after import,After importing the CSV some records disappeared. Data loss is serious for us.,open\nT-1014,2026-09-18,Contoso,pro,Cannot log in after password reset,Several staff cannot log in after resetting passwords.,closed\nT-1015,2026-09-02,Acme Corp,enterprise,Data loss after import,After importing the CSV some records disappeared. Data loss is serious for us.,closed\nT-1016,2026-09-18,Bluebird Cafe,free,Sync job failed overnight,The nightly sync failed with a timeout error.,open\nT-1017,2026-09-19,Contoso,pro,Sync job failed overnight,The nightly sync failed with a timeout error.,open\nT-1018,2026-09-08,Contoso,pro,How do I change my invoice address?,Where can I update the billing address on invoices?,open\nT-1019,2026-09-03,Fable Books,free,Reports are slow to load,The monthly report takes two minutes to load.,closed\nT-1020,2026-09-16,Contoso,pro,Question about user limits,How many users can we add on our plan?,open\n",
+     "lang": "text"
+    }
+   ],
+   "steps": [
+    {
+     "title": "Read the brief and plan your 90 minutes",
+     "body": "The customer says: we export support tickets as a CSV; build an API that ingests the file, classifies each ticket as low, medium or high, and serves a summary our support lead checks every morning. Enterprise customers are contractually higher priority. The export is not always clean.\n\nRequired: POST /ingest (raw CSV body, returns ingested, rejected with line numbers, total_stored; bad header is 400), GET /tickets with priority and status filters (oldest first, unknown priority is 422), GET /summary (total, by_priority, by_status, open_high oldest first, top_customers top 3). Spend the first 5 minutes writing three assumptions, then follow the plan below. Stuck for 10 minutes on one step? Leave a TODO and move on.",
+     "code": "0-5    read brief + CSV, write 3 assumptions\n5-10   cd starter; python -m pytest -q (6 failures); uvicorn app.main:app --reload\n10-25  classify_rules -> test_rules green\n25-45  /ingest: DictReader, validate, rejected lines, upsert -> ingest tests green\n45-55  /tickets filters + 422\n55-70  /summary -> all 6 green, commit\n70-80  buffer; only if green: optional LLM path with fallback\n80-87  10-line README: run, assumptions, next steps\n87-90  rehearse a 2-minute demo",
+     "lang": "text",
+     "file": "README.md"
+    },
+    {
+     "title": "The starter skeleton",
+     "body": "These stubs are where you start. The shape of the API is given so you spend time on logic, not boilerplate. Create empty app/__init__.py files in both starter and solution.",
+     "code": "# starter/app/classifier.py\n\"\"\"Priority classification. Start with rules; add an LLM only if you have time left.\"\"\"\nLEVELS = [\"low\", \"medium\", \"high\"]\n\n\ndef classify_rules(subject: str, body: str, tier: str) -> str:\n    # TODO: return \"high\" for outage / down / data loss / security / cannot log in,\n    # \"medium\" for error / bug / slow / failed / timeout, else \"low\".\n    # Enterprise tier bumps the result up one level (low -> medium, medium -> high).\n    raise NotImplementedError\n\n\ndef classify(subject: str, body: str, tier: str) -> tuple[str, str]:\n    \"\"\"Return (priority, method). Stretch: LLM_MODE=real tries an LLM, falls back to rules.\"\"\"\n    return classify_rules(subject, body, tier), \"rules\"\n\n\n# starter/app/main.py\n\"\"\"Support ticket API skeleton. Make tests/test_app.py pass. The clock is running.\"\"\"\nfrom fastapi import FastAPI, Request\n\nfrom app.classifier import LEVELS, classify  # noqa: F401  (you will need both)\n\napp = FastAPI(title=\"Ticket Triage\")\nTICKETS: dict[str, dict] = {}  # ticket_id -> ticket dict. Keep it in memory; do not add a DB.\n\n\n@app.get(\"/health\")\ndef health() -> dict:\n    return {\"status\": \"ok\", \"tickets\": len(TICKETS)}\n\n\n@app.post(\"/ingest\")\nasync def ingest(request: Request) -> dict:\n    # TODO: read the raw CSV body, validate each row (required fields, ISO date, tier),\n    # classify it, upsert into TICKETS, and return\n    # {\"ingested\": int, \"rejected\": [{\"line\": int, \"error\": str}], \"total_stored\": int}.\n    # A CSV without the required header columns should return HTTP 400.\n    raise NotImplementedError\n\n\n@app.get(\"/tickets\")\ndef list_tickets(priority: str | None = None, status: str | None = None) -> list[dict]:\n    # TODO: filter by priority/status, oldest first. Unknown priority -> HTTP 422.\n    raise NotImplementedError\n\n\n@app.get(\"/summary\")\ndef summary() -> dict:\n    # TODO: {\"total\", \"by_priority\", \"by_status\", \"open_high\" (oldest first), \"top_customers\" (top 3)}\n    raise NotImplementedError\n",
+     "lang": "Python",
+     "file": "starter/app/"
+    },
+    {
+     "title": "The acceptance tests (your definition of done)",
+     "body": "The same test file lives in starter/tests and solution/tests. It checks the rules, the rejected-row report, idempotent re-ingest, the 400 on a bad header, filtering with a 422, and the summary ordering. Run python -m pytest -q from inside starter/ so the app package is found.",
+     "code": "\"\"\"The spec as tests. The same file ships in starter/tests so you know when you are done.\"\"\"\nfrom pathlib import Path\n\nimport pytest\nfrom fastapi.testclient import TestClient\n\nfrom app import main\nfrom app.classifier import classify_rules\n\nCSV = (Path(__file__).resolve().parents[2] / \"data\" / \"tickets.csv\").read_bytes()\nclient = TestClient(main.app)\n\n\n@pytest.fixture(autouse=True)\ndef empty_store():\n    main.TICKETS.clear()\n\n\ndef ingest(body=CSV):\n    return client.post(\"/ingest\", content=body, headers={\"Content-Type\": \"text/csv\"})\n\n\ndef test_rules():\n    assert classify_rules(\"Site is down\", \"Outage for everyone\", \"free\") == \"high\"\n    assert classify_rules(\"Export error\", \"\", \"pro\") == \"medium\"\n    assert classify_rules(\"Dark mode?\", \"Nice to have\", \"free\") == \"low\"\n    assert classify_rules(\"Dark mode?\", \"Nice to have\", \"enterprise\") == \"medium\"\n\n\ndef test_ingest_counts_and_rejects_bad_row():\n    r = ingest().json()\n    assert r[\"ingested\"] == 20\n    assert len(r[\"rejected\"]) == 1 and r[\"rejected\"][0][\"line\"] == 14\n\n\ndef test_ingest_is_idempotent():\n    ingest()\n    assert ingest().json()[\"total_stored\"] == 20\n\n\ndef test_bad_header_is_400():\n    assert ingest(b\"id,text\\n1,hello\\n\").status_code == 400\n\n\ndef test_filter_by_priority():\n    ingest()\n    high = client.get(\"/tickets\", params={\"priority\": \"high\"}).json()\n    assert high and all(t[\"priority\"] == \"high\" for t in high)\n    assert client.get(\"/tickets\", params={\"priority\": \"urgent\"}).status_code == 422\n\n\ndef test_summary():\n    ingest()\n    s = client.get(\"/summary\").json()\n    assert s[\"total\"] == 20 and sum(s[\"by_priority\"].values()) == 20\n    dates = [t[\"created_at\"] for t in s[\"open_high\"]]\n    assert dates == sorted(dates) and s[\"open_high\"][0][\"ticket_id\"] == \"T-1004\"\n    assert s[\"top_customers\"][0][0] == \"Contoso\"\n",
+     "lang": "Python",
+     "file": "starter/tests/test_app.py"
+    },
+    {
+     "title": "Reference solution: classifier",
+     "body": "Rules first: they are instant, free, and easy to explain to a support lead. The enterprise bump is a single line tied to a contract rule. The LLM path is optional and wrapped so any error or unexpected label falls back to rules; the result records which method was used so you can audit it later.",
+     "code": "\"\"\"Priority classification: transparent rules by default, optional LLM with rule fallback.\"\"\"\nimport os\n\nLEVELS = [\"low\", \"medium\", \"high\"]\nHIGH_WORDS = (\"outage\", \"is down\", \"data loss\", \"security\", \"breach\", \"cannot log in\", \"can't log in\")\nMEDIUM_WORDS = (\"error\", \"bug\", \"slow\", \"failed\", \"timeout\", \"broken\")\n\n\ndef classify_rules(subject: str, body: str, tier: str) -> str:\n    text = f\"{subject} {body}\".lower()\n    level = 2 if any(w in text for w in HIGH_WORDS) else 1 if any(w in text for w in MEDIUM_WORDS) else 0\n    if tier == \"enterprise\":  # contract says enterprise tickets get bumped one level\n        level = min(level + 1, 2)\n    return LEVELS[level]\n\n\ndef classify_llm(subject: str, body: str, tier: str) -> str:\n    import anthropic\n\n    client = anthropic.Anthropic()\n    msg = client.messages.create(\n        model=os.environ[\"MODEL\"], max_tokens=5,\n        messages=[{\"role\": \"user\", \"content\":\n                   f\"Classify this support ticket priority as low, medium or high. Customer tier: {tier}.\\n\"\n                   f\"Subject: {subject}\\nBody: {body}\\nReply with one word.\"}],\n    )\n    return msg.content[0].text.strip().lower()\n\n\ndef classify(subject: str, body: str, tier: str) -> tuple[str, str]:\n    \"\"\"Return (priority, method). Any LLM failure or odd output falls back to rules.\"\"\"\n    if os.getenv(\"LLM_MODE\", \"fake\") == \"real\":\n        try:\n            label = classify_llm(subject, body, tier)\n            if label in LEVELS:\n                return label, \"llm\"\n        except Exception:\n            pass\n    return classify_rules(subject, body, tier), \"rules\"\n",
+     "lang": "Python",
+     "file": "solution/app/classifier.py"
+    },
+    {
+     "title": "Reference solution: the API",
+     "body": "parse_row() raises ValueError for anything wrong, and ingest() turns that into a rejected entry with the CSV line number, so one bad row never stops the batch. Storing tickets in a dict keyed by ticket_id makes re-ingest an upsert instead of a duplicate.\n\nThe summary is plain Python with Counter. Under time pressure, choose the boring, obviously correct version and say in your README what you would change at scale (a database, pagination).",
+     "code": "\"\"\"Support ticket API: ingest CSV, classify priority, serve a summary.\"\"\"\nimport csv\nimport io\nfrom collections import Counter\nfrom datetime import date\n\nfrom fastapi import FastAPI, HTTPException, Request\n\nfrom app.classifier import LEVELS, classify\n\napp = FastAPI(title=\"Ticket Triage\")\nTICKETS: dict[str, dict] = {}  # in-memory store keyed by ticket_id (upsert = idempotent ingest)\nREQUIRED = [\"ticket_id\", \"created_at\", \"customer\", \"subject\"]\nTIERS = {\"free\", \"pro\", \"enterprise\"}\n\n\ndef parse_row(row: dict) -> dict:\n    \"\"\"Validate one CSV row; raise ValueError with a readable message if it is bad.\"\"\"\n    missing = [f for f in REQUIRED if not (row.get(f) or \"\").strip()]\n    if missing:\n        raise ValueError(f\"missing {', '.join(missing)}\")\n    created = date.fromisoformat(row[\"created_at\"].strip())  # ValueError on a bad date\n    tier = (row.get(\"tier\") or \"free\").strip().lower()\n    if tier not in TIERS:\n        raise ValueError(f\"unknown tier {tier!r}\")\n    status = (row.get(\"status\") or \"open\").strip().lower()\n    priority, method = classify(row[\"subject\"], row.get(\"body\") or \"\", tier)\n    return {\"ticket_id\": row[\"ticket_id\"].strip(), \"created_at\": created.isoformat(),\n            \"customer\": row[\"customer\"].strip(), \"tier\": tier, \"subject\": row[\"subject\"].strip(),\n            \"status\": status, \"priority\": priority, \"classified_by\": method}\n\n\n@app.get(\"/health\")\ndef health() -> dict:\n    return {\"status\": \"ok\", \"tickets\": len(TICKETS)}\n\n\n@app.post(\"/ingest\")\nasync def ingest(request: Request) -> dict:\n    text = (await request.body()).decode(\"utf-8-sig\")\n    reader = csv.DictReader(io.StringIO(text))\n    if not reader.fieldnames or not set(REQUIRED) <= set(reader.fieldnames):\n        raise HTTPException(400, f\"CSV header must include {REQUIRED}\")\n    ingested, rejected = 0, []\n    for line_no, row in enumerate(reader, start=2):  # line 1 is the header\n        try:\n            ticket = parse_row(row)\n        except ValueError as e:\n            rejected.append({\"line\": line_no, \"error\": str(e)})\n            continue\n        TICKETS[ticket[\"ticket_id\"]] = ticket\n        ingested += 1\n    return {\"ingested\": ingested, \"rejected\": rejected, \"total_stored\": len(TICKETS)}\n\n\n@app.get(\"/tickets\")\ndef list_tickets(priority: str | None = None, status: str | None = None) -> list[dict]:\n    if priority and priority not in LEVELS:\n        raise HTTPException(422, f\"priority must be one of {LEVELS}\")\n    rows = [t for t in TICKETS.values()\n            if (not priority or t[\"priority\"] == priority) and (not status or t[\"status\"] == status)]\n    return sorted(rows, key=lambda t: t[\"created_at\"])\n\n\n@app.get(\"/summary\")\ndef summary() -> dict:\n    tickets = list(TICKETS.values())\n    open_high = sorted((t for t in tickets if t[\"status\"] == \"open\" and t[\"priority\"] == \"high\"),\n                       key=lambda t: t[\"created_at\"])\n    return {\n        \"total\": len(tickets),\n        \"by_priority\": {lvl: sum(t[\"priority\"] == lvl for t in tickets) for lvl in LEVELS},\n        \"by_status\": dict(Counter(t[\"status\"] for t in tickets)),\n        \"open_high\": [{\"ticket_id\": t[\"ticket_id\"], \"customer\": t[\"customer\"],\n                       \"created_at\": t[\"created_at\"], \"subject\": t[\"subject\"]} for t in open_high],\n        \"top_customers\": Counter(t[\"customer\"] for t in tickets).most_common(3),\n    }\n",
+     "lang": "Python",
+     "file": "solution/app/main.py"
+    },
+    {
+     "title": "Score yourself",
+     "body": "Stop at 90 minutes, whatever state you are in, then score honestly. 70 or more is interview-ready. Under 50, repeat the drill in a week. Only then open solution/ and compare: what did it do more simply than you, and what did you do better?",
+     "code": "Works (all 6 acceptance tests pass)                          30\nInput handling (line numbers, 400 on bad header, no dupes)   15\nClassification (readable rules, enterprise bump, isolated)   15\nCode quality (small functions, clear names, no secrets)      10\nYour own tests (at least one beyond the given ones)          10\nREADME and assumptions (runnable in 2 minutes)               10\nDemo and trade-offs (2 minutes, one trade-off named)         10\n                                                    total   100",
+     "lang": "text",
+     "file": "README.md"
+    }
+   ],
+   "run": {
+    "code": "cd solution                       # or starter/ once yours works\nuvicorn app.main:app --reload\ncurl -X POST localhost:8000/ingest -H \"Content-Type: text/csv\" --data-binary @../data/tickets.csv\n# {\"ingested\":20,\"rejected\":[{\"line\":14,\"error\":\"Invalid isoformat string: 'not-a-date'\"}],\"total_stored\":20}\ncurl localhost:8000/summary\n# {\"total\":20,\"by_priority\":{\"low\":4,\"medium\":4,\"high\":12},\"by_status\":{\"closed\":9,\"open\":11},\n#  \"open_high\":[{\"ticket_id\":\"T-1004\",\"customer\":\"Bluebird Cafe\",\"created_at\":\"2026-09-03\",...},...],\n#  \"top_customers\":[[\"Contoso\",7],[\"Evergreen Bank\",4],[\"Acme Corp\",3]]}\n\n# Windows PowerShell\nInvoke-RestMethod -Method Post -Uri localhost:8000/ingest -ContentType text/csv -InFile ..\\data\\tickets.csv",
+    "lang": "bash"
+   },
+   "tests": {
+    "code": "cd starter && python -m pytest -q\n# 6 failed (NotImplementedError) at minute 0, 6 passed when you finish\n\ncd ../solution && python -m pytest -q\n# ......   6 passed in 0.6s",
+    "lang": "bash"
+   },
+   "stretch": [
+    "LLM_MODE=real: classify with an LLM, validate the label, fall back to rules on any error.",
+    "Persist tickets in SQLite so a restart keeps the data.",
+    "Add GET /summary?since=YYYY-MM-DD and flag open high tickets older than 3 days.",
+    "Repeat the drill with a different dataset (orders, invoices) and beat your previous score."
+   ],
+   "interview": "In a timed build I start by writing assumptions and running the given tests, then deliver the thinnest working path: rules-based classification, row-level validation that reports bad lines instead of crashing, idempotent upserts, and a summary endpoint. I would say I chose rules over an LLM because they are instant, free and explainable, with the LLM as an optional layer that falls back to rules, and in-memory storage because the brief did not need durability, with SQLite as the next step."
+  },
+  "ideas": [
+   "Write your assumptions down in the first five minutes; they are part of the deliverable.",
+   "Get one endpoint fully green before starting the next; partial everything scores lower than complete most.",
+   "Dirty input is the normal case: report bad rows with line numbers and keep going.",
+   "Start with rules and add an LLM only behind a fallback, so the system still works when the model does not."
+  ],
+  "traps": [
+   "Reaching for a database, Docker or an LLM in minute ten and running out of time for the core endpoints.",
+   "Letting one bad row crash the whole ingest, or silently dropping it without telling the user.",
+   "Skipping the last ten minutes for README and demo practice; the explanation is scored too."
+  ],
+  "qa": [
+   [
+    "You have 20 minutes left and two endpoints are unfinished. What do you do?",
+    "Finish the one that makes the most tests pass or matters most to the user (usually the summary), stub the other with a clear TODO, and use the last minutes for a README that states what is missing and how I would finish it. A smaller working system with honest notes beats a broken bigger one."
+   ],
+   [
+    "Why not just use an LLM to classify every ticket?",
+    "Rules are instant, free, deterministic and easy to explain to a support lead, and they cover the obvious cases like outages and data loss. An LLM helps with ambiguous tickets, but it adds cost, latency and failure modes, so I would add it behind a validated label check with a rules fallback and measure whether it actually improves accuracy."
+   ]
+  ]
+ }
+]

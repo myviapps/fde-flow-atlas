@@ -1,0 +1,11 @@
+    <section class="quiz" id="quiz" aria-label="Check yourself" hidden>
+      <div class="cs-top"><span class="fmt">Self check</span><h3>Check yourself</h3></div>
+      <p class="tryintro">Pick an answer for each question to see if you got it and why. Your best score is saved in this browser.</p>
+      <ol class="qz" id="quizlist"></ol>
+      <div class="qzfoot"><span id="qzscore"></span><button class="btn" id="qzreset" type="button">Try again</button></div>
+    </section>
+    <section class="tplrel" id="tplrel" aria-label="Templates for this topic" hidden>
+      <div class="cs-top"><span class="fmt">Document</span><h3>Templates for this topic</h3></div>
+      <p class="tryintro">This skill is best practised as a document. Open a fill-in template with a worked example.</p>
+      <div class="tplbtns" id="tplbtns"></div>
+    </section>

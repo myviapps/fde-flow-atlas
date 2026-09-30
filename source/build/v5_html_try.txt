@@ -1,0 +1,5 @@
+    <section class="tryit" id="tryit" aria-label="Try it yourself" hidden>
+      <div class="cs-top"><span class="fmt">Interactive</span><h3 id="trytitle"></h3></div>
+      <p class="tryintro" id="tryintro"></p>
+      <div id="tryhost" class="tryhost"></div>
+    </section>

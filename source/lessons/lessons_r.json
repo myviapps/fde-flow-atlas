@@ -1,0 +1,308 @@
+{
+ "llmapi": {
+  "plain": "An LLM API is a web service you send text to and get generated text back from. You send a request over HTTPS with a list of messages, the model's name and a few settings, and the provider returns the model's reply plus a record of how many tokens it used. A token is a small chunk of text, roughly three quarters of an English word, and tokens are what you pay for. An SDK (software development kit) is the provider's official library that wraps these HTTP calls so you write a few lines of Python instead of raw requests. Almost every AI feature an FDE builds, from a chatbot to a document extractor, is built on top of this one call.",
+  "analogy": "It is like ordering from a kitchen through a hatch. You pass in a ticket with the order history and any house rules, choose how creative the chef may be, set a maximum portion size, and the dishes come out one by one with a bill attached.",
+  "why": "On day one at a customer you will be asked to get a model answering questions against their data, usually inside their cloud account and behind their security rules. Knowing the request shape, which settings matter, how to read errors and how enterprises actually access models lets you get a working, reliable call in hours instead of days, and explain its cost and behaviour to their engineers.",
+  "subtopics": [
+   {
+    "title": "Messages, roles and the system prompt",
+    "body": "A chat-style request has two parts. The system prompt holds standing instructions: who the assistant is, what it may and may not do, and the output format. The messages list holds the conversation so far, where each message has a role (user or assistant) and content.\n\nThe model keeps no memory between calls. If you want it to remember turn one when answering turn three, your code must send turns one and two again. This is why long conversations cost more: every call re-sends the history as input tokens.\n\nIn the Anthropic API the system prompt is a separate top-level system field and messages must start with a user turn and alternate user and assistant. Other providers put the system prompt inside the messages list with a system or developer role. The idea is the same; only the shape differs, which matters when you switch providers.",
+    "example": "Harbourline Insurance wants a claims helper. The system prompt says: answer only about the customer's own policy, cite the policy section, reply in plain English under 120 words. On the third turn the app sends the system prompt, the first question and answer, the second question and answer, and the new question. If the app forgets to include earlier turns, the model will not know which claim 'it' refers to.",
+    "code": "import anthropic\n\nclient = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment\n\nhistory = [\n    {\"role\": \"user\", \"content\": \"My claim number is HL-4471. What is its status?\"},\n    {\"role\": \"assistant\", \"content\": \"Claim HL-4471 is waiting for a repair quote.\"},\n    {\"role\": \"user\", \"content\": \"How long does that step usually take?\"},\n]\n\nresponse = client.messages.create(\n    model=MODEL,            # placeholder: a model id from your config\n    max_tokens=500,\n    system=\"You help Harbourline customers with their own claims. \"\n           \"Answer in plain English, under 120 words.\",\n    messages=history,       # the full conversation, re-sent every call\n)\n\nprint(response.content[0].text)\n# Keep the turn so the next call includes it\nhistory.append({\"role\": \"assistant\", \"content\": response.content[0].text})",
+    "lang": "Python"
+   },
+   {
+    "title": "Sampling: temperature, top_p, max_tokens, stop",
+    "body": "At each step the model gives every possible next token a probability, then one is picked. Sampling settings shape that pick. Temperature rescales the probabilities: low values make the top choice even more likely, so output is focused and repeatable; high values flatten the distribution, so output is more varied. Anthropic accepts 0 to 1; some other providers allow up to 2. Top_p (nucleus sampling) keeps only the smallest set of top tokens whose probabilities add up to p, and samples from those. Providers usually advise changing one of the two, not both.\n\nMax_tokens is a hard cap on output length. If the model reaches it, the answer stops mid-sentence and the stop reason says max_tokens. Stop sequences are strings that end generation early when the model writes them, useful for templates.\n\nTwo cautions. Temperature 0 is close to deterministic but not guaranteed identical across calls. And several recent models, including some current Claude models, reject temperature and top_p entirely and offer other controls, so check the model's documentation before copying settings between models.",
+    "example": "Tallow Freight extracts invoice fields into JSON. Variety is useless there, so where the model allows it the FDE uses temperature 0 and a max_tokens of 400, which comfortably fits the JSON. For a marketing team at the same company that wants five different subject lines, a higher temperature gives more varied options. Try the sampling playground below to see how the candidate pool shrinks and grows.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Setting",
+      "What it does",
+      "Typical use"
+     ],
+     "rows": [
+      [
+       "temperature",
+       "Sharpens (low) or flattens (high) the choice",
+       "Low for extraction, higher for ideas"
+      ],
+      [
+       "top_p",
+       "Samples only from top tokens summing to p",
+       "Alternative to temperature, not both"
+      ],
+      [
+       "max_tokens",
+       "Hard cap on output tokens",
+       "Size to the longest valid answer"
+      ],
+      [
+       "stop_sequences",
+       "Ends output when a string appears",
+       "Templates, one-item outputs"
+      ],
+      [
+       "system",
+       "Standing instructions for every turn",
+       "Role, rules, output format"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Streaming and the usage fields",
+    "body": "By default the API waits until the whole answer is written and returns it in one piece. For a 600-word answer that can take many seconds, and users think the app is frozen. Streaming sends the text in small pieces as it is generated, using server-sent events, so the first words appear in about a second. The total time is similar; the waiting feels much shorter.\n\nEvery response, streamed or not, ends with two things to log. The stop reason tells you why generation ended: end_turn (finished naturally), max_tokens (hit the cap), stop_sequence, or tool_use (the model wants to call a tool). The usage object gives input_tokens and output_tokens, plus cache fields when prompt caching is used. Those numbers drive the bill.\n\nLog model id, stop reason, token counts and latency for every call from the first day. When a customer asks why the bill doubled or why answers are cut off, those logs are the evidence.",
+    "example": "Quillmarsh Legal's contract summarizer felt slow: 14 seconds before anything appeared. After switching to streaming, the first text showed in under 1 second while the total time stayed about 13 seconds, and user complaints about 'freezing' stopped. The usage log also showed 3 percent of answers ending in max_tokens, which led the team to raise the cap for long contracts.",
+    "code": "import time, anthropic\n\nclient = anthropic.Anthropic()\nstart = time.time()\n\nwith client.messages.stream(\n    model=MODEL,\n    max_tokens=2000,\n    messages=[{\"role\": \"user\", \"content\": \"Summarise this contract: ...\"}],\n) as stream:\n    for text in stream.text_stream:   # pieces of text as they arrive\n        print(text, end=\"\", flush=True)\n    final = stream.get_final_message()\n\n# One log line per call: the evidence you will need later\nprint({\n    \"model\": final.model,\n    \"stop_reason\": final.stop_reason,          # end_turn, max_tokens, ...\n    \"input_tokens\": final.usage.input_tokens,\n    \"output_tokens\": final.usage.output_tokens,\n    \"seconds\": round(time.time() - start, 2),\n})\nif final.stop_reason == \"max_tokens\":\n    print(\"WARNING: answer was cut off\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Errors, rate limits, retries, fallbacks",
+    "body": "Errors split into two groups. Client errors mean your request is wrong and retrying will not help: 400 (bad request, such as a wrong parameter), 401 (bad key), 403 (not allowed), 404 (unknown model or endpoint), 413 (too large). Transient errors may succeed later: 429 (rate limited), 500 (server error) and 529 (overloaded, specific to Anthropic).\n\nRate limits are set per organisation, usually as requests per minute and tokens per minute. When you exceed them you get a 429, often with a retry-after header saying how long to wait. The official SDKs already retry transient errors a couple of times with exponential backoff, and you can raise max_retries. For big jobs, also cap how many calls run at once.\n\nA fallback is what you do when retries run out: try a second model or region, queue the work for later, or show a clear message. Decide it with the customer in advance, because a different model may give different answers.",
+    "example": "Brindle Health ran 40,000 discharge summaries overnight with 50 parallel workers and hit hundreds of 429s. The FDE cut concurrency to 12, kept SDK retries at 4, checkpointed finished ids to a file, and added a fallback that parks failed items in a retry queue for the morning. The next run finished with zero lost documents.",
+    "code": "import anthropic\n\nclient = anthropic.Anthropic(max_retries=4, timeout=60.0)  # SDK backs off on 429/5xx\n\ndef summarise(text, retry_queue):\n    try:\n        r = client.messages.create(\n            model=MODEL, max_tokens=800,\n            messages=[{\"role\": \"user\", \"content\": text}],\n        )\n        return r.content[0].text\n    except anthropic.BadRequestError as e:      # 400: fix the request, never retry\n        raise ValueError(f\"bad request: {e.message}\")\n    except anthropic.AuthenticationError:       # 401: wrong or expired key\n        raise\n    except anthropic.RateLimitError:            # 429 still failing after retries\n        retry_queue.append(text)                # fallback: try again later\n    except anthropic.APIStatusError as e:       # other status codes, e.g. 500 or 529\n        if e.status_code >= 500:\n            retry_queue.append(text)\n        else:\n            raise\n    except anthropic.APIConnectionError:        # network problem or timeout\n        retry_queue.append(text)\n    return None",
+    "lang": "Python"
+   },
+   {
+    "title": "Enterprise access: clouds and gateways",
+    "body": "Many large customers will not let you call a model vendor's API directly with a credit card key. They consume models through a cloud they already have a contract with, so data stays under existing agreements, billing is consolidated and access is controlled with their own identity system.\n\nThe common routes are AWS Bedrock, Microsoft Azure (Azure OpenAI for OpenAI models, and Microsoft Foundry for a wider catalogue including Claude) and Google Vertex AI. Each uses the cloud's own authentication (IAM roles, Entra ID, service accounts), its own model ids, per-region availability and its own quotas. New models and features sometimes reach a cloud later than the vendor's own API, so check before promising a feature.\n\nAn LLM gateway is a proxy the customer runs in front of all providers, such as the open source LiteLLM or a cloud API gateway. It holds the real keys, logs requests, enforces budgets per team and can route between providers. When a gateway exists, your code points at it instead of at the provider.",
+    "example": "Veradune Bank requires everything to run inside its AWS account in one European region. The FDE confirms the needed model is enabled there, requests a quota increase for tokens per minute, and uses the provider-specific client with the bank's IAM role instead of an API key. The prompt and message code stay the same as in the prototype.",
+    "code": "# Same request shape, different client and credentials.\nimport anthropic\n\n# 1) Vendor API: API key from the environment\nclient = anthropic.Anthropic()\n\n# 2) Google Vertex AI: uses Google Cloud credentials, no Anthropic key\n#    pip install \"anthropic[vertex]\"\nclient = anthropic.AnthropicVertex(project_id=\"veradune-ai\", region=\"europe-west1\")\n\n# 3) AWS Bedrock: the SDK has a Bedrock client that uses AWS credentials\n#    (an IAM role); model ids carry a provider prefix and differ by region.\n\n# 4) Company gateway: point the client at the gateway URL\nclient = anthropic.Anthropic(base_url=\"https://llm-gateway.internal.example\")\n\nresponse = client.messages.create(\n    model=MODEL,   # the id format depends on the platform\n    max_tokens=300,\n    messages=[{\"role\": \"user\", \"content\": \"Hello\"}],\n)",
+    "lang": "Python",
+    "checklist": [
+     "Which platform must we use: vendor API, Bedrock, Azure, Vertex or a gateway?",
+     "Is the model we need enabled in the required region?",
+     "How do we authenticate: IAM role, service account, managed identity, gateway key?",
+     "What are the tokens-per-minute and requests-per-minute quotas, and who raises them?",
+     "Are the features we plan to use (streaming, tools, caching, batch) available on that platform?",
+     "Where are prompts and outputs logged, and for how long?"
+    ]
+   },
+   {
+    "title": "Pinning model versions and deprecations",
+    "body": "Providers release new model versions often and retire old ones. Many offer an alias that always points at the latest version of a model family, which is handy in a notebook but risky in production: the model behind the alias can change and your outputs change with it, even though your code did not.\n\nIn production, pin an exact model id in configuration, not scattered through code. Treat a model change like a dependency upgrade: run your evaluation set on the new version, compare quality, cost and latency, then switch through a normal release.\n\nProviders publish deprecation notices with a retirement date, after which calls to that id fail. Put those dates in the customer's calendar, subscribe to the provider's notices, and plan the migration weeks ahead. Newer models sometimes change parameters too, for example no longer accepting temperature, so read the migration notes and run your tests.",
+    "example": "Corvel Utilities had its outage-summary bot running on a pinned model id. A deprecation notice gave four months' warning. The FDE ran the 200-case evaluation set on the replacement: accuracy rose from 91 to 94 percent, but two prompts relied on a sampling setting the new model rejected. Fixing those first meant the switch shipped in a routine Tuesday release with no incident.",
+    "code": "# config/llm.yaml  (one place to change the model)\nsummariser:\n  model: MODEL_V1          # pinned exact id, never a floating alias\n  max_tokens: 800\n  retired_on: 2027-03-31   # from the provider's deprecation notice\n  owner: platform-team\n\ncandidate:\n  model: MODEL_V2          # under evaluation\n  eval_set: evals/outage_summaries_200.jsonl\n  pass_rule: \"accuracy >= current and p95 latency <= 1.2x current\"",
+    "lang": "YAML"
+   }
+  ],
+  "glossary": [
+   [
+    "Token",
+    "A small chunk of text the model reads and writes; APIs count and bill by tokens."
+   ],
+   [
+    "System prompt",
+    "Standing instructions sent with every request that set the assistant's role, rules and format."
+   ],
+   [
+    "Temperature",
+    "A sampling setting where low values make output focused and repeatable and high values make it more varied."
+   ],
+   [
+    "Top_p",
+    "Nucleus sampling: pick only from the top tokens whose probabilities add up to p."
+   ],
+   [
+    "max_tokens",
+    "The hard limit on how many tokens the model may generate in one response."
+   ],
+   [
+    "Stop reason",
+    "The field saying why generation ended, such as end_turn, max_tokens, stop_sequence or tool_use."
+   ],
+   [
+    "Streaming",
+    "Receiving the answer in small pieces as it is generated instead of all at once at the end."
+   ],
+   [
+    "Rate limit",
+    "The maximum requests or tokens per minute an account may use; going over returns HTTP 429."
+   ],
+   [
+    "LLM gateway",
+    "A proxy in front of model providers that manages keys, logging, budgets and routing."
+   ],
+   [
+    "Pinned model version",
+    "An exact model id fixed in configuration so behaviour does not change until you choose to upgrade."
+   ]
+  ],
+  "practice": [
+   "Write a Python script that sends a three-turn conversation with a system prompt and prints the answer, stop_reason, input_tokens and output_tokens.",
+   "Convert it to streaming, measure time to first text and total time for a 400-word answer, and log one JSON line per call.",
+   "Stretch: build a small wrapper that caps concurrency at 5, retries transient errors with backoff, sends failures to a retry file, and reads the model id from a config file. Test it by forcing a 400 and a simulated 429."
+  ]
+ },
+ "aicoding": {
+  "plain": "AI coding tools are programs that use a language model to read, write and change code for you. Some complete code as you type (autocomplete, like GitHub Copilot's inline suggestions), some sit in the editor and edit several files on request (like Cursor), and some are agents that run in a terminal or IDE, read the repository, run commands and tests, and make multi-step changes (like Claude Code). An agent is a model that can take actions in a loop, not only answer. These tools can make you much faster, but they can also produce code that looks right and is wrong. The skill is using them so the speed is real and the quality stays yours.",
+  "analogy": "A coding agent is like a very fast, very well-read new colleague who has never been to this company. Give them a clear brief and the house rules and they do a lot of good work quickly; leave them guessing and they confidently build the wrong thing. Either way, you review their work before it goes out.",
+  "why": "FDEs are often dropped into a large, unfamiliar customer codebase with a deadline of weeks. Coding agents help you understand that code and ship integrations quickly, and many FDE job descriptions now expect fluency with them. At the same time you are working on someone else's systems and data, so careless use can leak confidential information or push bugs into production, which costs trust that is hard to win back.",
+  "subtopics": [
+   {
+    "title": "What agents are good and bad at",
+    "body": "Coding agents do best on work that is common, well specified and easy to check. Boilerplate (API clients, data classes, config), tests for existing functions, mechanical refactors across many files, translating code between languages, writing scripts, and explaining what a piece of code does are all strong areas.\n\nThey do worse where the key information is not in the code. Unwritten business rules, performance limits of the customer's systems, novel architecture decisions and anything needing knowledge of a private library they have not read are weak areas. They also tend to sound equally confident whether they are right or wrong, may invent a function or option that does not exist, and can 'fix' a failing test by weakening the test.\n\nA useful habit: before handing a task over, ask how you will check the result. If checking is easy (tests, a type checker, a visible output), delegate freely. If checking is hard, do it yourself or break it into checkable parts.",
+    "example": "At Pelham Grain, an FDE asked an agent to write a client for the customer's inventory REST API from its OpenAPI file, plus tests. That took 20 minutes instead of a day. When she asked it to decide how to reconcile stock counts between two warehouses, it produced clean code built on a rule that nobody at the company actually used. That decision needed a conversation with the operations lead.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Task",
+      "Agent fit",
+      "Why"
+     ],
+     "rows": [
+      [
+       "Boilerplate, API clients",
+       "Strong",
+       "Common patterns, easy to test"
+      ],
+      [
+       "Tests for existing code",
+       "Strong",
+       "Clear target, runs quickly"
+      ],
+      [
+       "Explaining unfamiliar code",
+       "Strong, verify",
+       "Fast map, may be wrong on details"
+      ],
+      [
+       "Large mechanical refactor",
+       "Good in steps",
+       "Needs tests and small diffs"
+      ],
+      [
+       "Business rules and edge cases",
+       "Weak",
+       "The rules are not in the code"
+      ],
+      [
+       "Architecture and security design",
+       "Weak alone",
+       "Needs context and judgment"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Giving context: CLAUDE.md, specs, tests",
+    "body": "An agent only knows what it can read. Three kinds of context make the biggest difference.\n\nA project rules file is a short file in the repository that the tool reads at the start of every session. Claude Code uses CLAUDE.md; Cursor and Copilot have their own equivalents. Put in it how to build and test, the folder layout, coding conventions, and hard rules such as 'never edit generated files' or 'all database access goes through repo/'. Keep it short and correct; stale rules mislead.\n\nA spec is a few lines on what to build: inputs, outputs, edge cases and what done means. Writing it forces you to think, and the agent follows it far better than a one-line request.\n\nTests first means you write, or ask the agent to write, failing tests that describe the behaviour before the implementation. The tests become an objective check, and you can see if the agent later tries to change them to pass.",
+    "example": "An FDE at Lanternfield Clinics needed a function to normalise appointment times from three source systems. He wrote a six-line spec, listed five edge cases (missing timezone, daylight saving change, 24:00, blank, two formats in one file), asked the agent to write failing tests for those first, reviewed the tests, then asked for the implementation. The first version failed two tests; the second passed all of them.",
+    "code": "# CLAUDE.md  (project rules file, read at the start of each session)\n\n## Build and test\n- Install: pip install -e .[dev]\n- Run tests: pytest -q   (must pass before any commit)\n- Lint: ruff check .\n\n## Layout\n- src/connectors/  one module per customer system (read-only clients)\n- src/pipeline/    transforms; pure functions, no network calls\n- tests/           mirrors src/; fixtures in tests/fixtures (synthetic data only)\n\n## Rules\n- Never edit files in src/generated/ (built from the OpenAPI spec).\n- No real customer data in tests or prompts. Use tests/fixtures.\n- Do not change an existing test to make it pass; ask first.\n- Keep changes small: one feature or fix per commit.",
+    "lang": "Text"
+   },
+   {
+    "title": "Reviewing and verifying generated code",
+    "body": "Generated code needs the same review as a colleague's pull request, and in some ways more, because it is fluent even when wrong. Read the whole diff, not only the summary the tool gives you. Ask yourself whether you could explain each part in a code review. If not, ask the agent to explain it, then check the explanation against the code and the documentation.\n\nThen verify by running things. Run the full test suite, not only the new tests. Try the edge cases by hand. Run the linter and type checker. For anything touching data, compare outputs on a sample against a known-good source.\n\nWatch for common failure patterns: a made-up library function, errors swallowed with a bare except, a test weakened to pass, a new dependency you did not ask for, hardcoded secrets or paths, and changes to files outside the task. Small steps make all of this easier; a 40-line diff can be reviewed properly, a 2,000-line one usually is not.",
+    "example": "Reviewing an agent's change at Ostrava Parcel, an FDE noticed the new retry helper caught every exception, including authentication failures, and retried them forever. The tests passed because none of them simulated a bad key. She added that test, which failed, then fixed the code to retry only transient errors.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "I read the whole diff and can explain every change",
+     "Only files related to the task were changed",
+     "No test was deleted or weakened to make it pass",
+     "Full test suite, linter and type checker pass locally",
+     "Edge cases and error paths were tried, not only the happy path",
+     "Every imported function or option exists in the docs for our version",
+     "No new dependency, secret, hardcoded path or debug print slipped in",
+     "Commit message says what changed and that it was AI-assisted if the team requires it"
+    ]
+   },
+   {
+    "title": "Security and data rules on customer systems",
+    "body": "At a customer, their rules decide which tools you may use and what they may see. Before using any AI tool on their code, ask which tools are approved, under which accounts, and with which settings. Many companies allow only enterprise plans with agreed data handling, or only tools running against models inside their own cloud.\n\nKeep sensitive data out of prompts. That includes credentials, API keys, connection strings, personal data about their customers or staff, and anything marked confidential. Use synthetic or masked data for tests and examples. Remember that an agent reading files can pick up a .env file or a data export in the folder, so keep those out of the working directory or excluded.\n\nLimit what the agent can do. Give it the least access it needs: a development environment, read-only database users, no production credentials. Review or approve shell commands rather than allowing everything, especially anything that deletes, deploys or sends data out. Agents can also be steered by instructions hidden in files or web pages they read (prompt injection), so do not let an agent with broad permissions process untrusted content unattended.",
+    "example": "At Fenwick Mutual, an insurer, the security team approved one coding tool on an enterprise plan, for the development environment only. The FDE kept claim exports outside the repository, created a masked sample of 50 claims for tests, used a read-only database user, and set the agent to ask before running any command. When an auditor asked months later how AI tools had been used, she could answer with the approval email and the settings file.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Rule",
+      "Do",
+      "Do not"
+     ],
+     "rows": [
+      [
+       "Approved tools only",
+       "Use the tool and plan the customer approved",
+       "Use a personal account on their code"
+      ],
+      [
+       "No secrets in context",
+       "Load keys from a vault or env at runtime",
+       "Paste keys or .env files into prompts"
+      ],
+      [
+       "No real personal data",
+       "Use synthetic or masked samples",
+       "Share production exports with the tool"
+      ],
+      [
+       "Least privilege",
+       "Dev environment, read-only users",
+       "Give the agent production credentials"
+      ],
+      [
+       "Human approval",
+       "Approve deletes, deploys, network calls",
+       "Allow every command automatically"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Learning an unfamiliar codebase fast",
+    "body": "Reading a large codebase is one of the best uses of an agent, because questions are cheap and answers are easy to check by opening files. Start in a read-only mode and ask for a map: what the system does, the entry points, the main modules, how a typical request or job flows through them, and how to run it and its tests.\n\nThen go deeper with specific questions: where is this API route handled, what writes to this table, why would this error appear. Ask the agent to cite file paths and line numbers, and open them to confirm. Treat the answers as a guided tour, not the truth; agents sometimes fill gaps with plausible guesses.\n\nWrite down what you confirm in a short notes file. It helps you, the next engineer, and it can become the project rules file. Finish the first days by making a small, real change end to end, such as fixing a minor bug with a test, which proves you can build, test and ship in this codebase.",
+    "example": "Joining Kestrel Rail's ticketing platform (about 250,000 lines of Java and Python), an FDE spent the first morning asking an agent for a module map and the path of a ticket purchase from API to database. He checked each step in the code, found one step the agent had described wrongly, and wrote a two-page notes file. By day three he had shipped a fix for a date parsing bug with a regression test.",
+    "code": "Prompts for your first day in a new repository (read-only)\n\n1. \"Give me a map of this repo: purpose, entry points, main modules,\n    and how to build and run the tests. Cite file paths.\"\n2. \"Trace what happens when POST /orders is called, step by step,\n    with the file and function for each step.\"\n3. \"Which code reads or writes the table payments? List the paths.\"\n4. \"What does the config in settings/prod.py change compared with dev?\"\n5. \"List the external systems this code talks to and how it authenticates.\"\n6. \"Where would you add a new field to the order export, and which tests cover it?\"\n\nAfter each answer: open the cited files and confirm.\nWrite confirmed facts to NOTES.md; mark anything unverified with '(check)'.",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "Coding agent",
+    "An AI tool that can read a codebase, edit files and run commands in a loop to complete a task."
+   ],
+   [
+    "Autocomplete",
+    "Inline suggestions that finish the line or block you are typing."
+   ],
+   [
+    "CLAUDE.md",
+    "A project rules file Claude Code reads at the start of a session; other tools have similar files."
+   ],
+   [
+    "Spec",
+    "A short written description of what to build, including inputs, outputs, edge cases and when it is done."
+   ],
+   [
+    "Tests first",
+    "Writing failing tests that describe the wanted behaviour before writing the code."
+   ],
+   [
+    "Diff",
+    "The exact lines added, removed or changed by an edit, as shown in version control."
+   ],
+   [
+    "Least privilege",
+    "Giving a person or tool only the access it needs for the task and nothing more."
+   ],
+   [
+    "Prompt injection",
+    "Instructions hidden in content an AI reads that try to make it do something the user did not ask."
+   ],
+   [
+    "Synthetic data",
+    "Made-up data with the same shape as real data, safe to use in tests and prompts."
+   ]
+  ],
+  "practice": [
+   "Pick an open source repository you have never read. Using a coding agent in read-only mode, produce a one-page map (entry points, main modules, how to run tests) and mark which claims you verified by opening files.",
+   "Write a CLAUDE.md for one of your own projects, then implement a small feature tests-first with an agent. Keep the diff under 100 lines and fill in the review checklist from this lesson.",
+   "Stretch: write a one-page 'AI coding tool use' policy for a fictional customer, covering approved tools, data rules, permissions and review, and apply it while fixing a bug in a sample project that contains a fake .env file."
+  ]
+ }
+}

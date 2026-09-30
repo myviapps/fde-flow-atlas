@@ -1,0 +1,951 @@
+[
+ {
+  "id": "mlworkflow",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "The ML workflow",
+  "title": "The ML workflow: from question to trusted model",
+  "thesis": "A model is only as trustworthy as the process around it. Frame the question, split the data before you look too hard, beat a dumb baseline, tune with cross-validation, diagnose over- and underfitting, and open the locked test set once. Leakage and unrepeatable runs are the two ways good-looking results lie.",
+  "format": "animation",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "The whole workflow in 20 lines",
+  "code": "from sklearn.datasets import load_breast_cancer\nfrom sklearn.dummy import DummyClassifier\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import GridSearchCV, train_test_split\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\n\nSEED = 42\nX, y = load_breast_cancer(return_X_y=True)\nX_dev, X_test, y_dev, y_test = train_test_split(\n    X, y, test_size=0.2, stratify=y, random_state=SEED)      # lock the test set away\n\nbase = DummyClassifier(strategy=\"most_frequent\").fit(X_dev, y_dev)\npipe = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000))\nsearch = GridSearchCV(pipe, {\"logisticregression__C\": [0.01, 0.1, 1, 10]}, cv=5)\nsearch.fit(X_dev, y_dev)                                     # 5-fold CV on dev data only\n\nprint(\"baseline test:\", round(base.score(X_test, y_test), 3))\nprint(\"best C:\", search.best_params_[\"logisticregression__C\"],\n      \"cv:\", round(search.best_score_, 3))\nprint(\"final test:\", round(search.score(X_test, y_test), 3))  # look once, at the end\n# baseline test: 0.632\n# best C: 0.1 cv: 0.98\n# final test: 0.974",
+  "nodes": [
+   [
+    "frame",
+    90,
+    70,
+    "Frame problem",
+    "target and action"
+   ],
+   [
+    "data",
+    265,
+    70,
+    "Collect data",
+    "rows and labels"
+   ],
+   [
+    "split",
+    440,
+    70,
+    "Split",
+    "train, val, test"
+   ],
+   [
+    "base",
+    615,
+    70,
+    "Baseline",
+    "dumb model first"
+   ],
+   [
+    "train",
+    615,
+    210,
+    "Train",
+    "fit on train only"
+   ],
+   [
+    "cv",
+    440,
+    210,
+    "Cross-validate",
+    "k folds"
+   ],
+   [
+    "tune",
+    265,
+    210,
+    "Tune",
+    "pick settings"
+   ],
+   [
+    "diag",
+    90,
+    210,
+    "Diagnose",
+    "over or underfit"
+   ],
+   [
+    "test",
+    90,
+    350,
+    "Test once",
+    "then ship"
+   ]
+  ],
+  "edges": [
+   [
+    "frame",
+    "data"
+   ],
+   [
+    "data",
+    "split"
+   ],
+   [
+    "split",
+    "base"
+   ],
+   [
+    "base",
+    "train"
+   ],
+   [
+    "train",
+    "cv"
+   ],
+   [
+    "cv",
+    "tune"
+   ],
+   [
+    "tune",
+    "diag"
+   ],
+   [
+    "diag",
+    "test"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Frame the problem",
+    "n": [
+     "frame"
+    ],
+    "e": [],
+    "d": "Decide what you predict, for whom, when the prediction is made and what action it triggers. Here: is a tumour sample malignant or benign, from 30 lab measurements.",
+    "l": [
+     8
+    ]
+   },
+   {
+    "t": "Gather labelled rows",
+    "n": [
+     "frame",
+     "data"
+    ],
+    "e": [
+     "frame>data"
+    ],
+    "d": "Each row is one example with its features (inputs) and its label (the known answer). load_breast_cancer gives 569 labelled rows.",
+    "l": [
+     8
+    ]
+   },
+   {
+    "t": "Split before anything else",
+    "n": [
+     "data",
+     "split"
+    ],
+    "e": [
+     "data>split"
+    ],
+    "d": "Lock 20 percent away as the test set. stratify keeps the class mix the same in both parts, and a fixed random_state makes the split repeatable.",
+    "l": [
+     7,
+     9,
+     10
+    ]
+   },
+   {
+    "t": "Beat a dumb baseline",
+    "n": [
+     "split",
+     "base"
+    ],
+    "e": [
+     "split>base"
+    ],
+    "d": "A model that always guesses the most common class scores 0.632. Any real model must clearly beat that number to be worth anything.",
+    "l": [
+     12,
+     17
+    ]
+   },
+   {
+    "t": "Train inside a pipeline",
+    "n": [
+     "base",
+     "train"
+    ],
+    "e": [
+     "base>train"
+    ],
+    "d": "The scaler and the model live in one pipeline, so the scaler only ever learns from training rows. This blocks a common kind of leakage.",
+    "l": [
+     13
+    ]
+   },
+   {
+    "t": "Cross-validate",
+    "n": [
+     "train",
+     "cv"
+    ],
+    "e": [
+     "train>cv"
+    ],
+    "d": "5-fold cross-validation trains five times on different four-fifths of the dev data and scores the held-out fifth each time, which gives a steadier estimate than one split.",
+    "l": [
+     14,
+     15
+    ]
+   },
+   {
+    "t": "Tune a setting",
+    "n": [
+     "cv",
+     "tune"
+    ],
+    "e": [
+     "cv>tune"
+    ],
+    "d": "GridSearchCV tries each value of C (how strongly the model is held back) and keeps the one with the best average cross-validation score: C = 0.1 at 0.98.",
+    "l": [
+     14,
+     18,
+     19
+    ]
+   },
+   {
+    "t": "Diagnose the gap",
+    "n": [
+     "tune",
+     "diag"
+    ],
+    "e": [
+     "tune>diag"
+    ],
+    "d": "Compare training and validation scores. Both low means underfitting. Training high and validation much lower means overfitting. Close and high is what you want."
+   },
+   {
+    "t": "Open the test set once",
+    "n": [
+     "diag",
+     "test"
+    ],
+    "e": [
+     "diag>test"
+    ],
+    "d": "Score the final model on the locked test set a single time: 0.974 against a baseline of 0.632. That is the honest number you report to the customer.",
+    "l": [
+     20,
+     21,
+     22,
+     23
+    ]
+   }
+  ],
+  "ideas": [
+   "Write down the target, the moment of prediction and the action before touching data.",
+   "The test set is opened once, at the end; tuning on it turns it into a second validation set.",
+   "Always report a baseline next to your model; 90 percent accuracy means little if guessing gives 89.",
+   "Put every preprocessing step inside a pipeline so cross-validation refits it per fold.",
+   "Fix random seeds and save the pipeline so anyone can rerun and get the same number."
+  ],
+  "traps": [
+   "Using a feature that is only known after the event you predict (a cancellation date to predict churn): perfect offline, useless live.",
+   "Random splits on time-ordered data let the model peek at the future; split by time instead.",
+   "Scaling or selecting features on the full dataset before splitting leaks test information into training."
+  ],
+  "qa": [
+   [
+    "Your churn model scores 99 percent in validation. What do you check first?",
+    "Leakage. I would list every feature and ask when its value becomes known relative to the prediction moment, check that preprocessing sits inside the pipeline, and check the split respects time and customer identity. Then I compare to a baseline."
+   ],
+   [
+    "Why use cross-validation if you already have a validation set?",
+    "One split can be lucky or unlucky, especially with little data. k-fold cross-validation averages over k splits and shows the spread, so I can tell a real improvement from noise. The final test set still stays locked."
+   ],
+   [
+    "How do you make an ML result reproducible for a customer?",
+    "Pin library versions, fix random seeds for splits and models, keep all preprocessing in one saved pipeline, version the training data snapshot, and record the metrics with the commit that produced them."
+   ]
+  ]
+ },
+ {
+  "id": "featureeng",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Feature engineering",
+  "title": "Feature engineering: turning raw columns into model inputs",
+  "thesis": "Models only see numbers. Feature engineering turns a messy customer table into clean numeric inputs: scale numbers, encode categories, handle gaps, pull useful parts out of dates and text, and add interactions. Doing it inside a scikit-learn Pipeline with a ColumnTransformer keeps every step learned from training data only.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   420
+  ],
+  "note": "Read left to right: the raw table splits by column type. Numeric columns are imputed then scaled; category columns are one-hot encoded; the ColumnTransformer joins them, feeds the model, and cross-validation refits the whole chain on each fold.",
+  "nodes": [
+   [
+    "raw",
+    90,
+    70,
+    "Raw table",
+    "customer export"
+   ],
+   [
+    "num",
+    265,
+    70,
+    "Numeric cols",
+    "tenure, fee"
+   ],
+   [
+    "imp",
+    440,
+    70,
+    "Impute",
+    "median + flag"
+   ],
+   [
+    "scale",
+    615,
+    70,
+    "Scale",
+    "StandardScaler"
+   ],
+   [
+    "cat",
+    265,
+    210,
+    "Category cols",
+    "plan, region"
+   ],
+   [
+    "ohe",
+    440,
+    210,
+    "One-hot",
+    "unknown = ignore"
+   ],
+   [
+    "join",
+    615,
+    210,
+    "Combine",
+    "ColumnTransformer"
+   ],
+   [
+    "model",
+    615,
+    350,
+    "Model",
+    "LogisticRegression"
+   ],
+   [
+    "cv",
+    440,
+    350,
+    "Cross-validate",
+    "refit per fold"
+   ]
+  ],
+  "edges": [
+   [
+    "raw",
+    "num"
+   ],
+   [
+    "num",
+    "imp"
+   ],
+   [
+    "imp",
+    "scale"
+   ],
+   [
+    "raw",
+    "cat"
+   ],
+   [
+    "cat",
+    "ohe"
+   ],
+   [
+    "scale",
+    "join"
+   ],
+   [
+    "ohe",
+    "join"
+   ],
+   [
+    "join",
+    "model"
+   ],
+   [
+    "model",
+    "cv"
+   ]
+  ],
+  "ideas": [
+   "Scale numeric features for linear models, distance-based models and gradient descent; tree models do not need it.",
+   "One-hot encode low-cardinality categories; use smoothed, cross-fitted target encoding for many categories.",
+   "Impute missing values with statistics learned from training rows and add a was-missing flag.",
+   "Dates hide useful features: hour, weekday, days since signup. Text can become TF-IDF columns.",
+   "A ColumnTransformer inside a Pipeline applies the right steps to the right columns and refits them per fold."
+  ],
+  "traps": [
+   "Fitting a scaler, imputer or target encoder on all rows before splitting leaks validation data into training.",
+   "Building a feature from information that arrives after the prediction moment, such as a refund flag to predict a complaint.",
+   "One-hot encoding without handle_unknown makes the live service crash the first time a new category shows up."
+  ],
+  "qa": [
+   [
+    "A customer column has 3,000 distinct store IDs. How do you encode it?",
+    "One-hot would add 3,000 sparse columns, so I would try target encoding with smoothing and cross fitting (scikit-learn's TargetEncoder), or group rare stores into an other bucket, and compare both with cross-validation."
+   ],
+   [
+    "Why put preprocessing in a Pipeline instead of doing it once in pandas?",
+    "The Pipeline learns means, medians and categories from the training fold only, so cross-validation stays honest, and the exact same transformations are saved with the model and applied to live data."
+   ],
+   [
+    "When would you not bother scaling features?",
+    "For tree-based models such as random forests or gradient boosting, because they split on thresholds and are not affected by the scale of a column."
+   ]
+  ]
+ },
+ {
+  "id": "linreg",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Linear regression",
+  "title": "Linear regression: fitting a line by walking downhill",
+  "thesis": "Linear regression predicts a number as a weighted sum of inputs plus an intercept. Least squares picks the weights that make the squared errors smallest, and gradient descent finds them by taking small steps downhill on the loss. R squared, MAE and RMSE say how good the fit is; ridge and lasso keep the weights sensible.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Gradient descent in numpy",
+  "code": "import numpy as np\n\nkm = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])\nminutes = np.array([14.0, 17.0, 23.0, 25.0, 31.0, 33.0])\nw, b, lr = 0.0, 0.0, 0.02\n\nfor step in range(3000):\n    pred = w * km + b                        # 1. predict with the current line\n    error = pred - minutes                   # 2. how far off each point is\n    loss = np.mean(error ** 2)               # 3. one number: mean squared error\n    grad_w = 2 * np.mean(error * km)         # 4. gradient: which way is uphill\n    grad_b = 2 * np.mean(error)\n    w -= lr * grad_w                         # 5. step downhill\n    b -= lr * grad_b\n\nprint(round(w, 2), round(b, 2), round(loss, 3))\n# 3.97 9.93 0.803  <- matches the least squares answer",
+  "nodes": [
+   [
+    "data",
+    90,
+    70,
+    "Data points",
+    "km and minutes"
+   ],
+   [
+    "init",
+    265,
+    70,
+    "Start line",
+    "w = 0, b = 0"
+   ],
+   [
+    "pred",
+    440,
+    70,
+    "Predict",
+    "w * x + b"
+   ],
+   [
+    "err",
+    615,
+    70,
+    "Errors",
+    "pred - actual"
+   ],
+   [
+    "loss",
+    615,
+    220,
+    "Loss",
+    "mean squared error"
+   ],
+   [
+    "grad",
+    440,
+    220,
+    "Gradient",
+    "slope of the loss"
+   ],
+   [
+    "step",
+    265,
+    220,
+    "Step",
+    "w -= lr * grad"
+   ],
+   [
+    "done",
+    90,
+    220,
+    "Converged",
+    "loss stops falling"
+   ]
+  ],
+  "edges": [
+   [
+    "data",
+    "init"
+   ],
+   [
+    "init",
+    "pred"
+   ],
+   [
+    "pred",
+    "err"
+   ],
+   [
+    "err",
+    "loss"
+   ],
+   [
+    "loss",
+    "grad"
+   ],
+   [
+    "grad",
+    "step"
+   ],
+   [
+    "step",
+    "pred",
+    0,
+    "repeat"
+   ],
+   [
+    "step",
+    "done"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "The data",
+    "n": [
+     "data"
+    ],
+    "e": [],
+    "d": "Six deliveries: distance in km and time in minutes. We want a line that predicts minutes from km.",
+    "l": [
+     2,
+     3
+    ]
+   },
+   {
+    "t": "Start with a guess",
+    "n": [
+     "data",
+     "init"
+    ],
+    "e": [
+     "data>init"
+    ],
+    "d": "Begin with slope w = 0 and intercept b = 0, a flat line at zero, and a learning rate lr = 0.02 that sets the step size.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "Predict",
+    "n": [
+     "init",
+     "pred"
+    ],
+    "e": [
+     "init>pred"
+    ],
+    "d": "Use the current line to predict a time for every delivery.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "Measure the errors",
+    "n": [
+     "pred",
+     "err"
+    ],
+    "e": [
+     "pred>err"
+    ],
+    "d": "The error for each point is prediction minus actual. Positive means we guessed too long, negative too short.",
+    "l": [
+     8
+    ]
+   },
+   {
+    "t": "One number for badness",
+    "n": [
+     "err",
+     "loss"
+    ],
+    "e": [
+     "err>loss"
+    ],
+    "d": "Square each error and average them. That mean squared error is the loss we want to make as small as possible.",
+    "l": [
+     9
+    ]
+   },
+   {
+    "t": "Find the downhill direction",
+    "n": [
+     "loss",
+     "grad"
+    ],
+    "e": [
+     "loss>grad"
+    ],
+    "d": "The gradient says how the loss changes if w or b grows a little. Its sign tells us which way is uphill.",
+    "l": [
+     10,
+     11
+    ]
+   },
+   {
+    "t": "Take a step",
+    "n": [
+     "grad",
+     "step"
+    ],
+    "e": [
+     "grad>step"
+    ],
+    "d": "Move w and b a small amount against the gradient. Too big a learning rate overshoots; too small crawls.",
+    "l": [
+     12,
+     13
+    ]
+   },
+   {
+    "t": "Repeat",
+    "n": [
+     "step",
+     "pred"
+    ],
+    "e": [
+     "step>pred"
+    ],
+    "d": "Predict again with the new line and repeat thousands of times. Each loop the loss should fall.",
+    "l": [
+     6,
+     7
+    ]
+   },
+   {
+    "t": "Converged",
+    "n": [
+     "step",
+     "done"
+    ],
+    "e": [
+     "step>done"
+    ],
+    "d": "When the loss stops falling, the line has settled at w = 3.97 and b = 9.93, the same answer least squares gives in one formula.",
+    "l": [
+     15,
+     16
+    ]
+   }
+  ],
+  "ideas": [
+   "A prediction is a weighted sum of inputs plus an intercept: y = w1*x1 + w2*x2 + b.",
+   "Least squares chooses the weights that minimise the sum of squared residuals.",
+   "Gradient descent reaches the same answer step by step, and it is how bigger models are trained.",
+   "Report MAE or RMSE in the customer's units, plus R squared for how much variation is explained.",
+   "Ridge shrinks all weights; lasso can push weak ones to exactly zero."
+  ],
+  "traps": [
+   "Treating a high R squared on training data as proof the model works on new data.",
+   "A single extreme outlier can drag the whole line because errors are squared.",
+   "Reading coefficients as cause and effect when features are correlated or confounded."
+  ],
+  "qa": [
+   [
+    "Why square the errors instead of just adding them?",
+    "Positive and negative errors would cancel out. Squaring makes every error count, punishes big misses more, and gives a smooth bowl-shaped loss that has one clear minimum for a linear model."
+   ],
+   [
+    "Your gradient descent loss goes up and bounces around. What do you change?",
+    "Lower the learning rate, and check features are scaled. A step that is too big jumps over the bottom of the bowl."
+   ],
+   [
+    "When would you use lasso instead of ridge?",
+    "When I suspect many features are useless and want a smaller model: lasso sets some weights to exactly zero. Ridge is better when many correlated features each carry a bit of signal."
+   ]
+  ]
+ },
+ {
+  "id": "logreg",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Logistic regression",
+  "title": "Logistic regression: probabilities for yes or no questions",
+  "thesis": "Logistic regression takes the same weighted sum as linear regression and squashes it with the sigmoid into a probability between 0 and 1. It is trained by minimising log loss, draws a straight decision boundary, and turns into a yes or no only when you pick a threshold. Its weights read as changes in odds.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Logistic regression from scratch",
+  "code": "import numpy as np\n\nX = np.array([[1.0, 5.0], [2.0, 4.0], [3.0, 4.5], [6.0, 1.0], [7.0, 2.0], [8.0, 0.5]])\ny = np.array([1, 1, 1, 0, 0, 0])            # 1 = churned\nw, b, lr = np.zeros(2), 0.0, 0.1\n\ndef sigmoid(z):\n    return 1 / (1 + np.exp(-z))\n\nfor step in range(500):\n    z = X @ w + b                            # 1. weighted sum per customer\n    p = sigmoid(z)                           # 2. squash to a probability\n    loss = -np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))   # 3. log loss\n    grad_w = X.T @ (p - y) / len(y)          # 4. gradient of log loss\n    grad_b = np.mean(p - y)\n    w -= lr * grad_w                         # 5. step downhill\n    b -= lr * grad_b\n\npred = (p >= 0.5).astype(int)                # 6. threshold into a class\nprint(w.round(2), round(b, 2), round(loss, 3), pred)\n# [-1.29  1.9 ] 0.17 0.004 [1 1 1 0 0 0]",
+  "nodes": [
+   [
+    "feats",
+    90,
+    70,
+    "Features",
+    "logins, tickets"
+   ],
+   [
+    "wsum",
+    265,
+    70,
+    "Weighted sum",
+    "z = w.x + b"
+   ],
+   [
+    "sig",
+    440,
+    70,
+    "Sigmoid",
+    "squash to 0..1"
+   ],
+   [
+    "prob",
+    615,
+    70,
+    "Probability",
+    "p(churn)"
+   ],
+   [
+    "loss",
+    615,
+    220,
+    "Log loss",
+    "punish sure misses"
+   ],
+   [
+    "grad",
+    440,
+    220,
+    "Gradient",
+    "X.T @ (p - y)"
+   ],
+   [
+    "update",
+    265,
+    220,
+    "Update",
+    "w -= lr * grad"
+   ],
+   [
+    "thresh",
+    90,
+    220,
+    "Threshold",
+    "class = p >= t"
+   ]
+  ],
+  "edges": [
+   [
+    "feats",
+    "wsum"
+   ],
+   [
+    "wsum",
+    "sig"
+   ],
+   [
+    "sig",
+    "prob"
+   ],
+   [
+    "prob",
+    "loss"
+   ],
+   [
+    "loss",
+    "grad"
+   ],
+   [
+    "grad",
+    "update"
+   ],
+   [
+    "update",
+    "wsum",
+    0,
+    "repeat"
+   ],
+   [
+    "update",
+    "thresh",
+    0,
+    "when done"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Features",
+    "n": [
+     "feats"
+    ],
+    "e": [],
+    "d": "Six customers with two features each and a label: 1 means they churned (cancelled), 0 means they stayed.",
+    "l": [
+     2,
+     3
+    ]
+   },
+   {
+    "t": "Weighted sum",
+    "n": [
+     "feats",
+     "wsum"
+    ],
+    "e": [
+     "feats>wsum"
+    ],
+    "d": "Multiply each feature by its weight and add the bias. This score z can be any number, from very negative to very positive.",
+    "l": [
+     10
+    ]
+   },
+   {
+    "t": "Sigmoid",
+    "n": [
+     "wsum",
+     "sig"
+    ],
+    "e": [
+     "wsum>sig"
+    ],
+    "d": "The sigmoid 1 / (1 + e^-z) turns any z into a number between 0 and 1. z = 0 gives exactly 0.5.",
+    "l": [
+     6,
+     7,
+     11
+    ]
+   },
+   {
+    "t": "A probability",
+    "n": [
+     "sig",
+     "prob"
+    ],
+    "e": [
+     "sig>prob"
+    ],
+    "d": "The result is read as the probability that this customer churns.",
+    "l": [
+     11
+    ]
+   },
+   {
+    "t": "Log loss",
+    "n": [
+     "prob",
+     "loss"
+    ],
+    "e": [
+     "prob>loss"
+    ],
+    "d": "Log loss is small when the model gives a high probability to what really happened and very large when it is confidently wrong.",
+    "l": [
+     12
+    ]
+   },
+   {
+    "t": "Gradient",
+    "n": [
+     "loss",
+     "grad"
+    ],
+    "e": [
+     "loss>grad"
+    ],
+    "d": "The gradient of log loss has a neat form: each feature times (predicted probability minus true label), averaged over rows.",
+    "l": [
+     13,
+     14
+    ]
+   },
+   {
+    "t": "Update the weights",
+    "n": [
+     "grad",
+     "update"
+    ],
+    "e": [
+     "grad>update"
+    ],
+    "d": "Step the weights against the gradient, exactly as in linear regression.",
+    "l": [
+     15,
+     16
+    ]
+   },
+   {
+    "t": "Repeat",
+    "n": [
+     "update",
+     "wsum"
+    ],
+    "e": [
+     "update>wsum"
+    ],
+    "d": "Recompute the scores with the new weights and repeat until the loss stops falling.",
+    "l": [
+     9,
+     10
+    ]
+   },
+   {
+    "t": "Pick a threshold",
+    "n": [
+     "update",
+     "thresh"
+    ],
+    "e": [
+     "update>thresh"
+    ],
+    "d": "To act, turn probabilities into yes or no with a threshold. 0.5 is only a default; the business cost of each mistake should set it.",
+    "l": [
+     18,
+     19,
+     20
+    ]
+   }
+  ],
+  "ideas": [
+   "Output is a probability, so you can rank customers and choose how many to act on.",
+   "The decision boundary is where w.x + b = 0: a straight line (or flat plane) in feature space.",
+   "Log loss punishes confident wrong answers much harder than hesitant ones.",
+   "exp(weight) is an odds ratio: how the odds multiply when that feature goes up by one unit.",
+   "Softmax extends the idea to more than two classes; class_weight helps when positives are rare."
+  ],
+  "traps": [
+   "Using the default 0.5 threshold on rare-event problems; the model may never say yes.",
+   "Comparing raw coefficients across features that are on different scales.",
+   "Expecting a straight boundary to separate classes that are arranged in a circle or other curve."
+  ],
+  "qa": [
+   [
+    "Why not use linear regression for a yes or no target?",
+    "A straight line predicts values below 0 and above 1, which cannot be probabilities, and squared error is a poor loss for 0/1 labels. The sigmoid keeps outputs in 0..1 and log loss matches the probability view."
+   ],
+   [
+    "A fraud model flags almost nothing. What do you try?",
+    "Check the class balance, lower the threshold based on the cost of missed fraud versus false alarms, or train with class_weight=\"balanced\". Then judge it with precision and recall rather than accuracy."
+   ],
+   [
+    "What does a coefficient of 0.7 on support tickets mean?",
+    "Each extra ticket multiplies the odds of churn by exp(0.7), about 2.0, holding the other features fixed. It is an association in this data, not proof that tickets cause churn."
+   ]
+  ]
+ }
+]

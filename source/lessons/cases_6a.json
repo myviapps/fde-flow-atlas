@@ -1,0 +1,121 @@
+{
+ "fderoles": {
+  "title": "Pellworth AI and Garrison Freightlines: the promise lost at the handoff",
+  "company": "Garrison Freightlines (made up), a trucking and warehousing company with about 2,400 staff in Canada; vendor Pellworth AI (made up), a document-AI startup",
+  "situation": "Garrison signed a contract for Pellworth's AI to read bills of lading and delivery receipts, after a six-week sales cycle run by an account executive and a sales engineer. An FDE was assigned on the day the contract was signed. Garrison's operations team keyed about 9,000 documents a month by hand at roughly 4 minutes each.",
+  "problem": "In week two the operations director said the pilot was 'missing the French documents' that the sales engineer had shown in a demo. Nothing about French documents was in the statement of work, the demo had used a hand-picked sample, and the SE had moved on to another deal. Simply adding French support quietly would have broken the pilot timeline without anyone agreeing to it.",
+  "approach": [
+   "The FDE booked 45 minutes with the sales engineer and went through the deal notes, demo recording and emails, writing down every capability the customer had been shown or told about.",
+   "She wrote a one-page handoff note after the fact: promises, success criteria, demo data, systems, people, risks and exclusions, and shared it with the AE and the operations director.",
+   "She measured the gap on real data: 11 percent of documents were in French, and the model's field accuracy on 200 of them was 83 percent against 94 percent on English.",
+   "With the AE, she offered a trade: French documents join the pilot in week five if one English document type moves to phase two, keeping the end date.",
+   "She proposed to her own company that every deal from then on used a handoff template signed off by the SE, the AE and the incoming FDE."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "HANDOFF NOTE  Garrison Freightlines  (SE -> FDE, written in week 2, reviewed by AE)\n\nPromised in sales, in the customer's words:\n  - 'Reads our bills of lading and delivery receipts'         in SOW\n  - 'Works on the French ones too' (demo, 12 March)           NOT in SOW\n  - 'Pushes results into the TMS'                              in SOW, API not tested\nSuccess criteria: 90% field accuracy on 10 fields; 50% fewer minutes per document\nDemo data: 40 hand-picked English documents, clean scans\nSystems: TMS (owner: IT lead), shared inbox (owner: ops)\nPeople: sponsor = VP Operations; product owner = operations director\nRisks raised in sale: faint scans from two depots; union concerns about job changes\nWe said we will NOT: handle customs forms in phase 1\nProposed: French in pilot from week 5, delivery receipts type C moves to phase 2"
+  },
+  "outcome": "The operations director accepted the trade in one meeting and the pilot kept its end date. French documents reached 91 percent field accuracy by week eight, and average handling time fell from about 4 minutes to 1.8 minutes per document. Pellworth adopted the handoff template, and the next two deals reported no disputed promises in their first month.",
+  "lessons": [
+   "Most role confusion shows up at handoffs, so write the handoff down even when you arrive late.",
+   "The FDE's job includes finding out what other roles promised, then turning it into scope that someone agreed to.",
+   "Measure the gap on real data before negotiating; numbers turn an argument into a trade.",
+   "Fix the process, not only the incident: a template makes the next handoff better."
+  ],
+  "discuss": [
+   "Should the sales engineer or the FDE own the handoff note, and why?",
+   "When a promise from the sales cycle is not in the contract, when would you just deliver it and when would you negotiate?",
+   "How would this story change if one person had done both the SE and FDE roles?"
+  ]
+ },
+ "fdeskills": {
+  "title": "Quillmere Analytics: a strong coder who kept failing the customer round",
+  "company": "Quillmere Analytics (made up), a 60-person AI consultancy in Leeds, UK, promoting internal engineers into client-facing FDE roles",
+  "situation": "Quillmere wanted to move four of its backend engineers into FDE roles on client projects. In the first round of internal interviews, all four passed the technical exercise, but three of the four failed the customer-scenario round, which asked them to handle a vague request from a role-played client. The head of delivery estimated each failed move cost about three months of delay in staffing a new client.",
+  "problem": "The engineers' own view was that they 'just needed more practice interviewing'. Repeating mock interviews without knowing which skill was missing would have produced the same results. Nobody had measured the five axes separately, so nobody knew whether the gap was problem finding, empathy or product judgment.",
+  "approach": [
+   "A senior FDE, Oona, introduced the five-axis radar and an anchored 1 to 5 scale, and asked each engineer to rate themselves with evidence for every score.",
+   "She applied the evidence cap: without evidence, a score could not go above 2. Most self-ratings on problem finding and empathy fell from 3 or 4 to 2.",
+   "She rated each engineer herself from their interview notes and discussed every axis where the two ratings differed by two or more points.",
+   "Each engineer picked their one or two lowest axes and built a six-week route through discovery, case practice and executive communication material, with one written output per week.",
+   "For live practice, each engineer shadowed a real client discovery session and then led one, with Oona observing and giving feedback against the anchored scale.",
+   "After six weeks they re-rated with the new evidence and retook the customer-scenario round."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "SKILLS RADAR  Engineer: Ben   Rated by: self (S), Oona (O)   Scale: 1 read, 2 tutorial, 3 real with help, 4 real alone, 5 teach\n\nAxis               S   O   Evidence                                   Honest\nTechnical depth    4   4   Payments API, on-call for 1 year            4\nProblem finding    3   2   None: always built from the ticket          2\nCustomer empathy   3   2   One demo to a client, no listening notes    2\nProduct judgment   3   3   Pushed back on 2 one-off features           3\nOwnership          4   4   Led a migration incident to closure         4\n\nFocus for next 6 weeks: problem finding, customer empathy\nRoute: wk1 discovery guide, wk2 shadow client session, wk3 case practice x3,\n       wk4 lead one discovery call, wk5 exec summary of findings, wk6 re-rate\nOutputs due: interview guide, problem statement, one-page exec summary"
+  },
+  "outcome": "Three of the four engineers passed the customer-scenario round on the retake, against one of four the first time. Their average honest score on problem finding rose from 2.0 to 3.0 and on empathy from 2.25 to 3.25. Quillmere now runs the radar before, not after, any internal move into an FDE role.",
+  "lessons": [
+   "Measure each axis separately; 'needs more practice' is not a diagnosis.",
+   "The evidence cap makes self-ratings honest and gives each person a clear first output to produce.",
+   "An outside rating on the same scale catches blind spots that self-rating misses.",
+   "Practice has to produce evidence, such as leading a real discovery call, or the score will not move."
+  ],
+  "discuss": [
+   "Which of the five axes is hardest to prove with an artifact, and what would count as evidence for it?",
+   "Should a company hire for technical depth and train the people axes, or the other way round? Why?",
+   "How would you rate yourself today, and what single output in the next two weeks would raise your lowest score?"
+  ]
+ },
+ "asyncwriting": {
+  "title": "Tarnhollow Mutual and Corvane Labs: a pilot slowed by its own chat channel",
+  "company": "Tarnhollow Mutual (made up), a home and motor insurer with about 3,000 staff in Australia; vendor Corvane Labs (made up), an AI claims-automation company with FDEs in Singapore and Toronto",
+  "situation": "Corvane's two FDEs were building a claims-triage pilot with Tarnhollow's IT and claims teams, working mostly through one shared chat channel. By week four the channel had over 1,100 messages. A review of the channel found that questions needing an answer from Tarnhollow waited a median of 26 hours, and the pilot was eight working days behind plan.",
+  "problem": "Asks were buried in long messages, many had no named owner, and the same question was often asked twice in different threads. Several decisions existed only in chat and were later disputed. The obvious fix, a daily one-hour status call, would have taken time from both teams and would not have worked across a Toronto and Sydney time gap with no shared working hours.",
+  "approach": [
+   "The lead FDE counted open asks in the channel and found 34 unanswered questions, 21 of which had no named owner and 12 of which had no date.",
+   "She proposed channel norms, agreed by both project managers and pinned in the channel: one thread per topic, every ask starts with a tagged owner and a date, answers within four working hours, and no personal data or credentials in the channel.",
+   "She created a shared decision log and posted a link each time a decision was made, including the 9 decisions that had previously lived only in chat.",
+   "The FDEs started posting a structured end-of-day note (Done, Next, Blocked, Needs, Heads-up) at the end of their working day, timed so Tarnhollow read it first thing in Sydney.",
+   "She rewrote the three most important stuck asks in BLUF form and sent the ones blocking the critical path to the Tarnhollow product owner with the date impact.",
+   "When scanned-claim accuracy came in below target, she called the sponsor first and then posted a written bad-news message with two options and a decision deadline."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "EOD  Tue 14 Oct  (Toronto 17:00 = Sydney Wed 08:00)   #ext-claims-pilot\n\nDone\n  - Motor claims under $5,000: routing rules merged (PR 88), eval 91% vs 90% target\n  - Decision D-11 logged: photos over 10 MB are resized, not rejected\nNext\n  - Load test at 500 claims per hour in staging\nBlocked\n  - Staging queue credentials expired at 14:10\nNeeds\n  - @priyanka (Tarnhollow IT): renew staging queue credentials in the vault\n    by Wed 12:00 Sydney, or the load test moves to Thursday\n  - @mark (claims): yes or no on including glass-only claims in pilot, by Thu\nHeads-up\n  - Staging deploy at Wed 09:00 Toronto; about 10 minutes of downtime"
+  },
+  "outcome": "Within three weeks, the median wait for an answer to an ask fell from 26 hours to 6 hours, and duplicate questions dropped from about 15 a week to 3. No decision was disputed after the log started. The pilot recovered five of the eight lost working days and went live three days after the original date, without adding a daily status call.",
+  "lessons": [
+   "A shared channel without norms turns into a place where asks get lost; agree the rules in week one.",
+   "An ask without a named owner and a date is a wish; BLUF plus owner plus date gets answers.",
+   "Across time zones with no overlap, the end-of-day note is the handoff, so write it for the reader's morning.",
+   "Decisions belong in a log that chat links to, not in chat itself."
+  ],
+  "discuss": [
+   "Which norm would you introduce first if the customer resisted a long list of rules?",
+   "When is a call better than a written message, and what should always follow the call?",
+   "How would you raise the problem of slow answers without making the customer's team feel blamed?"
+  ]
+ },
+ "ethics": {
+  "title": "Harrowgate Health Partners: the pilot that almost trained on the wrong data",
+  "company": "Harrowgate Health Partners (made up), a network of 40 outpatient clinics with about 2,200 staff in Ireland; vendor Lumeris Forge (made up), a healthcare AI company",
+  "situation": "Lumeris Forge was building an assistant to draft replies to patient booking messages, which clinic staff answered by hand at about 3,500 messages a week. The FDE had eight weeks to show that drafts cut reply time. The clinic's operations lead was under pressure to report quick results to the board.",
+  "problem": "In week three the FDE found three issues at once: a colleague had pasted real patient messages into a consumer AI chat app to test prompts; the operations lead wanted to report a 95 percent 'accuracy' figure from a demo on 40 hand-picked messages; and staff had not been told what the assistant was for. Quietly fixing the prompt workflow alone would have left a data incident unreported and a misleading number heading to the board.",
+  "approach": [
+   "She told her manager the same day, in writing, about the messages pasted into the consumer tool. Lumeris reported it to Harrowgate's data protection officer under their agreement, and the colleague deleted the chat history and the account's stored data.",
+   "She moved all prompt testing to the approved enterprise environment covered by the DPA, using a masked sample of 300 messages that she and a clinic manager checked by eye for names the masker missed.",
+   "She built a held-out test set of 500 messages drawn at random, measured draft quality there, and found 81 percent of drafts needed no or minor edits, with the weakest results on messages about test results.",
+   "She proposed wording for the board report with the number, the conditions and the weak spots, and gave the operations lead two options: report 81 percent now, or wait two weeks for an improved figure.",
+   "She asked the sponsor how staff would be told about the assistant, and helped write a short note explaining that drafts were suggestions, staff approved every reply, and the goal was to clear a backlog of unanswered messages.",
+   "She excluded messages about test results from the pilot, so they were always answered by clinical staff, and wrote this into the design doc."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "BOARD REPORT WORDING  (proposed by FDE, agreed with operations lead)\n\nWhat we measured\n  500 booking messages chosen at random from May, not used for tuning.\n  81% of AI drafts were sent with no edits or minor edits by staff.\n\nConditions\n  Booking, rescheduling and directions messages only.\n  Every reply is reviewed and sent by a staff member.\n\nKnown weak spots\n  Messages mentioning test results: excluded, always handled by clinicians.\n  Messages in Irish: 64% usable drafts, improvement planned for phase 2.\n\nWhat changed in the pilot process\n  All testing now runs in the approved environment under the DPA.\n  One earlier test used a non-approved tool; reported to the DPO on 3 June."
+  },
+  "outcome": "The board approved phase two on the 81 percent figure, and the operations lead later said the clear conditions made the decision easy. The data protection officer closed the incident with no further action required after confirming deletion. After six weeks live, average reply time fell from 19 hours to 7 hours, and staff surveyed rated the assistant 4.1 out of 5 for usefulness.",
+  "lessons": [
+   "Report data handling mistakes the same day through the formal route; hiding them turns a small incident into a large one.",
+   "An honest number with conditions wins more trust than an impressive number that falls apart later.",
+   "Ask how affected staff will be told before you start work that changes their jobs.",
+   "Keep humans in charge of the cases where an error could harm someone, and write that decision down."
+  ],
+  "discuss": [
+   "Should the FDE have reported the colleague's mistake to the customer, or only to her own manager? What decides it?",
+   "If the operations lead had insisted on reporting 95 percent, what would your next step have been?",
+   "How would you explain the assistant to clinic staff who worry it will replace them?"
+  ]
+ }
+}

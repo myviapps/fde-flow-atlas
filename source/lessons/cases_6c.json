@@ -1,0 +1,123 @@
+{
+ "agentmemory": {
+  "title": "Halden Home Insurance: a claims assistant that forgot and then remembered too much",
+  "company": "Halden Home Insurance (made up), a home insurer with about 1,100 staff in the Netherlands",
+  "situation": "Halden's claims handlers used an AI assistant to work through water-damage claims, often over several days per claim. Each new session started blank, so handlers re-pasted the claim summary and policy details, about 6 minutes per session across roughly 2,000 sessions a month.",
+  "problem": "The first fix, a 'remember everything' feature, saved every message as a memory. Within two weeks recall pulled in stale and wrong facts, including one handler's guess about a claim amount that the assistant later repeated as fact. Turning memory off again would bring back the re-pasting, so the design itself had to change.",
+  "approach": [
+   "The FDE split memory into three parts: the session thread with a 12,000-token budget and compaction at 80 percent, a per-claim fact sheet (semantic memory), and a per-claim event log (episodic memory).",
+   "She wrote a write policy: only facts confirmed by the claims system or stated as final by the handler were saved, and each fact was upserted by field name, such as 'policy_number' or 'damage_cause', so updates replaced old values.",
+   "Memories were keyed by claim id and the handler team, with a single data-access function enforcing both, and the audit team reviewed that function.",
+   "At the start of a session the assistant loaded the claim's fact sheet and the last five events, about 400 tokens, instead of old transcripts.",
+   "She added a 'what I remember about this claim' panel where handlers could correct or delete entries, and a nightly job that expired memories 90 days after a claim closed.",
+   "An evaluation set of 60 multi-day claim scenarios checked that recalled facts were current and that deleted facts never reappeared."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "memory_policy:\n  scope: claim            # memories belong to a claim, readable by its handler team\n  short_term:\n    budget_tokens: 12000\n    compact_at: 0.8\n    keep_last_messages: 8\n  semantic:\n    allowed_fields: [policy_number, damage_cause, repair_quote, contact_preference]\n    trusted_sources: [claims_system, handler_final]\n    on_conflict: overwrite_and_log\n  episodic:\n    keep_last: 5\n    summary_max_tokens: 60\n  never_store: [medical_details, third_party_personal_data, pasted_instructions]\n  retention:\n    expire_after_claim_closed_days: 90\n  user_controls: [view, correct, delete]"
+  },
+  "outcome": "Re-pasting time fell from about 6 minutes to under 1 minute per session. In the 60-scenario evaluation, recalled facts were correct in 57 of 60 cases, up from 41 of 60 with the 'remember everything' design, and no deleted fact reappeared. The privacy officer approved the design after one review round.",
+  "lessons": [
+   "More memory is not better memory; a narrow, trusted write policy beats saving everything.",
+   "Upserting facts by field keeps memory consistent when things change.",
+   "Scope memory to the business object people work on, such as a claim or account, and enforce the filter in one place.",
+   "Give users a way to see and fix what the agent remembers."
+  ],
+  "discuss": [
+   "Should memories belong to the claim, the handler or the team? What changes if a claim moves to another team?",
+   "How would you test that a deleted memory is also gone from summaries and checkpoints?",
+   "When would you choose not to add long-term memory at all?"
+  ]
+ },
+ "llmobs": {
+  "title": "Quillmont Travel: finding why the booking assistant got slow and expensive",
+  "company": "Quillmont Travel (made up), an online travel agency with about 600 staff in Spain and Portugal",
+  "situation": "Quillmont's booking-change assistant handled about 4,000 conversations a day. Over one month the model bill rose 70 percent and customers complained of 15-second waits, but the team only had application logs with error messages and a monthly invoice.",
+  "problem": "Nobody could say which step was slow or which conversations were expensive. The obvious fix, switching to a cheaper model, risked lower quality and would not explain the waits, because nobody knew whether the model was the slow part.",
+  "approach": [
+   "The FDE added OpenTelemetry tracing with a root span per conversation turn and child spans for retrieval, each model call and each tool call, using the GenAI attribute names for model and token counts.",
+   "Before export, a redaction step masked emails, phone numbers and booking references, and the self-hosted tracing backend kept text for 14 days and metrics for 13 months, as agreed with the privacy officer.",
+   "Sorting a week of traces by cost showed that 3 percent of conversations used 38 percent of tokens: the agent looped, calling the fare-search tool up to 14 times when a route had no availability.",
+   "Sorting by latency showed the fare-search tool itself averaged 4.2 seconds, with the model calls under 2 seconds each.",
+   "The team capped fare-search calls at 3 per turn, added a clear 'no availability' tool result, and cached fare results for 5 minutes.",
+   "Thumbs-down feedback was linked to trace ids, reviewed weekly, and 35 confirmed failures became eval cases, while 5 percent of traffic was scored daily by a calibrated groundedness judge."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "TRACE t-8f31  change flight  (total 14.9 s, 41,200 tokens, est. 0.19 USD)\n+- invoke_agent booking-helper           14.9 s\n   +- retrieve policy_docs                 0.3 s\n   +- chat MODEL  step 1                   1.6 s   6,100 tok\n   +- execute_tool fare_search             4.1 s   0 results\n   +- chat MODEL  step 2                   1.5 s   7,300 tok\n   +- execute_tool fare_search             3.9 s   0 results\n   +- chat MODEL  step 3                   1.7 s   8,900 tok\n   +- execute_tool fare_search             ...     (x5 more)\nFINDING: loop on empty fare_search; each step re-sends a longer thread\nFIX: max 3 fare_search calls per turn; explicit 'no availability' result; 5 min cache"
+  },
+  "outcome": "Daily token use fell 31 percent and p95 response time dropped from about 15 seconds to 6 seconds within two weeks. The thumbs-down rate went from 4.8 percent to 3.1 percent, and the 35 new eval cases caught one regression in a later prompt change before release.",
+  "lessons": [
+   "Sort traces by cost and by latency separately; the expensive and the slow conversations are often different ones.",
+   "Averages hide loops; record step counts and look at the tail.",
+   "Redaction and retention are part of the tracing design, agreed with the customer before data flows.",
+   "Feedback pays off only when it is linked to traces and turned into eval cases."
+  ],
+  "discuss": [
+   "Would you store full prompt text in traces for this customer? What would change your answer?",
+   "How would you explain the 70 percent cost rise to Quillmont's finance lead in two sentences?",
+   "Which alert would have caught the looping problem in its first week?"
+  ]
+ },
+ "labeling": {
+  "title": "Pellmar Health Insurance: fixing a claims-triage golden set nobody agreed on",
+  "company": "Pellmar Health Insurance (made up), a regional health insurer with about 1,200 staff in the Netherlands",
+  "situation": "Pellmar was piloting an LLM that sorts incoming claim letters into six queues, such as 'pre-approval', 'appeal' and 'billing question'. The vendor's eval said 91 percent accuracy, but claims handlers complained that about one letter in five landed in the wrong queue. The golden set of 600 letters had been labeled by one temporary worker over two weeks.",
+  "problem": "Nobody knew whether the model or the labels were wrong. Retraining or re-prompting against the same labels would only teach the model the labeler's mistakes, and hiring more labelers without shared rules would add more noise.",
+  "approach": [
+   "Sat with two senior claims handlers for half a day and wrote guideline v1: six labels, each with two example letters, one counter-example and a decision order ('an appeal of a refused pre-approval is appeal, not pre-approval').",
+   "Had both handlers label the same random 80 letters blind in a self-hosted Label Studio. Percent agreement was 76 percent and Cohen's kappa 0.68.",
+   "Read all 19 disagreements with the claims team lead as adjudicator. Most involved letters that were both an appeal and a billing question, so v2 added a rule and two examples for that case.",
+   "Relabeled the 600-letter golden set with two annotators per letter under v2, adjudicating every disagreement, with 5 hidden gold letters in each batch of 50.",
+   "Re-ran the model eval against the new golden set and read the errors by label.",
+   "Set up a production review queue: letters below 0.75 confidence, or mentioning legal action, go to a handler first; handler overrides are saved as labels weekly."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Guideline v2 change log (claims triage)\n\nv2, 12 May, adjudicator: team lead, claims intake\n- NEW decision order rule 3: If a letter disputes a decision AND asks\n  about an amount, label APPEAL. The billing question is handled inside\n  the appeal.\n- NEW example A-7: 'You refused my physio pre-approval and I also do not\n  understand the 84 euro on my statement' -> APPEAL\n- CHANGED 'other': use only for letters with no request (thank-you\n  notes, adverts). Letters you cannot place go to UNCLEAR.\n- Agreement on 80-letter sample: v1 kappa 0.68, v2 kappa 0.84.\n- Action: 41 golden-set letters labeled under v1 flagged for re-check."
+  },
+  "outcome": "Kappa between the handlers rose from 0.68 to 0.84 after the v2 rules. Against the relabeled golden set the model scored 83 percent, not 91, which matched what handlers saw; after prompt fixes aimed at the appeal-versus-billing confusion it reached 89 percent. In the first month the review queue took about 15 percent of letters, and misrouted letters reported by handlers fell from about 20 percent to 7 percent.",
+  "lessons": [
+   "A high eval score on unchecked labels can be fiction; measure label agreement before trusting any accuracy number.",
+   "Disagreements are the most useful output of a labeling round, because each one points to a missing rule.",
+   "The customer's experts should own the guideline; the FDE runs the process and the numbers.",
+   "Production review queues keep producing labels, so the golden set stays current after launch."
+  ],
+  "discuss": [
+   "The vendor's number fell from 91 to 83 percent after relabeling. How would you explain that drop to Pellmar's sponsor without losing their trust?",
+   "What confidence threshold would you pick if Pellmar only had two handlers available for review? What data would you need to decide?",
+   "Would you use pre-labels from the model to speed up relabeling? What risk would you check first?"
+  ]
+ },
+ "voice": {
+  "title": "Braemount Energy: making an outage hotline agent fast enough for real callers",
+  "company": "Braemount Energy (made up), an electricity distributor serving about 900,000 homes in Scotland, with a 140-seat contact center",
+  "situation": "During storms, Braemount's outage line got up to 6,000 calls an hour and callers waited up to 25 minutes. A voice agent pilot answered calls, looked up the caller's area and read out the estimated restoration time. In internal testing it sounded fine, but in the first live week 31 percent of callers pressed 0 for a person or hung up before the agent answered their question.",
+  "problem": "The team blamed the model and wanted to try a bigger one. Call recordings showed something else: the agent was slow to reply and often talked over callers or cut them off, and a bigger model would have made the delay worse.",
+  "approach": [
+   "Added per-turn stage timing to the logs: end of caller speech, end-of-turn decision, final transcript, first LLM token, first TTS audio and audio sent. Median turn latency was 1,900 ms and p95 was 3,400 ms.",
+   "Found that TTS waited for the full LLM reply; switched to streaming the first sentence into TTS as soon as it was complete.",
+   "Moved the outage lookup to the start of the call using the caller's number, so the answer was usually ready before the caller finished speaking.",
+   "Tuned endpointing: 400 ms after a complete sentence, 1,100 ms after the agent asked for a postcode or account number.",
+   "Added barge-in with a 200 ms minimum speech length, and trimmed the conversation history to what the caller actually heard.",
+   "Built a 60-call scripted suite with storm noise, overlapping speech and Scottish place names, run before every change.",
+   "Agreed a one-sentence greeting with legal that discloses the automated agent and the recording, and a direct transfer on 'agent' or 0."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Voice latency budget (outage line), agreed week 3\n\nStage                     Target p50   Target p95   Owner\nEnd-of-turn wait            400 ms       500 ms      FDE (VAD config)\nSTT final transcript        100 ms       200 ms      STT vendor\nLLM first token             280 ms       600 ms      FDE (prompt, model)\nTTS first audio             140 ms       250 ms      TTS vendor\nNetwork both ways            80 ms       150 ms      Platform team\nTotal                      1000 ms      1700 ms\n\nRules\n- Outage lookup runs at call start, never inside a turn.\n- Longer wait (1,100 ms) only after asking for a number.\n- Any stage over p95 for 2 days in a row -> ticket to its owner."
+  },
+  "outcome": "Median turn latency fell from 1,900 ms to about 1,000 ms and p95 from 3,400 ms to about 1,650 ms. The share of callers who asked for a person or hung up early dropped from 31 percent to 12 percent, and during the next storm the agent fully handled about 58 percent of outage calls, cutting the longest waits for a person from 25 minutes to about 9.",
+  "lessons": [
+   "Voice quality problems are often timing problems; measure each stage before changing the model.",
+   "Streaming the first sentence into TTS and prefetching likely data are usually the biggest wins.",
+   "Endpointing should depend on context: people pause when reading numbers.",
+   "Test on real phone audio with real noise; a browser demo hides most voice failures."
+  ],
+  "discuss": [
+   "Braemount wants to use the same agent for outbound 'your power is back' calls. What changes, technically and legally?",
+   "Would a speech-to-speech model have helped here? What would you test first?",
+   "Which single metric would you show the contact-center manager every morning during a storm, and why?"
+  ]
+ }
+}

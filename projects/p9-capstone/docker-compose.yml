@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:   # values come from your shell or the .env file next to this file
+      LLM_MODE: ${LLM_MODE:-fake}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MODEL: ${MODEL:-}
+  # Optional: start with `docker compose --profile pgvector up` to try the Postgres path.
+  # The app uses the in-memory index by default; see README "Moving to pgvector".
+  db:
+    image: pgvector/pgvector:pg16
+    profiles: ["pgvector"]
+    environment:
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: rag
+    ports:
+      - "5432:5432"

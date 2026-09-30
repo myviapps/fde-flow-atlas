@@ -1,0 +1,994 @@
+[
+ {
+  "id": "http",
+  "mod": 2,
+  "sec": "2.1",
+  "name": "How APIs work",
+  "title": "A request goes out, a response comes back",
+  "thesis": "Almost every customer system an FDE touches is reached through an HTTP API. If you can read a URL, a method, headers, a status code and a JSON body, you can debug most integrations with curl before writing a line of pipeline code.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "curl and Python requests: the same call",
+  "code": "# 1. The request with curl, from a terminal\ncurl -s \"https://api.acme-retail.com/v1/orders?status=open&limit=100\" \\\n  -H \"Authorization: Bearer $ACME_TOKEN\" \\\n  -H \"Accept: application/json\"\n\n# 2. The same request in Python\nimport os, requests\nurl = \"https://api.acme-retail.com/v1/orders\"\nheaders = {\"Authorization\": f\"Bearer {os.environ['ACME_TOKEN']}\"}\nparams = {\"status\": \"open\", \"limit\": 100}\nr = requests.get(url, headers=headers, params=params, timeout=10)\nprint(r.status_code)           # 200, 401, 404, 429, 500...\nr.raise_for_status()           # 4xx/5xx become an exception\ndata = r.json()                # JSON text -> Python dict\nfor order in data[\"items\"]:\n    print(order[\"id\"], order[\"total\"])\nnext_cursor = data.get(\"next_cursor\")   # None on the last page",
+  "nodes": [
+   [
+    "client",
+    90,
+    70,
+    "Your code",
+    "curl · requests"
+   ],
+   [
+    "req",
+    265,
+    70,
+    "HTTP request",
+    "method + URL"
+   ],
+   [
+    "headers",
+    440,
+    70,
+    "Headers",
+    "auth · content type"
+   ],
+   [
+    "server",
+    615,
+    70,
+    "API server",
+    "customer system",
+    1
+   ],
+   [
+    "status",
+    615,
+    220,
+    "Status code",
+    "2xx · 4xx · 5xx"
+   ],
+   [
+    "body",
+    440,
+    220,
+    "JSON body",
+    "the data itself"
+   ],
+   [
+    "parsed",
+    265,
+    220,
+    "Parsed data",
+    "dicts and lists"
+   ],
+   [
+    "page",
+    90,
+    220,
+    "Next page",
+    "cursor or link"
+   ]
+  ],
+  "edges": [
+   [
+    "client",
+    "req"
+   ],
+   [
+    "req",
+    "headers"
+   ],
+   [
+    "headers",
+    "server",
+    0,
+    "HTTPS"
+   ],
+   [
+    "server",
+    "status"
+   ],
+   [
+    "status",
+    "body"
+   ],
+   [
+    "body",
+    "parsed",
+    0,
+    "r.json()"
+   ],
+   [
+    "parsed",
+    "page"
+   ],
+   [
+    "page",
+    "client",
+    0,
+    "loop"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Build the request",
+    "n": [
+     "client",
+     "req"
+    ],
+    "e": [
+     "client>req"
+    ],
+    "d": "A request names a method and a URL. GET reads, POST creates, PUT or PATCH updates and DELETE removes. The URL path, such as /v1/orders, names a resource, and the query string after the ? filters it.",
+    "l": [
+     1,
+     7,
+     9
+    ]
+   },
+   {
+    "t": "Attach headers",
+    "n": [
+     "headers"
+    ],
+    "e": [
+     "req>headers"
+    ],
+    "d": "Headers are key and value pairs that describe the request. Authorization carries a token that proves who you are. Accept and Content-Type say you speak JSON.",
+    "l": [
+     2,
+     3,
+     8
+    ]
+   },
+   {
+    "t": "Send it over the network",
+    "n": [
+     "server"
+    ],
+    "e": [
+     "headers>server"
+    ],
+    "d": "HTTPS encrypts the request on its way to the customer's server. Always set a timeout so a slow server cannot hang your program.",
+    "l": [
+     10
+    ]
+   },
+   {
+    "t": "Read the status code first",
+    "n": [
+     "status"
+    ],
+    "e": [
+     "server>status"
+    ],
+    "d": "2xx means success. 4xx means your request was wrong: 401 bad or missing token, 403 not allowed, 404 not found, 429 too many requests. 5xx means the server failed.",
+    "l": [
+     11,
+     12
+    ]
+   },
+   {
+    "t": "Read the body",
+    "n": [
+     "body"
+    ],
+    "e": [
+     "status>body"
+    ],
+    "d": "The body is text, usually JSON: objects in curly braces, lists in square brackets. Error responses often have a body too, with a message that tells you what went wrong."
+   },
+   {
+    "t": "Turn JSON into data",
+    "n": [
+     "parsed"
+    ],
+    "e": [
+     "body>parsed"
+    ],
+    "d": "r.json() converts the text into Python dicts and lists you can loop over.",
+    "l": [
+     13,
+     14,
+     15
+    ]
+   },
+   {
+    "t": "Follow the next page",
+    "n": [
+     "page",
+     "client"
+    ],
+    "e": [
+     "parsed>page",
+     "page>client"
+    ],
+    "d": "APIs return large collections in pages. Send the cursor or next link from this response with the next request, and stop when it is empty.",
+    "l": [
+     16
+    ]
+   }
+  ],
+  "ideas": [
+   "REST treats data as resources at URLs (/customers/42/orders) and uses the HTTP method to say what to do with them.",
+   "Status code classes: 2xx success, 3xx redirect, 4xx client error, 5xx server error. Read the code before the body.",
+   "Auth usually rides in a header: an API key or a bearer token, often obtained through OAuth 2.0.",
+   "GET, PUT and DELETE are meant to be idempotent. POST usually is not, so retried POSTs need an idempotency key.",
+   "Reproduce every integration bug with curl first. It removes your own code from the question."
+  ],
+  "traps": [
+   "Pasting a real token into a script, a ticket or a Slack message. Keep tokens in environment variables or a secret store.",
+   "Treating every non-200 the same way. A 401 needs a new token, a 429 needs waiting, a 400 needs a code fix.",
+   "Reading only the first page and reporting that the customer has exactly 100 records."
+  ],
+  "qa": [
+   [
+    "Walk me through what happens when you call a REST API.",
+    "The client builds a request with a method, URL, headers and optional JSON body, and sends it over HTTPS. The server authenticates the token, does the work and returns a status code, response headers and usually a JSON body. The client checks the status, parses the body and follows pagination if there is more."
+   ],
+   [
+    "An integration that worked yesterday now returns 401. What do you check?",
+    "401 means authentication failed, so check whether the token expired, was rotated or revoked, or is missing from the header. Reproduce with curl using the same token, check the token's expiry, and refresh it through the OAuth flow if that is how it was issued."
+   ],
+   [
+    "What is the difference between offset and cursor pagination?",
+    "Offset asks for rows 200 to 300 and can skip or repeat rows when data changes between calls. A cursor is an opaque pointer to where the last page ended, so it stays stable while rows are inserted, which makes it the safer choice for large pulls."
+   ]
+  ]
+ },
+ {
+  "id": "git",
+  "mod": 2,
+  "sec": "2.1",
+  "name": "Git and version control",
+  "title": "From a local edit to merged, reviewed code",
+  "thesis": "Git records every change as a commit, lets you work on a branch without disturbing anyone, and turns review into a pull request. On a customer site it is also your audit trail: who changed what, when and why.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "bash: a full branch-to-merge cycle",
+  "code": "git switch main && git pull            # start from the latest main\ngit switch -c fix/retry-429            # create a feature branch\n# ...edit ingest.py and its test in your editor...\ngit status                             # which files changed?\ngit diff                               # which lines changed?\ngit add ingest.py tests/test_ingest.py # stage the changes\ngit commit -m \"Retry on 429 with exponential backoff\"\ngit push -u origin fix/retry-429       # send the branch to GitHub\ngh pr create --fill                    # open a pull request\n# reviewer comments -> edit -> add -> commit -> push again\ngit fetch origin                       # get the newest main\ngit merge origin/main                  # CONFLICT? edit the markers\ngit add ingest.py && git commit        # record the resolution\ngit push                               # CI reruns; then merge the PR",
+  "nodes": [
+   [
+    "main",
+    90,
+    70,
+    "main branch",
+    "shared, deployable"
+   ],
+   [
+    "branch",
+    265,
+    70,
+    "Feature branch",
+    "fix/retry-429"
+   ],
+   [
+    "work",
+    440,
+    70,
+    "Working tree",
+    "files you edit"
+   ],
+   [
+    "stage",
+    615,
+    70,
+    "Staging area",
+    "git add"
+   ],
+   [
+    "commit",
+    615,
+    220,
+    "Commit",
+    "snapshot + message"
+   ],
+   [
+    "remote",
+    440,
+    220,
+    "Remote repo",
+    "GitHub · GitLab",
+    1
+   ],
+   [
+    "pr",
+    265,
+    220,
+    "Pull request",
+    "diff · review · CI"
+   ],
+   [
+    "merge",
+    90,
+    220,
+    "Merge",
+    "conflicts resolved"
+   ]
+  ],
+  "edges": [
+   [
+    "main",
+    "branch",
+    0,
+    "switch -c"
+   ],
+   [
+    "branch",
+    "work"
+   ],
+   [
+    "work",
+    "stage",
+    0,
+    "add"
+   ],
+   [
+    "stage",
+    "commit"
+   ],
+   [
+    "commit",
+    "remote",
+    0,
+    "push"
+   ],
+   [
+    "remote",
+    "pr"
+   ],
+   [
+    "pr",
+    "merge",
+    0,
+    "approve"
+   ],
+   [
+    "merge",
+    "main"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start from the latest main",
+    "n": [
+     "main"
+    ],
+    "d": "main holds the code everyone agrees on. Pull it first so your work starts from the newest version.",
+    "l": [
+     0
+    ]
+   },
+   {
+    "t": "Create a branch",
+    "n": [
+     "branch"
+    ],
+    "e": [
+     "main>branch"
+    ],
+    "d": "A branch is a movable label on a line of commits. Your edits live there until they are reviewed, so main stays safe.",
+    "l": [
+     1
+    ]
+   },
+   {
+    "t": "Edit in the working tree",
+    "n": [
+     "work"
+    ],
+    "e": [
+     "branch>work"
+    ],
+    "d": "The working tree is the files on disk. git status lists what changed and git diff shows the exact lines.",
+    "l": [
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "t": "Stage what belongs together",
+    "n": [
+     "stage"
+    ],
+    "e": [
+     "work>stage"
+    ],
+    "d": "git add puts chosen changes into the staging area, the draft of your next commit. Stage the fix and its test together, and leave unrelated edits out.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Commit a snapshot",
+    "n": [
+     "commit"
+    ],
+    "e": [
+     "stage>commit"
+    ],
+    "d": "A commit saves the staged snapshot with an author, a time and a message. Write the message so a stranger understands why the change was made.",
+    "l": [
+     6
+    ]
+   },
+   {
+    "t": "Push to the remote",
+    "n": [
+     "remote"
+    ],
+    "e": [
+     "commit>remote"
+    ],
+    "d": "Until you push, commits exist only on your laptop. git push copies the branch to the shared repository.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "Open a pull request",
+    "n": [
+     "pr"
+    ],
+    "e": [
+     "remote>pr"
+    ],
+    "d": "A pull request asks to merge your branch into main. It shows the diff, runs CI tests and collects review comments. You answer comments with more commits.",
+    "l": [
+     8,
+     9
+    ]
+   },
+   {
+    "t": "Resolve a conflict",
+    "n": [
+     "merge"
+    ],
+    "d": "If someone changed the same lines on main, Git stops and marks both versions in the file. You edit the file to the correct final text, add it and commit.",
+    "l": [
+     10,
+     11,
+     12
+    ]
+   },
+   {
+    "t": "Merge into main",
+    "n": [
+     "merge",
+     "main"
+    ],
+    "e": [
+     "pr>merge",
+     "merge>main"
+    ],
+    "d": "With approval and green CI the pull request is merged. main now includes your change and the branch can be deleted.",
+    "l": [
+     13
+    ]
+   }
+  ],
+  "ideas": [
+   "Three places a change lives: working tree (edited), staging area (chosen), repository (committed).",
+   "Small commits with clear messages make review fast and make a bad change easy to revert.",
+   "Branch per task, pull request per branch, CI on every pull request.",
+   "A merge conflict is Git asking a human to decide. It is routine, and the fix is an ordinary edit plus a commit.",
+   "git revert undoes a merged commit by adding a new one, which is safe on shared branches."
+  ],
+  "traps": [
+   "Committing secrets such as .env files. Add them to .gitignore, and if one leaks, rotate the secret because history keeps it.",
+   "Force-pushing to a shared branch and erasing a colleague's commits.",
+   "One giant pull request with a week of mixed changes that nobody can review properly."
+  ],
+  "qa": [
+   [
+    "Explain the difference between git add, commit and push.",
+    "add moves changes from the working tree into the staging area. commit records the staged snapshot in your local repository with a message. push uploads your local commits to the remote so others can see them."
+   ],
+   [
+    "How do you resolve a merge conflict?",
+    "Fetch the latest main and merge or rebase it into your branch. Open each conflicted file, read both sides between the markers, write the correct combined version, remove the markers, run the tests, then add the files and commit."
+   ],
+   [
+    "What makes a good pull request?",
+    "One focused change, a description of what and why, tests that cover it, green CI, and a size a reviewer can read in one sitting."
+   ]
+  ]
+ },
+ {
+  "id": "tdd",
+  "mod": 2,
+  "sec": "2.1",
+  "name": "Testing and TDD",
+  "title": "Red, green, refactor, then let CI guard it",
+  "thesis": "In test-driven development you write a failing test before the code that makes it pass. The tests become a safety net, so you can change an integration on a customer site quickly without breaking what already works.",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "pytest: tests first, then the code",
+  "code": "# test_orders.py  (written FIRST)\nfrom unittest.mock import patch, Mock\nimport pytest, requests\nfrom orders import total_open_value, fetch_open_orders\n\ndef test_total_sums_only_open_orders():        # unit test\n    orders = [{\"status\": \"open\", \"total\": 40.0},\n              {\"status\": \"shipped\", \"total\": 99.0},\n              {\"status\": \"open\", \"total\": 10.5}]\n    assert total_open_value(orders) == 50.5\n\ndef test_total_of_empty_list_is_zero():\n    assert total_open_value([]) == 0\n\n@patch(\"orders.requests.get\")                  # mock the network call\ndef test_fetch_raises_on_server_error(mock_get):\n    mock_get.return_value = Mock(status_code=503)\n    mock_get.return_value.raise_for_status.side_effect = requests.HTTPError(\"503\")\n    with pytest.raises(requests.HTTPError):\n        fetch_open_orders()\n\n# orders.py  (written AFTER the tests went red)\nimport requests\ndef total_open_value(orders):\n    return sum(o[\"total\"] for o in orders if o[\"status\"] == \"open\")\n\ndef fetch_open_orders():\n    r = requests.get(\"https://api.example.com/v1/orders\", timeout=10)\n    r.raise_for_status()\n    return r.json()[\"items\"]",
+  "nodes": [
+   [
+    "red",
+    90,
+    70,
+    "Write a test",
+    "it fails: red"
+   ],
+   [
+    "run",
+    265,
+    70,
+    "Run pytest",
+    "1 failed"
+   ],
+   [
+    "code",
+    440,
+    70,
+    "Write code",
+    "just enough"
+   ],
+   [
+    "green",
+    615,
+    70,
+    "Tests pass",
+    "green"
+   ],
+   [
+    "refactor",
+    615,
+    210,
+    "Refactor",
+    "clean, stay green"
+   ],
+   [
+    "suite",
+    440,
+    210,
+    "Test suite",
+    "unit + integration"
+   ],
+   [
+    "ci",
+    265,
+    210,
+    "CI pipeline",
+    "runs on every PR",
+    1
+   ],
+   [
+    "gate",
+    90,
+    210,
+    "Merge gate",
+    "red blocks merge"
+   ],
+   [
+    "mock",
+    440,
+    350,
+    "Mock the API",
+    "fake replies"
+   ]
+  ],
+  "edges": [
+   [
+    "red",
+    "run"
+   ],
+   [
+    "run",
+    "code"
+   ],
+   [
+    "code",
+    "green"
+   ],
+   [
+    "green",
+    "refactor"
+   ],
+   [
+    "refactor",
+    "suite",
+    0,
+    "commit"
+   ],
+   [
+    "mock",
+    "suite",
+    0,
+    "used by"
+   ],
+   [
+    "suite",
+    "ci",
+    0,
+    "push"
+   ],
+   [
+    "ci",
+    "gate"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Red: write a failing test",
+    "n": [
+     "red"
+    ],
+    "d": "Describe one behaviour as a test before it exists. Here: the total of open orders ignores shipped ones.",
+    "l": [
+     5,
+     9
+    ]
+   },
+   {
+    "t": "Watch it fail",
+    "n": [
+     "run"
+    ],
+    "e": [
+     "red>run"
+    ],
+    "d": "Run pytest and confirm the test fails for the right reason. A test that never failed may not be testing anything."
+   },
+   {
+    "t": "Green: just enough code",
+    "n": [
+     "code",
+     "green"
+    ],
+    "e": [
+     "run>code",
+     "code>green"
+    ],
+    "d": "Write the simplest code that passes. Resist adding features no test asks for.",
+    "l": [
+     23,
+     24
+    ]
+   },
+   {
+    "t": "Refactor safely",
+    "n": [
+     "refactor"
+    ],
+    "e": [
+     "green>refactor"
+    ],
+    "d": "Now improve names and structure. Rerun the tests after each change; if they stay green, behaviour is unchanged. Then write the next failing test."
+   },
+   {
+    "t": "Unit and integration tests",
+    "n": [
+     "suite"
+    ],
+    "e": [
+     "refactor>suite"
+    ],
+    "d": "Unit tests check one function in isolation and run in milliseconds. Integration tests check pieces working together, such as your code with a real test database.",
+    "l": [
+     5,
+     11
+    ]
+   },
+   {
+    "t": "Mock the external API",
+    "n": [
+     "mock",
+     "suite"
+    ],
+    "e": [
+     "mock>suite"
+    ],
+    "d": "Tests should not call the customer's real API. A mock replaces requests.get with a fake that returns a 503, so you can test the failure path on demand.",
+    "l": [
+     14,
+     16,
+     17,
+     18
+    ]
+   },
+   {
+    "t": "CI runs every test on every PR",
+    "n": [
+     "ci"
+    ],
+    "e": [
+     "suite>ci"
+    ],
+    "d": "Continuous integration, such as GitHub Actions, installs the project on a clean machine and runs pytest whenever a pull request changes."
+   },
+   {
+    "t": "Red blocks the merge",
+    "n": [
+     "gate"
+    ],
+    "e": [
+     "ci>gate"
+    ],
+    "d": "Branch protection makes a passing CI run a requirement for merging, so a broken change cannot reach main."
+   }
+  ],
+  "ideas": [
+   "Red, green, refactor: failing test, simplest passing code, clean up with tests green.",
+   "Many fast unit tests, fewer integration tests, very few slow end-to-end tests (the test pyramid).",
+   "Mock what you do not own and cannot control in a test: third-party APIs, clocks, random numbers.",
+   "Test the failure paths (429, 500, malformed rows, empty input) as carefully as the happy path.",
+   "A bug report becomes a failing test first. Then fix it, and it can never silently return."
+  ],
+  "traps": [
+   "Tests that hit the real customer API, so they are slow, flaky and may change real data.",
+   "Mocking so much that the test only checks the mock and proves nothing about your code.",
+   "Chasing a coverage percentage with tests that have no meaningful assertions."
+  ],
+  "qa": [
+   [
+    "What is TDD and why use it?",
+    "Write a failing test for a behaviour, write the minimum code to pass it, then refactor with the tests green. It forces a clear definition of done, keeps design simple, and leaves a regression suite that makes later changes safe."
+   ],
+   [
+    "How would you test code that calls a customer's API?",
+    "Put the API behind a small client class, then in unit tests patch its HTTP call with a mock that returns chosen responses: success, 429, 500 and malformed JSON. Add a few integration tests against a sandbox or recorded responses, kept separate from the fast suite."
+   ],
+   [
+    "Unit versus integration test?",
+    "A unit test checks one small piece in isolation with dependencies replaced, and runs in milliseconds. An integration test checks that real components work together, such as code plus a database, and is slower but catches wiring problems units miss."
+   ]
+  ]
+ },
+ {
+  "id": "bigo",
+  "mod": 2,
+  "sec": "2.1",
+  "name": "Complexity and patterns",
+  "title": "How code slows down as data grows, and how to structure it",
+  "thesis": "Big-O describes how work grows with input size. The same join can finish in a second with a dict or run for hours with nested lists. Add a few design patterns and defensive habits, and your code survives real customer data.",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "Python: list scan versus dict lookup",
+  "code": "import random, time\ncustomers = [{\"id\": i, \"name\": f\"C{i}\"} for i in range(50_000)]\norders = [{\"order_id\": j, \"customer_id\": random.randrange(50_000)}\n          for j in range(50_000)]\n\n# O(n * m): for every order, scan the customer list\ndef join_slow(orders, customers):\n    out = []\n    for o in orders:\n        for c in customers:\n            if c[\"id\"] == o[\"customer_id\"]:\n                out.append((o[\"order_id\"], c[\"name\"]))\n                break\n    return out\n\n# O(n + m): build a dict once, then each lookup is O(1) on average\ndef join_fast(orders, customers):\n    by_id = {c[\"id\"]: c for c in customers}\n    return [(o[\"order_id\"], by_id[o[\"customer_id\"]][\"name\"])\n            for o in orders if o[\"customer_id\"] in by_id]\n\nt = time.perf_counter()\njoin_fast(orders, customers)\nprint(\"fast:\", round(time.perf_counter() - t, 3), \"seconds\")\n# join_slow on this data does about a billion comparisons.\n# Try it on 5_000 rows first and time both.",
+  "nodes": [
+   [
+    "input",
+    90,
+    70,
+    "Input size n",
+    "rows · users · calls"
+   ],
+   [
+    "o1",
+    265,
+    70,
+    "O(1)",
+    "dict lookup"
+   ],
+   [
+    "ologn",
+    440,
+    70,
+    "O(log n)",
+    "binary search"
+   ],
+   [
+    "on",
+    615,
+    70,
+    "O(n)",
+    "one pass"
+   ],
+   [
+    "onlogn",
+    615,
+    210,
+    "O(n log n)",
+    "sorting"
+   ],
+   [
+    "on2",
+    440,
+    210,
+    "O(n^2)",
+    "nested loops"
+   ],
+   [
+    "fix",
+    265,
+    210,
+    "Use a dict",
+    "n*m becomes n+m"
+   ],
+   [
+    "patterns",
+    90,
+    210,
+    "Design patterns",
+    "adapter · strategy"
+   ],
+   [
+    "defend",
+    90,
+    350,
+    "Defensive code",
+    "validate · fail loud"
+   ]
+  ],
+  "edges": [
+   [
+    "input",
+    "o1"
+   ],
+   [
+    "o1",
+    "ologn"
+   ],
+   [
+    "ologn",
+    "on"
+   ],
+   [
+    "on",
+    "onlogn"
+   ],
+   [
+    "onlogn",
+    "on2"
+   ],
+   [
+    "on2",
+    "fix",
+    0,
+    "refactor"
+   ],
+   [
+    "fix",
+    "patterns"
+   ],
+   [
+    "patterns",
+    "defend"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Count work, not seconds",
+    "n": [
+     "input"
+    ],
+    "d": "Big-O asks how the number of steps grows as the input n grows. It ignores constant factors and keeps the dominant term."
+   },
+   {
+    "t": "O(1): constant time",
+    "n": [
+     "o1"
+    ],
+    "e": [
+     "input>o1"
+    ],
+    "d": "Looking up a key in a Python dict takes about the same time for 10 keys or 10 million, because it uses a hash table.",
+    "l": [
+     18
+    ]
+   },
+   {
+    "t": "O(log n): halve each step",
+    "n": [
+     "ologn"
+    ],
+    "e": [
+     "o1>ologn"
+    ],
+    "d": "Binary search on sorted data halves the range each step. A million items need about 20 comparisons. Database B-tree indexes behave similarly."
+   },
+   {
+    "t": "O(n): one pass",
+    "n": [
+     "on"
+    ],
+    "e": [
+     "ologn>on"
+    ],
+    "d": "Reading every row once. Twice the data, twice the time. Most good pipelines are O(n).",
+    "l": [
+     17
+    ]
+   },
+   {
+    "t": "O(n log n): sorting",
+    "n": [
+     "onlogn"
+    ],
+    "e": [
+     "on>onlogn"
+    ],
+    "d": "Good general sorts, including Python's sorted(), take O(n log n). Slightly worse than one pass, and fine at millions of rows."
+   },
+   {
+    "t": "O(n^2): the hidden trap",
+    "n": [
+     "on2"
+    ],
+    "e": [
+     "onlogn>on2"
+    ],
+    "d": "A loop inside a loop over the same-sized data. It looks fine on 100 test rows and takes hours on 500,000 production rows.",
+    "l": [
+     6,
+     8,
+     9
+    ]
+   },
+   {
+    "t": "Fix it with a dict",
+    "n": [
+     "fix"
+    ],
+    "e": [
+     "on2>fix"
+    ],
+    "d": "Build an index once in O(m), then do O(1) lookups for each of n orders. Total O(n + m).",
+    "l": [
+     16,
+     17,
+     18
+    ]
+   },
+   {
+    "t": "Structure with patterns",
+    "n": [
+     "patterns"
+    ],
+    "e": [
+     "fix>patterns"
+    ],
+    "d": "Adapter hides a customer API behind your own interface. Strategy swaps an algorithm by configuration. Repository hides where data is stored."
+   },
+   {
+    "t": "Program defensively",
+    "n": [
+     "defend"
+    ],
+    "e": [
+     "patterns>defend"
+    ],
+    "d": "Validate inputs at the boundary, set timeouts, handle None and empty lists, and fail with a clear error instead of continuing with bad data."
+   }
+  ],
+  "ideas": [
+   "Growth order to remember: O(1) < O(log n) < O(n) < O(n log n) < O(n^2).",
+   "x in list is O(n); x in set or dict is O(1) on average. This single swap fixes many slow scripts.",
+   "Space complexity matters too: a dict index trades memory for speed.",
+   "Adapter, strategy and repository keep customer-specific quirks at the edges of your code.",
+   "Defensive programming: assume inputs are wrong until validated, and make failures loud and specific."
+  ],
+  "traps": [
+   "Testing on 100 rows and shipping an O(n^2) loop to a 1 million row table.",
+   "Calling a database or API inside a loop (the N+1 problem) instead of fetching in bulk.",
+   "Adding patterns for their own sake. A pattern should remove a real pain, such as a second customer with a different API."
+  ],
+  "qa": [
+   [
+    "A script that matches 200,000 invoices to 200,000 payments takes hours. What do you look for?",
+    "A nested loop or an x in list check inside a loop, which is O(n^2): about 40 billion comparisons. Build a dict keyed on the match field once, then look each item up in O(1), giving O(n) overall. Measure before and after."
+   ],
+   [
+    "What is the adapter pattern and when would an FDE use it?",
+    "A class that wraps an external system and exposes the interface your code expects. An FDE uses it for each customer API so auth, pagination and field names are handled in one place, and tests can swap in a fake."
+   ],
+   [
+    "What does defensive programming mean to you?",
+    "Validate data at the boundaries, never trust external input, set timeouts, handle empty and missing values explicitly, and fail loudly with useful errors rather than silently producing wrong results."
+   ]
+  ]
+ }
+]

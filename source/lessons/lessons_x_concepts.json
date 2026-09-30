@@ -1,0 +1,694 @@
+[
+ {
+  "id": "dataformats",
+  "mod": 0,
+  "sec": "0.5",
+  "name": "Data formats and time",
+  "title": "Data formats, encodings and time",
+  "thesis": "Most breakage in customer data work is mundane: a file saved in the wrong text encoding, a date read the wrong way round, a time with no time zone, a field that needs a regex to pull out the ID. Reading bytes carefully, storing times in UTC and validating every row at the boundary prevents most of it.",
+  "format": "animation",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "file",
+    90,
+    70,
+    "Raw file",
+    "bytes from SFTP",
+    1
+   ],
+   [
+    "decode",
+    265,
+    70,
+    "Decode text",
+    "UTF-8 or cp1252"
+   ],
+   [
+    "parse",
+    440,
+    70,
+    "Parse rows",
+    "CSV, JSON, XML"
+   ],
+   [
+    "clean",
+    615,
+    70,
+    "Regex clean",
+    "pull out IDs"
+   ],
+   [
+    "time",
+    615,
+    210,
+    "Fix times",
+    "local to UTC"
+   ],
+   [
+    "validate",
+    440,
+    210,
+    "Validate",
+    "Pydantic model"
+   ],
+   [
+    "store",
+    265,
+    210,
+    "Store",
+    "typed Parquet"
+   ],
+   [
+    "reject",
+    440,
+    350,
+    "Reject file",
+    "row + reason"
+   ]
+  ],
+  "edges": [
+   [
+    "file",
+    "decode"
+   ],
+   [
+    "decode",
+    "parse"
+   ],
+   [
+    "parse",
+    "clean"
+   ],
+   [
+    "clean",
+    "time"
+   ],
+   [
+    "time",
+    "validate"
+   ],
+   [
+    "validate",
+    "store",
+    0,
+    "valid"
+   ],
+   [
+    "validate",
+    "reject",
+    0,
+    "invalid"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Bytes arrive",
+    "n": [
+     "file"
+    ],
+    "e": [],
+    "d": "A file is only bytes until you decide how to read them. Open it in binary mode first so no library guesses the encoding for you.",
+    "l": [
+     6
+    ]
+   },
+   {
+    "t": "Decode with the right encoding",
+    "n": [
+     "file",
+     "decode"
+    ],
+    "e": [
+     "file>decode"
+    ],
+    "d": "Try UTF-8 (with utf-8-sig to drop a byte order mark). If that fails, the file is often Windows-1252 from an Excel export. Never guess silently: log which encoding worked.",
+    "l": [
+     8,
+     10,
+     9
+    ]
+   },
+   {
+    "t": "Parse into rows",
+    "n": [
+     "decode",
+     "parse"
+    ],
+    "e": [
+     "decode>parse"
+    ],
+    "d": "A proper CSV parser handles quotes, commas inside fields and line breaks inside quotes. Many European exports use a semicolon as the delimiter.",
+    "l": [
+     11
+    ]
+   },
+   {
+    "t": "Pull out clean fields",
+    "n": [
+     "parse",
+     "clean"
+    ],
+    "e": [
+     "parse>clean"
+    ],
+    "d": "Free-text fields hide the value you need, such as 'ref ORD-004417 '. A small, tested regular expression finds the ID and ignores the noise.",
+    "l": [
+     13,
+     23
+    ]
+   },
+   {
+    "t": "Turn local times into UTC",
+    "n": [
+     "clean",
+     "time"
+    ],
+    "e": [
+     "clean>time"
+    ],
+    "d": "The file says 29/03/2026 01:30 with no zone. You must know it is day-first and London time, attach that zone, then convert to UTC for storage.",
+    "l": [
+     30,
+     32
+    ]
+   },
+   {
+    "t": "Validate every row",
+    "n": [
+     "time",
+     "validate"
+    ],
+    "e": [
+     "time>validate"
+    ],
+    "d": "A Pydantic model checks types, formats and rules for each row. Validation happens at the boundary, before anything reaches your database or model.",
+    "l": [
+     16,
+     32
+    ]
+   },
+   {
+    "t": "Store typed data",
+    "n": [
+     "validate",
+     "store"
+    ],
+    "e": [
+     "validate>store"
+    ],
+    "d": "Valid rows go to Parquet, which keeps column types, so the next step never has to guess again whether 000417 is text or a number.",
+    "l": [
+     36
+    ]
+   },
+   {
+    "t": "Reject with a reason",
+    "n": [
+     "validate",
+     "reject"
+    ],
+    "e": [
+     "validate>reject"
+    ],
+    "d": "Invalid rows are kept in a reject file with the reason attached. Send that file back to the data owner; silently dropping rows hides the problem.",
+    "l": [
+     34,
+     37
+    ]
+   }
+  ],
+  "ideas": [
+   "Text is stored as bytes. An encoding such as UTF-8 or Windows-1252 is the rule that turns bytes into characters, and the wrong rule produces garbled text like 'CafÃ©'.",
+   "Store timestamps in UTC with the zone attached, and convert to local time only when you show them to a person.",
+   "A date like 03/04/2026 is 3 April in most of Europe and 4 March in the US. Agree the format with the data owner and write it down.",
+   "Regular expressions are good for finding and extracting patterns in short fields. Use a real parser for CSV, JSON, XML and HTML.",
+   "Validate every incoming row against a schema and keep rejected rows with a reason, so bad data is visible instead of silently lost."
+  ],
+  "traps": [
+   "Opening Excel exports as UTF-8 with errors='ignore' or 'replace', which hides lost characters in names and addresses.",
+   "Storing local times without a zone, so daylight saving changes create duplicate or missing hours.",
+   "Letting pandas or Excel guess types, which turns account 000417 into 417 and long IDs into scientific notation."
+  ],
+  "qa": [
+   [
+    "A customer's CSV shows names like 'MÃ¼ller'. What happened and how do you fix it?",
+    "UTF-8 bytes were decoded as Windows-1252 or Latin-1 somewhere. I check the raw bytes, find which step guessed the encoding, and decode explicitly as UTF-8 at the start of the pipeline. I also add a check that fails loudly on decode errors instead of replacing characters."
+   ],
+   [
+    "How do you store timestamps from systems in three countries?",
+    "I convert each one to UTC at ingestion using the source system's IANA zone, such as Europe/Berlin, and store it as a zone-aware timestamp. I keep the original string for audit and convert to the user's local zone only for display."
+   ],
+   [
+    "When would you use a regex, and when a parser?",
+    "A regex suits short, flat patterns, such as an invoice number inside a free-text reference. For nested or quoted formats like JSON, XML, HTML or CSV, I use a real parser, because regexes break on quoting, escaping and nesting."
+   ]
+  ],
+  "code": "import csv, io, re\nfrom datetime import datetime\nfrom zoneinfo import ZoneInfo\nimport pandas as pd\nfrom pydantic import BaseModel, ValidationError, field_validator\n\nraw = open(\"orders.csv\", \"rb\").read()         # bytes, not text yet\ntry:\n    text = raw.decode(\"utf-8-sig\")            # UTF-8, BOM removed if present\nexcept UnicodeDecodeError:\n    text = raw.decode(\"cp1252\")               # common Windows Excel export\nrows = csv.DictReader(io.StringIO(text), delimiter=\";\")\n\nORDER_ID = re.compile(r\"ORD-\\d{6}\")\nLONDON, UTC = ZoneInfo(\"Europe/London\"), ZoneInfo(\"UTC\")\n\nclass Order(BaseModel):\n    order_id: str\n    placed_at: datetime                       # always stored in UTC\n\n    @field_validator(\"order_id\")\n    @classmethod\n    def find_id(cls, v: str) -> str:\n        m = ORDER_ID.search(v)                # \"ref ORD-004417 \" -> \"ORD-004417\"\n        if not m:\n            raise ValueError(\"no order id found\")\n        return m.group()\n\ngood, bad = [], []\nfor r in rows:\n    local = datetime.strptime(r[\"placed\"], \"%d/%m/%Y %H:%M\").replace(tzinfo=LONDON)\n    try:\n        good.append(Order(order_id=r[\"ref\"], placed_at=local.astimezone(UTC)))\n    except ValidationError as e:\n        bad.append({**r, \"reason\": e.errors()[0][\"msg\"]})\n\npd.DataFrame([o.model_dump() for o in good]).to_parquet(\"orders.parquet\")\npd.DataFrame(bad).to_csv(\"orders_rejected.csv\", index=False)",
+  "codeTitle": "Python: decode, parse, clean, convert, validate"
+ },
+ {
+  "id": "pytooling",
+  "mod": 0,
+  "sec": "0.5",
+  "name": "Python project tooling",
+  "title": "Python project tooling: pyproject, uv, ruff, mypy and pre-commit",
+  "thesis": "A clean Python project is one someone else can clone, install and check with two commands. pyproject.toml describes the project, a lock file and virtual environment make installs repeatable, and ruff, mypy and pytest run the same way on your laptop, in a pre-commit hook and in CI.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "pyproject",
+    90,
+    70,
+    "pyproject.toml",
+    "deps + tool config"
+   ],
+   [
+    "env",
+    265,
+    70,
+    "uv sync",
+    ".venv + uv.lock"
+   ],
+   [
+    "code",
+    440,
+    70,
+    "Your code",
+    "src/ and tests/"
+   ],
+   [
+    "hook",
+    615,
+    70,
+    "pre-commit",
+    "runs on git commit"
+   ],
+   [
+    "ruff",
+    615,
+    220,
+    "ruff",
+    "lint + format"
+   ],
+   [
+    "mypy",
+    440,
+    220,
+    "mypy",
+    "type check"
+   ],
+   [
+    "pytest",
+    265,
+    220,
+    "pytest",
+    "run the tests"
+   ],
+   [
+    "ci",
+    90,
+    220,
+    "CI",
+    "same checks on PR",
+    1
+   ]
+  ],
+  "edges": [
+   [
+    "pyproject",
+    "env"
+   ],
+   [
+    "env",
+    "code"
+   ],
+   [
+    "code",
+    "hook",
+    0,
+    "git commit"
+   ],
+   [
+    "hook",
+    "ruff"
+   ],
+   [
+    "ruff",
+    "mypy"
+   ],
+   [
+    "mypy",
+    "pytest"
+   ],
+   [
+    "pytest",
+    "ci",
+    0,
+    "git push"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Describe the project",
+    "n": [
+     "pyproject"
+    ],
+    "e": [],
+    "d": "pyproject.toml is one file that names the project, the Python version, the libraries it needs and the settings for each tool.",
+    "l": [
+     0,
+     4,
+     5
+    ]
+   },
+   {
+    "t": "Build a repeatable environment",
+    "n": [
+     "pyproject",
+     "env"
+    ],
+    "e": [
+     "pyproject>env"
+    ],
+    "d": "uv sync creates a virtual environment in .venv and installs the exact versions recorded in uv.lock, so every machine gets the same setup.",
+    "l": [
+     10,
+     11
+    ]
+   },
+   {
+    "t": "Write code in a clear layout",
+    "n": [
+     "env",
+     "code"
+    ],
+    "e": [
+     "env>code"
+    ],
+    "d": "Code lives in src/claimsync and tests in tests/. The scripts entry turns a function into a command people can run.",
+    "l": [
+     13,
+     14
+    ]
+   },
+   {
+    "t": "Checks run on every commit",
+    "n": [
+     "code",
+     "hook"
+    ],
+    "e": [
+     "code>hook"
+    ],
+    "d": "A pre-commit hook runs fast checks before git records a commit, so style problems never reach the shared repository.",
+    "l": []
+   },
+   {
+    "t": "ruff lints and formats",
+    "n": [
+     "hook",
+     "ruff"
+    ],
+    "e": [
+     "hook>ruff"
+    ],
+    "d": "ruff finds unused imports, likely bugs and old syntax, and formats the code in one consistent style, in well under a second.",
+    "l": [
+     20,
+     23,
+     21,
+     24
+    ]
+   },
+   {
+    "t": "mypy checks types",
+    "n": [
+     "ruff",
+     "mypy"
+    ],
+    "e": [
+     "ruff>mypy"
+    ],
+    "d": "mypy reads your type hints and reports mistakes such as passing text where a number is expected, before the code runs.",
+    "l": [
+     26,
+     27
+    ]
+   },
+   {
+    "t": "pytest runs the tests",
+    "n": [
+     "mypy",
+     "pytest"
+    ],
+    "e": [
+     "mypy>pytest"
+    ],
+    "d": "Tests prove behaviour. Keeping their settings in pyproject means everyone runs them the same way with one command.",
+    "l": [
+     29,
+     30
+    ]
+   },
+   {
+    "t": "CI repeats the same checks",
+    "n": [
+     "pytest",
+     "ci"
+    ],
+    "e": [
+     "pytest>ci"
+    ],
+    "d": "On every pull request, CI runs the same commands on a clean machine. If it passes there, the customer's team can trust it will install and run for them too.",
+    "l": []
+   }
+  ],
+  "ideas": [
+   "pyproject.toml is the standard single file for a Python project's metadata, dependencies and tool settings.",
+   "A virtual environment keeps each project's libraries separate; a lock file records exact versions so installs are repeatable.",
+   "ruff is a fast linter and formatter; mypy is a type checker that uses your type hints to catch mistakes before running the code.",
+   "Configuration such as URLs, tokens and log levels comes from environment variables, never from values hard-coded in the source.",
+   "One command such as make check should run every check, and pre-commit and CI should call the same commands."
+  ],
+  "traps": [
+   "Installing libraries into the system Python, so two projects fight over versions and nothing is reproducible.",
+   "Keeping only unpinned dependencies, so a new library release breaks the customer's install months later.",
+   "Turning on every strict rule at once in an old codebase, getting 2,000 errors and switching the tools off again."
+  ],
+  "qa": [
+   [
+    "You inherit a customer's Python repo with no instructions. What do you set up first?",
+    "A pyproject.toml with the real dependencies, a lock file, and a README with the two commands to install and test. Then ruff format and a basic ruff check so diffs stay readable, and a make check or equivalent that CI also runs. I add mypy gradually, starting with new modules."
+   ],
+   [
+    "Why use a lock file if pyproject already lists dependencies?",
+    "pyproject usually lists ranges such as httpx>=0.27, which say what is allowed. The lock file records the exact versions that were tested, including dependencies of dependencies, so every install is identical until someone upgrades on purpose."
+   ],
+   [
+    "How would you roll out type checking on a large untyped codebase?",
+    "Start with mypy on default settings for the whole repo and fix only real errors, then turn on stricter settings for new or critical modules using per-module overrides. Require type hints on new code in review and widen the strict area over time."
+   ]
+  ],
+  "code": "[project]\nname = \"claimsync\"\nversion = \"0.1.0\"\ndescription = \"Nightly sync of claim files into the reporting database\"\nrequires-python = \">=3.11\"\ndependencies = [\n    \"httpx>=0.27\",\n    \"pydantic>=2.7\",\n]\n\n[dependency-groups]\ndev = [\"pytest>=8\", \"ruff>=0.6\", \"mypy>=1.10\"]\n\n[project.scripts]\nclaimsync = \"claimsync.cli:main\"      # installs a claimsync command\n\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n\n[tool.ruff]\nline-length = 100\n\n[tool.ruff.lint]\nselect = [\"E\", \"F\", \"I\", \"B\", \"UP\"]   # errors, pyflakes, imports, bugbear, upgrades\n\n[tool.mypy]\nstrict = true\n\n[tool.pytest.ini_options]\ntestpaths = [\"tests\"]",
+  "codeTitle": "pyproject.toml for a small service"
+ },
+ {
+  "id": "entnetwork",
+  "mod": 2,
+  "sec": "2.3",
+  "name": "Enterprise networks",
+  "title": "Enterprise networks and access: proxies, TLS inspection, firewalls and VPNs",
+  "thesis": "Inside a large organisation, traffic does not go straight to the internet. It passes through proxies that may demand a login, TLS inspection that re-signs certificates, firewalls that allow only listed destinations, and VPNs that decide what you can see. Diagnosing these layers in order turns 'it works on my laptop' into a precise request the network team can act on.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   420
+  ],
+  "note": "Start top left and test one layer at a time from the machine that fails. Follow 'yes' to the right to the next check; a 'no' drops down to the likely cause. If every check passes in curl but your program still fails, the problem is in how the program uses the proxy or trusts certificates.",
+  "nodes": [
+   [
+    "q1",
+    90,
+    70,
+    "Name resolves?",
+    "nslookup the host"
+   ],
+   [
+    "q2",
+    265,
+    70,
+    "Port opens?",
+    "nc -vz or curl -v"
+   ],
+   [
+    "q3",
+    440,
+    70,
+    "TLS verifies?",
+    "no cert error"
+   ],
+   [
+    "q4",
+    615,
+    70,
+    "Proxy error?",
+    "407 or 403 page"
+   ],
+   [
+    "dns",
+    90,
+    210,
+    "Fix DNS",
+    "VPN, internal DNS"
+   ],
+   [
+    "egress",
+    265,
+    210,
+    "Egress blocked",
+    "proxy or allowlist"
+   ],
+   [
+    "ca",
+    440,
+    210,
+    "Trust their CA",
+    "add corp root CA"
+   ],
+   [
+    "auth",
+    615,
+    210,
+    "Proxy login",
+    "creds or allowlist"
+   ],
+   [
+    "app",
+    440,
+    350,
+    "Check the app",
+    "proxy env, CA store"
+   ]
+  ],
+  "edges": [
+   [
+    "q1",
+    "q2",
+    0,
+    "yes"
+   ],
+   [
+    "q1",
+    "dns",
+    0,
+    "no"
+   ],
+   [
+    "q2",
+    "q3",
+    0,
+    "yes"
+   ],
+   [
+    "q2",
+    "egress",
+    0,
+    "no"
+   ],
+   [
+    "q3",
+    "q4",
+    0,
+    "yes"
+   ],
+   [
+    "q3",
+    "ca",
+    0,
+    "no"
+   ],
+   [
+    "q4",
+    "auth",
+    0,
+    "yes"
+   ],
+   [
+    "q4",
+    "app",
+    0,
+    "no"
+   ]
+  ],
+  "ideas": [
+   "Most corporate networks send outbound web traffic through a proxy; programs find it through HTTPS_PROXY, a PAC file or their own settings.",
+   "TLS inspection means the proxy decrypts and re-encrypts traffic with the company's own certificate authority, so your program must trust that CA.",
+   "Firewalls usually block outbound traffic except to allowlisted destinations, so you request access by hostname, port and purpose.",
+   "Private resources are reached through a VPN, a bastion host or a private endpoint, and often need internal DNS to resolve.",
+   "Diagnose layer by layer from the failing machine: DNS, TCP, TLS, then HTTP, and send the network team exact evidence."
+  ],
+  "traps": [
+   "Setting verify=False or NODE_TLS_REJECT_UNAUTHORIZED=0 to get past a certificate error, which disables protection and will fail a security review.",
+   "Testing from your own laptop on the guest Wi-Fi and assuming the customer's server has the same access.",
+   "Forgetting NO_PROXY, so calls to internal services are sent to the proxy, which cannot reach them."
+  ],
+  "qa": [
+   [
+    "Your Python client fails with CERTIFICATE_VERIFY_FAILED inside the customer's network, but the browser works. What is going on?",
+    "Almost certainly TLS inspection. The browser trusts the company's root CA through the operating system store, while Python's requests uses its own certifi bundle. I confirm the issuer with openssl s_client, get the corporate root CA as a PEM file from IT, and point the client at a bundle that includes it, for example with REQUESTS_CA_BUNDLE, or use the truststore package. I never switch verification off."
+   ],
+   [
+    "How do you ask a customer's network team for access to an external API?",
+    "In writing, with exact details: source machines or subnet, destination hostnames, port 443, direction outbound, protocol HTTPS, whether it goes through the proxy, the business reason and the owner. I include whether the vendor publishes stable IP ranges or only hostnames, and ask about TLS inspection exceptions if the API uses certificate pinning."
+   ],
+   [
+    "Everything works in curl on the server, but your container fails. Where do you look?",
+    "At what the container inherits. Containers do not automatically get the host's proxy variables or its trusted CAs. I pass HTTPS_PROXY, HTTP_PROXY and NO_PROXY into the container, mount or bake in the corporate CA bundle and point the runtime at it, then rerun the same curl from inside the container to prove it."
+   ]
+  ]
+ },
+ {
+  "id": "poc",
+  "mod": 4,
+  "sec": "4.3",
+  "name": "POCs and scoping",
+  "title": "Pre-sales POCs and scoping",
+  "thesis": "A proof of concept is a small, time-boxed experiment that answers one question before a customer signs: will this work on our data, for our people, at a cost we accept? It succeeds when the success criteria, scope, customer commitments and the decision that follows are written down before any code is written.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "A POC tests feasibility on real data in a few weeks; a pilot tests value with real users in daily work; production is the supported, contracted service.",
+   "Agree measurable success criteria, who judges them and what decision follows, in writing, before you start.",
+   "Scope a POC as fixed time with variable scope, and list what the customer must provide, with dates.",
+   "Estimates for customer work must include waiting time for access, data and security reviews, not just coding.",
+   "Answer RFP technical questions honestly and precisely: say what is standard, what needs configuration, what is on the roadmap and what is not supported."
+  ],
+  "traps": [
+   "Starting a free POC with vague goals, so it drifts for months and ends without a decision.",
+   "Building a polished mini-product in the POC that the customer then expects in production at no extra cost.",
+   "Answering 'yes' to every RFP line to win the deal, and then being held to it in the contract."
+  ],
+  "qa": [
+   [
+    "A prospect asks for a POC next week. What do you ask before agreeing?",
+    "What decision the POC will support and who makes it, what success looks like in numbers, which workflow and data it covers, who on their side will give access and time, and what happens if it succeeds, including budget and timeline. If nobody can answer the last question, I suggest a shorter discovery workshop first."
+   ],
+   [
+    "How do you estimate a POC when you have not seen the customer's systems?",
+    "I split it into phases with ranges, fix the time box, and state assumptions explicitly, such as sample data by day 3 and API access by day 5. I add buffer for access and review delays, which usually take longer than the build, and I say which scope we drop first if an assumption fails."
+   ],
+   [
+    "An RFP asks whether your product supports on-premises deployment. It does not, but a private cloud option exists. How do you answer?",
+    "I answer 'No' for on-premises and describe the private cloud option precisely, including what runs where, how data is isolated and which of their requirements behind the question it meets. I never stretch 'yes', because the RFP answers usually become part of the contract."
+   ]
+  ]
+ }
+]

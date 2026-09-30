@@ -1,0 +1,120 @@
+{
+ "oop": {
+  "title": "Quillmere Wholesale: untangling a price-import script with classes",
+  "company": "Quillmere Wholesale (made up), food and catering wholesaler, about 60 staff, Sweden",
+  "situation": "Quillmere imports weekly price lists from three suppliers with a single 900-line Python script that passes plain dicts between 30 functions. Priya, a junior data engineer, inherited it. In March, a typo in one dict key ('unti_price') made about 1 in 40 rows import with a price of zero for a week before a sales rep noticed.",
+  "problem": "Each supplier sends a different file layout, and the script handles them with long if/elif chains and dict keys typed by hand in many places. A fourth supplier was about to be added. Adding more elif branches would have made the next silent key typo more likely, and nobody could test one supplier's logic without running the whole script.",
+  "approach": [
+   "Defined a frozen PriceLine dataclass with type hints (sku: str, unit_price: Decimal, currency: str, valid_from: date), so every part of the code used the same named fields.",
+   "Wrote a small SupplierAdapter base class with one method, parse(path) -> list[PriceLine], and one child class per supplier. This is a shallow 'is a' family: every adapter can be used wherever the base is expected.",
+   "Built a PriceImporter class that holds a dict of adapters and a notifier by composition, so tests could pass in a fake notifier and a single adapter.",
+   "Added validation in PriceLine.__post_init__ that rejects zero or negative prices with a clear error message naming the file and row.",
+   "Split the script into a package (models.py, adapters.py, importer.py, cli.py) inside a virtual environment with pinned dependencies, and ran mypy in the nightly job.",
+   "Wrote one pytest file per adapter using a 20-row sample file from each supplier."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from dataclasses import dataclass\nfrom datetime import date\nfrom decimal import Decimal\nimport csv\n\n@dataclass(frozen=True)\nclass PriceLine:\n    sku: str\n    unit_price: Decimal\n    currency: str\n    valid_from: date\n\n    def __post_init__(self):\n        if self.unit_price <= 0:\n            raise ValueError(f\"{self.sku}: price must be positive, got {self.unit_price}\")\n\nclass SupplierAdapter:\n    def parse(self, path: str) -> list[PriceLine]:\n        raise NotImplementedError\n\nclass NordmjolAdapter(SupplierAdapter):        # semicolon CSV, comma decimals\n    def parse(self, path: str) -> list[PriceLine]:\n        with open(path, newline=\"\", encoding=\"utf-8\") as f:\n            return [PriceLine(r[\"Artikel\"], Decimal(r[\"Pris\"].replace(\",\", \".\")),\n                              \"SEK\", date.fromisoformat(r[\"Fran\"]))\n                    for r in csv.DictReader(f, delimiter=\";\")]"
+  },
+  "outcome": "The fourth supplier was added in one day as a new adapter class with its own tests, against an earlier estimate of a week. Over the following three months there were no zero-price imports, because the dataclass check stopped two bad files with a clear error instead. The code went from one 900-line file to five modules totalling about 520 lines.",
+  "lessons": [
+   "Dataclasses with type hints replace fragile dict keys with named fields that editors and mypy can check.",
+   "A shallow base class with one method is often all the inheritance you need; keep the rest as composition.",
+   "Validation belongs next to the data definition, so bad values fail loudly at the edge.",
+   "Structure that makes one piece testable on its own pays off the first time requirements change."
+  ],
+  "discuss": [
+   "Would you use Pydantic models instead of dataclasses here? What would you gain and what would it cost?",
+   "The adapters could also be plain functions in a dict keyed by supplier. When is a class worth it over a function?",
+   "How would you explain this refactor to a manager who asks why the script needed changing if it mostly worked?"
+  ]
+ },
+ "asyncpy": {
+  "title": "Kestrelmoor Energy: a five-hour enrichment job cut to under an hour",
+  "company": "Kestrelmoor Energy (made up), regional electricity supplier, about 900 staff, United Kingdom",
+  "situation": "Every night Kestrelmoor enriches around 40,000 smart meter records with tariff and status data from its meter data platform's REST API, one request at a time with the requests library. Each call takes about 0.45 seconds, so the job ran for roughly 5 hours. On about three nights a week it overran into the morning, and the billing team started work with stale data.",
+  "problem": "The job was I/O-bound: the server spent almost all its time waiting on the network. The API documentation allowed 15 requests per second and 10 concurrent connections per key. The obvious fix, firing all 40,000 requests at once with asyncio.gather or 200 threads, would have breached both limits, triggered HTTP 429 responses and risked the key being suspended.",
+  "approach": [
+   "Measured first: logged the time per call for 1,000 requests and confirmed that over 95% of the runtime was network wait, so async would help.",
+   "Rewrote the fetch step with httpx.AsyncClient (one shared client, 10 second timeout) and asyncio.gather over batches of 1,000 meter IDs.",
+   "Capped concurrency with asyncio.Semaphore(8) and spaced request starts to 12 per second with a small rate limiter, leaving headroom under the documented limits.",
+   "Added retries for 429 and 5xx responses with exponential backoff and jitter, honoring the Retry-After header.",
+   "Wrote each finished batch to the staging table before starting the next, so a crash lost at most one batch, and saved failed IDs to a file for the next run.",
+   "Ran it on 500 IDs in the test environment, then on production with the platform team watching their API dashboard for the first night."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import asyncio\nimport httpx\n\nBATCH = 1_000\n\nasync def enrich_batch(client, sem, limiter, ids):\n    tasks = [get_with_retry(client, sem, limiter, f\"/v2/meters/{m}\") for m in ids]\n    return await asyncio.gather(*tasks, return_exceptions=True)\n\nasync def main(meter_ids: list[str]):\n    sem, limiter = asyncio.Semaphore(8), RateLimiter(per_second=12)\n    async with httpx.AsyncClient(base_url=MDP_URL, timeout=10.0,\n                                 headers={\"Authorization\": f\"Bearer {TOKEN}\"}) as client:\n        for start in range(0, len(meter_ids), BATCH):\n            ids = meter_ids[start:start + BATCH]\n            results = await enrich_batch(client, sem, limiter, ids)\n            ok = [r for r in results if not isinstance(r, Exception)]\n            failed = [m for m, r in zip(ids, results) if isinstance(r, Exception)]\n            write_staging(ok)                 # checkpoint each batch\n            append_failed(failed)\n            print(f\"batch {start // BATCH + 1}: {len(ok)} ok, {len(failed)} failed\")"
+  },
+  "outcome": "The nightly job now finishes in about 58 minutes, down from roughly 5 hours, and has not overrun into business hours since. The API logged no 429 responses in the first month, and about 0.3% of IDs fail on a typical night and succeed on the next run.",
+  "lessons": [
+   "Measure where the time goes before choosing async; it only helps when the work is waiting on I/O.",
+   "A semaphore limits requests in flight, and a rate limiter limits requests per second. Many APIs need both.",
+   "Batching with checkpoints turns a fragile all-or-nothing job into one that can resume.",
+   "Staying well under a customer's documented limits is cheap insurance against being throttled or blocked."
+  ],
+  "discuss": [
+   "The platform team offers a bulk export endpoint that returns all meters as one file. Would you switch, and what would you check first?",
+   "How would you decide between asyncio and a ThreadPoolExecutor with the existing requests code for this job?",
+   "What metrics would you put on a dashboard so the billing team knows the job succeeded before they start work?"
+  ]
+ },
+ "stats": {
+  "title": "Pellowmark Home: a free-delivery banner test that was called too early",
+  "company": "Pellowmark Home (made up), online homewares retailer, about 220 staff, Ireland",
+  "situation": "Pellowmark's site converts about 3.1% of visitors into buyers, from roughly 7,500 visitors a day. The marketing team tested a banner announcing free delivery over 60 euros. After three days, with about 1,100 visitors per group, they saw 31 orders in control and 38 with the banner, announced a '23% conversion lift' and planned to add banners across the whole site.",
+  "problem": "Nobody had checked whether a difference of 7 orders could be chance. On those numbers the p-value is about 0.39, so the result is well within normal noise. The obvious fix of 'just run it a few more days and check again' would repeat the peeking problem, because stopping whenever the numbers look good inflates false wins.",
+  "approach": [
+   "Wrote a one-page test plan with the marketing lead before restarting: hypothesis, one primary metric (orders per visitor), guardrail metrics (average order value and returns) and the decision rule.",
+   "Computed the sample size: to detect a 10% relative lift from 3.1% with 80% power at alpha 0.05 needs about 51,500 visitors per group, which fits in 14 days of traffic, covering two full weeks.",
+   "Assigned visitors to groups by a hash of a first-party cookie ID, so returning visitors stayed in the same group.",
+   "Checked each day only that the split stayed near 50/50 (a sample ratio check) and that the site had no errors, without looking at conversion.",
+   "After 14 days, reported the lift with its 95% confidence interval and p-value, plus the guardrail metrics with their own intervals."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "A/B TEST PLAN: Free-delivery banner (frozen before start)\nHypothesis:     Showing the free-delivery-over-60 banner raises orders per visitor.\nPrimary metric: orders / unique visitors, per group\nGuardrails:     average order value, 30-day return rate\nUnit:           visitor (cookie ID hash), 50/50 split\nBaseline:       3.1% conversion\nMDE:            10% relative (3.1% -> 3.41%)\nAlpha / power:  0.05 two-sided / 0.80\nSample size:    ~51,500 visitors per group  ->  run 14 full days\nDaily checks:   split ratio and error rate only, no conversion peeking\nAnalysis:       two-proportion z-test, 95% CI for the difference\nDecision rule:  ship if CI lower bound > 0 and guardrails show no harm;\n                inconclusive -> keep control and record the result\nOwner:          marketing lead; analysis by FDE; sign-off by head of e-commerce"
+  },
+  "outcome": "After 14 days, control converted 3.10% (1,612 of 52,000) and the banner group 3.38% (1,758 of 52,000). The lift was 0.28 points, about 9% relative, with a 95% interval of roughly 0.07 to 0.50 points and p of about 0.01. Average order value dropped slightly but the change was within noise, so Pellowmark shipped the banner and reported the smaller, honest lift instead of 23%.",
+  "lessons": [
+   "Always ask how many users and orders sit behind a percentage lift before believing it.",
+   "Fix the sample size and run length before the test starts, and look at the result once.",
+   "Report the interval: 'between 2% and 16% relative' is more useful to a business than a single headline number.",
+   "Guardrail metrics catch a change that wins on one number while quietly hurting another."
+  ],
+  "discuss": [
+   "The marketing lead wants to test five banner variants at once. How does that change the sample size and the analysis?",
+   "If the interval had been -0.1 to +0.5 points, what would you have recommended, and how would you explain it?",
+   "How would you design this test if the site only had 800 visitors a day?"
+  ]
+ },
+ "mlmetrics": {
+  "title": "Hollin Vale Mutual: why a 98.7% accurate fraud model was missing most fraud",
+  "company": "Hollin Vale Mutual (made up), motor and home insurer, about 1,800 staff, Canada",
+  "situation": "Hollin Vale receives about 2,500 claims a day, and roughly 1.2% (about 30 a day) later prove fraudulent. A vendor's fraud model was reported as 98.7% accurate, and its flags go to a special investigations team of six people who can review about 120 claims a day. After two months the team was reviewing only about 18 flagged claims a day and still finding most fraud through tip-offs.",
+  "problem": "With 1.2% fraud, a model that flags nothing is already 98.8% accurate, so the headline figure said almost nothing. At the default threshold of 0.5 the model caught only about a third of fraud. Replacing the model would have taken months, and the obvious quick fix of lowering the threshold a lot would have flooded the six investigators.",
+  "approach": [
+   "Built the confusion matrix on three months of closed claims with known outcomes: at 0.5 the model had precision of 58% and recall of 35%.",
+   "Reported precision, recall and PR-AUC next to accuracy for the claims and fraud leaders, with a one-slide explanation of why accuracy misled.",
+   "Agreed rough costs with finance: about 40 Canadian dollars of investigator time per false alarm and about 6,500 dollars average loss per missed fraud.",
+   "Swept thresholds on a validation month, computing expected cost at each one, with a cap of 120 flags a day for the team's capacity.",
+   "Chose a threshold of 0.18, confirmed it once on a held-out test month, and set up a weekly report of precision and recall using investigator outcomes as labels."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import numpy as np\nfrom sklearn.metrics import precision_score, recall_score\n\nCOST_FP, COST_FN, MAX_FLAGS_PER_DAY, DAYS = 40, 6_500, 120, 30\n\ndef sweep(y, scores):\n    rows = []\n    for t in np.round(np.arange(0.05, 0.55, 0.01), 2):\n        pred = scores >= t\n        fp = int(np.sum(pred & (y == 0)))\n        fn = int(np.sum(~pred & (y == 1)))\n        flags_per_day = pred.sum() / DAYS\n        if flags_per_day > MAX_FLAGS_PER_DAY:\n            continue                                  # beyond team capacity\n        rows.append((t, flags_per_day, precision_score(y, pred), recall_score(y, pred),\n                     fp * COST_FP + fn * COST_FN))\n    return sorted(rows, key=lambda r: r[4])            # lowest expected cost first\n\n# y_val: 1 = confirmed fraud; val_scores: vendor model scores for the validation month\nfor t, f, p, r, c in sweep(y_val, val_scores)[:5]:\n    print(f\"t={t:.2f} flags/day={f:.0f} precision={p:.2f} recall={r:.2f} cost=${c:,.0f}\")"
+  },
+  "outcome": "At the new threshold the model flags about 95 claims a day, within the team's capacity. On the test month recall rose from 35% to about 66% while precision fell from 58% to about 21%, which the investigators accepted. Finance estimated the change lowered expected monthly fraud losses by roughly a quarter, without any change to the model itself.",
+  "lessons": [
+   "On rare-event problems, ask for the confusion matrix, precision and recall before believing any accuracy figure.",
+   "The threshold is a business decision; costs and team capacity should set it.",
+   "Tune on validation data and confirm once on untouched test data.",
+   "Plan how you will get labels in production, here investigator outcomes, or you cannot monitor the metric."
+  ],
+  "discuss": [
+   "Investigators only label the claims the model flags. How could that bias the precision and recall you monitor, and how might you correct for it?",
+   "Finance later says the average missed fraud costs 3,000 dollars, not 6,500. What would you rerun and what might change?",
+   "When would you ask the vendor for a retrained model instead of only moving the threshold?"
+  ]
+ }
+}

@@ -1,0 +1,147 @@
+{
+ "aireadiness": {
+  "title": "Pelham Ridge Foods: from 'we want AI' to one signed pilot",
+  "company": "Pelham Ridge Foods (made up), a packaged-food manufacturer with about 3,200 staff and four plants in the United Kingdom",
+  "situation": "After a board meeting, the chief operating officer asked for 'an AI plan by the end of the quarter'. Four departments had already started their own experiments with public chatbots, and one team had pasted supplier contracts into a free tool. The quality team was spending about 1,100 hours a year reading supplier certificates and audit reports by hand.",
+  "problem": "Every department wanted its own idea built first, and the loudest request was a customer-facing recipe chatbot. There was no shared way to compare ideas, and nobody had checked whether the data behind any of them was reachable. Picking the COO's favourite would have produced a demo but no measurable result.",
+  "approach": [
+   "The FDE ran a one-week readiness check across the five dimensions and found data amber (supplier documents spread across email and three share drives) and risk red for public-facing ideas, because allergen answers had legal consequences.",
+   "She ran a 2.5-hour workshop with 11 people from quality, procurement, planning and IT, which produced 27 idea cards clustered into 12 use cases, each with volume and minutes per task.",
+   "She scored all 12 on value, feasibility, data availability and risk with a written 1 to 5 rubric, and shared the sheet so department heads could challenge scores.",
+   "On the 2x2, supplier certificate checking came out as the clear quick win: 4,300 documents a year, a clean baseline of 15 minutes each, and a quality manager willing to own it.",
+   "For each idea she wrote build, buy or configure; meeting summaries went to the office suite's existing AI feature, and the recipe chatbot was parked with a note on allergen risk.",
+   "She wrote a two-page roadmap with one pilot, success criteria and two later phases tied to results, which the COO signed."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "USE-CASE SCORES  Pelham Ridge Foods  (1 = poor, 5 = great; risk 5 = high)\n\nIdea                          Value Feas Data Risk  Score  Box\nSupplier certificate checks     4     4    4    2    4.0   Quick win\nDemand forecast notes           3     4    3    2    3.4   Quick win\nMaintenance log search          3     3    2    1    3.1   Blocked (data)\nRecipe chatbot for shoppers     4     3    3    5    3.1   Big bet (risk)\nProcurement contract review     4     2    2    4    2.8   Big bet\n\nWeights: value 0.40, feasibility 0.25, data 0.20, safety (6 - risk) 0.15\nDecision: pilot supplier certificate checks, 8 weeks, owner = quality manager\nCondition for pilot 2: pilot 1 cuts review time by 50% with no missed expiry"
+  },
+  "outcome": "The pilot ran for eight weeks and cut average review time per certificate from 15 minutes to 6, with every flagged expiry confirmed by a person. The COO used the scored list at the next board meeting, and the demand-forecast pilot started the following quarter. The unapproved public chatbot experiments were stopped and replaced by a governed internal tool.",
+  "lessons": [
+   "A shared scoring sheet turns arguments about whose idea is best into a discussion about facts.",
+   "Readiness gaps are planning inputs, not reasons to stop; each one gets an owner and a date.",
+   "The first pilot should be the quick win with a clean baseline, even if a bigger idea is more exciting.",
+   "Recommending configure or buy where it fits builds the trust you need for the ideas that must be built."
+  ],
+  "discuss": [
+   "The COO insists the recipe chatbot must be first because the board saw a competitor's version. How would you respond?",
+   "How would you score an idea where the value is high but nobody can yet measure the baseline?"
+  ]
+ },
+ "golive": {
+  "title": "Tarnhollow Credit Union: a go-live that said no-go first",
+  "company": "Tarnhollow Credit Union (made up), a member-owned lender with about 140,000 members and 600 staff in Canada",
+  "situation": "Tarnhollow was replacing manual review of loan application documents with an AI assistant that extracted income, employer and address details and flagged missing items. Loan officers spent about 25 minutes per application on document checks, across roughly 3,000 applications a month. The go-live had been promised to the board for the first weekend of the month.",
+  "problem": "Two weeks before go-live, UAT had been run by the project team rather than by loan officers, and the migration of 18 months of open applications had only been tested with a small sample. The obvious fix, pushing ahead and fixing issues after launch, risked wrong data on live loan files during the busiest week of the quarter.",
+  "approach": [
+   "The FDE rewrote UAT so eight loan officers ran 30 scripts and reviewed 300 real applications in staging, with exit criteria agreed with the lending manager before testing started.",
+   "She ran three full dry-run migrations of 41,000 open applications into staging, with reconciliation queries comparing counts per status, loan amount totals and missing IDs after each run.",
+   "The second dry run took eleven hours against a six-hour window, so she split the plan into a history load the week before and a delta load during cutover.",
+   "She submitted a change request to the CAB with a rollback tested in staging (turning off the extraction flag and restoring the manual checklist in 15 minutes).",
+   "At the first go/no-go meeting, two high defects were still open (self-employed income read from the wrong line), so the group called no-go and set a date two weeks later, outside the quarter-end freeze.",
+   "After go-live she ran a one-week parallel check where officers compared the AI's extraction with their own on 10 applications a day each."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "GO/NO-GO CHECKLIST  Tarnhollow document assistant   Meeting 1\n\nCriterion                                   Owner            Status\nUAT signed by lending manager               L. Okafor        NO  (2 high open)\nBatch accuracy >= 92% on 300 applications   FDE              YES (94.1%)\nDry run 3 reconciled (counts, totals, IDs)  Data lead        YES\nMigration fits window (delta load plan)     FDE              YES (4 h 10 m)\nCAB approval for window                     IT change mgr    YES (CHG-7730)\nRollback tested in staging                  IT ops           YES (15 min)\nRunbook and on-call rota for week 1         IT ops           YES\nLoan officers trained                       Training lead    YES (41 of 44)\n\nDecision: NO-GO. Reason: open high defects DEF-112, DEF-118.\nNew date: after quarter-end freeze. Next go/no-go: 2 days before."
+  },
+  "outcome": "The go-live two weeks later completed in four hours with reconciliation matching exactly and no rollback. In the parallel week, officers agreed with the AI's extraction on 95% of fields, and document-check time fell from about 25 minutes to 11 minutes per application in the first month. The board accepted the delay because the no-go decision and its reasons were written down.",
+  "lessons": [
+   "UAT must be done by the real users against criteria agreed before testing, or sign-off means little.",
+   "Time your dry runs; a migration that does not fit the window needs a new plan, not hope.",
+   "A no-go with clear reasons is a success of the process and protects the relationship.",
+   "A tested rollback is what makes the CAB and the sponsor comfortable saying yes."
+  ],
+  "discuss": [
+   "The sponsor says the board date cannot move. What options would you offer besides going live with open high defects?",
+   "How long would you keep a parallel check running for a lending process, and what number would end it?"
+  ]
+ },
+ "supportops": {
+  "title": "Vellmar Housing: getting the FDE out of the help desk",
+  "company": "Vellmar Housing Association (made up), a social housing provider with about 19,000 homes and 900 staff in England",
+  "situation": "Vellmar had gone live with an AI assistant that drafted replies to tenant repair requests. Six weeks after go-live, the FDE was still personally answering most support questions by chat, around 35 a week, and the vendor's support team had seen almost none of them. There was no agreed severity scale and no knowledge base.",
+  "problem": "The FDE was due to start a new customer in two weeks. Simply telling Vellmar staff to 'use the support portal' would have produced tickets with no context, slow answers and an unhappy customer, because nobody else knew the system's setup or common issues.",
+  "approach": [
+   "The FDE exported six weeks of chat messages and tagged each by cause; 58% fell into three categories: login problems, drafts citing an old repairs policy, and 'how do I change the tone'.",
+   "She agreed a support model with Vellmar's IT manager: Vellmar's service desk as L1, vendor support as L2, product engineering as L3, with a four-level severity table and examples specific to repair drafts.",
+   "She wrote five knowledge base articles for the top categories and added them to Vellmar's service desk scripts and the ticket form.",
+   "For two weeks, vendor L2 engineers handled every ticket while she reviewed their answers; for the next week they worked alone and she was an escalation contact only.",
+   "She escalated the old-policy issue to engineering with reproduction steps and impact, which led to a fix that re-indexes documents automatically on upload.",
+   "She held a handover meeting introducing the L2 lead by name and set monthly check-ins for one quarter."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "ESCALATION MATRIX  Vellmar repair-reply assistant\n\nSev  Example                                   First response  Updates   Route\n1    Drafts sent with wrong tenant details      30 min, 24/7    hourly    L1 -> L2 on-call -> L3\n2    All drafts cite an outdated policy         2 business h    4-hourly  L1 -> L2 -> L3 if bug\n3    One team cannot change draft tone          8 business h    daily     L1 -> L2\n4    'How do I add a new template?'             2 business d    on close  L1 (KB article)\n\nL1: Vellmar service desk (ext. 4400)   L2: vendor support portal\nL3: vendor engineering, via L2 only    Field contact: FDE until 30 May\nHypercare exit: 0 open Sev 1-2, SLA met 2 weeks, top 5 KB articles live,\n                L2 handled 2 weeks alone, IT manager signs off"
+  },
+  "outcome": "Within a month, 41% of tickets were solved at L1 with a knowledge base article, up from almost none. The FDE's direct support time fell from about 35 messages a week to 2 or 3 escalation questions, and the L2 team met its first-response target on 96% of tickets. The IT manager signed the hypercare exit form, and the FDE started her next project on time.",
+  "lessons": [
+   "If the FDE is the help desk, the support model has not been handed over yet.",
+   "Counting tickets by cause shows exactly which knowledge articles to write first.",
+   "Severity examples must be specific to the system; generic definitions cause arguments.",
+   "Shadow, then review, then step back is a safer handover than a single cut-off date."
+  ],
+  "discuss": [
+   "The customer's director says they only want to deal with the FDE. How would you handle this?",
+   "Which AI-specific problems (such as confident wrong answers) would you classify as severity 1 or 2, and why?"
+  ]
+ },
+ "incidents": {
+  "title": "Fenwick Grain Cooperative: the outage that was not ours",
+  "company": "Fenwick Grain Cooperative (made up), a farmers' cooperative with 1,400 members that buys, stores and sells grain",
+  "situation": "Fenwick used an AI assistant to read delivery tickets and weigh slips at its 12 grain stores and fill in payment records. Harvest was the busiest week of the year. On a Tuesday at 07:20, store managers began calling the FDE directly: the assistant rejected every scanned slip, and trucks were queuing at the weighbridges.",
+  "problem": "Nobody had declared an incident; the FDE was answering phone calls one by one while vendor engineers debugged in a private chat. The cooperative's operations director heard about the problem from a store manager, not from the vendor, and was angry. The cause was unknown.",
+  "approach": [
+   "At 07:35 the FDE declared a Sev 1, opened a shared channel, named a vendor colleague as incident commander and took the comms lead role herself.",
+   "The IC turned on the kill switch at 07:42, sending slips to the paper backup process the stores had used before; trucks started moving again within minutes.",
+   "The FDE sent a first notice at 07:50 to the operations director and store managers: impact, the paper workaround, who was leading, and the next update time of 08:20. She sent updates every 30 minutes after that.",
+   "Evidence showed the scanners had switched to a new file format after an overnight firmware update pushed by Fenwick's IT supplier; the assistant's input check rejected the unknown format.",
+   "The FDE shared the evidence with Fenwick's IT supplier without blame, and they rolled back the firmware on one test scanner to confirm, then on all scanners by 10:10.",
+   "Within a week both sides held a blameless review, with actions for each: the vendor would accept both formats and alert on rejection spikes; the supplier would notify the vendor before firmware changes."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "INCIDENT TIMELINE  Fenwick slip reader   Sev 1   (scribe notes)\n\n07:20  First store manager call: all slips rejected\n07:35  Sev 1 declared. IC: T. Vance. Comms: FDE. Channel opened\n07:42  Kill switch ON. Stores back on paper slips\n07:50  First notice sent. Next update 08:20\n08:20  Update: cause unknown, paper process working\n08:35  Finding: rejects began 06:58; new file type from scanners\n08:50  Update: likely linked to scanner firmware; asked supplier\n09:30  Supplier rolls back firmware on test scanner: slips read OK\n10:10  All scanners rolled back. Kill switch OFF\n10:30  Resolved notice sent. Review booked for Monday\n\nActions (owner, due)\n1 Accept both file formats              vendor eng, 14 Oct\n2 Alert if rejects > 10% for 5 min      vendor eng, 10 Oct\n3 Notify vendor before firmware pushes  IT supplier, 17 Oct"
+  },
+  "outcome": "Trucks were moving on paper slips within 22 minutes of the incident being declared, and the full service was back in under three hours. The operations director later said the regular updates were what calmed the store managers. All three actions were closed within a month, and when the scanners updated again in spring, the assistant accepted the new format with no incident.",
+  "lessons": [
+   "Declare early and name roles; answering calls one by one is not running an incident.",
+   "A tested fallback turned a harvest-stopping outage into an inconvenience.",
+   "The cause was in the customer's supply chain, and evidence shared without blame got it fixed fastest.",
+   "Both sides had actions; the vendor still made its product fail more gracefully."
+  ],
+  "discuss": [
+   "The operations director wants the vendor to accept full blame in writing. How would you respond?",
+   "What would have happened if the kill switch had never been tested? How would you prevent that?"
+  ]
+ },
+ "enablement": {
+  "title": "Brannock Water: from launch-day training to lasting skills",
+  "company": "Brannock Water (made up), a regional water utility with about 1,800 staff and 3 control centres",
+  "situation": "Brannock deployed an AI assistant that helps engineers search maintenance manuals, past work orders and safety procedures. The launch included one 90-minute training for all staff. Eight weeks later, weekly use had fallen from 62% to 19% of engineers, and a supervisor found a work order where an engineer had copied a torque value from the assistant without checking it against the manual.",
+  "problem": "The sponsor was worried about both low use and unsafe use. The renewal was four months away, and the FDE was due to roll off. There was no owner for AI at Brannock, no shared prompts, and no way to see whether engineers were getting better at using the tool.",
+  "approach": [
+   "The FDE interviewed 15 engineers and found the training had shown features, not their tasks, and nobody knew which answers to check.",
+   "With the safety lead she wrote a trust guide: numbers, torque values and isolation steps must always be checked against the cited manual page; the interface was changed to show the page next to every number.",
+   "She built a prompt library of 18 entries from real work orders, each reviewed by a senior engineer and with a check step.",
+   "She trained 14 champions, one per depot, and co-taught one 30-minute task session with each; champions then ran sessions for their crews.",
+   "She helped set up a four-person CoE led by the asset manager, with an intake form and a fortnightly review, and weekly office hours run by champions.",
+   "She measured a task check and weekly use per depot before and after, and reported both to the sponsor."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "PROMPT LIBRARY ENTRY   BW-PUMP-04   Owner: J. Okafor (Northgate depot)\n\nTask:    Find the service steps for a pump model\nTeam:    Field maintenance\nPrompt:  Give the service steps for pump model {model} from the\n         manufacturer manual only. Number each step and give the\n         manual page for each. If the manual does not cover it, say so.\nExample: model KX-220 -> 11 steps, pages 34-39\nCHECK:   Every torque value, pressure and isolation step must be\n         matched to the cited page before work starts.\nNever:   Use for a model not in the manual set; ask your supervisor.\nReview:  Every 6 months or after a model update. Last: 3 Mar"
+  },
+  "outcome": "Twelve weeks after the relaunch, weekly use was back to 58% of engineers, and the average task-check score rose from 4.6 to 7.9 out of 10. In a sample of 200 work orders, no unchecked values were found. The CoE approved two new use cases through its intake, and Brannock renewed for three years with an expansion to its customer service team.",
+  "lessons": [
+   "One launch-day session is training, not enablement; skills faded within weeks.",
+   "Teaching when to trust the output was a safety issue, not only a productivity one.",
+   "Prompts built from real work orders, reviewed by respected engineers, got used.",
+   "Champions and a small CoE kept progress going after the FDE left."
+  ],
+  "discuss": [
+   "A depot manager refuses to give a champion protected time. What would you do?",
+   "Which measure would you show the sponsor first, and why: usage, task-check scores or the work order sample?"
+  ]
+ }
+}

@@ -1,0 +1,10 @@
+{"question": "How many days do I have to report an auto collision claim?", "groups": ["public"], "expect_source": "POL-AUTO-01"}
+{"question": "How long do I have to report a car crash?", "groups": ["public"], "expect_source": "POL-AUTO-01"}
+{"question": "Is flood damage from surface water covered?", "groups": ["public"], "expect_source": "POL-HOME-02"}
+{"question": "My laptop was stolen from my home, what do I need?", "groups": ["public"], "expect_source": "POL-HOME-03"}
+{"question": "Is trip cancellation covered if my mother has a documented illness?", "groups": ["public"], "expect_source": "POL-TRAVEL-04"}
+{"question": "What claim amount can adjusters approve without supervisor sign-off?", "groups": ["adjuster"], "expect_source": "ADJ-AUTH-05"}
+{"question": "What claim amount can adjusters approve without supervisor sign-off?", "groups": ["public"], "expect_source": null}
+{"question": "How much rental car reimbursement per day while the vehicle is repaired?", "groups": ["adjuster", "public"], "expect_source": "ADJ-RENTAL-06"}
+{"question": "When should a claim be flagged for special investigation?", "groups": ["fraud"], "expect_source": "FRAUD-08"}
+{"question": "What is the capital of France?", "groups": ["public", "adjuster", "fraud"], "expect_source": null}

@@ -1,0 +1,117 @@
+{
+ "dimred": {
+  "title": "Veldmark Mutual: a ticket map that almost created five fake customer segments",
+  "company": "Veldmark Mutual (made up), home and motor insurer, about 1,200 staff, Netherlands",
+  "situation": "Veldmark's customer-service team had embedded 180,000 support tickets with a text embedding model (1,536 numbers each) and a consultant had shown the board a UMAP map with five colourful blobs. The board wanted five new service teams, one per blob, and asked the FDE to 'productionise the segments'. Ticket routing was manual and took a median of 9 hours.",
+  "problem": "Nobody had checked whether the five blobs were real groups or an artefact of the map settings, and the blob sizes on the slide were being read as team sizes. Building five teams from the picture could lock in a structure that did not match the tickets.",
+  "approach": [
+   "Reran UMAP with three n_neighbors values and three seeds; the map showed between four and eight blobs, and their relative sizes changed each time.",
+   "Reduced the embeddings with PCA to 50 components (keeping 82 percent of the variance) to make later steps fast and stable, fitting PCA on a training sample only.",
+   "Ran k-means clustering on the 50 PCA components for k from 3 to 12 and compared silhouette scores and stability across resamples (see clustering); seven groups were the most stable.",
+   "Read 30 tickets from each group with two senior agents, who named six clear topics and one mixed group of 'other'.",
+   "Used the map only as a navigation aid in the review tool, with a caption explaining what it can and cannot show.",
+   "Trained a simple classifier on the PCA components to route new tickets to the six named topics, with low-confidence tickets going to a general queue."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "How to read the ticket map (caption shown on the dashboard)\n\nEach dot is one support ticket. Tickets about similar things sit near each other.\n\nYou CAN use this map to:\n- browse examples of a topic and find tickets that look misfiled\n- see whether a new batch of tickets lands in familiar areas\n\nYou CANNOT use this map to:\n- count topics (the number of blobs changes with settings)\n- compare topic sizes (blob size is not ticket volume)\n- compare how different two topics are (gaps are not distances)\n\nTopic counts and sizes come from the routing report, not from this picture.\nQuestions: analytics team, #ticket-routing"
+  },
+  "outcome": "The board approved six topic queues instead of five new teams, re-using existing staff. Median time to the right queue fell from 9 hours to under 2, and misrouted tickets, measured by reassignment, dropped from 21 percent to 12 percent over the first two months.",
+  "lessons": [
+   "A t-SNE or UMAP map is a way to ask questions, never evidence for how many groups exist or how big they are.",
+   "PCA to a few dozen components is a sensible, fast step before clustering or classifying large embeddings.",
+   "Human reading of samples from each group is what turns clusters into names people trust.",
+   "Put the reading rules next to the picture, because the picture will be screenshotted and forwarded."
+  ],
+  "discuss": [
+   "How would you explain to a board member, in two sentences, why the blob sizes on the slide were misleading?",
+   "What would you monitor to notice that new ticket types are appearing that fit none of the six topics?"
+  ]
+ },
+ "anomaly": {
+  "title": "Orvella Payments: from 900 daily fraud alerts to 60 that analysts trust",
+  "company": "Orvella Payments (made up), card payments processor for about 3,000 small merchants, Portugal",
+  "situation": "Orvella's in-house rule engine raised about 900 fraud alerts a day for a team of four analysts who could review roughly 60. Analysts had started bulk-closing alerts, and confirmed fraud losses were about 38,000 euros a month. There were only 140 confirmed fraud cases in the last year.",
+  "problem": "Every rule used a fixed global threshold (any payment over 3 standard deviations of all merchants' amounts), which flagged big but normal merchants all day and missed small merchants being abused at night. With so few labels, a supervised fraud model was not yet realistic.",
+  "approach": [
+   "Sorted the known cases with the fraud lead into point (single huge refunds), contextual (odd hour or country for that merchant) and collective (bursts of tiny card-testing payments) patterns.",
+   "Replaced global thresholds with per-merchant robust baselines: median and IQR of amount by merchant and hour of day, scoring each payment's deviation from its own context.",
+   "Added an isolation forest over eight features (amount versus merchant median, hour, card age, country mismatch, payments per card in 10 minutes and so on) and blended its score with the robust scores.",
+   "Set the alert count from the review budget: the top 60 scores per day, with collective bursts grouped into one alert per card.",
+   "Built a simple review form so every alert got a label and a reason, and sampled 20 unflagged payments a week to estimate misses.",
+   "Reported precision at 60 and estimated recall weekly to the fraud lead, and after three months used the new labels to train a gradient boosting classifier on top of the anomaly scores."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "# Orvella alerting config (in-house format), agreed with the fraud team\nalert_budget:\n  per_day: 60               # what four analysts can review properly\n  rank_by: blended_score    # 0.5 isolation forest + 0.5 robust context score\nrobust_context:\n  baseline: median_iqr\n  group_by: [merchant_id, hour_of_day]\n  lookback_days: 56\n  min_history_payments: 200 # fall back to merchant-category baseline below this\ncollective:\n  window_minutes: 10\n  max_payments_per_card: 8\n  group_into_one_alert: true\nreview:\n  require_label: true       # fraud / not fraud / unsure\n  random_unflagged_sample_per_week: 20\nreporting:\n  metrics: [precision_at_budget, estimated_recall, alerts_per_day]"
+  },
+  "outcome": "Alerts fell from about 900 a day to 60, and precision at 60 settled around 28 percent, compared with under 2 percent before. Confirmed fraud losses dropped to about 24,000 euros a month over the next quarter, and analysts stopped bulk-closing alerts.",
+  "lessons": [
+   "Set the threshold from the review budget, then measure precision at that budget.",
+   "Context matters: compare each merchant with itself at that hour, not with every merchant at once.",
+   "Labels from reviewed alerts are the path from unsupervised scores to a supervised model.",
+   "Sample unflagged cases, or you will never learn what the system misses."
+  ],
+  "discuss": [
+   "How would you explain a blended anomaly score to a merchant whose payment was held?",
+   "What would you do if precision at 60 suddenly doubled one week? Is that good news?"
+  ]
+ },
+ "timeseries": {
+  "title": "Brindlecroft Bakeries: cutting bread waste with a forecast that beat 'last Saturday'",
+  "company": "Brindlecroft Bakeries (made up), chain of 38 bakery shops, about 400 staff, Ireland",
+  "situation": "Each shop manager ordered next week's bake by copying the same weekday from last week and adding a bit 'to be safe'. About 14 percent of baked goods were thrown away, and popular items still sold out by early afternoon on Saturdays. Head office asked for 'an AI demand forecast'.",
+  "problem": "A vendor demo had shown a neural network with '4 percent MAPE', but it had been tested on a random shuffle of days, excluded zero-sales items and was scored on the chain total, not per shop and item. Nobody knew whether it beat what managers already did.",
+  "approach": [
+   "Defined the job with operations: a forecast per shop and product for each day of next week, made on Sunday evening, so the horizon is 1 to 7 days and only data up to Sunday may be used.",
+   "Rebuilt the managers' method as a seasonal-naive baseline and scored it with WAPE per shop and product, since MAPE was infinite on the many zero-sales days for slow items.",
+   "Set up a rolling backtest over 12 weekly folds covering Christmas and a bank holiday, training only on data before each Sunday.",
+   "Compared Holt-Winters per series with one gradient boosting model across all shops and products, using lags of 7 days or more, rolling means, day of week, school holidays and a weather forecast feature.",
+   "Found that boosting beat seasonal naive clearly on busy items and not on slow ones, so used boosting for the top 60 products and seasonal naive for the rest.",
+   "Sent the forecast to managers as a suggested order they could edit, and logged their edits to learn where the model was missing local knowledge."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Backtest summary, 12 weekly folds (forecast made Sunday for Mon-Sun)\nLevel: shop x product x day. Metric: WAPE (lower is better)\n\nMethod                      Top 60 items   Other items   All\nSeasonal naive (current)       24.1%          41.8%      27.9%\nHolt-Winters per series        21.7%          43.5%      26.4%\nBoosting, lags >= 7 days       17.9%          42.9%      23.3%\nHybrid (boost top 60, sn rest) 17.9%          41.8%      22.8%\n\nNotes\n- Folds 3 and 4 include Christmas; all methods miss badly there.\n- Vendor '4% MAPE' used shuffled days and chain totals; not comparable.\n- Recommend: hybrid, with manager edits logged and reviewed monthly."
+  },
+  "outcome": "Over the first 10 weeks after launch, waste fell from about 14 percent to about 10 percent of baked goods, and Saturday sell-outs before 2pm fell by roughly a third. The hybrid's live WAPE stayed within 1.5 points of its backtest score.",
+  "lessons": [
+   "Rebuild what people already do as a baseline; that is the bar the customer actually cares about.",
+   "Fix the horizon and the level first, then backtest on time-ordered folds that include hard periods.",
+   "Pick metrics that survive zeros; WAPE told the truth where MAPE could not.",
+   "Using different methods for different parts of the catalogue is fine if the backtest supports it."
+  ],
+  "discuss": [
+   "How would you respond if the vendor insisted their 4 percent MAPE proved their model was better?",
+   "Manager edits improve the order but also change what gets sold. How could that bias future training data?"
+  ]
+ },
+ "recsys": {
+  "title": "Fennick Outdoor: proving a recommender earns its place on the product page",
+  "company": "Fennick Outdoor (made up), online outdoor gear retailer, about 180 staff and 12,000 products, Canada",
+  "situation": "Fennick's product pages showed 'Customers also viewed', filled by a hand-maintained list for the top 500 products and bestsellers everywhere else. About 4.1 percent of sessions that viewed a product page added a recommended item to the cart. The ecommerce director wanted 'AI recommendations' before the spring season.",
+  "problem": "The team had no ratings, only views, add-to-carts and purchases, and 30 percent of the catalogue changed each season, so many products had no history. A prototype matrix factorization model looked impressive in a demo, but nobody had compared it with the existing bestseller logic.",
+  "approach": [
+   "Rebuilt the current behaviour as a baseline: recent bestsellers within the product's category, filtered for items already in the cart or out of stock.",
+   "Built item-based collaborative filtering from co-purchases and add-to-carts, weighting purchases 3 times a view, and never treating unviewed items as negatives.",
+   "Added content-based candidates from product text embeddings for items under 45 days old, so new-season gear could appear on day one.",
+   "Evaluated offline on a time split (train to 1 February, test on the next four weeks) with precision@10, recall@10, NDCG@10 and catalogue coverage.",
+   "Designed a four-week A/B test with 50 percent of product-page traffic, add-to-cart rate from recommendations as the primary metric, and return rate and page load time as guardrails."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "A/B test plan: product-page recommendations\n\nHypothesis: hybrid CF + content recommendations raise add-to-cart\n            from the widget versus category bestsellers.\nUnits:      visitors (sticky assignment by visitor id)\nSplit:      50% control (bestsellers) / 50% treatment (hybrid)\nPrimary:    add-to-cart rate from the widget per product-page session\nGuardrails: return rate of widget-added items; p95 page load time\nMin run:    4 full weeks (covers weekly cycle and a payday)\nSample:     about 300,000 sessions per arm to detect +0.4 points\nShip if:    primary improves and is significant at 95%, guardrails\n            not worse by more than 0.5 points / 50 ms\nNo peeking: decision only at the end of week 4"
+  },
+  "outcome": "Offline, the hybrid beat the baseline on NDCG@10 (0.21 versus 0.15) and tripled catalogue coverage. In the A/B test, add-to-cart from the widget rose from 4.1 to 4.8 percent with no change in returns or page speed, and the hybrid was rolled out to all traffic.",
+  "lessons": [
+   "Rebuild what the site already does as the baseline, and beat it offline before any A/B test.",
+   "With implicit feedback, weight strong signals more and never treat unseen items as dislikes.",
+   "Plan cold start from day one when the catalogue changes every season.",
+   "Offline metrics pick candidates; an A/B test with guardrails decides what ships."
+  ],
+  "discuss": [
+   "Why might a model with higher NDCG offline still lose the A/B test?",
+   "How would you stop the recommender from only ever showing already-popular products?"
+  ]
+ }
+}

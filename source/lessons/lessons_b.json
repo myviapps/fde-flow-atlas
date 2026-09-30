@@ -1,0 +1,654 @@
+{
+ "etl": {
+  "plain": "A data pipeline is a repeatable program that copies data from where it is created to where it can be analyzed. ETL stands for Extract, Transform, Load: you pull data out of a source system, clean and reshape it, then load it into a destination such as a data warehouse (a database built for analysis over large tables). ELT swaps the last two steps: you load the raw data first and do the cleaning inside the warehouse. Either way, the goal is a small set of trusted, well-named tables that dashboards, machine learning models and AI agents can rely on.",
+  "analogy": "Think of a restaurant receiving deliveries. The raw crates go into the walk-in fridge exactly as they arrived (the raw layer), cooks then wash, chop and portion them (transform), and only plated dishes go out to diners (the marts).",
+  "why": "Almost every customer engagement starts with scattered data: an ERP in Oracle, a CRM in Salesforce, and a folder of CSV exports someone emails every Monday. Before an FDE can build a claims assistant for an insurer or a forecasting tool for a retailer, that data has to arrive daily, correctly and without duplicates. If the pipeline is shaky, every product built on top of it inherits the errors.",
+  "subtopics": [
+   {
+    "title": "Extracting: full loads and watermarks",
+    "body": "Extraction means reading data out of a source system. The first time, you usually do a full load: copy every row. That is fine once, but copying a 200 million row table every night is slow and puts load on the customer's production database.\n\nAfter the first load you switch to incremental extraction. The most common method is a watermark: a column such as updated_at that tells you when each row last changed. You remember the highest value you have already copied, and next time you only ask for rows newer than that.\n\nA stronger option is change data capture (CDC). CDC reads the database's own transaction log, so it also sees deletes, which a watermark query cannot. Tools such as Debezium or a cloud provider's replication service do this for you.",
+    "example": "A retailer, Northwind Stores, keeps orders in PostgreSQL. On day one you copy all 12 million orders. You store the watermark 2026-03-01 23:59:58. The next night you ask only for orders with updated_at greater than that value and receive 41,300 rows in a few seconds. You save the new watermark only after the load succeeds, so a failed run simply retries the same window.",
+    "code": "import json, pathlib\nimport psycopg  # psycopg 3\n\nSTATE = pathlib.Path(\"state/orders_watermark.json\")\n\ndef read_watermark() -> str:\n    # Default to the start of time on the very first (full) load\n    if STATE.exists():\n        return json.loads(STATE.read_text())[\"updated_at\"]\n    return \"1970-01-01T00:00:00\"\n\ndef extract_orders(conn_str: str):\n    wm = read_watermark()\n    with psycopg.connect(conn_str) as conn:\n        rows = conn.execute(\n            \"SELECT * FROM orders WHERE updated_at > %s ORDER BY updated_at\",\n            (wm,),  # parameterized, never string-formatted\n        ).fetchall()\n    return rows, wm\n\ndef save_watermark(new_wm: str) -> None:\n    # Call this only AFTER the load step succeeded\n    STATE.parent.mkdir(exist_ok=True)\n    STATE.write_text(json.dumps({\"updated_at\": new_wm}))",
+    "lang": "Python"
+   },
+   {
+    "title": "Landing raw data in layers",
+    "body": "In ELT you save exactly what you extracted, unchanged, before doing anything else. This raw copy is your safety net. If a transformation has a bug, you fix the code and rerun it over the raw data instead of asking the customer for another export.\n\nMany teams name their layers with the medallion pattern. Bronze holds raw data as it landed. Silver holds cleaned data with correct types and no duplicates. Gold holds business-ready tables, often called marts, organized around topics such as orders or claims.\n\nRaw data is commonly stored as Parquet files, a compressed column-based file format, split into folders by date. Splitting data into folders like this is called partitioning, and it lets later jobs read only the days they need.",
+    "example": "An insurer, Harbor Mutual, sends a nightly claims extract. You write it to bronze/claims/load_date=2026-03-02/part-0.parquet. Two weeks later you discover the claim_amount column was parsed as text. You fix the silver transformation and rebuild 14 days of silver data from bronze in minutes, without touching the insurer's systems.",
+    "code": "import pandas as pd\nfrom datetime import date\n\ndef land_raw(rows: list[dict], table: str, lake_root: str = \"lake\") -> str:\n    df = pd.DataFrame(rows)\n    df[\"_loaded_at\"] = pd.Timestamp.utcnow()      # audit column\n    load_date = date.today().isoformat()\n    path = f\"{lake_root}/bronze/{table}/load_date={load_date}\"\n    # One folder per day = one partition. Rerunning overwrites that day only.\n    df.to_parquet(f\"{path}/part-0.parquet\", index=False)  # needs pyarrow\n    return path\n\n# land_raw(rows, \"claims\")\n# -> lake/bronze/claims/load_date=2026-03-02/part-0.parquet",
+    "lang": "Python"
+   },
+   {
+    "title": "Transforming with SQL",
+    "body": "Transformation turns raw rows into clean ones. Typical jobs are: fixing data types, renaming cryptic columns, removing duplicates, standardizing values such as country codes, and joining tables together.\n\nMost modern teams write transformations in SQL and run them inside the warehouse (Snowflake, BigQuery, Databricks, Redshift or Postgres). A tool called dbt lets you keep each transformation as a SQL file in git, with tests and documentation, and runs them in the right order.\n\nDeduplication is the transformation you will write most often. Source systems and incremental loads both produce repeated rows. The standard trick is ROW_NUMBER(): number the copies of each record from newest to oldest and keep number one.",
+    "example": "Northwind's bronze orders table has 3 copies of order 88213 because the order was edited twice. The query below keeps only the newest version per order_id, casts the amount from text to a decimal, and upper-cases the country code so 'us', 'US ' and 'Us' all become 'US'.",
+    "code": "-- silver.orders: one clean row per order\nCREATE OR REPLACE TABLE silver.orders AS\nWITH ranked AS (\n  SELECT\n    order_id,\n    customer_id,\n    CAST(amount AS DECIMAL(12,2))      AS amount,\n    UPPER(TRIM(country_code))          AS country_code,\n    CAST(updated_at AS TIMESTAMP)      AS updated_at,\n    ROW_NUMBER() OVER (\n      PARTITION BY order_id            -- one group per order\n      ORDER BY updated_at DESC         -- newest version first\n    ) AS rn\n  FROM bronze.orders\n)\nSELECT order_id, customer_id, amount, country_code, updated_at\nFROM ranked\nWHERE rn = 1;                          -- keep only the newest copy",
+    "lang": "SQL"
+   },
+   {
+    "title": "Idempotent loads with MERGE",
+    "body": "A job is idempotent when running it twice gives the same result as running it once. Pipelines fail and get retried all the time, so this property matters a lot.\n\nThe classic mistake is a plain INSERT that appends rows. If the job crashes after inserting half the rows and then retries, you get duplicates. Revenue dashboards then show numbers that are too high, and nobody notices for weeks.\n\nTwo safe patterns exist. The first is to overwrite a whole partition, for example delete and rewrite all of March 2nd. The second is MERGE, sometimes called an upsert: for each incoming row, update it if the key already exists, insert it if it does not.",
+    "example": "A hospital network, Riverside Health, loads 9,000 appointment updates per night. The job fails at 2 a.m. after writing 5,000 rows. With MERGE on appointment_id, the retry updates those 5,000 in place and inserts the remaining 4,000. The table ends with exactly 9,000 changed rows either way.",
+    "code": "MERGE INTO gold.appointments AS target\nUSING silver.appointments_today AS src\n  ON target.appointment_id = src.appointment_id   -- the business key\nWHEN MATCHED THEN UPDATE SET\n  status       = src.status,\n  scheduled_at = src.scheduled_at,\n  updated_at   = src.updated_at\nWHEN NOT MATCHED THEN INSERT\n  (appointment_id, patient_id, status, scheduled_at, updated_at)\nVALUES\n  (src.appointment_id, src.patient_id, src.status,\n   src.scheduled_at, src.updated_at);\n-- Running this twice leaves the table in the same state.",
+    "lang": "SQL"
+   },
+   {
+    "title": "Data quality tests and freshness",
+    "body": "Data quality tests are small checks that run after each transformation. They catch problems before a business user or an AI agent sees them.\n\nStart with four kinds. Not-null checks that required columns are filled. Uniqueness checks that keys appear once. Referential integrity checks that every foreign key points to a real row, for example every order's customer_id exists in customers. Freshness checks that the newest row is recent enough, so a stalled pipeline raises an alert instead of silently serving old data.\n\nIn dbt you declare these tests in a YAML file next to your models. A failing test stops downstream models from building, which is exactly what you want.",
+    "example": "Harbor Mutual's claims assistant answers 'What is the status of claim C-55120?'. One Monday the extract job silently stopped, and the assistant kept answering from Friday's data. A freshness rule that warns after 12 hours and errors after 24 hours would have paged the on-call engineer on Saturday morning.",
+    "code": "# models/schema.yml (dbt). Recent dbt versions call the key data_tests;\n# older versions use tests.\nversion: 2\nsources:\n  - name: bronze\n    tables:\n      - name: claims\n        loaded_at_field: _loaded_at\n        freshness:\n          warn_after:  {count: 12, period: hour}\n          error_after: {count: 24, period: hour}\nmodels:\n  - name: claims\n    columns:\n      - name: claim_id\n        data_tests: [not_null, unique]\n      - name: policy_id\n        data_tests:\n          - not_null\n          - relationships:          # every claim points at a real policy\n              to: ref('policies')\n              field: policy_id",
+    "lang": "YAML"
+   },
+   {
+    "title": "Orchestrating the whole pipeline",
+    "body": "An orchestrator is a scheduler that runs the steps of a pipeline in order, retries failures and shows you what happened. Apache Airflow is the most common one. Dagster and Prefect are popular alternatives, and cloud warehouses have their own simpler schedulers.\n\nIn Airflow a pipeline is a DAG, short for directed acyclic graph: a set of tasks with arrows showing which must finish before which, and no loops. You write it in Python. Each task should be small and idempotent so a retry is safe.\n\nWhen choosing ETL versus ELT, ask where sensitive data may land. If regulations say patient names must be masked before they leave the hospital's network, you transform first (ETL). Otherwise ELT is usually simpler and keeps a replayable raw copy.",
+    "example": "For Northwind the daily DAG runs at 02:00: extract orders, land them in bronze, run dbt to build silver and gold, run dbt tests, then notify a Slack channel. If extract fails, Airflow retries it three times, five minutes apart, and the downstream tasks wait.",
+    "code": "from datetime import datetime, timedelta\nfrom airflow.decorators import dag, task   # Airflow 2.x TaskFlow API\n\n@dag(schedule=\"0 2 * * *\", start_date=datetime(2026, 1, 1), catchup=False,\n     default_args={\"retries\": 3, \"retry_delay\": timedelta(minutes=5)})\ndef northwind_orders():\n\n    @task\n    def extract() -> str:\n        rows, wm = extract_orders(CONN)      # from the earlier subtopic\n        return land_raw(rows, \"orders\")      # returns the bronze path\n\n    @task\n    def transform(bronze_path: str) -> None:\n        import subprocess\n        # dbt build = run models + run tests, stops on failure\n        subprocess.run([\"dbt\", \"build\", \"--select\", \"orders+\"], check=True)\n\n    transform(extract())                    # arrow: extract -> transform\n\nnorthwind_orders()",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Data warehouse",
+    "A database designed for analytical queries over large tables, such as Snowflake, BigQuery or Redshift."
+   ],
+   [
+    "Watermark",
+    "A stored value, often a timestamp, marking how far an incremental extract has already read."
+   ],
+   [
+    "Change data capture (CDC)",
+    "Reading a database's transaction log to capture every insert, update and delete as it happens."
+   ],
+   [
+    "Partition",
+    "A slice of a table or dataset, usually by date, stored separately so jobs can read or overwrite just that slice."
+   ],
+   [
+    "Idempotent",
+    "Safe to run more than once: repeating the job gives the same end result."
+   ],
+   [
+    "MERGE (upsert)",
+    "A SQL statement that updates rows whose key already exists and inserts rows whose key does not."
+   ],
+   [
+    "Medallion layers",
+    "A naming pattern of bronze (raw), silver (cleaned) and gold (business-ready) data."
+   ],
+   [
+    "dbt",
+    "A tool that manages SQL transformations as version-controlled files with tests and dependency ordering."
+   ],
+   [
+    "DAG",
+    "Directed acyclic graph: a set of tasks with ordering arrows and no cycles, used by orchestrators like Airflow."
+   ]
+  ],
+  "practice": [
+   "Download any public CSV (for example a city's open data on permits), load it into a local DuckDB or SQLite file as a raw table, then write one SQL query that deduplicates it with ROW_NUMBER(). Deliverable: the raw table, the clean table and a row count for each.",
+   "Write a Python script that extracts rows newer than a stored watermark from a SQLite table, saves them to a date-partitioned Parquet folder and updates the watermark only on success. Deliverable: run it twice in a row and show that the second run extracts zero new rows.",
+   "Stretch: build a three-task Airflow DAG (or a Dagster job) that extracts, transforms with MERGE, and runs a not-null plus uniqueness check that fails the run on bad data. Deliverable: a screenshot of one green run and one run that correctly fails after you insert a duplicate key."
+  ]
+ },
+ "fastapi": {
+  "plain": "FastAPI is a Python framework for building web APIs, which are programs that other programs talk to over HTTP (the protocol your browser uses). You write ordinary Python functions and attach them to URLs such as POST /ask, and FastAPI handles reading the request, checking its data and turning your return value into JSON. It uses Pydantic, a library that validates data against Python type hints, so bad input is rejected with a clear error before your code runs. It also generates interactive documentation at /docs automatically.",
+  "analogy": "FastAPI is like the front desk of a hotel. It checks every guest's booking details against a form (validation), checks their ID (authentication), then sends them to the right room (your function), and hands back a neatly printed receipt (the JSON response).",
+  "why": "Most FDE prototypes become a service that the customer's other systems must call: a claims summarizer behind the insurer's portal, or a search endpoint for a bank's internal tools. FastAPI lets you ship that quickly with input validation and docs the customer's engineers can read. When it slows down under real traffic, you need to know how its request pipeline works to find out why.",
+  "subtopics": [
+   {
+    "title": "Your first endpoint",
+    "body": "An endpoint is a combination of an HTTP method (GET to read, POST to create or submit, PUT or PATCH to update, DELETE to remove) and a path such as /orders/{order_id}.\n\nIn FastAPI you create an app object, then decorate a function with the method and path. Parts of the path in curly braces become path parameters. Function arguments that are not in the path become query parameters, the key=value pairs after a question mark in a URL.\n\nType hints do real work here. If you declare order_id: int and a client sends /orders/abc, FastAPI returns a 422 error saying the value is not a valid integer. You run the app with Uvicorn, an ASGI server (ASGI is the standard interface between Python async web apps and servers).",
+    "example": "A logistics company, Crestline Freight, wants a quick way to look up shipments. GET /shipments/7731?include_events=true returns the shipment and its tracking events. GET /shipments/hello returns a 422 before any database is touched.",
+    "code": "# main.py   run with:  uvicorn main:app --reload\nfrom fastapi import FastAPI, HTTPException\n\napp = FastAPI(title=\"Crestline Shipments\")\n\nFAKE_DB = {7731: {\"id\": 7731, \"status\": \"in_transit\", \"events\": [\"picked_up\"]}}\n\n@app.get(\"/health\")\ndef health():\n    return {\"ok\": True}\n\n@app.get(\"/shipments/{shipment_id}\")        # path parameter\ndef get_shipment(shipment_id: int, include_events: bool = False):  # query param\n    shipment = FAKE_DB.get(shipment_id)\n    if shipment is None:\n        raise HTTPException(status_code=404, detail=\"Shipment not found\")\n    if not include_events:\n        return {k: v for k, v in shipment.items() if k != \"events\"}\n    return shipment",
+    "lang": "Python"
+   },
+   {
+    "title": "Request and response models",
+    "body": "For POST requests the client sends a JSON body. You describe the expected shape with a Pydantic model: a class that inherits from BaseModel and lists fields with types. Field() adds rules such as minimum length or allowed ranges.\n\nFastAPI parses the JSON into that model. If a field is missing, has the wrong type or breaks a rule, the client gets a 422 response listing each problem by field name. Your function never sees bad data.\n\nThe response_model argument does the same on the way out. It validates what you return and drops any field not declared in the model. This protects you from accidentally leaking internal fields such as a customer's internal risk score.",
+    "example": "Harbor Mutual's portal sends {\"claim_id\": \"C-55120\", \"question\": \"Why was this denied?\"}. If the portal sends question: \"\" the API answers 422 with the message that the string should have at least 3 characters. The response includes answer and sources, and the internal fields token_count and raw_prompt are stripped out.",
+    "code": "from fastapi import FastAPI\nfrom pydantic import BaseModel, Field\n\napp = FastAPI()\n\nclass AskIn(BaseModel):\n    claim_id: str = Field(pattern=r\"^C-\\d+$\")        # e.g. C-55120\n    question: str = Field(min_length=3, max_length=2000)\n    top_k: int = Field(default=5, ge=1, le=20)        # 1..20 allowed\n\nclass AskOut(BaseModel):\n    answer: str\n    sources: list[str]\n\n@app.post(\"/ask\", response_model=AskOut)\ndef ask(body: AskIn):\n    result = {\n        \"answer\": f\"Looking into {body.claim_id}...\",\n        \"sources\": [\"policy_doc_12.pdf\"],\n        \"raw_prompt\": \"internal only\",   # dropped by response_model\n    }\n    return result",
+    "lang": "Python"
+   },
+   {
+    "title": "Dependencies for auth and database sessions",
+    "body": "Many endpoints need the same setup: check the caller's token, open a database connection, load settings. FastAPI handles this with dependencies. You write a function and ask for it with Depends(). FastAPI calls it before your endpoint and passes in the result.\n\nA dependency can use yield. Code before yield runs before the request, code after yield runs after the response, which is perfect for opening and closing a database session.\n\nIf a dependency raises HTTPException(401), the endpoint never runs. You can attach a dependency to a whole router so every route is protected without repeating yourself.",
+    "example": "A bank's internal tool requires an API key in the X-API-Key header. The require_key dependency checks it against a set loaded from the environment. Requests without it get 401. Every route under /v1 is protected by one line on the router.",
+    "code": "import os\nfrom fastapi import APIRouter, Depends, FastAPI, Header, HTTPException\n\nVALID_KEYS = set(os.environ.get(\"API_KEYS\", \"dev-key\").split(\",\"))\n\ndef require_key(x_api_key: str = Header(...)):      # reads X-API-Key header\n    if x_api_key not in VALID_KEYS:\n        raise HTTPException(status_code=401, detail=\"Invalid API key\")\n    return x_api_key\n\ndef get_db():\n    db = SessionLocal()          # e.g. a SQLAlchemy session factory\n    try:\n        yield db                 # the endpoint runs while we are paused here\n    finally:\n        db.close()               # always runs after the response\n\nrouter = APIRouter(prefix=\"/v1\", dependencies=[Depends(require_key)])\n\n@router.get(\"/accounts/{account_id}\")\ndef get_account(account_id: int, db=Depends(get_db)):\n    return db.get(Account, account_id)\n\napp = FastAPI()\napp.include_router(router)",
+    "lang": "Python"
+   },
+   {
+    "title": "async def versus def",
+    "body": "FastAPI runs on an event loop: a single thread that switches between many requests whenever one of them is waiting for I/O (a network call, a database query, a file read). An async def function signals that it will await such operations and give the loop a chance to serve others.\n\nThe danger is calling something slow and blocking inside async def, for example requests.get() or a synchronous database driver. That call holds the event loop, so every other request on that worker waits too. CPU stays low but latency climbs.\n\nThe rules are simple. Inside async def, use async libraries such as httpx.AsyncClient and await them. If you must call a blocking library, either declare the endpoint with plain def (FastAPI then runs it in a thread pool) or wrap the call with run_in_threadpool.",
+    "example": "Crestline's service calls a slow carrier API that takes 2 seconds. With requests.get inside async def, 50 concurrent users on one worker are served one after another, so the last waits about 100 seconds. Switching to await httpx.AsyncClient().get(...) lets all 50 wait at the same time and each finishes in about 2 seconds.",
+    "code": "import httpx, requests\nfrom fastapi import FastAPI\nfrom fastapi.concurrency import run_in_threadpool\n\napp = FastAPI()\nclient = httpx.AsyncClient(timeout=10)   # reuse one client for connection pooling\n\n@app.get(\"/bad/{sid}\")\nasync def bad(sid: str):\n    return requests.get(f\"https://carrier.example/track/{sid}\").json()  # BLOCKS the loop\n\n@app.get(\"/good/{sid}\")\nasync def good(sid: str):\n    r = await client.get(f\"https://carrier.example/track/{sid}\")    # frees the loop\n    return r.json()\n\n@app.get(\"/legacy/{sid}\")\nasync def legacy(sid: str):\n    # Blocking SDK you cannot replace: push it to a worker thread\n    return await run_in_threadpool(legacy_sdk.track, sid)",
+    "lang": "Python"
+   },
+   {
+    "title": "Streaming LLM answers",
+    "body": "A language model can take 10 to 30 seconds to write a long answer. If the API waits for the whole answer, users stare at a spinner. Streaming sends pieces of text to the client as soon as the model produces them.\n\nIn FastAPI you return a StreamingResponse wrapping an async generator, a function that uses yield to hand out chunks one at a time. The Anthropic Python SDK offers messages.stream(), which gives you a text_stream you can iterate over.\n\nServer-sent events (SSE) is a simple format for streaming text over HTTP that browsers understand natively. Each chunk is a line starting with data: followed by a blank line.",
+    "example": "A hospital's discharge-summary assistant writes about 600 words. Without streaming, nurses wait around 20 seconds. With streaming, the first words appear in under a second and the rest arrive as they are generated, which makes the tool feel usable on a busy ward.",
+    "code": "import json\nfrom anthropic import AsyncAnthropic\nfrom fastapi import FastAPI\nfrom fastapi.responses import StreamingResponse\nfrom pydantic import BaseModel\n\napp = FastAPI()\nllm = AsyncAnthropic()          # reads ANTHROPIC_API_KEY from the environment\nMODEL = \"MODEL\"                 # placeholder model name\n\nclass Prompt(BaseModel):\n    question: str\n\n@app.post(\"/ask/stream\")\nasync def ask_stream(body: Prompt):\n    async def events():\n        async with llm.messages.stream(\n            model=MODEL, max_tokens=1024,\n            messages=[{\"role\": \"user\", \"content\": body.question}],\n        ) as stream:\n            async for text in stream.text_stream:          # chunks as they arrive\n                yield f\"data: {json.dumps({'text': text})}\\n\\n\"   # SSE format\n        yield \"data: [DONE]\\n\\n\"\n    return StreamingResponse(events(), media_type=\"text/event-stream\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Testing with TestClient and overrides",
+    "body": "FastAPI ships a TestClient that calls your app in memory, without starting a server. You write normal pytest functions that send requests and check status codes and JSON.\n\nThe most useful testing feature is app.dependency_overrides. It lets you swap a real dependency, such as the auth check or the database session, for a fake one during tests. You can test your endpoint logic without real credentials or a real database.\n\nGood tests for an API cover the happy path, a validation failure (422), an auth failure (401) and a not-found case (404). These are the cases a customer's integration team will hit first.",
+    "example": "Before handing the bank's API to their team, you write four tests. One checks that a valid key and account returns 200. One checks that a missing header gives 422 (the header is required). One checks that a wrong key gives 401. One overrides the database with a fake that returns nothing and checks for 404.",
+    "code": "# test_api.py   run with:  pytest -q\nfrom fastapi.testclient import TestClient\nfrom main import app, require_key\n\nclient = TestClient(app)\n\ndef test_rejects_bad_key():\n    r = client.get(\"/v1/accounts/1\", headers={\"X-API-Key\": \"nope\"})\n    assert r.status_code == 401\n\ndef test_missing_header_is_422():\n    r = client.get(\"/v1/accounts/1\")\n    assert r.status_code == 422\n\ndef test_with_auth_overridden():\n    app.dependency_overrides[require_key] = lambda: \"test-key\"  # skip real auth\n    try:\n        r = client.get(\"/v1/accounts/1\")\n        assert r.status_code in (200, 404)\n    finally:\n        app.dependency_overrides.clear()",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "API",
+    "Application programming interface: a defined way for one program to request data or actions from another."
+   ],
+   [
+    "Endpoint",
+    "One HTTP method plus path, such as POST /ask, handled by one function."
+   ],
+   [
+    "Pydantic",
+    "A Python library that validates and parses data using type hints; FastAPI uses it for requests and responses."
+   ],
+   [
+    "422 Unprocessable Entity",
+    "The status code FastAPI returns when request data fails validation."
+   ],
+   [
+    "Dependency injection",
+    "Declaring what a function needs (auth, DB session) and letting the framework supply it."
+   ],
+   [
+    "ASGI",
+    "Asynchronous Server Gateway Interface: the standard connecting async Python apps to servers like Uvicorn."
+   ],
+   [
+    "Event loop",
+    "The single thread that runs async code, switching between tasks whenever one awaits I/O."
+   ],
+   [
+    "Server-sent events (SSE)",
+    "A simple HTTP format for a server to push a stream of text messages to a client."
+   ]
+  ],
+  "practice": [
+   "Build a FastAPI app with GET /items/{item_id} and POST /items using a Pydantic model with at least one Field rule. Deliverable: screenshots from /docs showing one 200 response and one 422 response.",
+   "Add an API-key dependency to a router, then write four pytest tests (200, 401, 404, 422) using TestClient and dependency_overrides. Deliverable: a passing pytest -q output.",
+   "Stretch: create two endpoints that each wait on a 2-second external call, one using requests inside async def and one using httpx.AsyncClient. Load test both with 20 concurrent requests (for example with the hey or oha tool). Deliverable: a short table comparing total time and explaining the difference."
+  ]
+ },
+ "deploy": {
+  "plain": "Deploying means getting your code running on servers where users can reach it. Docker packages your app and everything it needs (Python version, libraries, files) into an image, a single file-like bundle that runs the same way on any machine. A running copy of an image is called a container. Kubernetes is a system that runs many containers across a group of servers, called a cluster, restarts them when they crash, and spreads traffic across them.",
+  "analogy": "A Docker image is like a sealed meal kit with every ingredient and the recipe card inside, so any kitchen can cook the same dish. Kubernetes is the restaurant manager who makes sure three cooks are always working, replaces one who goes home sick, and seats customers at whichever station is free.",
+  "why": "An FDE's work only counts once it runs in the customer's environment, often their own cloud account or data center with strict security rules. A bank will ask how you roll back a bad release, where secrets are stored and what happens if a server dies. Containers and Kubernetes give standard answers to each of those questions.",
+  "subtopics": [
+   {
+    "title": "Images, containers and registries",
+    "body": "An image is a read-only template built from a recipe file called a Dockerfile. A container is a running process started from that image, isolated from other processes on the same machine. You can start many containers from one image.\n\nImages are built in layers. Each instruction in the Dockerfile creates a layer, and Docker caches layers that have not changed, so rebuilding after a small code edit is fast.\n\nA registry is a server that stores images, similar to how GitHub stores code. Docker Hub is public. Customers usually have private ones such as AWS ECR, Azure ACR or Google Artifact Registry. Every image gets a tag, a label such as 1.4.2. Always use a specific version tag so you know exactly what is running.",
+    "example": "You build the image for Harbor Mutual's claims API, tag it 1.4.2 and push it to the insurer's private ECR registry. Their Kubernetes cluster pulls 1.4.2 from there. If 1.4.3 misbehaves, they can point back at 1.4.2, which is still stored unchanged.",
+    "code": "# Build an image from the Dockerfile in the current folder\ndocker build -t claims-api:1.4.2 .\n\n# Run it locally, mapping container port 8000 to your laptop's port 8000\ndocker run --rm -p 8000:8000 --env-file .env claims-api:1.4.2\n\n# See running containers and their logs\ndocker ps\ndocker logs <container_id>\n\n# Tag for the customer's registry and push\ndocker tag claims-api:1.4.2 123456789012.dkr.ecr.eu-west-1.amazonaws.com/claims-api:1.4.2\naws ecr get-login-password --region eu-west-1 | \\\n  docker login --username AWS --password-stdin 123456789012.dkr.ecr.eu-west-1.amazonaws.com\ndocker push 123456789012.dkr.ecr.eu-west-1.amazonaws.com/claims-api:1.4.2",
+    "lang": "bash"
+   },
+   {
+    "title": "Writing a small, safe Dockerfile",
+    "body": "A good Dockerfile starts from a slim base image, copies the dependency list before the application code (so the slow install step stays cached), and runs as a non-root user.\n\nA multi-stage build uses two or more FROM lines. The first stage has compilers and build tools and produces the finished dependencies. The final stage copies only those results into a clean, small image. Smaller images download faster, start faster and give attackers fewer tools to use.\n\nNever copy secrets such as .env files or API keys into an image. Anyone who can pull the image can read them. Add a .dockerignore file to keep them and other clutter out.",
+    "example": "Your first image for Crestline Freight was 1.9 GB because it included build tools and the test data folder. With a multi-stage build and a .dockerignore it drops to a few hundred megabytes, and a code-only change rebuilds in seconds because the dependency layer is cached.",
+    "code": "# ---- stage 1: build dependencies ----\nFROM python:3.12-slim AS build\nWORKDIR /app\nRUN pip install --upgrade pip\nCOPY requirements.txt .\n# Install into a separate folder we can copy later\nRUN pip install --no-cache-dir --prefix=/install -r requirements.txt\n\n# ---- stage 2: small runtime image ----\nFROM python:3.12-slim\nWORKDIR /app\nCOPY --from=build /install /usr/local          # only the installed packages\nCOPY . .\nRUN useradd --create-home appuser\nUSER appuser                                   # do not run as root\nEXPOSE 8000\nCMD [\"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]",
+    "lang": "Dockerfile"
+   },
+   {
+    "title": "Kubernetes: Deployment and Service",
+    "body": "Kubernetes works from desired state. You write YAML files that describe what you want, apply them, and Kubernetes keeps adjusting reality to match.\n\nA Pod is the smallest unit: one or more containers that run together. You rarely create pods directly. A Deployment says how many identical pods (replicas) to run and which image to use. If a pod dies, the Deployment creates a replacement.\n\nPods get new IP addresses whenever they are replaced, so other services need a stable way to reach them. A Service provides one stable name and address and load-balances across all healthy pods that match its label selector. Inside the cluster, other apps can simply call http://claims-api. This is called service discovery.",
+    "example": "Harbor Mutual wants the claims API to survive a server failure. You set replicas: 3. When one node goes down, Kubernetes notices within about a minute and starts a new pod on another node, while the Service keeps sending requests to the two healthy pods.",
+    "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: claims-api\nspec:\n  replicas: 3                          # keep 3 copies running\n  selector:\n    matchLabels: {app: claims-api}\n  template:\n    metadata:\n      labels: {app: claims-api}        # the Service finds pods by this label\n    spec:\n      containers:\n        - name: api\n          image: 123456789012.dkr.ecr.eu-west-1.amazonaws.com/claims-api:1.4.2\n          ports: [{containerPort: 8000}]\n---\napiVersion: v1\nkind: Service\nmetadata:\n  name: claims-api                     # other pods call http://claims-api\nspec:\n  selector: {app: claims-api}\n  ports: [{port: 80, targetPort: 8000}]",
+    "lang": "YAML"
+   },
+   {
+    "title": "Configuration, secrets and storage",
+    "body": "The same image should run in test and production, so settings must come from outside the image. A ConfigMap holds non-secret settings such as a log level or a model name. A Secret holds sensitive values such as database passwords. Both can be injected into containers as environment variables or files.\n\nKubernetes Secrets are only base64-encoded by default, which is an encoding and offers no protection by itself. Many customers require a cloud secret manager (AWS Secrets Manager, Azure Key Vault, GCP Secret Manager) synced into the cluster, and encryption at rest turned on.\n\nMost API pods should be stateless: they keep nothing important on local disk. When something does need its own disk, such as a database or a vector store, you use a StatefulSet with a volume mount. StatefulSets give each pod a stable name and its own persistent volume that survives restarts.",
+    "example": "The claims API needs LOG_LEVEL=info, MODEL_NAME and a DATABASE_URL with a password. The first two go into a ConfigMap. The database URL goes into a Secret created from the insurer's secret manager, so the password never appears in git or in the image.",
+    "code": "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: claims-config}\ndata:\n  LOG_LEVEL: \"info\"\n  MODEL_NAME: \"MODEL\"\n---\n# Usually created by a secrets operator, never committed with real values\napiVersion: v1\nkind: Secret\nmetadata: {name: claims-secrets}\ntype: Opaque\nstringData:\n  DATABASE_URL: \"postgresql://app:CHANGE_ME@db:5432/claims\"\n---\n# In the Deployment's container spec:\n#   envFrom:\n#     - configMapRef: {name: claims-config}\n#     - secretRef:    {name: claims-secrets}",
+    "lang": "YAML"
+   },
+   {
+    "title": "Health probes, resources and autoscaling",
+    "body": "Kubernetes needs to know whether each pod is healthy. A readiness probe answers 'can this pod take traffic right now?'. Until it passes, the Service sends it nothing, which matters when your app spends 40 seconds loading a model. A liveness probe answers 'is this pod stuck?'. If it fails repeatedly, Kubernetes restarts the container.\n\nResource requests tell the scheduler how much CPU and memory a pod needs so it lands on a node with room. Limits cap how much it may use. A pod that exceeds its memory limit is killed, which shows up as OOMKilled.\n\nA HorizontalPodAutoscaler (HPA) adds or removes replicas based on a metric such as average CPU use. This lets a service handle a Monday-morning spike without paying for peak capacity all week.",
+    "example": "Crestline's tracking API averages 30 percent CPU but hits 90 percent every weekday at 9 a.m. With an HPA targeting 60 percent CPU between 3 and 10 replicas, it grows to about 7 pods during the rush and shrinks back to 3 by noon.",
+    "code": "# Inside the Deployment's container spec\nreadinessProbe:\n  httpGet: {path: /health, port: 8000}\n  initialDelaySeconds: 5\n  periodSeconds: 5\nlivenessProbe:\n  httpGet: {path: /health, port: 8000}\n  periodSeconds: 20\n  failureThreshold: 3\nresources:\n  requests: {cpu: \"250m\", memory: \"512Mi\"}   # 250m = a quarter of a CPU core\n  limits:   {memory: \"1Gi\"}\n---\napiVersion: autoscaling/v2\nkind: HorizontalPodAutoscaler\nmetadata: {name: tracking-api}\nspec:\n  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: tracking-api}\n  minReplicas: 3\n  maxReplicas: 10\n  metrics:\n    - type: Resource\n      resource: {name: cpu, target: {type: Utilization, averageUtilization: 60}}",
+    "lang": "YAML"
+   },
+   {
+    "title": "Ingress, rollouts and rollbacks",
+    "body": "A Service is reachable inside the cluster. To accept traffic from outside, you usually add an Ingress: a set of HTTP routing rules (hostnames, paths, TLS certificates) handled by an ingress controller such as NGINX or a cloud load balancer. Newer clusters may use the Gateway API instead, which serves the same purpose with more features.\n\nTo release a new version you change the image tag in the Deployment. By default Kubernetes performs a rolling update: it starts new pods, waits for their readiness probes, then removes old ones, so users see no downtime.\n\nIf the new version is broken, kubectl rollout undo returns to the previous version in one command. Database schema changes must be backward compatible, because old and new pods run side by side during the rollout.",
+    "example": "You release claims-api 1.4.3 at 14:00. At 14:06 error rates climb because a new field is missing in production data. You run kubectl rollout undo and by 14:08 all pods are back on 1.4.2. You then fix the bug, add a test and release 1.4.4 the next morning.",
+    "code": "# Release a new version by changing the image tag\nkubectl set image deployment/claims-api \\\n  api=123456789012.dkr.ecr.eu-west-1.amazonaws.com/claims-api:1.4.3\n\n# Watch the rolling update progress\nkubectl rollout status deployment/claims-api\n\n# Something is wrong: inspect, then roll back\nkubectl get pods -l app=claims-api\nkubectl logs deployment/claims-api --since=10m\nkubectl rollout undo deployment/claims-api\n\n# See the revision history\nkubectl rollout history deployment/claims-api",
+    "lang": "bash"
+   }
+  ],
+  "glossary": [
+   [
+    "Image",
+    "A read-only, layered package of an app and its dependencies, built from a Dockerfile."
+   ],
+   [
+    "Container",
+    "A running, isolated process started from an image."
+   ],
+   [
+    "Registry",
+    "A server that stores and serves images, such as ECR, ACR or Docker Hub."
+   ],
+   [
+    "Pod",
+    "The smallest Kubernetes unit: one or more containers scheduled together on one node."
+   ],
+   [
+    "Deployment",
+    "A Kubernetes object that keeps a set number of identical pods running and manages rolling updates."
+   ],
+   [
+    "Service",
+    "A stable network name and address that load-balances across matching pods."
+   ],
+   [
+    "Ingress",
+    "Rules that route external HTTP traffic, including TLS, to Services inside the cluster."
+   ],
+   [
+    "StatefulSet",
+    "Like a Deployment, but each pod keeps a stable identity and its own persistent volume."
+   ],
+   [
+    "Readiness probe",
+    "A check that decides whether a pod should receive traffic yet."
+   ],
+   [
+    "HorizontalPodAutoscaler",
+    "A controller that changes the replica count based on metrics such as CPU use."
+   ]
+  ],
+  "practice": [
+   "Write a Dockerfile for a small FastAPI app, build it, and run it locally with docker run. Deliverable: the Dockerfile, the image size from docker images, and a curl output from the running container.",
+   "Convert your Dockerfile to a multi-stage build that runs as a non-root user and add a .dockerignore. Deliverable: before and after image sizes and one sentence on what shrank.",
+   "Stretch: install kind or minikube, deploy your image with a Deployment (3 replicas), Service, ConfigMap and readiness probe, then roll out a new tag and roll it back. Deliverable: the YAML files and the output of kubectl rollout history."
+  ]
+ },
+ "cloud": {
+  "plain": "A cloud provider such as AWS, Google Cloud (GCP) or Microsoft Azure rents you computers, storage, databases and networks that you create on demand through an API instead of buying hardware. The core building blocks are the same everywhere: a private network (on AWS called a VPC, Virtual Private Cloud), permissions that say who may do what (IAM, Identity and Access Management), and entry points that let the outside world reach your service, such as an API gateway or load balancer. Terraform is a tool for describing all of this in text files, called infrastructure as code (IaC), so you can review, version and recreate it exactly.",
+  "analogy": "Clicking around a cloud console is like building a house by phoning contractors one by one and hoping you remember what you asked for. Terraform is the architect's blueprint: every wall and wire is written down, anyone can review it, and you can build an identical house next door from the same drawings.",
+  "why": "FDEs usually deploy inside the customer's own cloud account, where a security team must approve every network rule and permission. Handing them a Terraform plan they can read line by line is how you pass that review in days instead of months. It also means you can stand up the same stack in test, staging and production, or at a second customer, without repeating manual work.",
+  "subtopics": [
+   {
+    "title": "The same ideas across three clouds",
+    "body": "Every cloud organizes resources into regions, which are geographic locations such as eu-west-1 in Ireland. Each region has several availability zones, which are separate data centers. Spreading your service across two or three zones keeps it running if one fails.\n\nThe three big providers use different names for the same concepts. Once you learn one, mapping to the others is mostly vocabulary. The table in the code block lists the most common equivalents.\n\nCustomers pick regions for legal reasons as often as technical ones. A German hospital may require that patient data never leaves an EU region. Ask about data residency in the first week.",
+    "example": "A European bank runs on Azure and a US retailer runs on AWS. For both you need a private network, a managed Postgres database, object storage for documents, a container platform and a role for your service. The architecture diagram is the same; only the resource names in your Terraform change.",
+    "code": "Concept                 AWS                     GCP                        Azure\n----------------------  ----------------------  -------------------------  ---------------------------\nPrivate network         VPC                     VPC network                Virtual Network (VNet)\nFirewall rules          Security group          Firewall rule              Network security group\nIdentity for a service  IAM role                Service account            Managed identity\nObject storage          S3                      Cloud Storage              Blob Storage\nManaged Kubernetes      EKS                     GKE                        AKS\nManaged Postgres        RDS / Aurora            Cloud SQL                  Azure Database for PostgreSQL\nAPI front door          API Gateway / ALB       API Gateway / Load Bal.    API Management / App Gateway\nSecrets                 Secrets Manager         Secret Manager             Key Vault",
+    "lang": "Text"
+   },
+   {
+    "title": "Networking: VPCs, subnets and security groups",
+    "body": "A VPC is your own isolated network inside the cloud, defined by an IP address range written in CIDR notation, for example 10.20.0.0/16 (about 65,000 addresses). You split it into subnets, smaller ranges that live in one availability zone.\n\nA public subnet has a route to the internet through an internet gateway. A private subnet does not. Databases and model servers belong in private subnets so nothing on the internet can reach them directly. They can still call out through a NAT gateway if the customer allows it.\n\nA security group is a firewall attached to a resource. You list which traffic may come in, for example 'port 5432 only from the app's security group'. By default everything inbound is denied.",
+    "example": "For Riverside Health you create a VPC with two public subnets for the load balancer and two private subnets for the API pods and the database. The database security group allows port 5432 only from the API security group, so even a mistake elsewhere cannot expose patient records to the internet.",
+    "code": "resource \"aws_vpc\" \"main\" {\n  cidr_block           = \"10.20.0.0/16\"\n  enable_dns_hostnames = true\n  tags = { Name = \"riverside-ai\" }\n}\n\nresource \"aws_subnet\" \"private_a\" {\n  vpc_id            = aws_vpc.main.id          # reference another resource\n  cidr_block        = \"10.20.1.0/24\"           # 256 addresses\n  availability_zone = \"eu-west-1a\"\n}\n\nresource \"aws_security_group\" \"db\" {\n  name   = \"db\"\n  vpc_id = aws_vpc.main.id\n  ingress {\n    from_port       = 5432\n    to_port         = 5432\n    protocol        = \"tcp\"\n    security_groups = [aws_security_group.api.id]  # only from the API\n  }\n}",
+    "lang": "Terraform"
+   },
+   {
+    "title": "IAM and least privilege",
+    "body": "IAM controls who can do what to which resource. A policy is a document listing allowed actions (such as s3:GetObject) on specific resources (such as one bucket). A role is an identity that a service can assume to get temporary credentials, so you never store long-lived access keys in your code.\n\nLeast privilege means giving each service only the permissions it needs, and nothing more. A document search service needs to read one bucket. It does not need to delete buckets or read the finance team's data.\n\nIn Terraform, the aws_iam_policy_document data source lets you write policies in HCL instead of hand-written JSON, which is easier to read and review.",
+    "example": "Harbor Mutual's security reviewer rejects your first draft because it grants s3:* on every bucket. You rewrite it to allow only s3:GetObject and s3:ListBucket on the claims-documents bucket. The review passes the same day.",
+    "code": "data \"aws_iam_policy_document\" \"read_claim_docs\" {\n  statement {\n    effect    = \"Allow\"\n    actions   = [\"s3:ListBucket\"]\n    resources = [\"arn:aws:s3:::harbor-claims-documents\"]\n  }\n  statement {\n    effect    = \"Allow\"\n    actions   = [\"s3:GetObject\"]                          # read only\n    resources = [\"arn:aws:s3:::harbor-claims-documents/*\"]  # one bucket's objects\n  }\n}\n\nresource \"aws_iam_policy\" \"read_claim_docs\" {\n  name   = \"claims-api-read-docs\"\n  policy = data.aws_iam_policy_document.read_claim_docs.json\n}\n\nresource \"aws_iam_role_policy_attachment\" \"attach\" {\n  role       = aws_iam_role.claims_api.name   # role assumed by the service\n  policy_arn = aws_iam_policy.read_claim_docs.arn\n}",
+    "lang": "Terraform"
+   },
+   {
+    "title": "The Terraform workflow and state",
+    "body": "Terraform has a short loop. terraform init downloads providers, the plugins that talk to AWS, GCP or Azure. terraform plan compares your code with what exists and prints what it would create, change or destroy. terraform apply makes those changes.\n\nTerraform remembers what it created in a state file. The state maps each resource in your code to a real object in the cloud. For a team, state must live in a remote backend, such as an S3 bucket, with locking so two people cannot apply at the same time.\n\nState files can contain secrets, so never commit them to git. Read every plan before applying, and look hardest at lines marked destroy or 'must be replaced', because replacing a database means losing its data.",
+    "example": "You change the database instance size from db.t3.medium to db.t3.large. The plan says '~ update in-place', which is safe. A colleague renames the database resource in code, and the plan says '-/+ destroy and then create replacement'. You stop, and use a moved block instead so Terraform understands it is the same database.",
+    "code": "# One-time setup: download providers, connect to the remote state backend\nterraform init\n\n# Format and check the code\nterraform fmt -recursive\nterraform validate\n\n# Preview changes and save the exact plan for review\nterraform plan -out=tfplan\nterraform show -no-color tfplan > plan.txt    # paste into the pull request\n\n# Apply exactly the plan that was reviewed\nterraform apply tfplan\n\n# Inspect what Terraform is tracking\nterraform state list",
+    "lang": "bash"
+   },
+   {
+    "title": "Variables, modules and environments",
+    "body": "Hard-coded values make code hard to reuse. Terraform variables let you pass in values such as the region, instance size or environment name. Outputs expose values, such as a load balancer URL, for other code or people to use.\n\nA module is a folder of Terraform files you can call like a function, with inputs and outputs. You might write one 'ai_service' module that creates the network rules, role and database for a service, then call it once for staging and once for production with different sizes.\n\nKeep each environment's state separate, for example in a different backend key or a different cloud account, so a mistake in staging cannot touch production.",
+    "example": "Crestline Freight wants a staging copy of the tracking stack. You call the same module twice: staging with a small database and 2 replicas, production with a larger database, 3 replicas and deletion protection on. The two stacks stay identical in shape, so what worked in staging is what ships.",
+    "code": "# variables.tf\nvariable \"env\" {\n  type = string\n}\nvariable \"db_instance\" {\n  type    = string\n  default = \"db.t3.medium\"\n}\nvariable \"replicas\" {\n  type    = number\n  default = 2\n}\n\n# main.tf: call a reusable module\nmodule \"tracking\" {\n  source      = \"./modules/ai_service\"\n  name        = \"tracking-${var.env}\"\n  db_instance = var.db_instance\n  replicas    = var.replicas\n  deletion_protection = var.env == \"prod\"      # true only in production\n}\n\noutput \"api_url\" { value = module.tracking.api_url }\n\n# prod.tfvars\n#   env = \"prod\"\n#   db_instance = \"db.r6g.large\"\n#   replicas = 3\n# terraform plan -var-file=prod.tfvars",
+    "lang": "Terraform"
+   },
+   {
+    "title": "Air-gapped deployments and Apollo",
+    "body": "An air-gapped environment has no connection to the internet. Defense agencies, intelligence services and some banks and utilities run systems this way. You cannot pip install, pull from Docker Hub or call a hosted model API.\n\nPalantir built a platform called Apollo to deliver and continuously update its software across many customer environments, including disconnected and classified ones. The general lesson for any FDE: treat every release as a self-contained, versioned bundle, and automate installing and upgrading it so it does not depend on an engineer typing commands on site.\n\nIn practice that means mirroring container images into the customer's internal registry, vendoring Python packages and Terraform providers, shipping model weights as files, verifying checksums or signatures, and writing a tested offline install and rollback procedure.",
+    "example": "A defense customer runs an isolated Kubernetes cluster. You prepare release 2.3.0 as a single archive with container images, a Helm chart, Python wheels and model weights, plus a SHA-256 checksum list. Their operators carry it across on approved media, verify the checksums, load images into their Harbor registry and run the install script.",
+    "code": "# On a connected build machine: bundle everything for release 2.3.0\nmkdir -p bundle/images bundle/wheels bundle/models\ndocker pull registry.example.com/claims-api:2.3.0\ndocker save registry.example.com/claims-api:2.3.0 -o bundle/images/claims-api.tar\npip download -r requirements.txt -d bundle/wheels     # offline Python packages\ncp -r models/reranker-v4 bundle/models/\n(cd bundle && find . -type f -exec sha256sum {} \\; > SHA256SUMS)\ntar czf release-2.3.0.tgz bundle\n\n# Inside the air-gapped site\ntar xzf release-2.3.0.tgz && cd bundle\nsha256sum -c SHA256SUMS                              # verify nothing changed\ndocker load -i images/claims-api.tar\ndocker tag registry.example.com/claims-api:2.3.0 harbor.internal/ai/claims-api:2.3.0\ndocker push harbor.internal/ai/claims-api:2.3.0",
+    "lang": "bash"
+   }
+  ],
+  "glossary": [
+   [
+    "VPC",
+    "A private, isolated network in a cloud account, defined by an IP address range."
+   ],
+   [
+    "Subnet",
+    "A smaller address range inside a VPC, located in one availability zone, either public or private."
+   ],
+   [
+    "Security group",
+    "A virtual firewall that lists which traffic may reach a resource."
+   ],
+   [
+    "IAM role",
+    "An identity a service assumes to receive temporary, scoped permissions."
+   ],
+   [
+    "Least privilege",
+    "Granting only the exact permissions a component needs to do its job."
+   ],
+   [
+    "Infrastructure as code",
+    "Defining cloud resources in version-controlled text files instead of manual console clicks."
+   ],
+   [
+    "Terraform state",
+    "The record mapping resources in code to real cloud objects, used to compute plans."
+   ],
+   [
+    "Terraform module",
+    "A reusable folder of Terraform code with inputs and outputs."
+   ],
+   [
+    "Air-gapped",
+    "Physically or logically disconnected from the internet and other outside networks."
+   ]
+  ],
+  "practice": [
+   "Using the AWS, GCP or Azure free tier, write Terraform that creates one private storage bucket with versioning enabled. Run init, plan and apply, then destroy. Deliverable: the .tf file and the saved plan output.",
+   "Write an IAM policy (in Terraform) that lets a service read objects from one bucket prefix only, and a second overly broad version. Deliverable: both policies and three sentences explaining what a security reviewer would object to in the broad one.",
+   "Stretch: create a module that builds a VPC with two public and two private subnets and a security group for a database, call it for staging and prod with different CIDR ranges, and store state remotely with locking. Deliverable: the module folder, the two plan outputs and a diagram of the network."
+  ]
+ },
+ "transformer": {
+  "plain": "A transformer is the neural network design behind nearly every modern large language model (LLM), such as GPT, Claude and Llama. It reads text as tokens (small chunks of text, often parts of words), turns each token into a list of numbers called an embedding, and then passes those lists through many identical layers. In each layer an attention step lets every token pull in information from other tokens, and a feed-forward step processes each token on its own. At the end, the model outputs a probability for every possible next token, picks one, adds it to the text and repeats.",
+  "analogy": "Picture a meeting where each person (token) holds a card with notes. In every round, each person asks a question, listens most closely to the people whose cards best answer it, and updates their own notes. After dozens of rounds, the last person's notes are good enough to guess the next word of the sentence.",
+  "why": "Customers will ask why a 100-page contract costs more and responds slower than a short email, why the model misreads long part numbers, or why their Japanese documents burn through the budget. Those answers come straight from how tokens, attention and generation work. Knowing the internals also helps you choose between an embedding model and a chat model, and explain limits honestly.",
+  "subtopics": [
+   {
+    "title": "Tokens and Byte-Pair Encoding",
+    "body": "Models do not read letters or whole words. A tokenizer splits text into tokens from a fixed vocabulary, often 30,000 to 200,000 entries. Each token has an integer id.\n\nByte-Pair Encoding (BPE) builds that vocabulary. It starts with single bytes, finds the pair of symbols that appears together most often in a large training text, merges it into a new symbol, and repeats thousands of times. Common words become one token. Rare words, long numbers, code and many non-English scripts split into several.\n\nThis matters in practice. Price, context limits and speed are all counted in tokens. The same meaning can cost noticeably more tokens in some languages than in English, and a serial number like X7-99A-2231 may split into many tokens, which can make copying it exactly less reliable.",
+    "example": "A logistics customer sends 40,000 shipping notes per day, averaging 120 English words each. As a rough rule, English runs around 1.3 tokens per word, so that is about 156 tokens per note or roughly 6.2 million input tokens per day. Their notes in Thai may use more tokens per word, so you measure with the real tokenizer before quoting costs.",
+    "code": "from collections import Counter\n\ndef bpe_train(words: list[str], merges: int):\n    # Start with each word as a tuple of characters\n    corpus = Counter(tuple(w) for w in words)\n    rules = []\n    for _ in range(merges):\n        pairs = Counter()\n        for word, freq in corpus.items():\n            for a, b in zip(word, word[1:]):\n                pairs[(a, b)] += freq             # count adjacent pairs\n        if not pairs:\n            break\n        best = max(pairs, key=pairs.get)          # most frequent pair\n        rules.append(best)\n        new = Counter()\n        for word, freq in corpus.items():\n            out, i = [], 0\n            while i < len(word):\n                if i + 1 < len(word) and (word[i], word[i+1]) == best:\n                    out.append(word[i] + word[i+1]); i += 2   # merge\n                else:\n                    out.append(word[i]); i += 1\n            new[tuple(out)] += freq\n        corpus = new\n    return rules, corpus\n\nrules, corpus = bpe_train([\"refund\"]*5 + [\"refunded\"]*3 + [\"fund\"]*2, merges=5)\nprint(rules)    # first merges join frequent pairs like ('f','u'), ('fu','n') ...\nprint(corpus)",
+    "lang": "Python"
+   },
+   {
+    "title": "Embeddings and similarity",
+    "body": "An embedding is a vector, a list of numbers such as 1,024 values, that represents a token or a whole passage. Training arranges these vectors so that similar meanings end up close together.\n\nThree measures of closeness are common. Dot product multiplies matching positions and adds them up; it is larger when vectors point the same way and when they are long. Cosine similarity is the dot product divided by both lengths, so it compares direction only and ranges from -1 to 1. Euclidean distance is the straight-line distance between the two points; smaller means more similar.\n\nIf vectors are normalized to length 1, cosine and dot product give the same ranking. Embedding models built for search (used in RAG, retrieval-augmented generation) output one vector per passage. Inside a chat model, every token has its own vector at every layer; those internal states are a different thing.",
+    "example": "A bank's help center has articles on 'reset online banking password' and 'report a lost card'. A customer types 'I forgot my login'. Its embedding has a cosine similarity of perhaps 0.82 with the password article and 0.31 with the lost card article, so search returns the password article first.",
+    "code": "import numpy as np\n\na = np.array([0.9, 0.1, 0.3])      # \"reset online banking password\"\nb = np.array([0.8, 0.2, 0.25])     # \"I forgot my login\"\nc = np.array([0.1, 0.9, 0.0])      # \"report a lost card\"\n\ndef cosine(x, y):\n    return x @ y / (np.linalg.norm(x) * np.linalg.norm(y))\n\nfor name, v in [(\"password\", a), (\"lost card\", c)]:\n    print(name,\n          \"dot=%.3f\" % (b @ v),                    # includes length\n          \"cos=%.3f\" % cosine(b, v),               # direction only\n          \"euclid=%.3f\" % np.linalg.norm(b - v))   # smaller = closer\n\n# After normalizing to length 1, dot product and cosine rank identically\nb_n, a_n = b / np.linalg.norm(b), a / np.linalg.norm(a)\nprint(np.isclose(b_n @ a_n, cosine(b, a)))        # True",
+    "lang": "Python"
+   },
+   {
+    "title": "Self-attention step by step",
+    "body": "Attention lets each token decide which other tokens matter for it. Every token's vector is multiplied by three learned weight matrices to produce a query (what am I looking for?), a key (what do I offer?) and a value (what information do I pass on?).\n\nThe score between two tokens is the dot product of one token's query with the other's key. Scores are divided by the square root of the key size, d_k, which keeps them from growing so large that softmax, the function that turns scores into weights summing to 1, becomes all-or-nothing.\n\nIn a decoder model such as GPT or Claude, a causal mask sets scores for future tokens to minus infinity so each token only sees earlier ones. Each token's output is the weighted average of the values. Because every token compares with every other, the work grows with the square of the sequence length.",
+    "example": "In 'The claim was denied because it was late', the token 'it' should attend strongly to 'claim'. With a trained model, the attention weight from 'it' to 'claim' might be 0.6 while most other words get small weights, so the output vector for 'it' carries meaning from 'claim'.",
+    "code": "import numpy as np\n\ndef softmax(x, axis=-1):\n    x = x - x.max(axis=axis, keepdims=True)       # numerical stability\n    e = np.exp(x)\n    return e / e.sum(axis=axis, keepdims=True)\n\nT, d_model, d_k = 4, 8, 8                         # 4 tokens\nrng = np.random.default_rng(0)\nx  = rng.normal(size=(T, d_model))                # token vectors\nWq, Wk, Wv = (rng.normal(size=(d_model, d_k)) for _ in range(3))\n\nQ, K, V = x @ Wq, x @ Wk, x @ Wv\nscores = Q @ K.T / np.sqrt(d_k)                   # (T, T) similarity grid\nmask = np.triu(np.ones((T, T)), k=1) * -1e9       # hide future tokens\nweights = softmax(scores + mask)                  # each row sums to 1\nout = weights @ V                                 # weighted mix of values\n\nprint(np.round(weights, 2))   # upper-right triangle is 0: causal",
+    "lang": "Python"
+   },
+   {
+    "title": "Multiple heads and word order",
+    "body": "One attention pattern cannot capture everything. Multi-head attention runs several attention computations in parallel, each with its own smaller Q, K and V matrices. One head might link pronouns to nouns, another might track which number belongs to which field. Their outputs are joined and passed through one more matrix.\n\nAttention on its own has no idea of word order: shuffling the tokens would give the same scores. Positional encodings fix this. The original transformer added fixed sine and cosine patterns to the embeddings (absolute positions). Relative schemes instead encode the distance between two tokens.\n\nMost current open models use RoPE, rotary position embeddings. RoPE rotates pairs of numbers in each query and key by an angle that depends on position. The dot product between two rotated vectors then depends on how far apart the tokens are, which is exactly the relative information attention needs.",
+    "example": "In 'refund 45 after 30 days' versus 'refund 30 after 45 days', the tokens are the same but the meaning differs. Without positional information, attention would treat both identically. With RoPE, the query from 'after' lines up differently with each number depending on where it sits.",
+    "code": "import numpy as np\n\ndef rope(x: np.ndarray, base: float = 10000.0) -> np.ndarray:\n    # x: (T, d) with d even. Rotate each pair of dims by a position-dependent angle.\n    T, d = x.shape\n    pos = np.arange(T)[:, None]                        # (T, 1)\n    freqs = base ** (-np.arange(0, d, 2) / d)          # (d/2,) slower for later pairs\n    angle = pos * freqs                                # (T, d/2)\n    cos, sin = np.cos(angle), np.sin(angle)\n    x1, x2 = x[:, 0::2], x[:, 1::2]                    # split into pairs\n    out = np.empty_like(x)\n    out[:, 0::2] = x1 * cos - x2 * sin                 # 2D rotation\n    out[:, 1::2] = x1 * sin + x2 * cos\n    return out\n\nq = np.ones((5, 8))\nr = rope(q)\n# Same vector at different positions now differs, but lengths are unchanged\nprint(np.round(np.linalg.norm(r, axis=1), 3))       # all equal",
+    "lang": "Python"
+   },
+   {
+    "title": "Residuals, RMSNorm and feed-forward",
+    "body": "A transformer layer has two sub-blocks: attention, then a feed-forward network (FFN). The FFN is a small two-layer neural network applied to each token independently. It widens the vector (often around 4 times), applies a non-linear function, then shrinks it back. Much of the model's learned knowledge is thought to live in these weights.\n\nEach sub-block is wrapped in a residual connection: its output is added to its input instead of replacing it. This gives information and training signals a direct path through dozens of layers.\n\nBefore each sub-block, a normalization step keeps numbers in a stable range. Many modern models use RMSNorm, which divides a vector by its root mean square and multiplies by learned scales. It is simpler and cheaper than the older LayerNorm, which also subtracts the mean. Models then stack this layer N times, for example 32 or 80.",
+    "example": "Think of residuals as tracked changes in a document. Each layer proposes edits on top of the current text instead of rewriting it from scratch. After 40 layers of edits, the vector for the last token has been refined to predict the next word, while early information is still available.",
+    "code": "import numpy as np\n\ndef rms_norm(x, gain, eps=1e-6):\n    rms = np.sqrt((x ** 2).mean(axis=-1, keepdims=True) + eps)\n    return x / rms * gain                               # scale by learned gain\n\ndef silu(z):\n    return z / (1 + np.exp(-z))\n\ndef ffn(x, W_up, W_gate, W_down):\n    # SwiGLU-style feed-forward used by many recent models\n    return (silu(x @ W_gate) * (x @ W_up)) @ W_down\n\ndef decoder_layer(x, p):\n    x = x + attention(rms_norm(x, p[\"g1\"]), p)          # residual 1\n    x = x + ffn(rms_norm(x, p[\"g2\"]),                   # residual 2\n                p[\"W_up\"], p[\"W_gate\"], p[\"W_down\"])\n    return x\n\n# for layer_params in all_layers:   # N layers, same shape, different weights\n#     x = decoder_layer(x, layer_params)",
+    "lang": "Python"
+   },
+   {
+    "title": "Model families and generation cost",
+    "body": "There are three main families. Encoder-only models such as BERT let every token see every other token in both directions. They are good at understanding tasks: classification and producing embeddings. Decoder-only models such as GPT, Claude and Llama use the causal mask and generate text one token at a time. Encoder-decoder models such as T5 read the input with an encoder and write the output with a decoder, a design that suits translation and summarization.\n\nGenerating has two phases. Prefill processes the whole prompt at once, in parallel. Decode then produces output tokens one by one. Each new token needs the keys and values of all earlier tokens, so servers keep them in a KV cache instead of recomputing them. Long prompts make prefill slower and the KV cache larger, and output length drives decode time.\n\nCost follows the same shape: providers usually charge per input token and a higher price per output token, and many offer discounts for reusing a cached prompt prefix.",
+    "example": "A legal team wants to summarize 200 contracts per day, each 30,000 tokens, into 800-token summaries. That is 6 million input tokens and 160,000 output tokens daily. Because the instructions and examples are the same for every contract, putting them first and enabling prompt caching reduces repeated input cost. Latency per contract is dominated by prefill on the long input plus decoding 800 tokens.",
+    "code": "# Rough daily cost and latency estimator. Prices are placeholders:\n# look up your provider's current per-million-token rates.\nPRICE_IN_PER_M  = 3.00     # $ per 1M input tokens  (placeholder)\nPRICE_OUT_PER_M = 15.00    # $ per 1M output tokens (placeholder)\n\ndocs_per_day   = 200\ninput_tokens   = 30_000     # per contract\noutput_tokens  = 800        # per summary\ndecode_tps     = 60         # output tokens per second (measure yours)\n\ndaily_in  = docs_per_day * input_tokens\ndaily_out = docs_per_day * output_tokens\ncost = daily_in / 1e6 * PRICE_IN_PER_M + daily_out / 1e6 * PRICE_OUT_PER_M\n\nprint(f\"input tokens/day : {daily_in:,}\")\nprint(f\"output tokens/day: {daily_out:,}\")\nprint(f\"est. cost/day    : ${cost:,.2f}\")\nprint(f\"decode time/doc  : ~{output_tokens / decode_tps:.0f}s plus prefill\")",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Token",
+    "A chunk of text, often a word piece, with an integer id in the model's vocabulary."
+   ],
+   [
+    "Byte-Pair Encoding (BPE)",
+    "A tokenizer training method that repeatedly merges the most frequent adjacent symbol pair."
+   ],
+   [
+    "Embedding",
+    "A vector of numbers representing a token or passage so that similar meanings are close together."
+   ],
+   [
+    "Query, key, value",
+    "Three vectors per token used by attention: what it looks for, what it offers, and what it passes on."
+   ],
+   [
+    "Softmax",
+    "A function that turns a list of scores into positive weights that sum to 1."
+   ],
+   [
+    "Causal mask",
+    "A mask that prevents each token from attending to later tokens during generation."
+   ],
+   [
+    "RoPE",
+    "Rotary position embeddings: rotating queries and keys by position so attention reflects relative distance."
+   ],
+   [
+    "Residual connection",
+    "Adding a sub-block's output to its input so information passes through deep networks."
+   ],
+   [
+    "RMSNorm",
+    "A normalization that divides a vector by its root mean square and applies a learned scale."
+   ],
+   [
+    "KV cache",
+    "Stored keys and values of earlier tokens so each new token does not recompute them."
+   ]
+  ],
+  "practice": [
+   "Use a real tokenizer (for example the tiktoken library or a Hugging Face tokenizer) to count tokens for the same 200-word paragraph in English, in another language of your choice, and for a block of JSON. Deliverable: a small table of tokens per word and one paragraph on what it means for cost.",
+   "Extend the numpy attention example to two heads with d_k = 4 each, concatenate their outputs and project with a 8x8 matrix. Deliverable: the code and a printout of both heads' attention weight matrices.",
+   "Stretch: build a tiny decoder-only transformer in PyTorch (one or two layers, RMSNorm, RoPE, causal attention) and train it on a small text file for a few minutes to generate characters. Deliverable: the code, the loss curve and ten generated samples."
+  ]
+ },
+ "context": {
+  "plain": "The context is everything a language model receives on a single call: the instructions, the conversation so far, documents you retrieved, the list of tools it may use and their results, facts about the user, and the output format you want. Context engineering is the practice of deciding what goes into that input, in what order and within what size limit. The context window is the maximum number of tokens the model can take in at once. A model has no memory between calls beyond what you put back into its context, so the quality of its answer depends heavily on the quality of what you assemble.",
+  "analogy": "Think of the model as a very capable temp worker who starts each task with amnesia. Everything they know about your case is in the folder you hand them. A thin folder leads to guesses, and a folder stuffed with 500 irrelevant pages leads to missed details. Context engineering is preparing the right folder every time.",
+  "why": "When a customer's agent gives a wrong answer, their first instinct is to tweak the prompt wording. In production, the cause is more often that the relevant policy was never retrieved, a tool returned 40,000 tokens of noise, or old chat history pushed out the key fact. An FDE who can inspect and fix the assembled context resolves these issues quickly and can explain the fix to the customer.",
+  "subtopics": [
+   {
+    "title": "Vibe coding, prompts and context",
+    "body": "Vibe coding is building by feel: you ask a model for something, look at the result, and keep nudging until it seems right. It is fast for prototypes and fragile for production because nothing is measured.\n\nPrompt engineering focuses on the wording of instructions: role descriptions, examples, step-by-step directions. It still matters, but it only covers one part of the input.\n\nContext engineering treats the whole input as a system you design. It asks where each piece comes from, how much space it gets, how it is ordered, how it is refreshed as a conversation goes on, and how you will debug it. It is closer to software engineering than to copywriting.",
+    "example": "A retailer's returns assistant keeps approving returns outside the 30-day window. The vibe fix is adding 'be careful about dates!' to the prompt. The context fix is noticing the order date was never passed in, adding a get_order tool whose result includes order_date and today's date, and writing an evaluation case for day 31.",
+    "code": "Symptom: assistant approved a return on day 41.\n\nVibe coding        -> \"try again, be stricter\"           (no record, no test)\nPrompt engineering -> add rule: \"Returns allowed within 30 days\"\nContext engineering-> ask: what did the model actually see?\n   [x] instructions contained the 30-day rule\n   [ ] order_date present?            -> NO, missing\n   [ ] today's date present?          -> NO, missing\n   Fix: add get_order tool + inject current date in user state\n   Test: eval case 'order placed 41 days ago' expects refusal",
+    "lang": "Text"
+   },
+   {
+    "title": "The window as RAM and a token budget",
+    "body": "Andrej Karpathy popularized a helpful comparison: the LLM is like a CPU and its context window is like RAM. The model can only work with what is currently loaded. The space is finite, and everything you add competes with everything else.\n\nA bigger window does not remove the problem. Cost and latency grow with input tokens, and research on long contexts has shown that models often use information in the middle of a long input less reliably than information near the start or end.\n\nSo set a budget. Decide roughly how many tokens each component may use, measure actual usage on every call, and trim the biggest offenders first. The Anthropic SDK has a count_tokens method that tells you the size of a request before you send it.",
+    "example": "An insurer's claims agent has a 200,000-token window but averages 140,000 tokens per call because it includes every document attached to a claim. After setting a budget of 40,000 tokens and retrieving only the top relevant sections, cost per call falls to under a third and answer accuracy on their test set goes up.",
+    "code": "from anthropic import Anthropic\n\nclient = Anthropic()\nMODEL = \"MODEL\"   # placeholder model name\n\nsystem = \"You are a claims assistant for Harbor Mutual. Cite sources by id.\"\nmessages = [{\"role\": \"user\", \"content\": \"Why was claim C-55120 denied?\\n\\n\" + retrieved_text}]\n\ncount = client.messages.count_tokens(\n    model=MODEL, system=system, messages=messages, tools=TOOLS,\n)\nprint(\"input tokens:\", count.input_tokens)\n\nBUDGET = 40_000\nif count.input_tokens > BUDGET:\n    # Trim the biggest component first, e.g. keep fewer retrieved chunks\n    retrieved_text = \"\\n\\n\".join(chunks[:3])",
+    "lang": "Python"
+   },
+   {
+    "title": "Assembling the components",
+    "body": "A typical context has six parts. Instructions describe the role, rules and tone. Dialogue history holds earlier turns. Retrieved chunks (RAG) are passages from documents found by search. Tool schemas describe the functions the model may call, and tool outputs are what those calls returned. User state holds facts about who is asking, such as role, region and permissions. Output constraints describe the exact format you will parse.\n\nOrder and labeling help. Put stable instructions first, which also allows prompt caching of that prefix. Wrap retrieved material in clear tags with source ids so the model can cite it and you can trace it. Put the user's actual question near the end.\n\nOnly include what this call needs. If the user is a branch employee, do not load tools meant for administrators, and do not retrieve documents they are not allowed to see.",
+    "example": "For a bank's internal policy assistant, a teller in Ohio asks about wire transfer limits. The context includes the policy instructions, the last 4 turns, 3 retrieved policy sections with ids, one lookup_limit tool, the user state (role teller, state OH) and a rule to answer in under 120 words with citations.",
+    "code": "from anthropic import Anthropic\n\nclient = Anthropic()\nMODEL = \"MODEL\"\n\ntools = [{\n    \"name\": \"lookup_limit\",\n    \"description\": \"Return the wire transfer limit for a role and US state.\",\n    \"input_schema\": {\"type\": \"object\",\n        \"properties\": {\"role\": {\"type\": \"string\"}, \"state\": {\"type\": \"string\"}},\n        \"required\": [\"role\", \"state\"]},\n}]\n\nsystem = (\"You answer questions about Acme Bank internal policy. \"\n          \"Use only the documents provided. Cite ids like [POL-12]. \"\n          \"If the answer is not in the documents, say you don't know. \"\n          \"Answer in under 120 words.\")\n\ndocs = \"\\n\".join(f'<doc id=\"{c.id}\">{c.text}</doc>' for c in top_chunks)\nuser_state = \"<user role='teller' state='OH' />\"\n\nresp = client.messages.create(\n    model=MODEL, max_tokens=500, system=system, tools=tools,\n    messages=history[-8:] + [{\"role\": \"user\",\n        \"content\": f\"{user_state}\\n<documents>\\n{docs}\\n</documents>\\n\\n{question}\"}],\n)",
+    "lang": "Python"
+   },
+   {
+    "title": "Managing history and tool outputs",
+    "body": "Conversations and agent runs grow with every turn. If you append everything forever, the window fills with old chatter and bulky tool results, and the important facts get crowded out.\n\nA common pattern is to keep the most recent turns word for word and replace older ones with a running summary. The summary should keep decisions, facts and open questions, and drop small talk.\n\nTool outputs deserve the same care. An API might return a 30 KB JSON object when the model needs five fields. Trim it before adding it to the context, and keep the full result in your logs in case you need it later.",
+    "example": "A field-service agent for an energy company runs 25 tool calls to diagnose a turbine fault. Raw outputs total 90,000 tokens. By keeping only fields such as sensor_id, reading, unit and timestamp, and summarizing turns older than the last six, each call stays under 20,000 tokens and the agent stops forgetting the fault code it found early on.",
+    "code": "KEEP_FIELDS = {\"sensor_id\", \"reading\", \"unit\", \"timestamp\", \"status\"}\n\ndef trim_tool_output(result: dict) -> dict:\n    # Keep only fields the model needs; full result is logged elsewhere\n    return {k: v for k, v in result.items() if k in KEEP_FIELDS}\n\ndef compact_history(history: list[dict], keep_last: int = 6) -> list[dict]:\n    if len(history) <= keep_last:\n        return history\n    old, recent = history[:-keep_last], history[-keep_last:]\n    summary = summarize(old)   # an LLM call: keep facts, decisions, open questions\n    # Keep the summary as the first user turn so roles still alternate\n    return [{\"role\": \"user\", \"content\": f\"<summary_of_earlier_turns>\\n{summary}\\n</summary_of_earlier_turns>\"},\n            {\"role\": \"assistant\", \"content\": \"Understood.\"}] + recent",
+    "lang": "Python"
+   },
+   {
+    "title": "Context as a compiler",
+    "body": "A useful mental model is to treat the assembled context as source code and the model as a compiler. The same compiler produces a working or broken program depending on the source you feed it. Likewise, the same model produces a correct or wrong answer depending on the context.\n\nThis framing pushes you toward engineering habits. Build the context with code in one function, not by string concatenation scattered across the app. Version it. Log the exact context and the output for every call, with a request id, so you can reproduce any answer later.\n\nOnce contexts are logged, you can diff them. When an answer changes between Tuesday and Wednesday, compare the two contexts line by line. Usually the difference explains the behavior.",
+    "example": "A hospital's discharge assistant suddenly starts omitting medication changes. Diffing the logged contexts shows a retrieval configuration change on Tuesday reduced chunks from 5 to 2, which dropped the pharmacy notes. Reverting it fixes the issue without touching the prompt.",
+    "code": "import hashlib, json, time, uuid\n\ndef build_context(question, user, history, chunks, tools) -> dict:\n    # Single place where context is assembled: easy to version and test\n    return {\n        \"version\": \"ctx-v7\",\n        \"system\": SYSTEM_PROMPT,\n        \"tools\": [t[\"name\"] for t in tools],\n        \"user_state\": {\"role\": user.role, \"region\": user.region},\n        \"chunks\": [{\"id\": c.id, \"score\": round(c.score, 3)} for c in chunks],\n        \"messages\": history + [{\"role\": \"user\", \"content\": question}],\n    }\n\ndef log_call(ctx: dict, output: str) -> str:\n    rid = str(uuid.uuid4())\n    record = {\"request_id\": rid, \"ts\": time.time(), \"context\": ctx, \"output\": output,\n              \"ctx_hash\": hashlib.sha256(json.dumps(ctx, sort_keys=True).encode()).hexdigest()}\n    with open(\"context_log.jsonl\", \"a\") as f:\n        f.write(json.dumps(record) + \"\\n\")\n    return rid",
+    "lang": "Python"
+   },
+   {
+    "title": "Debugging hallucinations like runtime errors",
+    "body": "A hallucination is an answer that sounds confident but is not supported by facts. In production, it helps to treat one like a runtime error with a cause you can find.\n\nWork through a fixed checklist. First, was the needed fact in the context at all? If not, fix retrieval or tool access. Second, was it there but buried among many irrelevant chunks? Rerank and trim. Third, was it there but contradicted by stale content? Remove or date-filter the old source. Fourth, did the instructions allow the model to say 'I don't know'? If not, add that.\n\nFinally, turn every fixed bug into an evaluation case: a saved question with the expected answer or behavior, run automatically before each release. Over time this set becomes the customer's proof that the system is improving.",
+    "example": "Harbor Mutual's agent tells a policyholder that flood damage is covered. Checking the log shows the flood exclusion clause was chunk 9 of 10 retrieved and a 2019 marketing page saying 'we cover you in every storm' was chunk 1. You exclude marketing pages from the index, add a reranker, and add the case to the evaluation set with the expected answer 'not covered, see clause 4.2'.",
+    "code": "def diagnose(record: dict, must_contain: str) -> str:\n    ctx_text = json.dumps(record[\"context\"]).lower()\n    if must_contain.lower() not in ctx_text:\n        return \"MISSING: fact not in context -> fix retrieval or tools\"\n    chunk_ids = [c[\"id\"] for c in record[\"context\"][\"chunks\"]]\n    if len(chunk_ids) > 6:\n        return \"BURIED: fact present among many chunks -> rerank and trim\"\n    return \"PRESENT: check for conflicting sources and 'I don't know' rule\"\n\n# Regression evals built from real failures\nEVALS = [\n    {\"q\": \"Is flood damage covered under policy HM-Home-2?\", \"expect\": \"not covered\"},\n    {\"q\": \"Can I return an item after 41 days?\",               \"expect\": \"no\"},\n]\n\ndef run_evals(answer_fn):\n    fails = [e for e in EVALS if e[\"expect\"] not in answer_fn(e[\"q\"]).lower()]\n    print(f\"{len(EVALS) - len(fails)}/{len(EVALS)} passed\")\n    return fails",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Context window",
+    "The maximum number of tokens a model can read in one call, including instructions and history."
+   ],
+   [
+    "Context engineering",
+    "Designing and assembling everything the model sees on each call, within a token budget."
+   ],
+   [
+    "Prompt engineering",
+    "Crafting the wording of instructions and examples given to a model."
+   ],
+   [
+    "RAG",
+    "Retrieval-augmented generation: searching documents and adding the best passages to the context."
+   ],
+   [
+    "Tool schema",
+    "A structured description of a function the model may call, including its name and parameters."
+   ],
+   [
+    "Token budget",
+    "A planned limit on how many tokens each part of the context may use."
+   ],
+   [
+    "Prompt caching",
+    "Reusing the processed form of an unchanged prompt prefix to cut cost and latency."
+   ],
+   [
+    "Hallucination",
+    "A fluent, confident answer that is not supported by the provided facts or reality."
+   ],
+   [
+    "Evaluation set",
+    "A saved collection of test questions and expected behaviors run before each release."
+   ]
+  ],
+  "practice": [
+   "Take any chatbot prompt you have written and break its full input into the six components (instructions, history, retrieved docs, tools, user state, output format). Deliverable: a context budget table with token counts for each, measured with a tokenizer or count_tokens.",
+   "Build a small Q&A script over 20 documents of your choice that logs the full assembled context and output to a JSONL file for every call. Deliverable: the script and one logged record with a wrong answer, annotated with the cause you found.",
+   "Stretch: create 15 evaluation questions for your Q&A script, then improve context assembly (reranking, trimming, 'I don't know' rule) without changing the model. Deliverable: before and after pass rates and a short note on which change helped most."
+  ]
+ },
+ "ace": {
+  "plain": "Agentic Context Engineering (ACE) is a method, described by researchers from Stanford and collaborators in 2025, for letting an AI agent improve over time by updating its context instead of retraining the model. The context is kept as a playbook: a growing list of short, specific lessons, each with an id and counters for how often it helped or hurt. Three roles cooperate: a Generator does the task, a Reflector studies what happened and extracts lessons, and a Curator merges those lessons into the playbook as small edits called delta updates. Because edits are small and itemized, useful details are kept instead of being summarized away.",
+  "analogy": "Think of a hospital ward's shared handbook. A nurse does the shift (Generator), a senior nurse reviews incidents afterward (Reflector), and the ward manager adds or amends individual numbered entries in the handbook (Curator). Nobody rewrites the whole handbook from memory each week, which is how hard-won details would get lost.",
+  "why": "Customers want their agents to get better from real use without a fine-tuning project each month. An FDE deploying a support or data agent can log its runs, turn failures into playbook entries, and show measurable improvement in weeks. Understanding ACE also helps you avoid a common mistake: having a model rewrite its own long system prompt every iteration until it becomes vague and loses the details that made it work.",
+  "subtopics": [
+   {
+    "title": "Two failure modes: brevity bias and collapse",
+    "body": "Many automatic prompt-improvement methods ask a model to rewrite the prompt to be better. Two problems show up.\n\nBrevity bias is the tendency of these optimizers to produce short, generic instructions. 'Be careful with dates' is short and sounds wise, but it drops the specific fact that one vendor sends dates as day/month. Domain detail is exactly what agents need, and it is the first thing a summary removes.\n\nContext collapse happens when a model rewrites the entire accumulated context at each step. Each rewrite loses a bit, and over many rounds the context can shrink sharply and performance drops. The ACE authors describe this effect and design around it.",
+    "example": "A finance team's agent learns over two weeks that invoice API pages use cursors, that vendor Alpha sends DD/MM dates, and that refunds need a manager id. A monolithic rewrite on day 15 condenses 2,400 words of learned notes into 150 words of general advice. The next day, three previously fixed bugs return.",
+    "code": "Day 14 context (itemized, detailed)          Day 15 after full rewrite\n-------------------------------------        ---------------------------\n- Invoice API: use cursor, not offset         - Handle APIs carefully.\n- Vendor Alpha dates are DD/MM                - Validate dates.\n- Vendor Beta dates are MM/DD                 - Follow approval rules.\n- Refunds > $500 need manager_id\n- On HTTP 429, honor Retry-After header\n- Currency field is minor units (cents)\n  ... 40 more specific lessons ...\n\nResult: brevity bias + context collapse -> old bugs return.\nACE's answer: never rewrite the whole thing; apply small itemized edits.",
+    "lang": "Text"
+   },
+   {
+    "title": "The playbook as structured data",
+    "body": "In ACE the context is a list of bullets, each a self-contained lesson. Each bullet has an id, a section (such as strategies, common errors or tool tips), the text, and counters for how many times it was marked helpful or harmful.\n\nStoring the playbook as data, instead of one big block of text, makes it easy to add, update, remove or rank individual items. You can render it into the prompt for the Generator, and you can edit it with ordinary code.\n\nCounters give you a feedback signal. A bullet that keeps being marked harmful should be revised or removed. A bullet that is often helpful can be placed earlier.",
+    "example": "For Northwind's data agent the playbook has 38 bullets. Bullet err-004 says 'Vendor feed dates are DD/MM; parse explicitly' with helpful=3 and harmful=1, because it broke once on a US vendor. That signal prompts the Curator to split it into two vendor-specific bullets.",
+    "code": "from dataclasses import dataclass, field\n\n@dataclass\nclass Bullet:\n    id: str                  # e.g. \"err-004\"\n    section: str             # \"strategies\" | \"errors\" | \"tools\"\n    text: str\n    helpful: int = 0\n    harmful: int = 0\n\n@dataclass\nclass Playbook:\n    bullets: dict[str, Bullet] = field(default_factory=dict)\n\n    def render(self) -> str:\n        # Turn the data into prompt text for the Generator\n        lines = [\"## PLAYBOOK\"]\n        for b in sorted(self.bullets.values(), key=lambda b: (b.section, b.id)):\n            lines.append(f\"[{b.id}] helpful={b.helpful} harmful={b.harmful}\\n  {b.text}\")\n        return \"\\n\".join(lines)\n\npb = Playbook()\npb.bullets[\"err-004\"] = Bullet(\"err-004\", \"errors\",\n    \"Vendor feed dates are DD/MM; parse explicitly.\", helpful=3, harmful=1)\nprint(pb.render())",
+    "lang": "Python"
+   },
+   {
+    "title": "The Generator and its trajectory",
+    "body": "The Generator is the agent that does the actual work. It receives the task and the rendered playbook as part of its context, then reasons, calls tools and produces an answer.\n\nEverything it does is recorded as a trajectory: the sequence of reasoning steps, tool calls, tool results and the final outcome. The trajectory also records which playbook bullets the Generator said it used.\n\nFeedback can come from ground-truth labels, but ACE is designed to also work with execution feedback: whether code ran, whether an API call succeeded, whether tests passed. This matters in customer settings, where labeled answers are often scarce but logs of success and failure are plentiful.",
+    "example": "Task: 'Total unpaid invoices for vendor Beta in March'. The Generator uses bullet str-012 to page with a cursor, but parses Beta's dates as DD/MM because of bullet err-004. The SQL returns 0 rows for March, and a sanity check comparing to the vendor's statement fails. That failed trajectory is exactly what the Reflector needs.",
+    "code": "from anthropic import Anthropic\nclient = Anthropic()\nMODEL = \"MODEL\"\n\ndef generate(task: str, playbook: Playbook, tools: list) -> dict:\n    system = (\"You are a finance data agent. Use the playbook below. \"\n              \"At the end, list the bullet ids you relied on as USED: [ids].\\n\\n\"\n              + playbook.render())\n    messages = [{\"role\": \"user\", \"content\": task}]\n    trajectory = []\n    while True:\n        resp = client.messages.create(model=MODEL, max_tokens=2000,\n                                      system=system, tools=tools, messages=messages)\n        trajectory.append(resp.model_dump())             # record every step\n        if resp.stop_reason != \"tool_use\":\n            break\n        messages.append({\"role\": \"assistant\", \"content\": resp.content})\n        results = [run_tool(b) for b in resp.content if b.type == \"tool_use\"]\n        messages.append({\"role\": \"user\", \"content\": results})  # tool_result blocks\n        trajectory.append({\"tool_results\": results})\n    return {\"task\": task, \"trajectory\": trajectory, \"final\": resp.content}",
+    "lang": "Python"
+   },
+   {
+    "title": "The Reflector extracts lessons",
+    "body": "The Reflector is a separate model call whose only job is analysis. It reads the trajectory and the feedback and answers: what went wrong, what was the root cause, what should be done differently, and which existing bullets helped or hurt.\n\nKeeping reflection separate from generation helps. The Generator is focused on finishing the task. A separate reviewer with a clear brief tends to produce more specific, honest diagnoses. The ACE work also allows the Reflector to refine its lessons over more than one pass.\n\nAsk for structured output, such as JSON, so the next stage can process it with code. Push for concrete, reusable lessons that name the vendor, the field and the fix.",
+    "example": "Given the failed Beta invoice run, the Reflector returns: root cause 'Beta uses MM/DD dates, err-004 assumes DD/MM for all vendors'; new lesson 'Vendor Beta dates are MM/DD; check vendor before parsing'; tags err-004 as harmful and str-012 as helpful.",
+    "code": "import json\n\nREFLECT_PROMPT = \"\"\"You review an agent's run. Return JSON only:\n{\"root_cause\": str,\n \"lessons\": [{\"section\": \"strategies|errors|tools\", \"text\": str}],\n \"bullet_tags\": [{\"id\": str, \"tag\": \"helpful|harmful|neutral\"}]}\nLessons must be specific and reusable: name systems, fields and fixes.\"\"\"\n\ndef reflect(run: dict, feedback: str) -> dict:\n    resp = client.messages.create(\n        model=MODEL, max_tokens=1500, system=REFLECT_PROMPT,\n        messages=[{\"role\": \"user\", \"content\":\n            f\"TASK: {run['task']}\\nFEEDBACK: {feedback}\\n\"\n            f\"TRAJECTORY:\\n{json.dumps(run['trajectory'])[:50000]}\"}],\n    )\n    return json.loads(resp.content[0].text)   # validate in production",
+    "lang": "Python"
+   },
+   {
+    "title": "The Curator applies delta updates",
+    "body": "The Curator turns the Reflector's output into small edits to the playbook. A delta is a list of operations: add a new bullet, update counters on an existing bullet, or occasionally revise or remove one. Nothing else in the playbook changes.\n\nDeltas can be applied with ordinary code, so they are cheap, predictable and easy to audit. You can also batch deltas from many runs and merge them together.\n\nThe playbook would grow forever without care, so ACE uses a grow-and-refine approach: new bullets are added, and periodically near-duplicates are merged (for example by comparing embeddings) and consistently harmful bullets are pruned. For a customer deployment, also gate new bullets behind your evaluation set before they go live.",
+    "example": "From the Beta failure, the Curator emits two operations: add err-009 'Vendor Beta dates are MM/DD; check vendor before parsing' and increment harmful on err-004. The next Beta task succeeds. After 200 runs, a refine pass merges three near-identical retry bullets into one and removes a bullet with harmful=6, helpful=0.",
+    "code": "def apply_delta(pb: Playbook, delta: dict, next_id) -> None:\n    for tag in delta.get(\"bullet_tags\", []):              # update counters\n        b = pb.bullets.get(tag[\"id\"])\n        if b and tag[\"tag\"] == \"helpful\":\n            b.helpful += 1\n        elif b and tag[\"tag\"] == \"harmful\":\n            b.harmful += 1\n    for lesson in delta.get(\"lessons\", []):               # add new bullets\n        if not is_duplicate(pb, lesson[\"text\"]):          # e.g. embedding similarity > 0.9\n            bid = next_id(lesson[\"section\"])\n            pb.bullets[bid] = Bullet(bid, lesson[\"section\"], lesson[\"text\"])\n\ndef refine(pb: Playbook) -> None:\n    # Periodic cleanup: prune bullets that hurt more than they help\n    for bid in list(pb.bullets):\n        b = pb.bullets[bid]\n        if b.harmful >= 3 and b.harmful > 2 * b.helpful:\n            del pb.bullets[bid]\n\n# loop: run = generate(...); delta = reflect(run, fb); apply_delta(pb, delta, ids)",
+    "lang": "Python"
+   },
+   {
+    "title": "Measuring context management",
+    "body": "How do you know an agent manages its context well? You need tasks where the answer must be found across several places, and you check whether the agent finds and combines the right pieces.\n\nLetta, the company behind the open-source agent framework of the same name, published Context-Bench for this purpose. It evaluates how well models perform agentic context engineering: finding information spread across files by chaining tool calls such as grep_files (search file contents) and open_files (read a file). Tasks are multi-hop, meaning one lookup reveals what to search for next.\n\nFor your own customer work you can build a small benchmark in the same spirit: a folder of realistic documents, a set of multi-hop questions with known answers, simple file tools, and a script that scores answers and records how many tool calls and tokens each run used.",
+    "example": "For a manufacturer you create 60 documents: supplier contracts, part catalogs and incident reports. A question such as 'Which supplier made the valve that failed in incident IR-221, and what is their warranty period?' needs three hops: the incident report gives a part number, the catalog maps it to a supplier, and the contract gives the warranty. You score accuracy and average tokens per question before and after adding ACE.",
+    "code": "import pathlib, re\n\nROOT = pathlib.Path(\"corpus\")\n\ndef grep_files(pattern: str, max_hits: int = 20) -> list[dict]:\n    # Search all files for a regex and return matching lines with locations\n    hits, rx = [], re.compile(pattern, re.IGNORECASE)\n    for p in sorted(ROOT.rglob(\"*.txt\")):\n        for n, line in enumerate(p.read_text(errors=\"ignore\").splitlines(), 1):\n            if rx.search(line):\n                hits.append({\"file\": str(p.relative_to(ROOT)), \"line\": n, \"text\": line[:200]})\n                if len(hits) >= max_hits:\n                    return hits\n    return hits\n\ndef open_files(paths: list[str], max_chars: int = 4000) -> dict:\n    # Read a few files, truncated so outputs do not flood the context\n    return {p: (ROOT / p).read_text(errors=\"ignore\")[:max_chars] for p in paths[:3]}\n\nTOOLS = [\n  {\"name\": \"grep_files\", \"description\": \"Regex search across the corpus.\",\n   \"input_schema\": {\"type\": \"object\", \"properties\": {\"pattern\": {\"type\": \"string\"}},\n                    \"required\": [\"pattern\"]}},\n  {\"name\": \"open_files\", \"description\": \"Read up to 3 files by path.\",\n   \"input_schema\": {\"type\": \"object\", \"properties\": {\"paths\": {\"type\": \"array\",\n                    \"items\": {\"type\": \"string\"}}}, \"required\": [\"paths\"]}},\n]",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "ACE",
+    "Agentic Context Engineering: improving an agent by evolving an itemized context playbook through generate, reflect and curate steps."
+   ],
+   [
+    "Playbook",
+    "A structured list of specific lessons (bullets) that is rendered into the agent's context."
+   ],
+   [
+    "Generator",
+    "The ACE role that performs the task using the current playbook and records its trajectory."
+   ],
+   [
+    "Reflector",
+    "The ACE role that analyzes a trajectory and feedback to extract concrete lessons."
+   ],
+   [
+    "Curator",
+    "The ACE role that turns lessons into small itemized edits to the playbook."
+   ],
+   [
+    "Delta update",
+    "A small edit, such as adding one bullet or bumping a counter, applied instead of a full rewrite."
+   ],
+   [
+    "Brevity bias",
+    "The tendency of prompt optimizers to compress instructions into short, generic advice that loses detail."
+   ],
+   [
+    "Context collapse",
+    "The loss of detail and quality when a model repeatedly rewrites an entire context."
+   ],
+   [
+    "Trajectory",
+    "The full record of an agent run: steps, tool calls, results and outcome."
+   ],
+   [
+    "Multi-hop retrieval",
+    "Answering a question that needs several lookups, where each result guides the next search."
+   ]
+  ],
+  "practice": [
+   "Write a playbook of 10 bullets for an agent you know (for example a SQL helper), with ids, sections and helpful/harmful counters, stored as JSON. Deliverable: the JSON file and a render function that prints it as prompt text.",
+   "Implement the Reflector and Curator for that agent: feed it three failed runs (real or hand-written), collect the JSON reflections and apply them as deltas. Deliverable: the playbook before and after, plus a diff showing only the changed bullets.",
+   "Stretch: build a mini Context-Bench style evaluation with 30 text files, 10 multi-hop questions, and grep_files and open_files tools. Run the agent with an empty playbook, then again after 20 ACE iterations. Deliverable: accuracy, average tool calls and average tokens for both runs, and a short note on any bullet that hurt."
+  ]
+ }
+}

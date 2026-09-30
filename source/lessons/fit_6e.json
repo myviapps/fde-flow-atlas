@@ -1,0 +1,30 @@
+{
+ "cxagents": {
+  "best": [
+   "interactive",
+   "flowchart"
+  ],
+  "why": "Running scripted customer messages through an agent shows handoffs and resolution; the chart shows where rules and tools sit."
+ },
+ "expansion": {
+  "best": [
+   "reading",
+   "document"
+  ],
+  "why": "Renewal and expansion are judgement and relationship skills; the success plan template turns them into a habit."
+ },
+ "psa": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Changing rate, hours, overrun and pricing model shows margin move; the reading explains PSA tools and playbooks."
+ },
+ "lowcode": {
+  "best": [
+   "flowchart",
+   "reading"
+  ],
+  "why": "One chart shows how platform choice, custom connectors and governance fit together; the reading covers each platform, DLP rules and handover in depth."
+ }
+}

@@ -1,0 +1,695 @@
+{
+ "trees": {
+  "plain": "A decision tree is a model that predicts by asking a chain of yes or no questions about the data, such as 'Is the debt ratio above 0.5?' and then 'Is income below 30,000?'. Each question splits the rows into two groups, and each final group (a leaf) gives a prediction: a class for classification or an average number for regression. The tree learns which questions to ask by trying many candidate splits and keeping the one that makes the groups most 'pure', meaning most rows in a group share the same answer. A random forest trains hundreds of slightly different trees and lets them vote, which is far more accurate and stable than one tree.",
+  "analogy": "A decision tree is like the game Twenty Questions: each good question cuts the possibilities down fast. A random forest is like asking two hundred friends to play the game separately, each seeing a slightly different set of clues, and going with the majority answer.",
+  "why": "Trees are the workhorse for tabular business data such as loan defaults, churn and claims triage, and a single shallow tree is one of the few models a risk officer can read line by line. An FDE at a lender, for example, may need a readable tree for the credit committee and a random forest or boosted model for the actual scores, and must explain why the feature importance chart should not be trusted blindly.",
+  "subtopics": [
+   {
+    "title": "How a tree makes its splits",
+    "body": "A tree starts with all training rows in one box, called the root. It looks at every feature and many possible thresholds, for example 'debt_ratio <= 0.35', 'debt_ratio <= 0.50', 'income <= 30'. For each candidate it splits the rows into a left group and a right group and scores how mixed the two groups are. It keeps the best split, then repeats the same search inside each group. This is called greedy, recursive splitting: each step picks the best split right now, without planning ahead.\n\nThe process stops when a group is pure, when it is too small to split, or when a limit you set (such as maximum depth) is reached. A final group is a leaf. To predict for a new row, you drop it in at the root and follow the answers until it reaches a leaf. The leaf's majority class (or average value for regression) is the prediction.\n\nTrees need no feature scaling, because a threshold on income works the same whether income is in dollars or thousands. They handle mixed feature types and non-linear patterns naturally. The price is that a single tree is unstable: change a few training rows and the top split can change, reshaping the whole tree.",
+    "example": "A small lender, Harrowgate Credit, wants to flag risky loan applications. The code below trains a depth-2 tree on 400 synthetic applicants. The tree's first question is debt ratio at 0.50, the second is income. An applicant with income 42,000 and debt ratio 0.62 falls into the right branch and is predicted to default (class 1). Notice the tree split the right branch on income but both sides still say class 1: the split made the groups purer, even though the final label did not change. That is normal and is one reason to read trees with care.",
+    "code": "import numpy as np\nfrom sklearn.tree import DecisionTreeClassifier, export_text\n\nrng = np.random.default_rng(0)\nn = 400\nincome = rng.normal(50, 15, n).round(1)          # yearly income, thousands\ndebt_ratio = rng.uniform(0, 0.8, n).round(2)     # debt payments / income\n# the \"true\" rule plus 10 percent noise: high debt or low income tends to default\ndefault = ((debt_ratio > 0.5) | (income < 30)).astype(int)\nflip = rng.random(n) < 0.10\ndefault[flip] = 1 - default[flip]\n\nX = np.column_stack([income, debt_ratio])\ntree = DecisionTreeClassifier(max_depth=2, random_state=0).fit(X, default)\nprint(export_text(tree, feature_names=[\"income\", \"debt_ratio\"]))\nprint(tree.predict([[42.0, 0.62]]))   # one new applicant\n\n# Output:\n# |--- debt_ratio <= 0.50\n# |   |--- income <= 30.05\n# |   |   |--- class: 1\n# |   |--- income >  30.05\n# |   |   |--- class: 0\n# |--- debt_ratio >  0.50\n# |   |--- income <= 40.60\n# |   |   |--- class: 1\n# |   |--- income >  40.60\n# |   |   |--- class: 1\n#\n# [1]",
+    "lang": "Python"
+   },
+   {
+    "title": "Gini and entropy: scoring a split",
+    "body": "To pick a split, the tree needs a number for how mixed a group is. Two common choices are Gini impurity and entropy.\n\nGini impurity is 1 minus the sum of squared class shares: Gini = 1 - sum(p_i^2). A group that is all one class has Gini 0. A 50/50 group of two classes has Gini 1 - (0.25 + 0.25) = 0.5. You can read it as the chance that two rows picked at random from the group have different labels.\n\nEntropy comes from information theory: Entropy = -sum(p_i * log2(p_i)). It is 0 for a pure group and 1 for a 50/50 split of two classes. The drop in entropy from parent to children is called information gain.\n\nFor a split, the tree averages the children's impurity weighted by how many rows each child has, then picks the split with the lowest weighted impurity (the biggest drop). In practice Gini and entropy almost always choose similar splits. scikit-learn uses Gini by default because it is slightly faster to compute. For regression trees the idea is the same, but impurity is the variance (mean squared error) of the target inside each group.",
+    "example": "A telecom, Brightwater Mobile, has 10 customers: 5 churned, 5 stayed, so the parent Gini is 0.5. Splitting on contract type gives month-to-month (4 churned, 1 stayed) and yearly (1 churned, 4 stayed). Each child has Gini 1 - (0.8^2 + 0.2^2) = 0.32, so the weighted Gini is 0.32. The split lowers impurity from 0.5 to 0.32. In entropy terms it drops from 1.0 to 0.722, an information gain of 0.278.",
+    "code": "import numpy as np\n\ndef gini(labels):\n    _, counts = np.unique(labels, return_counts=True)\n    p = counts / counts.sum()\n    return 1 - np.sum(p ** 2)\n\ndef entropy(labels):\n    _, counts = np.unique(labels, return_counts=True)\n    p = counts / counts.sum()\n    return -np.sum(p * np.log2(p))\n\nparent = np.array([1] * 5 + [0] * 5)            # 5 churned, 5 stayed\nleft   = np.array([1, 1, 1, 1, 0])              # month-to-month contracts\nright  = np.array([1, 0, 0, 0, 0])              # yearly contracts\n\ndef weighted(f, l, r):\n    n = len(l) + len(r)\n    return len(l) / n * f(l) + len(r) / n * f(r)\n\nprint(\"gini parent\", round(gini(parent), 3), \"after split\", round(weighted(gini, left, right), 3))\nprint(\"entropy parent\", round(entropy(parent), 3), \"after split\", round(weighted(entropy, left, right), 3))\nprint(\"information gain\", round(entropy(parent) - weighted(entropy, left, right), 3))\n\n# Output:\n# gini parent 0.5 after split 0.32\n# entropy parent 1.0 after split 0.722\n# information gain 0.278",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Group (churn / stay)",
+      "Gini",
+      "Entropy"
+     ],
+     "rows": [
+      [
+       "10 / 0 (pure)",
+       "0.00",
+       "0.00"
+      ],
+      [
+       "8 / 2",
+       "0.32",
+       "0.72"
+      ],
+      [
+       "6 / 4",
+       "0.48",
+       "0.97"
+      ],
+      [
+       "5 / 5 (worst)",
+       "0.50",
+       "1.00"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Depth and overfitting",
+    "body": "Depth is the number of questions from the root to the deepest leaf. A depth-1 tree (a 'stump') asks one question. A tree with no depth limit keeps splitting until every leaf is pure, which on noisy data means it memorises individual rows, including the noise.\n\nThis is overfitting: training accuracy climbs to 100 percent while accuracy on new data stops improving or falls. The model has learned rules like 'customers with income exactly 41.3 and debt ratio 0.47 default', which are accidents of this sample. The lesson on mlbasics introduced overfitting in general; trees show it very clearly because depth is a single dial you can turn.\n\nThe fix is to hold data back. Train on one part, measure on another, and pick the depth where the test (or cross-validation) score is best. Watch the gap between training and test scores: a large gap means the tree is too complex for the amount of data you have.",
+    "example": "On a noisy two-moon dataset of 600 points, a depth-2 tree scores 0.87 on training data and 0.85 on test data. Letting the tree grow fully gives 69 leaves, perfect training accuracy (1.00) and a lower test score (0.82). The extra 65 leaves only learned noise. For the lender in the first example, that would mean confident but wrong rules that a credit committee might even try to act on.",
+    "code": "from sklearn.datasets import make_moons\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.tree import DecisionTreeClassifier\n\nX, y = make_moons(n_samples=600, noise=0.35, random_state=1)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, random_state=1)\n\nfor depth in [1, 2, 4, 6, 10, None]:        # None = grow until every leaf is pure\n    t = DecisionTreeClassifier(max_depth=depth, random_state=1).fit(X_tr, y_tr)\n    print(f\"depth={str(depth):>4}  leaves={t.get_n_leaves():>3}  \"\n          f\"train={t.score(X_tr, y_tr):.2f}  test={t.score(X_te, y_te):.2f}\")\n\n# Output:\n# depth=   1  leaves=  2  train=0.78  test=0.78\n# depth=   2  leaves=  4  train=0.87  test=0.85\n# depth=   4  leaves= 12  train=0.88  test=0.84\n# depth=   6  leaves= 23  train=0.91  test=0.83\n# depth=  10  leaves= 56  train=0.98  test=0.83\n# depth=None  leaves= 69  train=1.00  test=0.82",
+    "lang": "Python"
+   },
+   {
+    "title": "Pruning: keeping trees small on purpose",
+    "body": "Pruning means limiting a tree so it keeps only the splits that genuinely help. There are two styles.\n\nPre-pruning stops growth early using rules: max_depth, min_samples_leaf (every leaf must hold at least this many rows), min_samples_split, or max_leaf_nodes. These are simple and fast. min_samples_leaf is often the most useful because it stops the tree from creating leaves for two or three odd rows.\n\nPost-pruning grows the full tree and then cuts branches back. scikit-learn implements cost complexity pruning: each branch's improvement is weighed against a penalty alpha per leaf. A bigger ccp_alpha cuts more branches. The method cost_complexity_pruning_path lists every alpha where a branch would be removed, and you choose among them with cross-validation.\n\nIn both cases you are trading a little training accuracy for a model that generalises and is easier to read. A 15-leaf tree fits on one slide; a 70-leaf tree does not.",
+    "example": "On the same moon data, a grid search over ccp_alpha and min_samples_leaf with 5-fold cross-validation picks alpha 0.0032 and at least 5 rows per leaf. The result has 15 leaves instead of 69 and scores 0.83 on the test set, slightly better than the unpruned tree and far easier to explain.",
+    "code": "from sklearn.datasets import make_moons\nfrom sklearn.model_selection import train_test_split, GridSearchCV\nfrom sklearn.tree import DecisionTreeClassifier\n\nX, y = make_moons(n_samples=600, noise=0.35, random_state=1)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, random_state=1)\n\n# Post-pruning: list the alphas at which branches would be cut away\npath = DecisionTreeClassifier(random_state=1).cost_complexity_pruning_path(X_tr, y_tr)\nalphas = path.ccp_alphas[::5]               # every 5th candidate keeps the search small\n\nsearch = GridSearchCV(\n    DecisionTreeClassifier(random_state=1),\n    {\"ccp_alpha\": alphas, \"min_samples_leaf\": [1, 5, 20]},   # post- and pre-pruning knobs\n    cv=5,\n)\nsearch.fit(X_tr, y_tr)\nbest = search.best_estimator_\np = search.best_params_\nprint(\"best ccp_alpha:\", round(float(p[\"ccp_alpha\"]), 4), \" min_samples_leaf:\", p[\"min_samples_leaf\"])\nprint(\"leaves:\", best.get_n_leaves(), \" test accuracy:\", round(best.score(X_te, y_te), 2))\n\n# Output:\n# best ccp_alpha: 0.0032  min_samples_leaf: 5\n# leaves: 15  test accuracy: 0.83",
+    "lang": "Python",
+    "checklist": [
+     "Start with max_depth between 3 and 6 for a readable tree",
+     "Set min_samples_leaf so each leaf has enough rows to mean something (often 1 to 5 percent of the data)",
+     "Tune ccp_alpha or depth with cross-validation, never on the test set",
+     "Compare training and validation scores after pruning; the gap should shrink",
+     "Print the final tree with export_text and check every rule makes business sense"
+    ]
+   },
+   {
+    "title": "Bagging and random forests",
+    "body": "A single tree has high variance: small changes in data give a very different tree. Averaging many trees cancels much of that noise.\n\nBagging (bootstrap aggregating) trains each tree on a bootstrap sample: a random sample of the training rows, drawn with replacement, the same size as the original. Each tree sees a slightly different dataset, so each makes different mistakes. For prediction, classification trees vote and regression trees are averaged.\n\nA random forest adds one more twist: at every split, each tree may only consider a random subset of the features (max_features, by default the square root of the feature count for classification). This stops every tree from starting with the same dominant feature, so the trees are less alike and their average is better.\n\nForests are hard to overfit by adding trees; more trees only cost time. The rows a tree did not see (about 37 percent) are 'out of bag' and give a free validation score. The flow below shows how a forest is built and used.",
+    "example": "On the noisy moon data, one deep tree scores 0.82 on test. Bagging 200 trees raises that to 0.84, and a random forest of 200 trees with min_samples_leaf=3 reaches 0.85. Its out-of-bag estimate, computed without touching the test set, is also 0.85, so you can trust it as a quick check.",
+    "code": "from sklearn.datasets import make_moons\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.tree import DecisionTreeClassifier\nfrom sklearn.ensemble import BaggingClassifier, RandomForestClassifier\n\nX, y = make_moons(n_samples=600, noise=0.35, random_state=1)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, random_state=1)\n\nmodels = {\n    \"one deep tree\": DecisionTreeClassifier(random_state=1),\n    \"bagging, 200 trees\": BaggingClassifier(DecisionTreeClassifier(), n_estimators=200, random_state=1),\n    \"random forest, 200\": RandomForestClassifier(n_estimators=200, min_samples_leaf=3,\n                                                 oob_score=True, random_state=1),\n}\nfor name, m in models.items():\n    m.fit(X_tr, y_tr)\n    print(f\"{name:<20} test={m.score(X_te, y_te):.2f}\")\nprint(\"forest out-of-bag estimate:\", round(models[\"random forest, 200\"].oob_score_, 2))\n\n# Output:\n# one deep tree        test=0.82\n# bagging, 200 trees   test=0.84\n# random forest, 200   test=0.85\n# forest out-of-bag estimate: 0.85",
+    "lang": "Python",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "data",
+       90,
+       70,
+       "Training rows",
+       "1,000 rows"
+      ],
+      [
+       "boot",
+       265,
+       70,
+       "Bootstrap",
+       "sample with replace"
+      ],
+      [
+       "tree",
+       440,
+       70,
+       "Grow one tree",
+       "random features"
+      ],
+      [
+       "repeat",
+       615,
+       70,
+       "Repeat",
+       "200 times"
+      ],
+      [
+       "forest",
+       615,
+       220,
+       "Forest",
+       "200 different trees"
+      ],
+      [
+       "newrow",
+       440,
+       220,
+       "New row",
+       "to predict"
+      ],
+      [
+       "vote",
+       265,
+       220,
+       "Vote or average",
+       "one answer"
+      ],
+      [
+       "oob",
+       90,
+       220,
+       "Out-of-bag score",
+       "free validation",
+       1
+      ]
+     ],
+     "edges": [
+      [
+       "data",
+       "boot"
+      ],
+      [
+       "boot",
+       "tree"
+      ],
+      [
+       "tree",
+       "repeat"
+      ],
+      [
+       "repeat",
+       "forest"
+      ],
+      [
+       "forest",
+       "newrow"
+      ],
+      [
+       "newrow",
+       "vote"
+      ],
+      [
+       "vote",
+       "oob"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Feature importance, its traps, and when to use trees",
+    "body": "Tree models report feature_importances_, the total impurity drop each feature produced across all splits. It is fast but has known traps. It favours features with many unique values, such as IDs, timestamps or free-text codes, because they offer many thresholds to split on. It is measured on training data, so it rewards features the model used to memorise noise. And when two features are correlated, importance gets shared between them, so each looks weaker than it is.\n\nPermutation importance is a safer check. On held-out data, shuffle one column and measure how much the score drops. If shuffling a feature hurts nothing, the model does not really rely on it. Neither method tells you cause and effect: importance says what the model uses, not what drives the business outcome.\n\nWhen to use trees: a single shallow tree when people must read and audit the rules; a random forest as a strong, low-effort baseline on tabular data with little tuning; gradient boosting (see the boosting topic) when you need the best accuracy. Trees are a poor fit for images, audio and raw text, and they cannot extrapolate: a tree never predicts a value outside the range it saw in training.",
+    "example": "A churn forest at a broadband provider is trained on tenure, support tickets and a meaningless customer_id. Impurity importance ranks customer_id second at 0.26, above tickets at 0.13, because an ID has thousands of split points. Permutation importance on the test set tells the truth: tenure 0.146, tickets 0.023, customer_id slightly negative. Dropping the ID column is the right call, and the slide for the client should use permutation importance.",
+    "code": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.inspection import permutation_importance\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(3)\nn = 2000\ntenure = rng.integers(1, 60, n)                  # months as a customer: truly matters\ntickets = rng.poisson(2, n)                      # support tickets: matters a little\ncustomer_id = rng.permutation(n)                 # unique id: pure noise\nchurn = ((tenure < 12) & (rng.random(n) < 0.7) | (tickets > 4) & (rng.random(n) < 0.5)).astype(int)\n\nX = np.column_stack([tenure, tickets, customer_id])\nnames = [\"tenure\", \"tickets\", \"customer_id\"]\nX_tr, X_te, y_tr, y_te = train_test_split(X, churn, random_state=3)\nrf = RandomForestClassifier(n_estimators=200, random_state=3).fit(X_tr, y_tr)\n\nperm = permutation_importance(rf, X_te, y_te, n_repeats=10, random_state=3)\nfor name, imp, p in zip(names, rf.feature_importances_, perm.importances_mean):\n    print(f\"{name:<12} impurity={imp:.2f}  permutation={p:.3f}\")\n\n# Output:\n# tenure       impurity=0.61  permutation=0.146\n# tickets      impurity=0.13  permutation=0.023\n# customer_id  impurity=0.26  permutation=-0.009",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Situation",
+      "Good choice",
+      "Why"
+     ],
+     "rows": [
+      [
+       "Rules must be read by auditors",
+       "One tree, depth 3 to 5",
+       "Every prediction is a short path"
+      ],
+      [
+       "Quick strong baseline",
+       "Random forest",
+       "Few settings, hard to overfit"
+      ],
+      [
+       "Best accuracy on tables",
+       "Gradient boosting",
+       "Usually wins after tuning"
+      ],
+      [
+       "Images, audio, long text",
+       "Neural networks",
+       "Trees cannot learn raw pixels well"
+      ],
+      [
+       "Must predict beyond seen range",
+       "Linear models",
+       "Trees cannot extrapolate"
+      ]
+     ]
+    }
+   }
+  ],
+  "glossary": [
+   [
+    "Decision tree",
+    "A model that predicts by following a path of yes or no questions about the features to a leaf."
+   ],
+   [
+    "Leaf",
+    "A final group of a tree whose majority class or average value is the prediction."
+   ],
+   [
+    "Gini impurity",
+    "A score from 0 (pure) to at most 1 of how mixed the classes are in a group; 0.5 for a 50/50 two-class group."
+   ],
+   [
+    "Entropy",
+    "An information-theory measure of how mixed a group is; the drop after a split is called information gain."
+   ],
+   [
+    "Pruning",
+    "Limiting or cutting back a tree so it keeps only splits that help on new data."
+   ],
+   [
+    "Bootstrap sample",
+    "A random sample of rows drawn with replacement, the same size as the original data."
+   ],
+   [
+    "Bagging",
+    "Training many models on bootstrap samples and averaging or voting their predictions."
+   ],
+   [
+    "Random forest",
+    "Bagged trees that also pick from a random subset of features at each split."
+   ],
+   [
+    "Out-of-bag score",
+    "Accuracy measured on the rows each tree did not see during training, a free validation estimate."
+   ],
+   [
+    "Permutation importance",
+    "How much a model's held-out score drops when one feature's values are shuffled."
+   ]
+  ],
+  "practice": [
+   "Load sklearn's breast cancer dataset, train trees with max_depth 1 to 10 and plot training and test accuracy against depth. Write two sentences on where overfitting starts.",
+   "Train a random forest on the same data, compare impurity and permutation importance for the top 5 features, then add a random integer column and show which method is fooled.",
+   "Stretch: for a made-up clinic no-show dataset, build a depth-3 tree for the front-desk team and a random forest for scoring. Write a one-page note explaining when each should be used and what the forest's accuracy gain costs in explainability."
+  ]
+ },
+ "boosting": {
+  "plain": "Gradient boosting builds a model as a sum of many small decision trees, trained one after another. The first prediction is a simple guess such as the average. Each new tree is trained on the errors that remain, called residuals, and its output is added in with a small weight called the learning rate. After hundreds of rounds the sum of all these small corrections is a very accurate model. XGBoost, LightGBM, CatBoost and scikit-learn's HistGradientBoosting are popular, fast implementations of the same idea.",
+  "analogy": "It is like a team of editors improving a report. The first writes a rough draft. Each next editor reads only the remaining mistakes and fixes a few of them, lightly, so no single editor can wreck the text. After many passes the report is very good.",
+  "why": "For structured business tables such as orders, claims, transactions or sensor readings, gradient boosting is usually the most accurate off-the-shelf model, and many enterprise requests for 'AI' (churn, fraud, late deliveries, demand) are best answered with it rather than with an LLM. An FDE must be able to train one quickly, stop it before it overfits, and explain its predictions to operations staff.",
+  "subtopics": [
+   {
+    "title": "Boosting intuition: fit the residuals",
+    "body": "Start with the simplest prediction: the mean of the target for every row. Compute the residual for each row, which is actual minus predicted. The residuals show what the model still gets wrong.\n\nNow train a small tree (a few levels deep) to predict those residuals from the features. Add that tree's output to the running prediction, multiplied by a learning rate such as 0.1 or 0.3. Recompute residuals and repeat. Each round nudges the model toward the rows it gets most wrong.\n\nWhy 'gradient'? For squared error, the residual is exactly the negative gradient of the loss with respect to the prediction. For other losses such as log loss for classification, the library fits trees to the gradient of that loss instead, so the same recipe works for yes or no targets, counts and rankings.\n\nThis differs from a random forest. A forest trains deep, independent trees in parallel and averages them to reduce variance. Boosting trains shallow trees in sequence, each depending on the previous ones, to reduce bias step by step.",
+    "example": "A courier, Linthwaite Couriers, wants to predict delivery minutes from distance. The code below implements boosting by hand with depth-2 trees and learning rate 0.3. The training error falls from 6.74 after one round to 0.39 after 10 rounds and 0.16 after 30. The last number is below the noise level in the data (0.25), a sign that later rounds are starting to fit noise, which is why real projects watch a validation set.",
+    "code": "import numpy as np\nfrom sklearn.tree import DecisionTreeRegressor\n\nrng = np.random.default_rng(0)\nX = rng.uniform(0, 10, (300, 1))                       # e.g. distance in km\ny = 3 * np.sin(X[:, 0]) + X[:, 0] + rng.normal(0, 0.5, 300)   # e.g. delivery minutes\n\npred = np.full(300, y.mean())                          # round 0: predict the average\nlr = 0.3\nfor round_ in range(1, 31):\n    residual = y - pred                                # what we still get wrong\n    stump = DecisionTreeRegressor(max_depth=2).fit(X, residual)\n    pred += lr * stump.predict(X)                      # take a small step toward the fix\n    if round_ in (1, 2, 5, 10, 30):\n        print(f\"round {round_:>2}: mean squared error = {np.mean((y - pred) ** 2):.2f}\")\n\n# Output:\n# round  1: mean squared error = 6.74\n# round  2: mean squared error = 3.87\n# round  5: mean squared error = 1.11\n# round 10: mean squared error = 0.39\n# round 30: mean squared error = 0.16",
+    "lang": "Python"
+   },
+   {
+    "title": "Learning rate and number of trees",
+    "body": "Two settings interact more than any others. The learning rate (also called shrinkage or eta) scales each new tree's contribution. The number of trees (n_estimators in XGBoost and LightGBM, max_iter in HistGradientBoosting) sets how many rounds run.\n\nA high learning rate such as 1.0 takes big steps. It learns fast but overshoots and locks in noise early. A low rate such as 0.03 takes small careful steps and usually generalises better, but needs many more trees, so training is slower. A common rule is: halve the learning rate, roughly double the trees.\n\nPractical defaults: learning rate 0.05 to 0.1, and let early stopping (next subtopic) choose the number of trees. Only lower the learning rate further when you have time to spare and want the last bit of accuracy.",
+    "example": "On a synthetic regression task with 3,000 rows, learning rate 1.0 plateaus at R2 0.80 however many trees you add. Rate 0.1 reaches 0.937 with 200 trees. Rate 0.03 is poor with 50 trees (0.793) because it has barely started, and it catches up to 0.937 by 800 trees.",
+    "code": "from sklearn.datasets import make_friedman1\nfrom sklearn.ensemble import HistGradientBoostingRegressor\nfrom sklearn.model_selection import train_test_split\n\nX, y = make_friedman1(n_samples=3000, noise=1.0, random_state=0)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=0)\n\nfor lr in [1.0, 0.1, 0.03]:\n    for n in [50, 200, 800]:\n        m = HistGradientBoostingRegressor(learning_rate=lr, max_iter=n,\n                                          early_stopping=False, random_state=0)\n        m.fit(X_tr, y_tr)\n        print(f\"lr={lr:<5} trees={n:<4} test R2={m.score(X_te, y_te):.3f}\")\n\n# Output:\n# lr=1.0   trees=50   test R2=0.800\n# lr=1.0   trees=200  test R2=0.798\n# lr=1.0   trees=800  test R2=0.798\n# lr=0.1   trees=50   test R2=0.930\n# lr=0.1   trees=200  test R2=0.937\n# lr=0.1   trees=800  test R2=0.937\n# lr=0.03  trees=50   test R2=0.793\n# lr=0.03  trees=200  test R2=0.933\n# lr=0.03  trees=800  test R2=0.937",
+    "lang": "Python"
+   },
+   {
+    "title": "Early stopping",
+    "body": "Guessing the right number of trees is hard, so let the data decide. Early stopping holds back a validation set, measures the loss on it after each round, and stops when it has not improved for a set number of rounds (the patience). The model keeps the trees up to the best round.\n\nIn scikit-learn's HistGradientBoosting set early_stopping=True, validation_fraction and n_iter_no_change; recent versions also accept your own validation rows through fit(X, y, X_val=..., y_val=...). In XGBoost pass early_stopping_rounds and an eval_set; in LightGBM use the early_stopping callback. After fitting, check how many trees were really built (n_iter_, best_iteration, best_iteration_).\n\nTwo cautions. First, the validation set used for stopping has influenced the model, so still keep a separate test set for your final number. Second, for time-ordered data the validation rows should be the most recent ones, not a random sample, otherwise the model peeks at the future (see the timeseries topic).",
+    "example": "With a ceiling of 2,000 trees, learning rate 0.1 and patience 20, the model stops after 160 trees and scores R2 0.936 on the untouched test set, matching the best hand-picked setting from the previous grid at a fraction of the search effort.",
+    "code": "from sklearn.datasets import make_friedman1\nfrom sklearn.ensemble import HistGradientBoostingRegressor\nfrom sklearn.model_selection import train_test_split\n\nX, y = make_friedman1(n_samples=3000, noise=1.0, random_state=0)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=0)\n\nm = HistGradientBoostingRegressor(\n    learning_rate=0.1,\n    max_iter=2000,             # a generous ceiling, not a target\n    early_stopping=True,\n    validation_fraction=0.15,  # 15 percent of training rows held back to watch\n    n_iter_no_change=20,       # stop after 20 rounds with no improvement\n    random_state=0,\n).fit(X_tr, y_tr)\n\nprint(\"trees actually built:\", m.n_iter_)\nprint(\"test R2:\", round(m.score(X_te, y_te), 3))\n\n# Output:\n# trees actually built: 160\n# test R2: 0.936",
+    "lang": "Python"
+   },
+   {
+    "title": "Key hyperparameters across libraries",
+    "body": "Beyond learning rate and tree count, a handful of settings do most of the work. They control how complex each tree is, how much randomness is injected, and how strongly large leaf values are penalised.\n\nTree size: max_depth or max_leaf_nodes (num_leaves in LightGBM). Boosting wants small trees, typically 15 to 63 leaves or depth 3 to 8. Minimum data in a leaf (min_samples_leaf, min_child_weight, min_data_in_leaf) stops tiny leaves that memorise rows. Row and column subsampling (subsample, colsample_bytree) train each tree on a random fraction of rows or features, which adds diversity like a forest and often helps. L2 regularisation (l2_regularization, reg_lambda) shrinks leaf values.\n\nTune in this order: fix learning rate at 0.1 with early stopping, tune tree size and minimum leaf size, then subsampling, then regularisation, then lower the learning rate at the end. Use cross-validation or a fixed validation set, and tools such as RandomizedSearchCV or Optuna when the search grows. The optional code shows XGBoost and LightGBM with the same ideas; it only runs if those libraries are installed.",
+    "example": "An insurer's claims-cost model at Oakhollow Mutual improved from R2 0.61 to 0.64 mostly by lowering max_leaf_nodes from 63 to 31 and raising min_samples_leaf from 20 to 100; the extra regularisation removed leaves that had fitted a handful of large one-off claims. Further tuning of subsampling added less than 0.005.",
+    "code": "# Optional: the same idea in XGBoost and LightGBM, if they are installed.\n# pip install xgboost lightgbm\nfrom sklearn.datasets import make_friedman1\nfrom sklearn.model_selection import train_test_split\n\nX, y = make_friedman1(n_samples=3000, noise=1.0, random_state=0)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=0)\nX_fit, X_val, y_fit, y_val = train_test_split(X_tr, y_tr, test_size=0.15, random_state=0)\n\ntry:\n    import xgboost as xgb\n    m = xgb.XGBRegressor(n_estimators=2000, learning_rate=0.1, max_depth=4,\n                         subsample=0.8, colsample_bytree=0.8,\n                         early_stopping_rounds=20)\n    m.fit(X_fit, y_fit, eval_set=[(X_val, y_val)], verbose=False)\n    print(\"xgboost  best round:\", m.best_iteration, \" test R2:\", round(m.score(X_te, y_te), 3))\nexcept ImportError:\n    print(\"xgboost not installed\")\n\ntry:\n    import lightgbm as lgb\n    m = lgb.LGBMRegressor(n_estimators=2000, learning_rate=0.1, num_leaves=15,\n                          subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1)\n    m.fit(X_fit, y_fit, eval_set=[(X_val, y_val)],\n          callbacks=[lgb.early_stopping(20, verbose=False)])\n    print(\"lightgbm best round:\", m.best_iteration_, \" test R2:\", round(m.score(X_te, y_te), 3))\nexcept ImportError:\n    print(\"lightgbm not installed\")\n\n# Output (with xgboost 3.2 and lightgbm 4.7 installed):\n# xgboost  best round: 265  test R2: 0.941\n# lightgbm best round: 180  test R2: 0.942",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Idea",
+      "HistGradientBoosting",
+      "XGBoost",
+      "LightGBM"
+     ],
+     "rows": [
+      [
+       "Rounds",
+       "max_iter",
+       "n_estimators",
+       "n_estimators"
+      ],
+      [
+       "Step size",
+       "learning_rate",
+       "learning_rate (eta)",
+       "learning_rate"
+      ],
+      [
+       "Tree size",
+       "max_leaf_nodes, max_depth",
+       "max_depth",
+       "num_leaves"
+      ],
+      [
+       "Min leaf size",
+       "min_samples_leaf",
+       "min_child_weight",
+       "min_child_samples"
+      ],
+      [
+       "Row sampling",
+       "not available",
+       "subsample",
+       "subsample + subsample_freq"
+      ],
+      [
+       "Column sampling",
+       "max_features",
+       "colsample_bytree",
+       "colsample_bytree"
+      ],
+      [
+       "L2 penalty",
+       "l2_regularization",
+       "reg_lambda",
+       "reg_lambda"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Categorical features and why boosting wins on tables",
+    "body": "Business data is full of categories: carrier, region, product line, branch. Linear models need these one-hot encoded (one 0/1 column per value), which explodes the column count for features with many values. Modern boosting libraries can split on categories directly. HistGradientBoosting accepts a categorical_features argument (or reads pandas category dtype with 'from_dtype'), LightGBM has categorical_feature, XGBoost has enable_categorical=True, and CatBoost was built around categories. Internally they group category values into two sides of a split by how they relate to the target.\n\nWhy does boosting usually beat other models on tabular data? Trees handle mixed types, missing values (HistGradientBoosting, XGBoost and LightGBM learn which way to send missing values), skewed numbers and interactions without manual feature work. Boosting reduces bias round by round, while shrinkage, small trees and early stopping control variance. Histogram binning (bucketing each feature into up to 256 bins) makes training fast on millions of rows. Neural networks can match it on some tables, but usually with much more tuning effort.\n\nIt is not magic. Boosting still needs good features (see featureeng), no leakage, and a validation split that matches how the model will be used.",
+    "example": "A parcel shipper wants to flag late deliveries from carrier, one of 30 regions, distance and weight. Marking carrier and region as pandas categories lets HistGradientBoosting use them without any encoding. On 5,000 synthetic shipments the model scores accuracy 0.75 against 0.64 for always guessing 'on time', with a ROC AUC of 0.824.",
+    "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.ensemble import HistGradientBoostingClassifier\nfrom sklearn.metrics import roc_auc_score\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(7)\nn = 5000\ndf = pd.DataFrame({\n    \"carrier\": rng.choice([\"Quickvane\", \"Parcelo\", \"Kestrelpost\", \"Budgetship\"], n),\n    \"region\": rng.choice([f\"R{i}\" for i in range(30)], n),   # 30 regions\n    \"distance_km\": rng.uniform(5, 900, n).round(),\n    \"weight_kg\": rng.exponential(4, n).round(1),\n})\nrisk = (df.carrier.eq(\"Budgetship\") * 2.5 + df.region.isin([\"R3\", \"R17\"]) * 3.0\n        + df.distance_km / 200 - 4.0)\ndf[\"late\"] = (rng.random(n) < 1 / (1 + np.exp(-risk))).astype(int)\n\nX = df.drop(columns=\"late\").astype({\"carrier\": \"category\", \"region\": \"category\"})\nX_tr, X_te, y_tr, y_te = train_test_split(X, df.late, random_state=7)\n\nmodel = HistGradientBoostingClassifier(categorical_features=\"from_dtype\", random_state=7)\nmodel.fit(X_tr, y_tr)                      # no one-hot encoding needed\nprint(\"test accuracy:\", round(model.score(X_te, y_te), 3))\nprint(\"share late in test:\", round(y_te.mean(), 3))   # always guessing \"on time\" scores 1 minus this\nprint(\"ROC AUC:\", round(roc_auc_score(y_te, model.predict_proba(X_te)[:, 1]), 3))\n\n# Output:\n# test accuracy: 0.75\n# share late in test: 0.36\n# ROC AUC: 0.824",
+    "lang": "Python"
+   },
+   {
+    "title": "Explaining predictions with SHAP",
+    "body": "Operations staff will ask 'why is this shipment flagged?'. Global importance charts answer 'what matters overall', but not 'why this row'. SHAP (SHapley Additive exPlanations) answers the per-row question.\n\nThe idea comes from game theory. Treat the features as players who cooperate to produce the prediction. SHAP gives each feature a contribution such that the base value (the model's average prediction over the background data) plus all contributions equals this row's prediction exactly. A positive value pushed the prediction up, a negative one pushed it down.\n\nFor tree models SHAP has a fast exact method called TreeExplainer. Common views are a waterfall plot for one prediction and a beeswarm or bar plot of mean absolute SHAP values for the whole dataset.\n\nLimits to state clearly: SHAP explains the model, not the real world, so a large value is not proof of cause. Correlated features can split credit in surprising ways. And explanations of a poor model are explanations of poor reasoning. The shap library is optional; install it with pip install shap.",
+    "example": "For one row, the model predicts 16.44. The average prediction (base value) is 14.0. Feature 1 adds 2.1, feature 0 adds 1.51, feature 2 subtracts 1.1, and the rest add small amounts. Adding them all to 14.0 gives exactly 16.44. In a dispatcher's screen this becomes: 'Flagged mainly because: Budgetship carrier (+), region R17 (+), long distance (+).'",
+    "code": "# pip install shap   (optional library)\nimport shap\nfrom sklearn.datasets import make_friedman1\nfrom sklearn.ensemble import HistGradientBoostingRegressor\n\nX, y = make_friedman1(n_samples=1000, noise=1.0, random_state=0)\nmodel = HistGradientBoostingRegressor(random_state=0).fit(X, y)\n\nexplainer = shap.TreeExplainer(model)               # fast, exact method for tree models\nsv = explainer(X[:5])                                # explain the first 5 predictions\n\nrow = 0\nprint(\"model prediction:\", round(model.predict(X[:1])[0], 2))\nprint(\"base value      :\", round(sv.base_values[row], 2))\nprint(\"contributions   :\", sv.values[row].round(2))\nprint(\"base + sum      :\", round(sv.base_values[row] + sv.values[row].sum(), 2))\n\n# Output (requires pip install shap):\n# model prediction: 16.44\n# base value      : 14.0\n# contributions   : [ 1.51  2.1  -1.1   0.27 -0.24  0.08 -0.04 -0.08 -0.05 -0.01]\n# base + sum      : 16.44",
+    "lang": "Python",
+    "checklist": [
+     "Show per-row reasons in words staff use, not raw feature names",
+     "Pair SHAP with a global view so people see the usual drivers",
+     "Say plainly that contributions describe the model, not causes",
+     "Check a few explanations with a domain expert before release",
+     "Recompute explanations after every retrain; they change with the model"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Boosting",
+    "Training models in sequence, each one focusing on the errors of those before it, and adding them up."
+   ],
+   [
+    "Residual",
+    "The actual value minus the current prediction; what the model still gets wrong."
+   ],
+   [
+    "Learning rate",
+    "A multiplier (often 0.05 to 0.1) that shrinks each new tree's contribution so learning is gradual."
+   ],
+   [
+    "Early stopping",
+    "Stopping training when the validation score has not improved for a set number of rounds."
+   ],
+   [
+    "Histogram binning",
+    "Bucketing each numeric feature into a fixed number of bins so splits are found quickly."
+   ],
+   [
+    "num_leaves",
+    "LightGBM's main setting for how many leaves each tree may have, controlling tree complexity."
+   ],
+   [
+    "Subsampling",
+    "Training each tree on a random fraction of rows or columns to add diversity and reduce overfitting."
+   ],
+   [
+    "SHAP value",
+    "One feature's contribution to one prediction, so that base value plus all contributions equals the prediction."
+   ],
+   [
+    "Base value",
+    "The model's average prediction over reference data, the starting point for SHAP contributions."
+   ]
+  ],
+  "practice": [
+   "Train HistGradientBoostingClassifier on sklearn's breast cancer data with early stopping on, report n_iter_ and test accuracy, and compare with a random forest.",
+   "Recreate the learning rate grid on make_friedman1 and draw a small chart of test R2 against number of trees for rates 0.3, 0.1 and 0.03. Write one paragraph on the trade-off.",
+   "Stretch: build a late-delivery model on a synthetic table with at least two categorical columns, tune tree size and minimum leaf size with RandomizedSearchCV, and produce SHAP explanations for the three highest-risk rows written as plain sentences for a dispatcher."
+  ]
+ },
+ "knnsvm": {
+  "plain": "These are three classic classification models that are still useful. k-nearest neighbours (kNN) predicts a new row by finding the k most similar rows in the training data and letting them vote. A support vector machine (SVM) draws the boundary between classes that leaves the widest possible gap, called the margin, and can bend that boundary using a kernel. Naive Bayes uses probability: it multiplies how likely each word or feature is under each class and picks the most likely class, which makes it a fast, strong baseline for text.",
+  "analogy": "kNN is asking your nearest neighbours which school they chose. An SVM is a road planner drawing the widest possible road between two towns so no house is too close to it. Naive Bayes is a sorter in a post room who knows that letters mentioning 'invoice' and 'refund' usually go to accounts.",
+  "why": "FDEs meet these models as quick baselines, as parts of existing customer systems, and in interviews. A support team might need a ticket router today, before an LLM project is approved; Naive Bayes on word counts can be trained in seconds. Knowing when kNN needs scaling or when an SVM will not scale to a million rows saves days of confusion.",
+  "subtopics": [
+   {
+    "title": "kNN: distance and neighbours",
+    "body": "kNN does no real training. It stores the training rows. To predict, it measures the distance from the new row to every stored row, takes the k closest, and returns the majority class (classification) or the average value (regression).\n\nThe usual distance is Euclidean: square the difference in each feature, add them up, take the square root. Manhattan distance adds the absolute differences instead. For text embeddings, cosine similarity (the angle between vectors) is common; the embeddings topic covers it.\n\nk controls smoothness. k=1 copies the single nearest row, so one mislabelled row changes predictions around it. A larger k averages over more neighbours and gives smoother, more stable boundaries, but too large a k blurs real differences. Choose k with cross-validation, and use an odd k for two classes to avoid ties. Neighbours can also be weighted by distance (weights='distance') so closer rows count more.\n\nBecause prediction compares against every stored row, kNN gets slow on large data and struggles when there are many features, since in high dimensions all points look roughly equally far apart.",
+    "example": "A garden centre chain, Mossgrove, wants to guess whether a customer will buy an annual membership from monthly visits and average basket in dollars. A new customer has 7 visits and a 50 dollar basket. Their nearest known customer is 5.4 away, and with k=3 the neighbours vote 2 to 1 for 'buys'. Notice the distances are driven almost entirely by basket size, because dollars span a much wider range than visits. That is the problem the next subtopic fixes.",
+    "code": "import numpy as np\n\n# known customers: [monthly visits, average basket in dollars], label 1 = bought the upgrade\nX = np.array([[2, 20], [3, 25], [8, 60], [9, 55], [7, 70], [1, 15], [8, 40]])\ny = np.array([0, 0, 1, 1, 1, 0, 0])\nnew = np.array([7, 50])\n\ndist = np.sqrt(((X - new) ** 2).sum(axis=1))    # Euclidean distance to every known customer\norder = np.argsort(dist)                         # nearest first\nfor k in (1, 3, 5):\n    votes = y[order[:k]]\n    print(f\"k={k}: neighbours {order[:k].tolist()}, votes {votes.tolist()}, \"\n          f\"predict {int(votes.mean() > 0.5)}\")\nprint(\"distances:\", dist.round(1).tolist())\n\n# Output:\n# k=1: neighbours [3], votes [1], predict 1\n# k=3: neighbours [3, 2, 6], votes [1, 1, 0], predict 1\n# k=5: neighbours [3, 2, 6, 4, 1], votes [1, 1, 0, 1, 0], predict 1\n# distances: [30.4, 25.3, 10.0, 5.4, 20.0, 35.5, 10.0]",
+    "lang": "Python"
+   },
+   {
+    "title": "Choosing k, and why scaling is required",
+    "body": "Distance adds up differences across features. If one feature is measured in thousands and another in fractions, the big one decides everything and the small one is ignored, no matter how useful it is. Scaling puts features on comparable ranges. StandardScaler subtracts the mean and divides by the standard deviation; MinMaxScaler maps each feature to 0 to 1.\n\nAlways put the scaler inside a Pipeline together with the model. The pipeline learns the mean and standard deviation from the training folds only, so no information leaks from the test data, and the exact same scaling is applied at prediction time.\n\nThe same rule applies to SVMs and to k-means clustering, which also depend on distances. Tree models do not need scaling.",
+    "example": "The wine dataset has 13 chemical measurements. Proline goes up to 1,680 while hue stays below 1.71. Without scaling, kNN is right about 70 percent of the time for any k, because proline swamps the rest. With StandardScaler in a pipeline, accuracy jumps to 0.95 or 0.96. Changing k mattered far less than scaling.",
+    "code": "from sklearn.datasets import load_wine\nfrom sklearn.model_selection import cross_val_score\nfrom sklearn.neighbors import KNeighborsClassifier\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\n\nX, y = load_wine(return_X_y=True)     # 13 features on very different scales\nprint(\"feature ranges: proline up to\", X[:, 12].max(), \" hue up to\", X[:, 10].max())\n\nfor k in (1, 5, 15, 45):\n    raw = cross_val_score(KNeighborsClassifier(n_neighbors=k), X, y, cv=5).mean()\n    scaled = cross_val_score(make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=k)),\n                             X, y, cv=5).mean()\n    print(f\"k={k:<3} raw accuracy={raw:.2f}   scaled accuracy={scaled:.2f}\")\n\n# Output:\n# feature ranges: proline up to 1680.0  hue up to 1.71\n# k=1   raw accuracy=0.73   scaled accuracy=0.95\n# k=5   raw accuracy=0.69   scaled accuracy=0.95\n# k=15  raw accuracy=0.71   scaled accuracy=0.96\n# k=45  raw accuracy=0.70   scaled accuracy=0.96",
+    "lang": "Python"
+   },
+   {
+    "title": "SVM: the widest margin and the C setting",
+    "body": "A linear SVM looks for a straight line (or flat plane in more dimensions) that separates the classes. Many lines might separate them; the SVM picks the one with the widest margin, meaning the biggest distance to the nearest points of each class. Those nearest points are the support vectors. Only they define the boundary; moving any other point does not change it.\n\nReal data overlaps, so SVMs use a soft margin: some points may sit inside the margin or on the wrong side, at a cost. C sets that cost. A small C tolerates many violations and gives a wide, calm margin with many support vectors. A large C punishes violations and gives a narrow margin that bends to fit individual points, which can overfit.\n\nSVMs output a class and a distance from the boundary, not a probability. SVC(probability=True) adds a calibrated probability at extra training cost. Standard kernel SVMs train in time that grows faster than the number of rows, so they suit thousands to tens of thousands of rows. For very large or text data, LinearSVC or SGDClassifier are much faster.",
+    "example": "On 400 points in two overlapping groups, C=0.01 uses 198 support vectors, C=1 uses 65 and C=100 uses 58. Test accuracy barely changes (0.94 to 0.96) here, which is common: C mainly changes how confident and how brittle the boundary is. Pick C by cross-validation on a log scale such as 0.01, 0.1, 1, 10, 100.",
+    "code": "from sklearn.datasets import make_blobs\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.svm import SVC\n\nX, y = make_blobs(n_samples=400, centers=2, cluster_std=1.2, random_state=4)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=4)\n\nfor C in (0.01, 1, 100):\n    model = make_pipeline(StandardScaler(), SVC(kernel=\"linear\", C=C)).fit(X_tr, y_tr)\n    svc = model[-1]\n    print(f\"C={C:<5} support vectors={svc.n_support_.sum():>3}  \"\n          f\"train={model.score(X_tr, y_tr):.2f}  test={model.score(X_te, y_te):.2f}\")\n\n# Output:\n# C=0.01  support vectors=198  train=0.92  test=0.94\n# C=1     support vectors= 65  train=0.92  test=0.96\n# C=100   support vectors= 58  train=0.92  test=0.96",
+    "lang": "Python"
+   },
+   {
+    "title": "Kernels: curved boundaries",
+    "body": "Some classes cannot be split by a straight line. Picture one ring of points inside another. A kernel lets the SVM act as if the data had been mapped into a richer space where a flat boundary works, without computing that space directly. This is called the kernel trick.\n\nThe polynomial kernel adds products of features (for degree 2: x squared, y squared, x times y). The RBF (radial basis function) kernel measures similarity that fades with distance and can draw almost any smooth shape. It is the usual default.\n\nThe RBF kernel has a second setting, gamma, which sets how far one point's influence reaches. Small gamma gives smooth, broad boundaries. Large gamma gives each point a tiny zone of influence, producing wiggly boundaries that overfit. Tune C and gamma together with a grid search, on scaled data.",
+    "example": "On two rings of points, a linear SVM is no better than guessing (test 0.43). A degree-2 polynomial kernel and an RBF kernel with the default gamma both score 1.00. Setting gamma to 100 keeps training at 1.00 but drops test to 0.95: the boundary has started hugging individual points.",
+    "code": "from sklearn.datasets import make_circles\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.svm import SVC\n\nX, y = make_circles(n_samples=500, noise=0.1, factor=0.4, random_state=0)  # one ring inside another\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=0)\n\nfor kernel, params in [(\"linear\", {}), (\"poly\", {\"degree\": 2}), (\"rbf\", {\"gamma\": \"scale\"}),\n                       (\"rbf\", {\"gamma\": 100})]:\n    m = make_pipeline(StandardScaler(), SVC(kernel=kernel, C=1, **params)).fit(X_tr, y_tr)\n    print(f\"{kernel:<6} {str(params):<18} train={m.score(X_tr, y_tr):.2f} test={m.score(X_te, y_te):.2f}\")\n\n# Output:\n# linear {}                 train=0.52 test=0.43\n# poly   {'degree': 2}      train=1.00 test=1.00\n# rbf    {'gamma': 'scale'} train=1.00 test=1.00\n# rbf    {'gamma': 100}     train=1.00 test=0.95",
+    "lang": "Python"
+   },
+   {
+    "title": "Naive Bayes for text with word counts",
+    "body": "Naive Bayes applies Bayes' rule: the chance of a class given the words is proportional to the prior chance of the class times the chance of seeing those words in that class. The naive part is assuming each word appears independently of the others given the class. That is clearly false for language, yet the ranking of classes is often still right.\n\nFor text, first turn each document into word counts with CountVectorizer. MultinomialNB then learns, for each class, how often each word appears. To classify, it adds up the log probabilities of the words in the new text for each class and picks the highest. Smoothing (alpha, usually 1) adds a small count to every word so an unseen word does not make a probability zero.\n\nIt trains in one pass, works with a few hundred labelled examples, and is easy to inspect: you can list the words most tied to each class. Its probabilities tend to be too extreme, so use them for ranking rather than as exact odds. For higher accuracy on text, compare against logistic regression or LinearSVC on TF-IDF features, and against embeddings or an LLM when there is little labelled data.",
+    "example": "A software company's help desk has tickets labelled billing or technical. After training on 8 examples, 'where is my refund' comes out 93 percent billing. 'I was charged but the app shows an error' mixes both vocabularies and lands 78 percent technical, which is exactly the kind of ticket a human should double-check.",
+    "code": "from sklearn.feature_extraction.text import CountVectorizer\nfrom sklearn.naive_bayes import MultinomialNB\n\ntickets = [\n    \"my invoice shows the wrong amount\", \"charged twice on my card\",\n    \"refund has not arrived\", \"billing address is wrong on the invoice\",\n    \"app crashes when I log in\", \"password reset email never arrives\",\n    \"cannot log in after the update\", \"the page shows an error when saving\",\n]\nlabels = [\"billing\"] * 4 + [\"technical\"] * 4\n\nvec = CountVectorizer()                      # turns each text into word counts\nX = vec.fit_transform(tickets)\nnb = MultinomialNB(alpha=1.0).fit(X, labels)  # alpha=1 is add-one smoothing\n\nnew = [\"I was charged but the app shows an error\", \"where is my refund\"]\nprobs = nb.predict_proba(vec.transform(new))\nfor text, p in zip(new, probs):\n    print(f\"{text!r}: billing={p[0]:.2f} technical={p[1]:.2f}\")\n\n# Output:\n# 'I was charged but the app shows an error': billing=0.22 technical=0.78\n# 'where is my refund': billing=0.93 technical=0.07",
+    "lang": "Python"
+   },
+   {
+    "title": "Which one fits when",
+    "body": "None of these three is the default choice for most tabular business problems today; gradient boosting usually is (see the boosting topic). They still have clear niches.\n\nkNN fits when similarity itself is the product: 'show me the five most similar past claims', recommendations by nearest item, or lookups over embeddings (where a vector database does the neighbour search). It needs scaled features, modest dimensions and enough memory to hold the data.\n\nSVMs fit small to medium datasets with many features and clear margins, such as text classification with LinearSVC, or small scientific datasets with an RBF kernel. They need scaling and careful tuning of C and gamma.\n\nNaive Bayes fits text and other count data when you need a baseline in minutes, have few labels, or need something tiny and explainable. It is also a good sanity check: if a large model barely beats Naive Bayes, question the extra cost.",
+    "example": "Rookfield Legal routes incoming emails to 6 teams. Week one: MultinomialNB on word counts gives 84 percent accuracy in an afternoon. Week two: LinearSVC on TF-IDF reaches 89 percent. A kNN search over past emails powers a 'similar past matters' panel for the lawyers. Each model does the job it is best at.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "",
+      "kNN",
+      "SVM",
+      "Naive Bayes"
+     ],
+     "rows": [
+      [
+       "Training",
+       "None, stores data",
+       "Slow on big data",
+       "One fast pass"
+      ],
+      [
+       "Prediction",
+       "Slow, compares all rows",
+       "Fast",
+       "Very fast"
+      ],
+      [
+       "Needs scaling",
+       "Yes",
+       "Yes",
+       "No (uses counts)"
+      ],
+      [
+       "Best data",
+       "Low dimensions, similarity tasks",
+       "Small to medium, many features",
+       "Text and counts"
+      ],
+      [
+       "Key settings",
+       "k, distance, weights",
+       "C, kernel, gamma",
+       "alpha smoothing"
+      ],
+      [
+       "Probabilities",
+       "Share of votes",
+       "Needs extra calibration",
+       "Yes, but overconfident"
+      ]
+     ]
+    }
+   }
+  ],
+  "glossary": [
+   [
+    "k-nearest neighbours",
+    "A method that predicts from the k most similar training rows by vote or average."
+   ],
+   [
+    "Euclidean distance",
+    "Straight-line distance: square root of the sum of squared feature differences."
+   ],
+   [
+    "Feature scaling",
+    "Putting features on comparable ranges so no single feature dominates a distance."
+   ],
+   [
+    "Margin",
+    "The gap between an SVM's boundary and the nearest points of each class."
+   ],
+   [
+    "Support vectors",
+    "The training points closest to the boundary that alone decide where it lies."
+   ],
+   [
+    "C (SVM)",
+    "The penalty for margin violations; small C gives a wider, softer margin."
+   ],
+   [
+    "Kernel",
+    "A similarity function that lets an SVM draw curved boundaries, such as polynomial or RBF."
+   ],
+   [
+    "gamma",
+    "In an RBF kernel, how far one training point's influence reaches; large values overfit."
+   ],
+   [
+    "Naive Bayes",
+    "A probabilistic classifier that assumes features are independent given the class."
+   ],
+   [
+    "Laplace smoothing",
+    "Adding a small count to every word so unseen words do not force a zero probability."
+   ]
+  ],
+  "practice": [
+   "On sklearn's wine data, compare kNN accuracy with and without StandardScaler for k from 1 to 25 and report the best k in each case.",
+   "Build a GridSearchCV over C and gamma for an RBF SVM on make_moons with noise 0.3, and plot or print which settings overfit.",
+   "Stretch: write 60 short fake support tickets across 3 categories, train MultinomialNB and LinearSVC on them with cross-validation, and list the 5 words most tied to each class. Write a short note on which model you would ship first and why."
+  ]
+ },
+ "clustering": {
+  "plain": "Clustering groups rows that are similar to each other without being told the right answer, which is called unsupervised learning. k-means splits data into k groups, each built around a center point. DBSCAN finds groups as dense areas of points and marks isolated points as noise. Hierarchical clustering builds a tree of merges from single points up to one big group, so you can cut it at any level. Clusters are a lens for exploring data, not a ground truth.",
+  "analogy": "Clustering is like sorting a pile of mixed buttons with no labels: you group them by size and colour because they look alike, and different people might sort the same pile a little differently.",
+  "why": "Customers often ask to 'segment our customers' or 'find groups in our stores or machines'. An FDE needs to prepare the features properly, pick a method that suits the shape of the data, choose the number of groups sensibly, and turn clusters into profiles that a marketing or operations team can act on.",
+  "subtopics": [
+   {
+    "title": "k-means step by step",
+    "body": "k-means needs you to choose k, the number of clusters. Then it repeats two steps.\n\n1. Initialise: pick k starting centers, for example k random rows. The better default, k-means++, spreads the starting centers apart.\n2. Assign: put every point in the cluster of its nearest center.\n3. Update: move each center to the mean (average position) of the points assigned to it.\n4. Repeat assign and update until the centers stop moving.\n\nThe quality score is inertia: the sum of squared distances from each point to its cluster center. Each assign and update step can only lower inertia or keep it the same, so the method always settles, usually within a few dozen iterations. It settles at a local best, not always the global best, which is why libraries run several random starts (n_init) and keep the lowest inertia.\n\nk-means assumes clusters are roughly round and similar in size, and it uses distances, so features must be scaled first.",
+    "example": "The code implements k-means in NumPy on 150 points around three centres. Inertia drops from 1,349 after the first assignment to 222 and then 91, and the centers stop moving on the third iteration. The final centers land near the true group centres at (2, 2), (7, 3) and (4, 7).",
+    "code": "import numpy as np\n\nrng = np.random.default_rng(1)\nX = np.vstack([rng.normal([2, 2], 0.6, (50, 2)),       # three loose groups of points\n               rng.normal([7, 3], 0.6, (50, 2)),\n               rng.normal([4, 7], 0.6, (50, 2))])\nk = 3\ncenters = X[rng.choice(len(X), k, replace=False)]      # step 1: pick k random points as centers\n\nfor it in range(1, 11):\n    d = np.linalg.norm(X[:, None, :] - centers[None, :, :], axis=2)\n    labels = d.argmin(axis=1)                           # step 2: assign each point to nearest center\n    inertia = (d[np.arange(len(X)), labels] ** 2).sum()\n    new_centers = np.array([X[labels == j].mean(axis=0) for j in range(k)])  # step 3: move centers\n    print(f\"iteration {it}: inertia={inertia:.1f}\")\n    if np.allclose(new_centers, centers):               # step 4: stop when nothing moves\n        break\n    centers = new_centers\nprint(\"final centers:\", centers.round(1).tolist())\n\n# Output:\n# iteration 1: inertia=1349.0\n# iteration 2: inertia=222.4\n# iteration 3: inertia=90.6\n# final centers: [[6.9, 3.0], [3.8, 7.0], [2.0, 1.9]]",
+    "lang": "Python"
+   },
+   {
+    "title": "Choosing k: elbow and silhouette",
+    "body": "Inertia always falls as k grows (with k equal to the number of rows it is zero), so you cannot just pick the lowest inertia. Two common aids help.\n\nThe elbow method plots inertia against k and looks for the bend where adding clusters stops helping much. It is quick but often ambiguous.\n\nThe silhouette score looks at each point: a is its average distance to points in its own cluster, b is its average distance to points in the nearest other cluster, and the score is (b - a) / max(a, b). It runs from -1 to 1. Near 1 means the point sits well inside its cluster; near 0 means it is on a border; negative means it is probably in the wrong cluster. Average it over all points and prefer k with a high average.\n\nThen apply judgment. The business usually needs a k people can act on, often 3 to 7 segments. A statistically perfect k of 11 may be useless to a marketing team with three campaign budgets. Check that clusters are stable across random seeds and across samples of the data.",
+    "example": "Data generated from 4 groups, two of which overlap heavily. Inertia drops from 3,991 at k=2 to 1,204 at k=3, then only to 985 at k=4: the elbow is at 3. Silhouette peaks at k=3 (0.74) too. Both methods see three clear groups because two of the four real ones are hard to tell apart. This is a reminder that the 'true' k is often not recoverable from data alone.",
+    "code": "from sklearn.cluster import KMeans\nfrom sklearn.datasets import make_blobs\nfrom sklearn.metrics import silhouette_score\n\nX, _ = make_blobs(n_samples=600, centers=4, cluster_std=1.0, random_state=5)\n\nfor k in range(2, 8):\n    km = KMeans(n_clusters=k, n_init=10, random_state=5).fit(X)\n    print(f\"k={k}  inertia={km.inertia_:>7.0f}  silhouette={silhouette_score(X, km.labels_):.2f}\")\n\n# Output:\n# k=2  inertia=   3991  silhouette=0.71\n# k=3  inertia=   1204  silhouette=0.74\n# k=4  inertia=    985  silhouette=0.51\n# k=5  inertia=    849  silhouette=0.53\n# k=6  inertia=    739  silhouette=0.43\n# k=7  inertia=    638  silhouette=0.34",
+    "lang": "Python"
+   },
+   {
+    "title": "DBSCAN: clusters as dense regions",
+    "body": "DBSCAN (Density-Based Spatial Clustering of Applications with Noise) does not need k. It has two settings: eps, a radius, and min_samples, the number of points needed within that radius.\n\nA core point has at least min_samples neighbours within eps. Clusters grow by linking core points that are within eps of each other, and by attaching border points that are near a core point. Anything else is noise and gets the label -1.\n\nThis lets DBSCAN find clusters of any shape, such as curved bands, and flags outliers for free. Its weakness is that one eps must suit the whole dataset, so clusters with very different densities are hard. A common way to choose eps is to plot each point's distance to its k-th nearest neighbour, sorted, and pick the value at the bend. Scale features first, as always with distances. HDBSCAN (in scikit-learn as sklearn.cluster.HDBSCAN) relaxes the single-eps limit and is worth trying when densities vary.",
+    "example": "Two interlocking half-moons plus 3 stray points. k-means with k=2 cuts straight across the moons (agreement score 0.26, where 1.0 is perfect). DBSCAN with eps 0.2 and min_samples 5 recovers both moons exactly (1.0) and labels all 3 stray points as noise. In a fraud setting those stray points are often the most interesting rows.",
+    "code": "import numpy as np\nfrom sklearn.cluster import DBSCAN, KMeans\nfrom sklearn.datasets import make_moons\nfrom sklearn.metrics import adjusted_rand_score\n\nX, true = make_moons(n_samples=400, noise=0.06, random_state=2)\nX = np.vstack([X, [[2.5, 1.5], [-1.5, -0.8], [0.5, 1.6]]])     # add 3 odd points\ntrue = np.append(true, [-1, -1, -1])\n\nkm = KMeans(n_clusters=2, n_init=10, random_state=2).fit(X)\ndb = DBSCAN(eps=0.2, min_samples=5).fit(X)\n\nprint(\"k-means agreement with the true moons:\", round(adjusted_rand_score(true[:400], km.labels_[:400]), 2))\nprint(\"DBSCAN agreement with the true moons :\", round(adjusted_rand_score(true[:400], db.labels_[:400]), 2))\nprint(\"DBSCAN clusters found:\", len(set(db.labels_) - {-1}), \" noise points:\", (db.labels_ == -1).sum())\nprint(\"labels of the 3 odd points:\", db.labels_[-3:].tolist())   # -1 means noise\n\n# Output:\n# k-means agreement with the true moons: 0.26\n# DBSCAN agreement with the true moons : 1.0\n# DBSCAN clusters found: 2  noise points: 3\n# labels of the 3 odd points: [-1, -1, -1]",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Question",
+      "k-means",
+      "DBSCAN",
+      "Hierarchical"
+     ],
+     "rows": [
+      [
+       "Must choose k first?",
+       "Yes",
+       "No, choose eps and min_samples",
+       "No, cut the tree later"
+      ],
+      [
+       "Cluster shapes",
+       "Round, similar size",
+       "Any shape",
+       "Depends on linkage"
+      ],
+      [
+       "Outliers",
+       "Forced into a cluster",
+       "Labelled noise (-1)",
+       "Forced into a cluster"
+      ],
+      [
+       "Large data",
+       "Fast, scales well",
+       "Fine with indexing",
+       "Slow beyond tens of thousands"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Hierarchical clustering",
+    "body": "Agglomerative hierarchical clustering starts with every point as its own cluster and repeatedly merges the two closest clusters until only one is left. The full merge history is a tree called a dendrogram. Cutting the dendrogram at a chosen height, or asking for a chosen number of clusters, gives the final grouping, and you can change your mind without rerunning.\n\nThe linkage decides what 'closest clusters' means. Ward linkage merges the pair that increases total within-cluster variance the least and gives compact, even clusters; it is a good default. Complete linkage uses the farthest pair of points, average linkage the average distance, and single linkage the nearest pair, which can chain clusters into long strings.\n\nHierarchical clustering suits small to medium data (it stores all pairwise distances, so memory grows with the square of the row count) and cases where the nested structure itself is useful, such as grouping stores into regions and then sub-regions. SciPy's linkage and dendrogram functions are handy for drawing the tree.",
+    "example": "A retailer describes 12 stores by weekly sales and share of online orders. Ward linkage separates the 4 small stores from the rest when cut into 2 groups, and cleanly finds the three store types (small, big, online-heavy) when cut into 3. Cutting into 4 splits the big stores into two, which the regional manager can accept or ignore.",
+    "code": "import numpy as np\nfrom sklearn.cluster import AgglomerativeClustering\nfrom scipy.cluster.hierarchy import linkage, fcluster\n\nrng = np.random.default_rng(4)\n# 12 stores described by [weekly sales in $1000s, share of online orders]\nstores = np.vstack([rng.normal([40, 0.10], [4, 0.02], (4, 2)),\n                    rng.normal([90, 0.15], [6, 0.03], (4, 2)),\n                    rng.normal([60, 0.45], [5, 0.04], (4, 2))])\nZ = (stores - stores.mean(axis=0)) / stores.std(axis=0)         # scale first\n\nlinks = linkage(Z, method=\"ward\")                               # the full merge history\nfor n in (2, 3, 4):\n    print(f\"cut into {n} groups:\", fcluster(links, t=n, criterion=\"maxclust\").tolist())\n\nagg = AgglomerativeClustering(n_clusters=3, linkage=\"ward\").fit(Z)\nprint(\"sklearn, 3 groups:  \", agg.labels_.tolist())\n\n# Output:\n# cut into 2 groups: [1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2]\n# cut into 3 groups: [1, 1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2]\n# cut into 4 groups: [1, 1, 1, 1, 4, 3, 3, 4, 2, 2, 2, 2]\n# sklearn, 3 groups:   [1, 1, 1, 1, 0, 0, 0, 0, 2, 2, 2, 2]",
+    "lang": "Python"
+   },
+   {
+    "title": "Worked example: customer segmentation",
+    "body": "A common request is RFM segmentation. Recency is days since the last order, frequency is orders in a period, monetary is spend in that period. These three numbers summarise buying behaviour and are easy to compute with SQL from an orders table.\n\nThe steps: compute RFM per customer; handle long tails (spend and frequency are usually heavily skewed, so take a log); scale; run k-means for a few k values; pick k with silhouette plus business sense; then profile each cluster with medians and counts. Give each segment a plain name and a suggested action, and check the sizes are big enough to be worth a campaign.\n\nThe profile table, not the cluster numbers, is the deliverable. Cluster ids such as 0 or 3 are arbitrary and change between runs, so the names must come from the profiles.",
+    "example": "A home and garden web shop has 3,000 customers. After a log transform and scaling, k-means with k=4 gives: segment 3, 203 customers who order 26 times and spend about 3,100 dollars a year (trade buyers: offer an account manager); segment 0, 911 loyal regulars (loyalty perks); segment 1, 1,233 recent one-off buyers (second-order voucher); segment 2, 653 customers last seen about 134 days ago (win-back email).",
+    "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.cluster import KMeans\nfrom sklearn.preprocessing import StandardScaler\n\nrng = np.random.default_rng(11)\ndef group(n, recency, freq, spend):              # helper to fake one kind of customer\n    return pd.DataFrame({\n        \"recency_days\": rng.exponential(recency, n).round() + 1,   # days since last order\n        \"frequency\": rng.poisson(freq, n) + 1,                     # orders in the last year\n        \"monetary\": rng.lognormal(np.log(spend), 0.4, n).round(2), # spend in the last year, $\n    })\ncustomers = pd.concat([group(900, 15, 10, 600),    # loyal regulars\n                       group(1200, 20, 1, 60),     # new, one small order\n                       group(700, 200, 3, 150),    # lapsed\n                       group(200, 10, 25, 3000)],  # trade buyers\n                      ignore_index=True)\n\nZ = StandardScaler().fit_transform(np.log1p(customers))   # log tames long tails, then scale\nkm = KMeans(n_clusters=4, n_init=10, random_state=11).fit(Z)\ncustomers[\"segment\"] = km.labels_\n\nprofile = customers.groupby(\"segment\").median().round().astype(int)   # typical member\nprofile.insert(0, \"customers\", customers.segment.value_counts().sort_index())\nprint(profile)\n\n# Output:\n#          customers  recency_days  frequency  monetary\n# segment                                              \n# 0              911            11         11       592\n# 1             1233            15          2        62\n# 2              653           134          4       145\n# 3              203             8         26      3108",
+    "lang": "Python"
+   },
+   {
+    "title": "Pitfalls to avoid",
+    "body": "Clustering always returns clusters, even on random data with no real groups. That makes it easy to fool yourself and your customer.\n\nThe biggest technical traps are unscaled features, skewed features that let a few extreme rows drive the result, and too many features, which make distances meaningless (consider selecting features or reducing dimensions first; see dimred). Categorical columns do not fit k-means well; one-hot encoding them inflates distances oddly, and methods such as k-prototypes or Gower distance exist for mixed data.\n\nThe biggest process traps are treating clusters as facts rather than a useful simplification, reporting cluster ids instead of profiles, and never checking stability. Rerun with different seeds and on a different month of data. If customers jump between segments, the segments are not solid enough to plan campaigns around. Finally, judge clusters by use: do different segments respond differently to the actions you planned?",
+    "example": "Tannerbrook, an online bookshop, first clustered on raw spend and visit counts. One segment contained 12 customers who were actually libraries buying in bulk; everyone else was lumped together. After a log transform, scaling and a separate rule to pull out institutional buyers, the remaining segments were stable across two quarters of data.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Scale every numeric feature, and log-transform heavy-tailed ones",
+     "Remove or separately handle obvious outlier groups and IDs",
+     "Try more than one k and more than one method",
+     "Check silhouette and stability across seeds and time periods",
+     "Profile clusters with medians and counts, then name them",
+     "Confirm segments are big enough and lead to different actions",
+     "Document the features and settings so the segmentation can be rerun"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Unsupervised learning",
+    "Learning patterns from data without labelled answers."
+   ],
+   [
+    "Cluster",
+    "A group of rows that are more similar to each other than to rows in other groups."
+   ],
+   [
+    "Centroid",
+    "The center of a k-means cluster, the mean of its points."
+   ],
+   [
+    "Inertia",
+    "The sum of squared distances from points to their cluster centers; lower means tighter clusters."
+   ],
+   [
+    "k-means++",
+    "A way of choosing spread-out starting centers that makes k-means more reliable."
+   ],
+   [
+    "Silhouette score",
+    "A per-point measure from -1 to 1 of how well a point fits its cluster versus the nearest other one."
+   ],
+   [
+    "DBSCAN",
+    "A density-based method that grows clusters from dense regions and labels sparse points as noise."
+   ],
+   [
+    "eps",
+    "In DBSCAN, the radius within which points count as neighbours."
+   ],
+   [
+    "Dendrogram",
+    "A tree diagram showing the order in which hierarchical clustering merged groups."
+   ],
+   [
+    "RFM",
+    "Recency, frequency and monetary value, three numbers commonly used to segment customers."
+   ]
+  ],
+  "practice": [
+   "Generate data with make_blobs using 5 centers, run k-means for k from 2 to 9, and print inertia and silhouette. Say which k you would pick and why.",
+   "Run k-means and DBSCAN on make_moons with noise 0.08. Try three eps values and describe what happens to the number of clusters and noise points.",
+   "Stretch: build an RFM table from a synthetic orders DataFrame with at least 5,000 orders, segment the customers, and write a one-page segment guide with a name, size, profile and suggested action for each segment."
+  ]
+ }
+}

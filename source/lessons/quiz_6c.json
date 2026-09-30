@@ -1,0 +1,230 @@
+{
+ "agentmemory": [
+  {
+   "q": "Why does a chatbot seem to remember earlier messages in the same conversation?",
+   "options": [
+    "The model stores each user's messages inside its weights",
+    "The application sends the earlier messages again with each call",
+    "The provider keeps a private copy of every chat for the model",
+    "The model caches answers and replays them"
+   ],
+   "answer": 1,
+   "why": "Models are stateless. The app re-sends the thread each turn; nothing is learned into the weights during a chat."
+  },
+  {
+   "q": "Which is an example of episodic memory?",
+   "options": [
+    "The customer prefers replies in German",
+    "Always check the staging database before production",
+    "On 3 March the export job failed with a timeout",
+    "The account is on the Pro plan"
+   ],
+   "answer": 2,
+   "why": "Episodic memory stores dated events and outcomes. A preference or plan is semantic; a 'how to' rule is procedural."
+  },
+  {
+   "q": "A support agent's thread keeps overflowing after big tool results. What is the best first change?",
+   "options": [
+    "Switch to a model with a larger window and change nothing else",
+    "Save every tool result to long-term memory instead",
+    "Compact at about 80 percent: summarise old turns and replace bulky tool results with short notes",
+    "Ask users to keep their messages shorter"
+   ],
+   "answer": 2,
+   "why": "Compacting before the limit, and trimming bulky tool output, keeps room for the next turn. A bigger window only delays the problem and raises cost."
+  },
+  {
+   "q": "Halden's security team asks how one handler team is kept from seeing another team's memories. Best answer?",
+   "options": [
+    "The system prompt tells the model not to reveal other teams' data",
+    "Every memory row has tenant and team ids, and one data-access function filters on them",
+    "Memories are encrypted, so leaks are harmless",
+    "We trust that handlers only ask about their own claims"
+   ],
+   "answer": 1,
+   "why": "Isolation must be enforced in code or the database. A prompt instruction can be ignored or bypassed by injection."
+  },
+  {
+   "q": "Spot the mistake: 'Our agent saves every sentence the user types as a long-term fact, so it never forgets anything.'",
+   "options": [
+    "Nothing, saving everything is the safest design",
+    "It saves guesses, stale values and injected instructions, which later come back as false facts",
+    "The only problem is storage cost",
+    "It should save only the assistant's replies instead"
+   ],
+   "answer": 1,
+   "why": "Without a write policy, memory fills with noise and even prompt-injected rules. Storage cost is the smaller problem."
+  }
+ ],
+ "llmobs": [
+  {
+   "q": "In LLM tracing, what is a span?",
+   "options": [
+    "One timed step inside a request, such as a model or tool call",
+    "The full history of one user across all their sessions",
+    "A daily summary of token usage per customer",
+    "The time window used to sample traces for evals"
+   ],
+   "answer": 0,
+   "why": "A trace is one request; spans are its timed steps, nested in a tree. Session history and daily summaries are different things."
+  },
+  {
+   "q": "Why use OpenTelemetry's GenAI attribute names such as gen_ai.usage.input_tokens?",
+   "options": [
+    "They make model calls cheaper",
+    "They are required by law for AI systems",
+    "Tools and backends can read your spans the same way, so you can switch vendors",
+    "They automatically redact personal data"
+   ],
+   "answer": 2,
+   "why": "Semantic conventions are shared names, so any compatible backend understands your data. They do not cut cost or redact anything."
+  },
+  {
+   "q": "A customer says the assistant got slower this week. What do you look at first?",
+   "options": [
+    "The monthly invoice from the model provider",
+    "p50 and p95 latency per span type this week versus last week",
+    "A new, faster model to try in production",
+    "The number of thumbs-up clicks"
+   ],
+   "answer": 1,
+   "why": "Per-span latency percentiles show which step got slower. Swapping models before knowing the cause is guessing."
+  },
+  {
+   "q": "A bank's privacy officer asks what your traces contain. Which plan is best?",
+   "options": [
+    "Store full prompts forever in a third-party tool, since debugging needs them",
+    "Store no traces at all, to be safe",
+    "Redact PII before export, store in an approved region, limit access and set retention",
+    "Encrypt traces and skip the retention question"
+   ],
+   "answer": 2,
+   "why": "Redaction before export, approved location, access control and retention together answer the question. No traces at all leaves you blind."
+  },
+  {
+   "q": "Spot the mistake: 'We collect thumbs-down clicks in a table. Quality will improve over time.'",
+   "options": [
+    "Thumbs-down data is useless and should not be collected",
+    "Clicks need a trace id, regular review, root-cause labels and new eval cases to change anything",
+    "They should collect only thumbs-up clicks",
+    "Nothing, collecting feedback is enough"
+   ],
+   "answer": 1,
+   "why": "Unreviewed feedback changes nothing. Linking it to traces and turning failures into eval cases closes the loop."
+  }
+ ],
+ "labeling": [
+  {
+   "q": "What does Cohen's kappa add that percent agreement does not?",
+   "options": [
+    "It counts how many items each annotator labeled",
+    "It corrects for agreement that would happen by chance",
+    "It measures how accurate the model is on the labels",
+    "It weights each label by how costly a mistake is"
+   ],
+   "answer": 1,
+   "why": "Kappa compares observed agreement with the agreement expected from each person's label mix, so common labels do not inflate the score."
+  },
+  {
+   "q": "What is a gold question in a labeling project?",
+   "options": [
+    "The hardest item in the batch, sent to the customer",
+    "A question the annotators ask the adjudicator",
+    "An item with a known answer hidden in normal work to check accuracy",
+    "The first item labeled, used as a style example"
+   ],
+   "answer": 2,
+   "why": "Gold questions have trusted answers and are mixed in secretly, so you can score each annotator over time and catch drift."
+  },
+  {
+   "q": "Two annotators disagree on 30 percent of a customer's documents. What do you do first?",
+   "options": [
+    "Replace them with a more experienced pair",
+    "Average their labels and move on",
+    "Train the model anyway, since it will learn the majority",
+    "Read the disagreements to find unclear or missing guideline rules"
+   ],
+   "answer": 3,
+   "why": "Most disagreement comes from unclear rules. Reading the disputed items shows which rule to add or fix; new people with the same guideline would disagree too."
+  },
+  {
+   "q": "A retailer has 40,000 unlabeled tickets and budget for 1,000 labels. Which choice uses the budget best?",
+   "options": [
+    "Label the tickets the current model is least sure about, plus some random ones",
+    "Label the 1,000 newest tickets only",
+    "Label the tickets the model is most confident about",
+    "Label only tickets longer than 200 words"
+   ],
+   "answer": 0,
+   "why": "This is active learning: uncertain items teach the model most, and a random share keeps the batch from filling with duplicates or junk."
+  },
+  {
+   "q": "Spot the mistake: 'Our two labelers agree 92 percent, so the labels are reliable.' 90 percent of items are 'no issue'.",
+   "options": [
+    "Nothing is wrong; 92 percent is above any reasonable bar",
+    "With one label at 90 percent, chance alone gives high agreement; check kappa and per-label counts",
+    "Agreement should be measured by the model, not by people",
+    "They should have used three labelers, so 92 percent is meaningless"
+   ],
+   "answer": 1,
+   "why": "When one label dominates, people agree often by luck. Kappa and per-label agreement show whether they agree on the rare labels that matter."
+  }
+ ],
+ "voice": [
+  {
+   "q": "What is barge-in in a voice agent?",
+   "options": [
+    "The agent calling a customer back after a dropped call",
+    "The caller speaking while the agent talks, so the agent should stop and listen",
+    "A supervisor joining a live call to listen",
+    "The agent transferring the call to a human"
+   ],
+   "answer": 1,
+   "why": "Barge-in is the caller interrupting. The agent should stop its audio quickly, clear queued audio and record only what the caller heard."
+  },
+  {
+   "q": "Why do voice agents usually receive phone audio over a WebSocket?",
+   "options": [
+    "It compresses audio better than any other method",
+    "Phone networks only support WebSockets",
+    "It keeps a two-way connection open, so audio frames flow both ways during the call",
+    "It encrypts the audio so no consent is needed"
+   ],
+   "answer": 2,
+   "why": "A WebSocket stays open so small audio frames can stream in and out continuously. It does not remove consent rules or compress audio by itself."
+  },
+  {
+   "q": "A voice agent keeps cutting callers off while they read their account number. What do you change first?",
+   "options": [
+    "Lengthen the end-of-turn wait after the agent asks for a number",
+    "Switch to a larger LLM",
+    "Turn off barge-in completely",
+    "Ask callers to speak faster"
+   ],
+   "answer": 0,
+   "why": "People pause between digit groups. A context-dependent endpointing wait fixes it without slowing every other turn."
+  },
+  {
+   "q": "Turns take 2 seconds. Logs show TTS starts only after the full LLM reply. Best fix?",
+   "options": [
+    "Buy a faster phone line",
+    "Add a filler phrase before every reply",
+    "Shorten the greeting",
+    "Stream the LLM output and start TTS on the first complete sentence"
+   ],
+   "answer": 3,
+   "why": "Waiting for the whole reply adds the full generation time to every turn. Streaming the first sentence to TTS removes most of it."
+  },
+  {
+   "q": "Spot the mistake: 'We record every call and transcript forever; callers pay by reading their card number to the agent.'",
+   "options": [
+    "Nothing, recordings help debugging",
+    "Only the transcript is a problem, recordings are fine",
+    "Card numbers must stay out of recordings, and consent and retention rules must be settled",
+    "The only issue is storage cost"
+   ],
+   "answer": 2,
+   "why": "Card data in recordings breaks payment security rules, and recording needs consent and a retention limit agreed with legal."
+  }
+ ]
+}

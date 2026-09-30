@@ -1,0 +1,379 @@
+{
+ "computers": {
+  "plain": "A computer is a machine that follows very simple instructions extremely fast. The CPU (central processing unit) is the chip that carries out those instructions. RAM (random access memory) is fast, short-term memory that holds whatever is running right now, and storage (an SSD or hard drive) keeps your files when the power is off. A program is a list of instructions saved in a file, and the operating system (Windows, macOS or Linux) is the main program that starts other programs and shares the machine between them. When you write Python, you write text, and another program called the Python interpreter reads that text and makes the CPU do what it says.",
+  "analogy": "Think of a kitchen. The recipe book on the shelf is storage, the counter where you lay out ingredients is RAM, and the cook is the CPU. The head chef deciding who uses which counter and when is the operating system.",
+  "why": "A Forward Deployed Engineer (FDE) works on the customer's own computers and servers, not only on a laptop at home. When a customer says 'the script ran out of memory' or 'it works on my machine but not on the server', you need to know whether the problem is RAM, disk, a missing interpreter or a different operating system. These basics let you ask the right first question.",
+  "subtopics": [
+   {
+    "title": "The three core parts: CPU, RAM, storage",
+    "body": "Every computer has a CPU, memory and storage. The CPU does the work: adding numbers, comparing values, moving data around. It is very fast but only holds a tiny amount of data at once.\n\nRAM is where running programs keep their data. It is fast but temporary. When a program ends, or the computer turns off, what was in RAM is gone.\n\nStorage is slower but permanent. Your photos, documents and .py files live here. A laptop might have 16 GB of RAM and 512 GB of storage, which is why you can store far more than you can work on at the same moment.",
+    "example": "A small bakery keeps five years of sales in a 2 GB file on its laptop. The laptop has 8 GB of RAM, so a program can load the whole file into memory and add it up. If the file grew to 20 GB, it would still fit on the 512 GB disk, but loading it all into RAM at once would fail. The program would need to read it a piece at a time.",
+    "code": "import os, shutil\n\n# How many CPU cores does this machine have?\nprint(\"CPU cores:\", os.cpu_count())\n\n# How big is the disk, and how much is free? (values are in bytes)\nusage = shutil.disk_usage(\"/\")          # on Windows try \"C:\\\\\"\ngb = 1024 ** 3                          # bytes in one gigabyte\nprint(\"Disk total GB:\", round(usage.total / gb))\nprint(\"Disk free GB:\", round(usage.free / gb))",
+    "lang": "Python"
+   },
+   {
+    "title": "Files and folders",
+    "body": "A file is a named chunk of data kept in storage. Its name usually ends in an extension, such as .txt, .csv or .py, which hints at what is inside. A .py file is just text that happens to be Python code.\n\nFolders (also called directories) hold files and other folders, like drawers inside a cabinet. The full address of a file, listing every folder on the way to it, is called its path.\n\nWriting to a file moves data from RAM to storage. Reading a file copies it from storage back into RAM so a program can use it.",
+    "example": "Asha saves notes.txt in a folder called projects inside her home folder. On a Mac its path is /Users/asha/projects/notes.txt. She runs the small program below twice. The first run creates the file. The second run reads it back, which proves the data survived after the first program ended and its RAM was cleared.",
+    "code": "# Run this file twice and watch what happens.\nimport os\n\nif os.path.exists(\"notes.txt\"):          # is the file already on disk?\n    with open(\"notes.txt\") as f:         # copy it from storage into RAM\n        print(\"Found on disk:\", f.read())\nelse:\n    with open(\"notes.txt\", \"w\") as f:    # \"w\" means write (create or replace)\n        f.write(\"Buy flour on Monday\")\n    print(\"Saved notes.txt. Run me again.\")",
+    "lang": "Python"
+   },
+   {
+    "title": "The operating system",
+    "body": "The operating system (OS) is the first big program that starts when you switch on a computer. Windows, macOS and Linux are the common ones. Most servers that businesses run in data centres or the cloud use Linux.\n\nThe OS starts and stops programs, gives each one its own slice of RAM, lets them read and write files, and passes keyboard input and screen output back and forth. Programs ask the OS for these things instead of touching the hardware directly.\n\nBecause each OS does some things differently, such as how file paths are written, a program can behave slightly differently on each one.",
+    "example": "A hospital's reporting script was written on a Windows laptop and later copied to a Linux server. It failed because it looked for a file at C:\\reports\\beds.csv, a Windows path that does not exist on Linux. Printing the OS name at the start of the script, as below, is a quick way to see which system you are on.",
+    "code": "import platform, os\n\nprint(\"Operating system:\", platform.system())   # Windows, Darwin (macOS) or Linux\nprint(\"OS version:\", platform.release())\nprint(\"This process id:\", os.getpid())           # the OS gives every running program a number\nprint(\"Current folder:\", os.getcwd())",
+    "lang": "Python"
+   },
+   {
+    "title": "From source code to a running process",
+    "body": "Source code is the human-readable text you write. On its own it does nothing; it is just a file sitting in storage.\n\nWhen you ask to run it, the OS starts the program that knows how to run that code. For Python this is the interpreter, a program usually called python or python3. The running copy of a program, with its own memory, is called a process. You can have several processes of the same program at once.\n\nThe interpreter reads your file, checks the grammar, turns it into simpler instructions, and the CPU carries them out line by line. When the last line runs, the process ends and the OS takes back its memory.",
+    "example": "A shop owner saves a file called hello.py containing two print lines. Nothing happens when she saves it. When she types python hello.py in the terminal, the OS starts a Python process, it prints two lines, and the process exits in a fraction of a second. If she opens a second terminal and runs it again at the same time, there are briefly two separate processes.",
+    "code": "# hello.py\nimport os\nprint(\"Hello from process number\", os.getpid())\nprint(\"Adding:\", 3 + 4)\n\n# Terminal:\n#   $ python hello.py\n#   Hello from process number 48213   (the number changes every run)\n#   Adding: 7",
+    "lang": "Python"
+   },
+   {
+    "title": "Interpreted Python versus compiled languages",
+    "body": "The CPU only understands machine code, which is binary instructions specific to that type of chip. Humans write in higher-level languages, so something has to translate.\n\nIn a compiled language such as C, C++, Go or Rust, a program called a compiler translates the whole source file ahead of time into a separate executable file. You then run that file directly, and the source is not needed to run it.\n\nPython is usually called interpreted. The standard interpreter, CPython, translates your code into bytecode and runs that bytecode each time you start the program. You skip the build step and can try changes instantly, but the machine running your code must have Python installed, and pure Python loops run slower than compiled code. Libraries such as pandas get speed by doing heavy work in compiled code underneath.",
+    "example": "A logistics company has a route-planning tool written in Go and a data-cleaning script written in Python. To ship the Go tool, they compile it once into a single file called routeplan and copy that file to servers. To ship the Python script, they copy clean.py and make sure each server has Python and the right packages installed.",
+    "code": "---- C: compile first, then run ----\n/* hello.c */\n#include <stdio.h>\nint main(void) {\n    printf(\"Hello\\n\");\n    return 0;\n}\n$ gcc hello.c -o hello      # compiler makes a machine-code file\n$ ./hello                   # the CPU runs that file directly\n\n---- Python: run the source directly ----\n# hello.py\nprint(\"Hello\")\n$ python hello.py           # interpreter reads and runs it each time",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "CPU",
+    "The central processing unit, the chip that carries out instructions."
+   ],
+   [
+    "RAM",
+    "Fast, temporary memory that holds running programs and their data and is cleared when power is off."
+   ],
+   [
+    "Storage",
+    "A drive (SSD or hard disk) that keeps files permanently, even with the power off."
+   ],
+   [
+    "File",
+    "A named piece of data kept in storage, such as notes.txt or hello.py."
+   ],
+   [
+    "Operating system",
+    "The main program, such as Windows, macOS or Linux, that manages hardware and runs other programs."
+   ],
+   [
+    "Program",
+    "A set of instructions saved in a file that a computer can carry out."
+   ],
+   [
+    "Process",
+    "A program while it is running, with its own memory and an id from the OS."
+   ],
+   [
+    "Source code",
+    "The human-readable text of a program, written in a language like Python."
+   ],
+   [
+    "Interpreter",
+    "A program that reads source code and runs it directly, like python for .py files."
+   ],
+   [
+    "Compiler",
+    "A program that translates source code into a machine-code file ahead of time."
+   ]
+  ],
+  "practice": [
+   "Find how much RAM and storage your own computer has (in system settings) and write both numbers down, with one sentence on which is bigger and why that makes sense.",
+   "Create hello.py with three print lines, save it, and run it with python hello.py. Then change one line, run it again without saving first, and write down what you notice.",
+   "Run the notes.txt program from subtopic 2 twice. Then delete notes.txt and run it again. Explain in two or three sentences how this shows the difference between RAM and storage."
+  ]
+ },
+ "terminal": {
+  "plain": "The terminal is a window where you control the computer by typing commands instead of clicking. Inside it runs a shell, a program that reads each command you type, runs it when you press Enter, and shows the result. Common shells are bash and zsh on Mac and Linux, and PowerShell or Command Prompt on Windows. With a few commands you can move between folders, create files, run Python scripts and install extra Python packages.",
+  "analogy": "Using the terminal is like phoning a very literal assistant who is standing in one room of a large building. You tell them which room to walk to, ask what is on the shelves there, and ask them to run a particular machine. They do exactly what you say and nothing more.",
+  "why": "Customer servers usually have no desktop to click around in, only a terminal reached over the network. An FDE will often be asked to run a data job on a customer's Linux machine, install the right package versions, and set an API key without writing it into the code. Being calm and quick in the terminal is basic credibility on site.",
+  "subtopics": [
+   {
+    "title": "What a terminal and shell are",
+    "body": "When you open Terminal on a Mac, a terminal app on Linux, or PowerShell on Windows, you see a prompt: a short line of text ending in something like $ or >. The prompt means the shell is waiting for you.\n\nYou type a command, which is usually a program name followed by extra words called arguments, then press Enter. The shell runs it and prints any output. Then it shows the prompt again.\n\nCommands are case sensitive on Mac and Linux. Typing Ls instead of ls will fail there.",
+    "example": "A new analyst at an insurance company opens a terminal for the first time and types three commands. whoami prints her username, jsmith. echo hello prints hello back. date prints today's date and time. Each command runs, prints one line, and returns her to the prompt.",
+    "code": "# Lines starting with # are comments; the shell ignores them.\n# Type each command after the prompt and press Enter.\nwhoami            # prints your username\necho hello        # prints the word hello\ndate              # prints the current date and time (Mac/Linux)\nGet-Date          # the PowerShell version of date on Windows",
+    "lang": "bash"
+   },
+   {
+    "title": "Folders, paths and where you are",
+    "body": "Files live in folders, and folders sit inside other folders like a tree. A path is the address of a file or folder.\n\nAn absolute path starts from the very top. On Mac and Linux the top is written /, and folders are separated by forward slashes: /Users/asha/projects/report.csv. On Windows each drive has its own top, such as C:\\, and folders are separated by backslashes: C:\\Users\\asha\\projects\\report.csv.\n\nThe shell is always standing in one folder called the current working directory. A relative path starts from there. If you are in /Users/asha, the relative path projects/report.csv points to the same file. Two dots, .., mean the folder one level up, and a single dot means the current folder. The symbol ~ is a shortcut for your home folder on Mac and Linux, and works in PowerShell too.",
+    "example": "A retail analyst is in /Users/asha. The weekly file is at /Users/asha/projects/sales/week1.csv. From /Users/asha she can refer to it as projects/sales/week1.csv. If she moves into /Users/asha/projects/sales, she can just type week1.csv. If she moves into a sibling folder /Users/asha/projects/stock, the same file is ../sales/week1.csv.",
+    "code": "Mac / Linux                          Windows\n-----------                          -------\n/                                    C:\\\n/Users/asha                          C:\\Users\\asha\n/Users/asha/projects/sales           C:\\Users\\asha\\projects\\sales\n\nAbsolute: /Users/asha/projects/sales/week1.csv\nRelative from /Users/asha:        projects/sales/week1.csv\nRelative from .../projects/stock: ../sales/week1.csv\n.   = this folder\n..  = one folder up\n~   = your home folder",
+    "lang": "Text"
+   },
+   {
+    "title": "Moving around: cd, ls, dir, mkdir",
+    "body": "Four commands cover most movement. pwd (print working directory) shows where you are. ls lists what is in the current folder on Mac and Linux; on Windows Command Prompt the equivalent is dir, and PowerShell accepts both.\n\nmkdir name makes a new folder. cd name changes directory, moving you into that folder. cd .. moves up one level, and cd on its own takes you home on Mac and Linux.\n\nPress the Tab key while typing a file or folder name and the shell finishes the name for you. This saves typing and avoids spelling mistakes.",
+    "example": "A consultant sets up a folder for a pharmacy client. She checks where she is, creates acme-pharmacy, moves in, creates data and scripts folders, lists them to confirm, then moves back up. The whole setup takes six commands.",
+    "code": "pwd                     # /Users/asha\nmkdir acme-pharmacy     # create a folder\ncd acme-pharmacy        # move into it\nmkdir data scripts      # create two folders at once\nls                      # shows: data  scripts   (Windows cmd: dir)\ncd data                 # move into data\npwd                     # /Users/asha/acme-pharmacy/data\ncd ..                   # back up to acme-pharmacy\ncd ~                    # jump straight to your home folder",
+    "lang": "bash"
+   },
+   {
+    "title": "Running a Python script",
+    "body": "To run a Python file, type python followed by the file's path. On many Mac and Linux machines the command is python3, because python may be missing or point to an old version. On Windows, python or the launcher py usually works.\n\nIf the script is in your current folder, the file name alone is enough. If it is elsewhere, give a relative or absolute path. The most common beginner error, 'No such file or directory', almost always means you are in the wrong folder.\n\npython --version tells you which version will run. Check it before you start debugging anything else.",
+    "example": "A clinic's script count_visits.py lives in ~/clinic/scripts. From the home folder, python3 count_visits.py fails because the file is not there. Running cd clinic/scripts first, or typing python3 clinic/scripts/count_visits.py, works. The script prints 'Visits today: 42'.",
+    "code": "python3 --version               # e.g. Python 3.12.4  (Windows: py --version)\n\n# count_visits.py contains one line:  print(\"Visits today:\", 42)\npython3 count_visits.py         # error if you are in the wrong folder:\n# can't open file '.../count_visits.py': [Errno 2] No such file or directory\n\ncd clinic/scripts               # move to where the file is\npython3 count_visits.py         # Visits today: 42\npython3 ~/clinic/scripts/count_visits.py   # or give the full path from anywhere",
+    "lang": "bash"
+   },
+   {
+    "title": "pip and virtual environments",
+    "body": "A package (or library) is ready-made code someone else wrote, such as requests for talking to websites or pandas for tables. pip is the tool that downloads and installs packages, usually from PyPI, the Python Package Index.\n\nIf you install everything into one shared Python, different projects start to clash: one needs pandas 1.5, another needs pandas 2.2. A virtual environment solves this. It is a folder, commonly named .venv, containing its own Python and its own packages for one project.\n\nYou create it once, activate it each time you open a new terminal, and then pip installs into it. The prompt usually shows (.venv) when it is active. pip freeze > requirements.txt records the exact versions so someone else can recreate the same setup with pip install -r requirements.txt.",
+    "example": "An FDE starts work for a grocery chain. In the project folder she creates .venv, activates it, installs requests and pandas, and saves requirements.txt. A colleague clones the project on Windows, creates his own .venv, activates it with the Windows command and runs pip install -r requirements.txt. Both now have identical package versions.",
+    "code": "cd grocery-project\npython3 -m venv .venv              # create the virtual environment (once)\n\nsource .venv/bin/activate          # Mac/Linux: activate it\n# .venv\\Scripts\\activate           # Windows equivalent\n\npython -m pip install requests pandas   # installs into .venv only\npip freeze > requirements.txt      # record exact versions\n\npip install -r requirements.txt    # a colleague recreates the same set\ndeactivate                         # leave the venv when done",
+    "lang": "bash"
+   },
+   {
+    "title": "Environment variables",
+    "body": "An environment variable is a named piece of text that the shell passes to every program it starts. PATH is one you already rely on: it lists the folders the shell searches when you type a command such as python.\n\nYou can set your own. This is the standard place for settings that change between machines and for secrets like API keys (a password-like string that lets a program use an online service). Keeping them out of the code means you can share the code safely.\n\nA variable set with export or $env: lasts only for that terminal window. Close the window and it is gone, which is often what you want for secrets.",
+    "example": "A payments startup's script needs a key to call a currency API. Instead of writing the key into convert.py, the FDE sets CURRENCY_KEY in the terminal. The script reads it with os.environ.get. On the customer's server, their admin sets their own key the same way and the code does not change.",
+    "code": "# In the shell (Mac/Linux):\nexport CURRENCY_KEY=\"test-123\"\n# In PowerShell (Windows):\n# $env:CURRENCY_KEY=\"test-123\"\necho $CURRENCY_KEY            # check it is set (PowerShell: echo $env:CURRENCY_KEY)\n\n# convert.py\nimport os\nkey = os.environ.get(\"CURRENCY_KEY\")   # None if it was never set\nif key is None:\n    print(\"Please set CURRENCY_KEY first\")\nelse:\n    print(\"Using a key that starts with\", key[:4])",
+    "lang": "bash"
+   }
+  ],
+  "glossary": [
+   [
+    "Terminal",
+    "A window where you type text commands to control the computer."
+   ],
+   [
+    "Shell",
+    "The program inside the terminal that reads and runs your commands, such as bash, zsh or PowerShell."
+   ],
+   [
+    "Working directory",
+    "The folder the shell is currently standing in; relative paths start from here."
+   ],
+   [
+    "Path",
+    "The address of a file or folder, listing each folder on the way to it."
+   ],
+   [
+    "Absolute path",
+    "A path that starts from the top of the file system, such as / or C:\\."
+   ],
+   [
+    "Relative path",
+    "A path that starts from the current working directory."
+   ],
+   [
+    "Package",
+    "Reusable code written by others that you install, such as requests or pandas."
+   ],
+   [
+    "pip",
+    "Python's tool for downloading and installing packages."
+   ],
+   [
+    "Virtual environment",
+    "A project folder with its own Python and packages, kept separate from other projects."
+   ],
+   [
+    "Environment variable",
+    "A named value the shell passes to programs, often used for settings and secrets."
+   ]
+  ],
+  "practice": [
+   "Open a terminal and, using only commands, create a folder called practice with two folders inside it named data and scripts. Take a screenshot of ls (or dir) output showing both.",
+   "Inside practice, create a virtual environment, activate it, install the requests package, and save requirements.txt. Open the file and write down the version of requests it lists.",
+   "Write greet.py that reads an environment variable called USER_NAME and prints 'Hello, <name>', or a helpful message if it is missing. Run it once without the variable and once after setting it."
+  ]
+ },
+ "python1": {
+  "plain": "Python is a programming language: a set of words and rules for writing instructions a computer can follow. A Python program is a text file of lines that run from top to bottom. You store values in variables, choose between actions with if and else, repeat actions with loops, and group steps into functions you can reuse. When something goes wrong, Python stops and prints a traceback, a report saying what went wrong and on which line.",
+  "analogy": "A Python program is like a recipe card. Variables are labelled bowls, if/else is 'if the dough is sticky add flour, otherwise carry on', a loop is 'stir 20 times', and a function is a mini recipe such as 'make the sauce' that you can refer to by name.",
+  "why": "Most FDE work involves writing small programs quickly on site: checking a customer's data, calling their system, or automating a step that someone does by hand every week. Python is the most common language for that work. If you can write clear functions and read a traceback calmly, you can fix problems while the customer is still on the call.",
+  "subtopics": [
+   {
+    "title": "Variables and the four basic types",
+    "body": "A variable is a name that points to a value. You create one with a single equals sign: price = 4. From then on, price means 4 until you change it. Names can use letters, digits and underscores, but cannot start with a digit.\n\nEvery value has a type that decides what you can do with it. int is a whole number such as 42. float is a number with a decimal point such as 3.99. str (string) is text in quotes such as \"Lagos\". bool is either True or False.\n\nThe type matters. 2 + 3 gives 5, but \"2\" + \"3\" gives \"23\" because adding strings joins them. type(x) tells you what type a value has.",
+    "example": "A coffee shop records one order. cups is an int, 2. price is a float, 3.50. customer is a str, \"Maria\". paid is a bool, False. The total is cups times price, 7.0. Joining customer with \" owes \" and the total needs str(total), because you cannot add a string and a float directly.",
+    "code": "cups = 2              # int\nprice = 3.50          # float\ncustomer = \"Maria\"    # str\npaid = False          # bool\n\ntotal = cups * price  # 7.0\nprint(type(cups), type(price), type(customer), type(paid))\nprint(customer + \" owes \" + str(total))   # Maria owes 7.0\nprint(\"2\" + \"3\")      # 23  (joining text)\nprint(2 + 3)          # 5   (adding numbers)",
+    "lang": "Python"
+   },
+   {
+    "title": "Input, print and converting types",
+    "body": "print() shows values on the screen. Give it several values separated by commas and it puts a space between each one.\n\ninput(\"prompt\") shows the prompt, waits for the user to type and press Enter, and returns what they typed. It always returns a str, even if they typed digits.\n\nTo do maths with typed numbers, convert first: int(\"30\") gives 30 and float(\"2.5\") gives 2.5. An f-string, a string with f before the quote, lets you put variables inside text using curly braces: f\"Total: {total}\".",
+    "example": "A gym asks new members for their weight in kilograms and height in metres to show a body mass index. The user types 70 and 1.75. Both arrive as text, so the program converts them with float. It computes 70 divided by 1.75 squared, about 22.9, and prints it rounded to one decimal place.",
+    "code": "weight = float(input(\"Weight in kg: \"))    # user types 70\nheight = float(input(\"Height in m: \"))     # user types 1.75\n\nbmi = weight / (height ** 2)               # ** means 'to the power of'\nprint(\"Your BMI is\", round(bmi, 1))        # Your BMI is 22.9\nprint(f\"Weight {weight} kg, height {height} m\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Making decisions with if, elif and else",
+    "body": "if lets a program choose. You write if, a condition, and a colon. The indented lines below it run only when the condition is True.\n\nConditions often use comparisons: == (equal), != (not equal), <, >, <= and >=. Note that = stores a value, while == asks whether two values are equal. You can combine conditions with and, or and not.\n\nelif (short for else if) adds more checks, tried in order. else catches everything left over. Only the first matching block runs. Python uses indentation, usually four spaces, to know which lines belong to which block, so indentation is required.",
+    "example": "A delivery company charges by parcel weight. Up to 2 kg costs 5 dollars, up to 10 kg costs 12 dollars, and anything heavier costs 30. A 6 kg parcel fails the first check, passes the second and costs 12. A parcel marked fragile adds 3 dollars on top, checked with a separate if.",
+    "code": "weight = 6          # kg\nfragile = True\n\nif weight <= 2:\n    cost = 5\nelif weight <= 10:          # checked only if the first test was False\n    cost = 12\nelse:\n    cost = 30\n\nif fragile:                 # a separate, independent check\n    cost = cost + 3\n\nprint(\"Shipping cost:\", cost)   # Shipping cost: 15",
+    "lang": "Python"
+   },
+   {
+    "title": "Repeating work with loops",
+    "body": "A loop repeats a block of code. A for loop goes through a collection one item at a time. for city in [\"Paris\", \"Rome\"]: runs the body twice, with city set to each name in turn. range(5) produces the numbers 0 to 4, which is handy for counting.\n\nA while loop repeats as long as its condition stays True. You must make sure something inside the loop eventually makes the condition False, or the loop runs forever. Pressing Ctrl+C in the terminal stops a runaway program.\n\nbreak leaves a loop early. continue skips to the next round.",
+    "example": "A school has four test scores: 72, 88, 95 and 60. A for loop adds them to a running total, 315, and counts those of 70 or above, which is 3. A while loop then shows how many years a savings balance of 1,000 takes to pass 1,500 at 10 percent interest a year: 5 years.",
+    "code": "scores = [72, 88, 95, 60]\ntotal = 0\npassed = 0\nfor s in scores:            # s is 72, then 88, then 95, then 60\n    total = total + s\n    if s >= 70:\n        passed = passed + 1\nprint(\"Total:\", total, \"Passed:\", passed)   # Total: 315 Passed: 3\n\nbalance = 1000\nyears = 0\nwhile balance < 1500:       # repeat until the condition is False\n    balance = balance * 1.10\n    years = years + 1\nprint(\"Years needed:\", years)               # Years needed: 5",
+    "lang": "Python"
+   },
+   {
+    "title": "Functions: parameters and return values",
+    "body": "A function is a named block of code you can run whenever you need it. You define one with def, a name, parameters in brackets and a colon. Parameters are the named inputs the function expects.\n\nWhen you call the function, you pass arguments, the actual values for those parameters. The body runs, and return sends a result back to the caller, ending the function at that point. A function with no return gives back the special value None.\n\nGood functions do one clear job and have a name that says what it is. They save you copying the same lines in several places, and they are easy to test on their own.",
+    "example": "A hotel adds 12 percent tax to room prices and gives a 10 dollar discount on stays of three nights or more. The function price_with_tax takes nightly_rate and nights. For 100 dollars and 3 nights it computes 300, subtracts 10 to get 290, adds tax and returns 324.8. The same function is then reused for a second booking of 80 dollars for 1 night, which returns 89.6.",
+    "code": "def price_with_tax(nightly_rate, nights):   # two parameters\n    subtotal = nightly_rate * nights\n    if nights >= 3:\n        subtotal = subtotal - 10            # long-stay discount\n    return round(subtotal * 1.12, 2)        # send the answer back\n\nbooking1 = price_with_tax(100, 3)           # arguments 100 and 3\nbooking2 = price_with_tax(80, 1)\nprint(booking1, booking2)                   # 324.8 89.6",
+    "lang": "Python"
+   },
+   {
+    "title": "Errors and reading a traceback",
+    "body": "When Python hits a problem it cannot handle, it raises an exception and stops. It prints a traceback, a report of what happened.\n\nRead it from the bottom up. The last line gives the error type and a message, such as ValueError: invalid literal for int() with base 10: 'thirty'. The line just above shows the code that failed, and above that is the file name and line number. If functions called other functions, each call appears as a pair of lines, oldest at the top.\n\nCommon types are SyntaxError (the code breaks Python's grammar), NameError (a name that was never defined, often a typo), TypeError (wrong type for the operation), ValueError (right type, bad value) and ZeroDivisionError. You can catch an expected error with try and except so the program can respond instead of crashing.",
+    "example": "A pharmacy's stock script asks for a quantity. A user types thirty. The traceback's last line says ValueError and quotes 'thirty', and the line above points to line 3 of stock.py. The fix wraps the conversion in try/except and asks the user to type digits.",
+    "code": "# What the crash looks like:\n# Traceback (most recent call last):\n#   File \"/home/asha/stock.py\", line 3, in <module>\n#     qty = int(input(\"Quantity: \"))\n# ValueError: invalid literal for int() with base 10: 'thirty'\n\n# The fix: expect the error and handle it\nwhile True:\n    try:\n        qty = int(input(\"Quantity: \"))\n        break                                 # leave the loop on success\n    except ValueError:\n        print(\"Please type a whole number, like 30\")\nprint(\"Recorded\", qty, \"boxes\")",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Variable",
+    "A name that points to a value, created with =."
+   ],
+   [
+    "int",
+    "The type for whole numbers, such as 7 or -3."
+   ],
+   [
+    "float",
+    "The type for numbers with a decimal point, such as 3.5."
+   ],
+   [
+    "str",
+    "The type for text, written in quotes, such as \"hello\"."
+   ],
+   [
+    "bool",
+    "The type with only two values, True and False."
+   ],
+   [
+    "Condition",
+    "An expression that is either True or False, used by if and while."
+   ],
+   [
+    "Loop",
+    "Code that repeats: for goes through items, while repeats while a condition holds."
+   ],
+   [
+    "Function",
+    "A named, reusable block of code defined with def."
+   ],
+   [
+    "Parameter",
+    "A named input a function expects; the value passed in is called an argument."
+   ],
+   [
+    "Traceback",
+    "Python's error report showing the error type, message, file and line."
+   ]
+  ],
+  "practice": [
+   "Write tip.py that asks for a bill amount and a tip percentage with input(), converts both to floats, and prints the tip and the total rounded to two decimals.",
+   "Write a function grade(score) that returns \"A\" for 90 and above, \"B\" for 75 to 89, \"C\" for 50 to 74 and \"F\" below 50. Loop over the list [95, 80, 62, 40] and print each score with its grade.",
+   "Stretch: make tip.py crash on purpose by typing letters. Copy the traceback, label which line is the error type, the message and the line number, then add try/except so it asks again until the input is valid."
+  ]
+ },
+ "python2": {
+  "plain": "Real programs handle many values at once, such as every order in a month. Python has four built-in collections for this. A list is an ordered sequence, a tuple is an ordered sequence you cannot change, a dict maps keys to values, and a set holds unique items. Files let you save data to storage and read it back, most often as CSV (a simple table in text) or JSON (text that looks like Python dicts and lists). pandas is a widely used library that loads a whole table at once and lets you filter and total it in a line or two.",
+  "analogy": "A list is a numbered queue of people, a tuple is a printed receipt you cannot edit, a dict is a phone book where you look up a name to get a number, and a set is a guest list where nobody can appear twice. Files are the filing cabinet where you put them away at the end of the day.",
+  "why": "The first thing a customer usually hands an FDE is data: an export from their sales system, a spreadsheet of patients, a JSON response from their API. You need to load it, check it, reshape it and save a result in a format another system accepts. These tools are how that first afternoon of work gets done.",
+  "subtopics": [
+   {
+    "title": "Lists and tuples",
+    "body": "A list holds items in order inside square brackets: [\"tea\", \"coffee\", \"juice\"]. Each item has a position called an index, counting from 0, so the first item is at index 0. Negative indexes count from the end, so -1 is the last item.\n\nLists can change. append adds an item at the end, remove deletes one by value, and you can replace an item by assigning to its index. len(list) gives the number of items. A slice such as items[0:2] gives a new list of the items at indexes 0 and 1.\n\nA tuple uses round brackets: (51.5, -0.12). It is ordered like a list but cannot be changed after it is made. Use it for small fixed groups of values, such as a latitude and longitude pair.",
+    "example": "A bakery tracks today's orders in a list. It starts with three: croissant, bagel, muffin. A fourth order, scone, is appended. The bagel is cancelled and removed. The list now has three items, and the last one is scone. The shop's location is stored as a tuple so no code can change it by accident.",
+    "code": "orders = [\"croissant\", \"bagel\", \"muffin\"]\norders.append(\"scone\")        # add to the end\norders.remove(\"bagel\")        # remove by value\nprint(orders)                 # ['croissant', 'muffin', 'scone']\nprint(orders[0], orders[-1])  # croissant scone\nprint(len(orders))            # 3\nprint(orders[0:2])            # ['croissant', 'muffin']\n\nshop_location = (51.5074, -0.1278)   # a tuple: latitude, longitude\nlat, lon = shop_location             # unpack into two variables\n# shop_location[0] = 0  would raise TypeError: tuples cannot change",
+    "lang": "Python"
+   },
+   {
+    "title": "Dicts and sets",
+    "body": "A dict (dictionary) stores pairs of key and value inside curly braces: {\"name\": \"Ravi\", \"age\": 34}. You look a value up by its key: person[\"name\"]. Keys are usually strings or numbers and must be unique. Assigning to a key adds it or replaces its value.\n\nIf you ask for a key that is missing, Python raises KeyError. The get method returns a default instead: person.get(\"email\", \"none\"). Looping over a dict with .items() gives you each key and value together.\n\nA set holds unique values with no order: {\"North\", \"South\"}. Adding a value that is already there does nothing. Sets are the quickest way to remove duplicates or check whether something is present.",
+    "example": "A clinic keeps one patient's details in a dict with keys name, age and ward. A nurse updates the ward from B to C. Asking for email with get returns the default \"not recorded\" instead of crashing. Separately, the list of wards visited today, [\"A\", \"C\", \"A\", \"B\", \"C\"], becomes the set {\"A\", \"B\", \"C\"}, so the clinic knows three wards were involved.",
+    "code": "patient = {\"name\": \"Ravi\", \"age\": 34, \"ward\": \"B\"}\npatient[\"ward\"] = \"C\"                       # update a value\nprint(patient[\"name\"])                      # Ravi\nprint(patient.get(\"email\", \"not recorded\")) # safe lookup with a default\n\nfor key, value in patient.items():          # loop over pairs\n    print(key, \"=\", value)\n\nvisits = [\"A\", \"C\", \"A\", \"B\", \"C\"]\nwards = set(visits)                         # duplicates disappear\nprint(len(wards), \"wards\")                  # 3 wards\nprint(\"B\" in wards)                         # True",
+    "lang": "Python"
+   },
+   {
+    "title": "List comprehensions",
+    "body": "A list comprehension builds a new list from an existing one in a single line. The pattern is [expression for item in collection if condition]. Read it as: for each item, if the condition holds, put the expression into the new list.\n\nIt does the same job as a for loop that appends to an empty list, just more compactly. The if part is optional.\n\nThe same idea works for sets with curly braces and for dicts with key: value pairs. Keep comprehensions short. If one needs more than one condition or a nested loop, a normal for loop is usually easier to read.",
+    "example": "An online store has prices in dollars: 12, 45, 8, 99 and 30. A comprehension makes a list of prices with 20 percent tax added. Another keeps only prices over 25, giving 45, 99 and 30. A dict comprehension maps product names to their lengths, as a small example of building a dict the same way.",
+    "code": "prices = [12, 45, 8, 99, 30]\n\n# The long way\nwith_tax = []\nfor p in prices:\n    with_tax.append(p * 1.2)\n\n# The same thing as a comprehension\nwith_tax = [p * 1.2 for p in prices]\nexpensive = [p for p in prices if p > 25]       # [45, 99, 30]\n\nproducts = [\"mug\", \"lamp\", \"notebook\"]\nname_len = {name: len(name) for name in products}  # {'mug': 3, 'lamp': 4, 'notebook': 8}\nprint(expensive, name_len)",
+    "lang": "Python"
+   },
+   {
+    "title": "Reading and writing files, and JSON",
+    "body": "open(path, mode) connects your program to a file. Mode \"r\" reads (the default), \"w\" writes and replaces any existing contents, and \"a\" appends to the end. Always use it inside a with block, which closes the file automatically when the block ends, even if an error happens.\n\nf.read() returns the whole file as one string. Looping with for line in f gives one line at a time, which is better for large files because it does not load everything into RAM at once. Each line ends with a newline character, which strip() removes.\n\nJSON (JavaScript Object Notation) is a text format that looks almost like Python dicts and lists and is used by most web APIs. The json module converts in both directions: json.dump writes a Python value to a file, json.load reads it back, and json.dumps and json.loads do the same with strings.",
+    "example": "A small hotel logs guest check-ins to checkins.txt, one name per line, using append mode so earlier names are kept. At night a script reads the file and counts 3 guests. It saves a summary dict, date and count, to summary.json. The next morning another script loads summary.json and gets the same dict back.",
+    "code": "import json\n\nwith open(\"checkins.txt\", \"a\") as f:          # \"a\" adds to the end\n    for name in [\"Lee\", \"Okafor\", \"Silva\"]:\n        f.write(name + \"\\n\")                   # \\n starts a new line\n\nwith open(\"checkins.txt\") as f:\n    names = [line.strip() for line in f]       # one line at a time\n\nsummary = {\"date\": \"2026-03-14\", \"guests\": len(names)}\nwith open(\"summary.json\", \"w\") as f:\n    json.dump(summary, f, indent=2)            # Python dict -> JSON text\n\nwith open(\"summary.json\") as f:\n    loaded = json.load(f)                      # JSON text -> Python dict\nprint(loaded[\"guests\"])",
+    "lang": "Python"
+   },
+   {
+    "title": "CSV files with the csv module",
+    "body": "CSV (comma-separated values) is the most common way businesses export tables. The first line usually holds column names, and every later line is one row with values separated by commas. Spreadsheet programs can open and save it.\n\nSplitting lines on commas yourself breaks as soon as a value contains a comma, such as \"Smith, Jane\", which CSV handles by putting it in quotes. The csv module understands these rules. csv.DictReader gives each row as a dict keyed by column name, and csv.DictWriter writes dicts back out.\n\nOpen CSV files with newline=\"\" as the csv documentation recommends. Remember every value comes in as a string, so convert numbers with int or float before doing maths.",
+    "example": "A corner shop exports sales.csv with columns store, item and amount. There are four rows: North tea 4.50, North cake 12.00, South tea 4.50, South sandwich 15.00. The script reads the rows, adds up the amounts per store (North 16.5, South 19.5), and writes those totals to store_totals.csv for the owner to open in a spreadsheet.",
+    "code": "import csv\n\n# sales.csv\n# store,item,amount\n# North,tea,4.50\n# North,cake,12.00\n# South,tea,4.50\n# South,sandwich,15.00\n\ntotals = {}\nwith open(\"sales.csv\", newline=\"\") as f:\n    for row in csv.DictReader(f):              # row is a dict\n        amount = float(row[\"amount\"])          # text -> number\n        totals[row[\"store\"]] = totals.get(row[\"store\"], 0) + amount\n\nwith open(\"store_totals.csv\", \"w\", newline=\"\") as f:\n    writer = csv.DictWriter(f, fieldnames=[\"store\", \"total\"])\n    writer.writeheader()\n    for store, total in totals.items():\n        writer.writerow({\"store\": store, \"total\": total})\nprint(totals)                                  # {'North': 16.5, 'South': 19.5}",
+    "lang": "Python"
+   },
+   {
+    "title": "A first look at pandas",
+    "body": "pandas is a third-party library, so install it first with pip install pandas inside your virtual environment. It is imported by convention as pd.\n\npd.read_csv(\"file.csv\") loads a whole CSV into a DataFrame, a table with named columns and numbered rows, and it converts numeric columns to numbers automatically. df.head() shows the first five rows and df.dtypes shows each column's type.\n\nTo filter, put a condition in square brackets: df[df[\"amount\"] > 10] keeps rows where amount is over 10. To total by group, use groupby: df.groupby(\"store\")[\"amount\"].sum() splits the table by store and sums each part. These few operations replace the loops you wrote by hand in the previous subtopic.",
+    "example": "Using the same sales.csv from the corner shop, pandas reads the file in one line. Filtering amount over 10 leaves the cake and sandwich rows. Grouping by store and summing gives North 16.5 and South 19.5, matching the csv module result with far less code. to_csv saves the totals for the owner.",
+    "code": "import pandas as pd          # pip install pandas\n\ndf = pd.read_csv(\"sales.csv\")\nprint(df.head())             # first rows of the table\nprint(df.dtypes)             # amount is float64; store and item are text (object or str)\n\nbig = df[df[\"amount\"] > 10]  # keep rows over 10\nprint(big)\n\ntotals = df.groupby(\"store\")[\"amount\"].sum()\nprint(totals)                # North 16.5, South 19.5\ntotals.to_csv(\"store_totals.csv\")",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "List",
+    "An ordered, changeable collection in square brackets, indexed from 0."
+   ],
+   [
+    "Tuple",
+    "An ordered collection in round brackets that cannot be changed after creation."
+   ],
+   [
+    "Dict",
+    "A collection of key-value pairs in curly braces, looked up by key."
+   ],
+   [
+    "Set",
+    "An unordered collection of unique values."
+   ],
+   [
+    "Index",
+    "The position of an item in a list or tuple, starting at 0."
+   ],
+   [
+    "List comprehension",
+    "A one-line way to build a new list from an existing one, optionally filtering."
+   ],
+   [
+    "CSV",
+    "Comma-separated values: a plain-text table with one row per line."
+   ],
+   [
+    "JSON",
+    "A text format for data that looks like dicts and lists, used by most web APIs."
+   ],
+   [
+    "pandas",
+    "A Python library for working with tables of data."
+   ],
+   [
+    "DataFrame",
+    "The pandas table object, with named columns and rows."
+   ]
+  ],
+  "practice": [
+   "Make a list of five fruit prices, then use a list comprehension to create a list of only those under 2.00, and a dict mapping each fruit name to its price. Print both.",
+   "Create a small students.csv with columns name, class and score (at least six rows across two classes). Using the csv module, compute the average score per class and save the result to averages.json.",
+   "Stretch: repeat exercise 2 with pandas using read_csv and groupby(\"class\")[\"score\"].mean(). Check the numbers match, then filter to students scoring above 70 and save them with to_csv."
+  ]
+ }
+}

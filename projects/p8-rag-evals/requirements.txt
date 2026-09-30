@@ -1,0 +1,8 @@
+numpy>=1.26
+anthropic>=0.40
+pytest>=8.0
+# Optional, for real semantic embeddings (EMBED_MODE=st). Large download (PyTorch):
+# sentence-transformers>=3.0
+# Optional, only if you implement the pgvector store (stretch goal):
+# psycopg[binary]>=3.1
+# pgvector>=0.3

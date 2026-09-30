@@ -1,0 +1,123 @@
+{
+ "dataquality": {
+  "title": "Tallis Home Insurance: one customer, four records",
+  "company": "Tallis Home Insurance (made up), a home insurer with about 900 staff and 410,000 policyholders in the United Kingdom",
+  "situation": "Tallis was rolling out an AI assistant that summarises a customer's policies and claims for call-centre agents. In the pilot, agents reported that about 1 in 7 summaries missed a policy or a claim. The data came from three systems: policy admin, claims and the CRM, each with its own customer id.",
+  "problem": "The same person often existed several times across the systems, as 'Mrs J. Okafor', 'Joy Okafor' and 'OKAFOR JOY', with slightly different addresses. Joining on name or email alone either missed most links or wrongly merged relatives living at the same address, and the model could not fix what the data did not connect.",
+  "approach": [
+   "The FDE profiled all three sources in the first two days: 3.4 percent of CRM emails were blank strings, 11,200 policy records shared a postcode and surname with another record, and dates of birth were stored in two formats.",
+   "She wrote expectation suites in pandera for each extract and quarantined 2,900 rows with impossible dates of birth or missing postcodes, reporting them daily to the CRM team instead of fixing them by hand.",
+   "She built entity resolution: normalise names and addresses, block on postcode, score pairs on name, date of birth and house number, auto-link at 92 and above, and send pairs between 80 and 91 to a review queue.",
+   "Two claims handlers reviewed 1,800 grey-zone pairs over a week. Their decisions showed that same surname plus same address plus different date of birth was almost always a relative, so she added that as a rule that blocks auto-merge.",
+   "She kept a mapping table from every source id to a golden customer id, with score and reviewer, so any link could be explained or undone.",
+   "Before switching the assistant to the linked data, she reconciled counts, total active premiums and per-policy checksums between the source systems and the new customer view.",
+   "She wrote a data contract with the CRM team covering date formats, required postcodes and 30 days notice for schema changes."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "RECONCILIATION REPORT  golden customer view v1   (signed: FDE, Head of Data)\n\nSource policies in             412,380\n  linked to a golden customer  409,114\n  quarantined (reason logged)    3,266   bad DOB 2,104 | no postcode 1,162\n  check: 409,114 + 3,266 = 412,380   OK\n\nActive annual premium, source    GBP 196,402,117.40\nActive annual premium, target    GBP 196,402,117.40   OK\nPer-policy checksums differing   0\n\nMatching\n  pairs scored                  1,212,560 (after postcode blocking)\n  auto-linked (score >= 92)       88,904\n  reviewed by people               1,812   linked 1,297 | kept apart 515\n  sampled auto-links checked         400   wrong 3 (0.75%)"
+  },
+  "outcome": "Summaries missing a policy or claim fell from about 1 in 7 to about 1 in 60 in the next four weeks of the pilot. The duplicate customer count in the CRM fell by 6.1 percent, and the CRM team fixed the date-of-birth format at the source within two months under the contract.",
+  "lessons": [
+   "An AI feature is only as good as the joins underneath it; fix linking before tuning prompts.",
+   "The review queue taught the rules: people's decisions in the grey zone became new automatic checks.",
+   "A reconciliation equation (in = linked + quarantined) makes the result easy to sign off.",
+   "Quarantine and report daily, so the owning team fixes the cause instead of you fixing symptoms."
+  ],
+  "discuss": [
+   "How would you choose the auto-link threshold if a wrong merge could show one person's claims to another customer?",
+   "Who inside the customer should own the golden customer id after the FDE leaves?",
+   "What would you monitor weekly to notice that matching quality is slipping?"
+  ]
+ },
+ "spreadsheets": {
+  "title": "Dunmore Building Supplies: the Monday pack that depended on one person",
+  "company": "Dunmore Building Supplies (made up), a builders' merchant with 22 branches and about 650 staff in Ireland",
+  "situation": "Every Monday a finance analyst ran a VBA macro that combined 22 branch stock and sales workbooks into a pack for the regional managers. It took about 3 hours including fixes, and the pack went out late on roughly one Monday in four. The company was also rolling out an AI assistant for managers that needed the same numbers.",
+  "problem": "The macro broke whenever a branch changed a column name or left a hidden total row in, and only the analyst who wrote it could fix it. IT planned to block unsigned macros within six months. Building a new dashboard would have meant retraining 22 managers who liked their Excel pack.",
+  "approach": [
+   "The FDE sat with the analyst for one Monday run and wrote down every step the macro did and every manual fix, including deleting hidden TOTAL rows and correcting a branch that sent quantities as text.",
+   "She wrote a Python script that reads each branch file by sheet name, finds the header row by searching for 'SKU', renames columns to a fixed schema and drops total rows.",
+   "She added checks: required columns present, quantities numeric, one row per branch and SKU. Files that failed were skipped with a clear log line and an email to the branch.",
+   "She recreated the managers' pack with xlsxwriter, keeping the same tabs, colours and number formats, and reproduced the analyst's SUMIFS figures to the cent.",
+   "The macro and the script ran in parallel for three Mondays; she compared both outputs row by row and fixed two differences, both caused by the macro silently counting hidden rows.",
+   "She scheduled the script at 06:30 on the customer's job server, wrote the clean table to a Postgres database as well, and pointed the AI assistant at that table instead of the workbooks."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "PARALLEL RUN COMPARISON   Monday pack   week 3 of 3\n\n                      macro        script       diff\nbranches in pack         22            21         -1   (Castlebar skipped: 'Qty' missing, branch emailed 06:31)\nrows (branch, SKU)   18,442        17,610       -832   (all Castlebar)\nsales value, EUR  1,204,388.10  1,151,902.60        -52,485.50 (all Castlebar)\n\nExcluding Castlebar:\nrows                 17,610        17,610          0\nsales value, EUR  1,151,902.60  1,151,902.60      0.00\n\nEarlier differences found and resolved\n  week 1: macro counted hidden TOTAL rows in 2 branches (+EUR 38,120 overstated)\n  week 2: Sligo quantities stored as text, macro read as 0\n\nDecision: switch to script from week 4. Owner: Finance Ops lead. Macro archived."
+  },
+  "outcome": "The pack now goes out at 06:40 every Monday with no manual steps; the analyst's 3 hours dropped to about 15 minutes of reading the log. Over the next quarter there was one late pack, caused by a server outage, against about three in the previous quarter, and the AI assistant's stock answers matched the pack because both used the same table.",
+  "lessons": [
+   "Shadow the person who runs the process before you automate it; the manual fixes are the real specification.",
+   "Keep the output in the format users already trust; change the engine, not the dashboard.",
+   "A parallel run finds bugs in the old process too, which builds credibility.",
+   "Skipping a bad file loudly beats crashing halfway or producing a quietly wrong total."
+  ],
+  "discuss": [
+   "Should the script have produced the pack without Castlebar, or held the whole pack until the branch fixed its file?",
+   "Who at the customer should own the script after the FDE leaves, and what do they need to know?",
+   "At what point would you suggest managers move from the Excel pack to a dashboard?"
+  ]
+ },
+ "webauto": {
+  "title": "Pennock Freight Brokers: proof of delivery from nine carrier portals",
+  "company": "Pennock Freight Brokers (made up), a freight broker with about 140 staff that books loads on 30 road carriers in the United Kingdom",
+  "situation": "Pennock could only invoice a shipper once it had the proof of delivery (POD), a signed PDF held on each carrier's web portal. Four billing clerks spent most of each day signing in to carrier portals, searching for the shipment and downloading the PDF. Pennock was piloting an AI assistant that checks each POD against the booking before invoicing, and it needed the PDFs to arrive on time.",
+  "problem": "Nine carriers covered about 80 percent of loads, and none offered an API. Invoices went out on average 6 days after delivery, which hurt cash flow. A contractor's earlier scraper had used a clerk's personal logins, broke every few weeks, and once got an account locked for a day after retrying a failed login 200 times.",
+  "approach": [
+   "The FDE and Pennock's operations manager wrote to all nine carriers asking for an API, an export or permission to automate downloads. Two offered a nightly CSV and POD feed, six gave written permission with limits, and one said no, so it stayed manual.",
+   "For each allowed portal she opened the network tab first. Four loaded their shipment search from a JSON endpoint, so those scripts used requests with a saved session and never touched the page.",
+   "For the other two she wrote Playwright scripts with role and label locators, saved the session with storage_state, and downloaded PDFs with expect_download.",
+   "Each carrier issued a dedicated service login; where MFA was required, a named clerk completed it once a week and the job reused the session and sent an alert two days before expiry.",
+   "Every script ran at night with one request every 3 seconds, stopped after two failed logins, and logged each shipment as downloaded, not found or failed with a screenshot.",
+   "Downloaded PODs were matched to bookings by reference and handed to the AI assistant, which flagged mismatched signatures or dates for a clerk to review."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "POD COLLECTION RUN   night of 14 Sep 2026   02:00 to 03:12\n\ncarrier          method        allowed by           shipments  downloaded  not yet  failed\nCarrier A        partner feed  contract             412        412         0        0\nCarrier B        partner feed  contract             288        288         0        0\nCarrier C        JSON + req    email 02 Jul         201        196         5        0\nCarrier D        JSON + req    email 04 Jul         174        174         0        0\nCarrier E        JSON + req    email 09 Jul         133        131         2        0\nCarrier F        JSON + req    email 11 Jul          97         97         0        0\nCarrier G        Playwright    email 03 Jul          88         85         0        3  (session expired 02:41, clerk alerted)\nCarrier H        Playwright    email 15 Jul          64         64         0        0\nCarrier I        manual        permission refused    55          -         -        -\n\nlogin failures: 1 (G, stopped after 1 of 2 allowed)   requests per portal: 1 every 3 s"
+  },
+  "outcome": "Within two months, the median time from delivery to invoice fell from 6 days to 2 days. The four clerks' POD work dropped from most of the day to about an hour of exceptions, and two of them moved to handling shipper queries. There were no locked accounts in the first quarter, and the one refused carrier was later offered the POD feed after its account manager saw the volumes.",
+  "lessons": [
+   "Asking for permission and an export first removed a third of the scraping before any code was written.",
+   "Checking the network tab turned four of six portals into simple API calls that rarely break.",
+   "Dedicated logins and a stop after failed attempts are what keep a scraper from becoming a security incident.",
+   "Logging every shipment as downloaded, not yet or failed made the job trustworthy to the billing team."
+  ],
+  "discuss": [
+   "Carrier I refused permission. What would you say to a Pennock manager who asks you to scrape it anyway?",
+   "How would you notice that a carrier redesigned its portal before the billing team notices missing PODs?",
+   "Would a browser agent have been a better fit for any of these carriers? Why or why not?"
+  ]
+ },
+ "typescript": {
+  "title": "Larkspur Lettings: an AI triage service the customer's team could own",
+  "company": "Larkspur Lettings (made up), a property letting and management agency with 300 staff managing about 18,000 rented homes in the United Kingdom",
+  "situation": "Tenants reported repairs through Larkspur's web app, about 2,500 requests a week, and a team of coordinators read each one to set urgency and pick a trade (plumber, electrician and so on). Larkspur's six-person product team wrote everything in TypeScript on Node. The FDE's first prototype of an AI triage step was a Python notebook.",
+  "problem": "The product team said they could not run or maintain Python in production. The notebook also trusted the model's JSON: in a sample of 500 requests, 11 replies had a missing or invented urgency value, which would have crashed or silently mis-routed a job. A gas leak marked 'routine' was the outcome everyone feared.",
+  "approach": [
+   "The FDE rebuilt the triage as a small TypeScript service in the team's own repo, using their package manager, lint rules and folder layout, with strict mode on.",
+   "She wrote a zod schema for the incoming request and a second one for the model's reply: urgency as an enum of four values, trade as an enum of nine, and a one-line reason.",
+   "When a reply failed validation, the service retried once with the zod issues added to the prompt; if it failed again, the request went to a coordinator unchanged.",
+   "Any request mentioning gas, smoke, flooding or no heating was forced to a coordinator whatever the model said, as a plain rule written and tested in code.",
+   "She wrote 64 vitest tests: schema edge cases, the safety keywords, and 40 recorded model replies replayed through a fake client, so tests ran in CI without an API key.",
+   "She paired with one of the team's engineers for two days so they could explain every file, then handed over the repo, a runbook and the model id in an environment variable."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "triage-service   first 4 weeks in production\n\nrequests received                    10,212\n  passed request schema              10,190   (22 rejected: empty or over 5,000 chars)\n  model reply valid first time       10,041\n  valid after one retry                 131\n  sent to coordinator (invalid twice)    18\n  forced to coordinator (safety words)  611\n\ncoordinator overrides of AI urgency     3.1%\ncoordinator overrides of AI trade       4.6%\nunhandled errors                           0\n\nvitest: 64 passed   tsc --noEmit: 0 errors   CI time 38 s"
+  },
+  "outcome": "Coordinators moved from reading every request to checking a pre-sorted queue, and the median time to assign a trade fell from 5 hours to 40 minutes. Invalid model replies never reached the job system. Three months later the product team added a new trade category and a Welsh-language prompt on their own, without calling the FDE.",
+  "lessons": [
+   "Delivering in the customer's language and repo is what made the work theirs to keep.",
+   "Validate model output with the same rigour as user input; a schema plus one retry handled almost every bad reply.",
+   "Put safety rules in plain, tested code, not only in the prompt.",
+   "Recorded replies and a fake client make LLM code testable in CI with no key and no cost."
+  ],
+  "discuss": [
+   "Would you have allowed a retry at all for replies about possible safety issues, or sent them straight to a person?",
+   "The team knows TypeScript but not prompting. What would you teach them first before handing over?",
+   "How would you notice if the model's override rate slowly rose after a model version change?"
+  ]
+ }
+}

@@ -1,0 +1,46 @@
+.fitline{margin:6px 0 0;font-size:14px;color:var(--muted);max-width:78ch}
+.fitline b{color:var(--ink);font-weight:600}
+.tryit,.quiz,.tplrel{display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:18px 20px}
+.tryit{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.tryit h3,.quiz h3,.tplrel h3{margin:0;font-family:var(--display);font-size:19px}
+.tryintro{margin:0;color:var(--muted);max-width:78ch}
+.tryhost{min-width:0}
+.tryhost input[type=range]{accent-color:var(--accent)}
+.qz{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:16px}
+.qz li>p{margin:0 0 8px;font-weight:600}
+.qzopts{display:flex;flex-direction:column;gap:6px}
+.qzopts button{all:unset;box-sizing:border-box;cursor:pointer;padding:8px 12px;border:1px solid var(--line-strong);border-radius:8px;font-size:14px;line-height:1.45}
+.qzopts button:hover:not([disabled]){border-color:var(--accent)}
+.qzopts button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.qzopts button[disabled]{cursor:default}
+.qzopts button.right{border-color:var(--done-line);background:var(--done);font-weight:600}
+.qzopts button.wrong{border-color:var(--packet);background:var(--hl)}
+.qz li>p.qzwhy{font-weight:400;margin:8px 0 0;font-size:14px;color:var(--muted)}
+.qzfoot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-weight:600}
+.tplbtns{display:flex;flex-wrap:wrap;gap:8px}
+.tplwrap{display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:760px){.tplwrap{grid-template-columns:1fr}}
+.tpllist{display:flex;flex-direction:column;gap:4px}
+.tpllist button{all:unset;cursor:pointer;box-sizing:border-box;padding:8px 10px;border-radius:6px;font-size:14px;border:1px solid transparent}
+.tpllist button small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.tpllist button:hover{border-color:var(--line-strong)}
+.tpllist button[aria-current="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.tpllist button:focus-visible{outline:2px solid var(--accent)}
+.tpldoc{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:18px 22px;min-width:0}
+.tplbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.tplmsg{font-size:13px;color:var(--muted)}
+.md{max-width:80ch;line-height:1.6;overflow-wrap:anywhere}
+.md h1{font-family:var(--display);font-size:24px;margin:8px 0}
+.md h2{font-family:var(--display);font-size:19px;margin:22px 0 6px;padding-top:10px;border-top:1px solid var(--line)}
+.md h3{font-size:16px;margin:16px 0 4px}
+.md p,.md ul,.md ol{margin:6px 0}
+.md code{font-family:var(--mono);font-size:.92em;background:var(--code-bg);padding:1px 4px;border-radius:4px}
+.md pre{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto}
+.md pre code{background:none;padding:0}
+.md blockquote{margin:8px 0;padding:4px 12px;border-left:3px solid var(--accent);color:var(--muted)}
+.md table{border-collapse:collapse;display:block;overflow-x:auto;font-size:14px}
+.md th,.md td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+.md th{background:var(--code-bg)}
+.md hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+:not(pre)>code{overflow-wrap:anywhere}
+.panel li,.lesson p,.cs p,.cs li{overflow-wrap:anywhere}

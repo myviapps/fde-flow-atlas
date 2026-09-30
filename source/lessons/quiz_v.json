@@ -1,0 +1,230 @@
+{
+ "dimred": [
+  {
+   "q": "What does PCA's first principal component represent?",
+   "options": [
+    "The original column with the largest values",
+    "The direction through the data with the most variance",
+    "The cluster that contains the most points",
+    "The column most correlated with the target"
+   ],
+   "answer": 1,
+   "why": "PC1 is a new axis, a weighted mix of columns, along which the data spreads the most. It is not chosen using the target."
+  },
+  {
+   "q": "In the curse of dimensionality, what happens to distances as you add many columns?",
+   "options": [
+    "Nearest and farthest neighbours end up at almost the same distance",
+    "All distances shrink towards zero so every point looks identical",
+    "Distances become exact, so k-nearest neighbours improves",
+    "Distances stay the same but training becomes slower"
+   ],
+   "answer": 0,
+   "why": "In high dimensions the ratio of farthest to nearest distance approaches 1, so 'nearest' carries little information."
+  },
+  {
+   "q": "Hollin Logistics (a client) has 120 sensor columns in kilograms, degrees and percent. Before PCA, what do you do first?",
+   "options": [
+    "Drop every column measured in percent",
+    "Run PCA on the raw columns to keep the original units",
+    "Standardise the columns so each has mean 0 and sd 1",
+    "Sort the columns by their average value"
+   ],
+   "answer": 2,
+   "why": "PCA follows variance, so columns with large units would dominate. Standardising puts them on an equal footing."
+  },
+  {
+   "q": "A product lead at Marrowby Media shows a t-SNE plot of article embeddings with 6 blobs and says 'we have 6 audiences'. Best reply?",
+   "options": [
+    "Agree, since t-SNE preserves the true number of groups",
+    "Measure blob sizes on the plot to size each audience",
+    "Rerun with a lower perplexity to confirm there are exactly 6",
+    "Treat it as a hint and test groups with clustering on the original data"
+   ],
+   "answer": 3,
+   "why": "Blob counts and sizes change with settings. Clustering on the original or PCA-reduced data, plus reading samples, tests the idea properly."
+  },
+  {
+   "q": "Spot the mistake: 'We fitted PCA on all 10,000 rows, then split into train and test and trained the model.'",
+   "options": [
+    "PCA must always keep 95 percent of variance",
+    "PCA saw the test rows, so information leaked into the features",
+    "PCA should be fitted on the test set only",
+    "The model should have been trained before PCA"
+   ],
+   "answer": 1,
+   "why": "Fitting PCA before the split lets test data shape the components. Put PCA in a Pipeline fitted on training rows only."
+  }
+ ],
+ "anomaly": [
+  {
+   "q": "What is a contextual anomaly?",
+   "options": [
+    "A value that is extreme compared with all other values",
+    "A value that is normal in one setting but odd in another, like 3am",
+    "A group of points that are only odd when seen together",
+    "A value that is missing from the dataset"
+   ],
+   "answer": 1,
+   "why": "Contextual anomalies depend on context such as time of day. Extreme-for-everyone is a point anomaly; odd-together is collective."
+  },
+  {
+   "q": "How does an isolation forest decide a point is unusual?",
+   "options": [
+    "It sits far from the nearest cluster centre",
+    "It has a z-score above 3 in any column",
+    "Random splits isolate it after only a few steps",
+    "A labelled fraud case looks similar to it"
+   ],
+   "answer": 2,
+   "why": "Anomalies are few and different, so random trees separate them quickly. A short average path means a higher anomaly score."
+  },
+  {
+   "q": "Tamsford Energy's on-call team can handle about 20 alerts a day. How should you set the alert threshold?",
+   "options": [
+    "Alert on the top 20 scores a day and track precision at 20",
+    "Use z greater than 3 because it is the standard rule",
+    "Alert on everything and let the team filter manually",
+    "Set contamination to 50 percent to be safe"
+   ],
+   "answer": 0,
+   "why": "The review budget sets k. Then precision at k tells you how many alerts are worth the team's time."
+  },
+  {
+   "q": "Hourly logins at Quellbrook Software follow a strong daily cycle. Which detector will catch a night-time burst best?",
+   "options": [
+    "A global z-score over all hours",
+    "An IQR fence on all hourly values together",
+    "A one-class SVM trained on the daily totals",
+    "Scoring each hour against the same hour's recent median"
+   ],
+   "answer": 3,
+   "why": "A same-hour baseline removes the daily cycle, so an unusual 3am value stands out. Global methods see it as a normal midday number."
+  },
+  {
+   "q": "Spot the trap: refunds of 95 and 60 in a series around 14; only 95 is flagged by |z| > 3. Why was 60 missed?",
+   "options": [
+    "60 is inside the normal range of the data",
+    "The z-score formula ignores values below 100",
+    "The 95 inflated the mean and sd, masking the 60",
+    "IQR fences were used instead of z-scores"
+   ],
+   "answer": 2,
+   "why": "This is masking. Robust methods such as IQR fences flag both, because percentiles barely move when outliers appear."
+  }
+ ],
+ "timeseries": [
+  {
+   "q": "What does a seasonal-naive forecast predict for next Monday with daily data?",
+   "options": [
+    "The average of all past Mondays",
+    "The value from last Monday",
+    "The value from yesterday",
+    "A straight-line trend to next Monday"
+   ],
+   "answer": 1,
+   "why": "Seasonal naive repeats the value from one season ago; with a weekly season that is the same weekday last week."
+  },
+  {
+   "q": "In simple exponential smoothing, what does a higher alpha do?",
+   "options": [
+    "Gives more weight to old values, making the forecast smoother",
+    "Adds a weekly seasonal term to the forecast",
+    "Reacts faster to recent values, making the forecast jumpier",
+    "Removes the trend before forecasting"
+   ],
+   "answer": 2,
+   "why": "New level = alpha x latest + (1 - alpha) x old level, so a large alpha follows the latest values closely."
+  },
+  {
+   "q": "Harlow Crest Hotels wants room demand 14 days ahead. Which lag feature is safe for a boosting model?",
+   "options": [
+    "Demand from yesterday",
+    "Demand from 3 days ago",
+    "The 7-day rolling mean ending yesterday",
+    "Demand from 14 days before the target day"
+   ],
+   "answer": 3,
+   "why": "When forecasting 14 days ahead, only values at least 14 days before the target day are known at forecast time."
+  },
+  {
+   "q": "A client says their new model has 3% MAPE. What do you ask first?",
+   "options": [
+    "Was the test split by time, and what does seasonal naive score?",
+    "Which neural network architecture did you use?",
+    "Can we switch the metric to R-squared instead?",
+    "How many features does the model use?"
+   ],
+   "answer": 0,
+   "why": "A shuffled split leaks the future, and a number means little without the baseline scored on the same test."
+  },
+  {
+   "q": "Spot the trap: a slow-selling product has some zero-sales days. Which metric breaks?",
+   "options": [
+    "MAE, because it cannot handle zeros",
+    "WAPE, because it divides by each day's value",
+    "MAPE, because dividing by a zero actual is undefined",
+    "MASE, because it needs a seasonal baseline"
+   ],
+   "answer": 2,
+   "why": "MAPE divides each error by the actual value, so a zero makes it infinite. WAPE divides by the total, which is fine."
+  }
+ ],
+ "recsys": [
+  {
+   "q": "What is collaborative filtering?",
+   "options": [
+    "Recommending items with similar descriptions to ones the user liked",
+    "Recommending from patterns in many users' behaviour",
+    "Letting users vote on which items to feature",
+    "Filtering out items that are out of stock"
+   ],
+   "answer": 1,
+   "why": "CF learns 'people who bought this also bought that' from behaviour. Similar descriptions is content-based filtering."
+  },
+  {
+   "q": "Why does NDCG@k add information that precision@k lacks?",
+   "options": [
+    "It counts how many items are in the catalogue",
+    "It measures revenue instead of clicks",
+    "It rewards relevant items more when they appear near the top",
+    "It only works with star ratings"
+   ],
+   "answer": 2,
+   "why": "Precision@k ignores order inside the top k. NDCG discounts hits lower in the list, matching how people scan."
+  },
+  {
+   "q": "Pellbrook Books adds 400 new titles a month with no sales yet. How do you get them recommended?",
+   "options": [
+    "Wait until collaborative filtering picks them up",
+    "Show them only to users who rated many books",
+    "Remove them from the catalogue until they sell",
+    "Use content similarity and reserve some slots for new titles"
+   ],
+   "answer": 3,
+   "why": "New items have no behaviour, so CF cannot score them. Content similarity plus guaranteed exposure solves cold start."
+  },
+  {
+   "q": "Ostwick Home has only views and purchases. Offline, a new model beats bestsellers on NDCG. What next?",
+   "options": [
+    "Run an A/B test with a primary metric and guardrails",
+    "Ship it to everyone since offline metrics prove value",
+    "Retrain on star ratings before deciding",
+    "Replace NDCG with accuracy and re-evaluate"
+   ],
+   "answer": 0,
+   "why": "Offline metrics pick candidates, but only a live A/B test on a business metric shows real impact."
+  },
+  {
+   "q": "Spot the mistake: 'We treat every item a user never clicked as a dislike when training.'",
+   "options": [
+    "Clicks should be ignored entirely in recommenders",
+    "Most unclicked items were never shown, so they are not dislikes",
+    "Dislikes should be weighted more heavily than purchases",
+    "Unclicked items should be removed from the catalogue"
+   ],
+   "answer": 1,
+   "why": "With implicit feedback, a missing interaction usually means 'not seen', not 'not wanted'."
+  }
+ ]
+}

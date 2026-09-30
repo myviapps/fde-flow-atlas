@@ -1,0 +1,928 @@
+[
+ {
+  "id": "dimred",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Dimensionality reduction",
+  "title": "Dimensionality reduction: PCA, t-SNE and UMAP",
+  "thesis": "Wide data is hard to model and impossible to look at. PCA compresses correlated columns into a few components ranked by explained variance; t-SNE and UMAP draw 2D maps of neighbours for exploration only. Scale first, fit on training data, and never read cluster sizes or gaps off a map.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "PCA by hand on 64 pixel columns",
+  "code": "import numpy as np\nfrom sklearn.datasets import load_digits\nfrom sklearn.preprocessing import StandardScaler\n\nX, _ = load_digits(return_X_y=True)            # 1,797 images x 64 pixel columns\nXs = StandardScaler().fit_transform(X)         # each column: mean 0, sd 1\ncov = np.cov(Xs, rowvar=False)                 # 64 x 64: how columns move together\nvals, vecs = np.linalg.eigh(cov)               # axes (eigenvectors) and their variance\norder = vals.argsort()[::-1]                   # biggest variance first\nvals, vecs = vals[order], vecs[:, order]\nshare = np.cumsum(vals) / vals.sum()           # running share of variance kept\nk = int(np.argmax(share >= 0.90)) + 1          # smallest k that keeps 90%\nZ = Xs @ vecs[:, :k]                           # project: 64 columns become k\nprint(k, Z.shape)\n\n# Output:\n# 31 (1797, 31)",
+  "nodes": [
+   [
+    "raw",
+    90,
+    70,
+    "Wide data",
+    "64 columns"
+   ],
+   [
+    "scale",
+    265,
+    70,
+    "Standardise",
+    "mean 0, sd 1"
+   ],
+   [
+    "cov",
+    440,
+    70,
+    "Covariance",
+    "columns together"
+   ],
+   [
+    "eig",
+    615,
+    70,
+    "Find axes",
+    "eigenvectors"
+   ],
+   [
+    "sort",
+    615,
+    220,
+    "Rank axes",
+    "biggest variance"
+   ],
+   [
+    "choose",
+    440,
+    220,
+    "Choose k",
+    "e.g. 90% kept"
+   ],
+   [
+    "project",
+    265,
+    220,
+    "Project",
+    "data x axes"
+   ],
+   [
+    "use",
+    90,
+    220,
+    "Use it",
+    "model, plot, index"
+   ]
+  ],
+  "edges": [
+   [
+    "raw",
+    "scale"
+   ],
+   [
+    "scale",
+    "cov"
+   ],
+   [
+    "cov",
+    "eig"
+   ],
+   [
+    "eig",
+    "sort"
+   ],
+   [
+    "sort",
+    "choose"
+   ],
+   [
+    "choose",
+    "project"
+   ],
+   [
+    "project",
+    "use"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start with wide data",
+    "n": [
+     "raw"
+    ],
+    "e": [],
+    "d": "1,797 handwritten digits, each stored as 64 pixel columns. Neighbouring pixels move together, so much of this is redundant.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "Put columns on one scale",
+    "n": [
+     "raw",
+     "scale"
+    ],
+    "e": [
+     "raw>scale"
+    ],
+    "d": "Standardise every column to mean 0 and standard deviation 1, so a column with big units cannot dominate the variance.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Measure how columns move together",
+    "n": [
+     "scale",
+     "cov"
+    ],
+    "e": [
+     "scale>cov"
+    ],
+    "d": "The covariance matrix records, for every pair of columns, whether they rise and fall together.",
+    "l": [
+     6
+    ]
+   },
+   {
+    "t": "Find the axes of the cloud",
+    "n": [
+     "cov",
+     "eig"
+    ],
+    "e": [
+     "cov>eig"
+    ],
+    "d": "Its eigenvectors are new axes through the data, and each eigenvalue says how much variance lies along its axis.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "Rank the axes",
+    "n": [
+     "eig",
+     "sort"
+    ],
+    "e": [
+     "eig>sort"
+    ],
+    "d": "Sort the axes by variance, biggest first. These are the principal components PC1, PC2 and so on.",
+    "l": [
+     8,
+     9
+    ]
+   },
+   {
+    "t": "Decide how many to keep",
+    "n": [
+     "sort",
+     "choose"
+    ],
+    "e": [
+     "sort>choose"
+    ],
+    "d": "The running share of variance shows how many components you need. Here 31 of 64 keep 90 percent of the standardised data's variance.",
+    "l": [
+     10,
+     11
+    ]
+   },
+   {
+    "t": "Project the data",
+    "n": [
+     "choose",
+     "project"
+    ],
+    "e": [
+     "choose>project"
+    ],
+    "d": "Multiply the data by the kept axes: every image is now described by 31 numbers instead of 64.",
+    "l": [
+     12
+    ]
+   },
+   {
+    "t": "Use the smaller data",
+    "n": [
+     "project",
+     "use"
+    ],
+    "e": [
+     "project>use"
+    ],
+    "d": "Feed the components to a model, a chart or a search index. Save the scaler and axes so new rows are transformed the same way.",
+    "l": [
+     13
+    ]
+   }
+  ],
+  "ideas": [
+   "More columns spread data thinly: distances stop being meaningful and models need far more rows, which is the curse of dimensionality.",
+   "PCA finds the directions of greatest spread; each principal component is a weighted mix of the original columns.",
+   "Explained variance ratio tells you how much of the data's shape each component keeps; choose k with a variance target or, better, a validation score.",
+   "t-SNE and UMAP make 2D maps that keep local neighbours, which is great for exploring embeddings and spotting mislabelled items.",
+   "Always scale before PCA and fit it inside a Pipeline on training data only."
+  ],
+  "traps": [
+   "Reading cluster sizes, gaps or counts off a t-SNE or UMAP map as if they were real measurements.",
+   "Running PCA on unscaled columns, so the column with the largest units becomes the first component.",
+   "Fitting PCA on all rows before the train/test split, which leaks test information into the features."
+  ],
+  "qa": [
+   [
+    "When would you use PCA before a model, and when not?",
+    "Use it when many columns are strongly correlated, when the model is slow or unstable with many features, or to shrink data. Skip it when the model must be explained feature by feature or when a tree model already does well on the raw columns. Either way, compare against the no-PCA model with the same validation."
+   ],
+   [
+    "A stakeholder shows you a UMAP plot with five clean clusters and says 'we have five customer types'. What do you say?",
+    "The map keeps local neighbours but not sizes or distances, and the number of blobs changes with settings. I would treat it as a hypothesis, run clustering on the original or PCA-reduced data with a proper score, read samples from each group, and check that the groups are stable across settings before naming segments."
+   ],
+   [
+    "What does 'PC1 explains 60 percent of the variance' mean?",
+    "If you describe each row only by its position along the first component, you keep 60 percent of the total spread in the data. It says nothing directly about how useful that component is for predicting any particular target."
+   ]
+  ]
+ },
+ {
+  "id": "anomaly",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Anomaly detection",
+  "title": "Anomaly detection: choosing a method and a threshold",
+  "thesis": "Anomaly detection learns what normal looks like and ranks what does not fit. Pick the method from the data (one metric, many columns, time pattern, clean normal set, or labels) and pick the threshold from the review budget, then measure with precision at k on cases people actually checked.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   420
+  ],
+  "note": "Start at Your data and follow the questions. Every path ends at Rank and review, because an anomaly score is only useful once a person checks the top of the list and those labels flow back.",
+  "nodes": [
+   [
+    "data",
+    90,
+    70,
+    "Your data",
+    "what do you have?"
+   ],
+   [
+    "labels",
+    265,
+    70,
+    "Enough labels?",
+    "hundreds of cases"
+   ],
+   [
+    "sup",
+    440,
+    70,
+    "Classifier",
+    "yes: supervised"
+   ],
+   [
+    "shape",
+    265,
+    210,
+    "What shape?",
+    "no labels yet"
+   ],
+   [
+    "multi",
+    440,
+    210,
+    "Many columns",
+    "isolation forest"
+   ],
+   [
+    "single",
+    90,
+    210,
+    "One metric",
+    "z-score or IQR"
+   ],
+   [
+    "season",
+    90,
+    350,
+    "Has a cycle?",
+    "same-hour baseline"
+   ],
+   [
+    "oneclass",
+    265,
+    350,
+    "Only normal data",
+    "one-class model"
+   ],
+   [
+    "review",
+    615,
+    210,
+    "Rank and review",
+    "precision at k"
+   ]
+  ],
+  "edges": [
+   [
+    "data",
+    "labels"
+   ],
+   [
+    "labels",
+    "sup",
+    0,
+    "yes"
+   ],
+   [
+    "labels",
+    "shape",
+    0,
+    "no"
+   ],
+   [
+    "shape",
+    "multi",
+    0,
+    "rows"
+   ],
+   [
+    "shape",
+    "single",
+    0,
+    "one number"
+   ],
+   [
+    "shape",
+    "oneclass",
+    0,
+    "clean normal"
+   ],
+   [
+    "single",
+    "season",
+    0,
+    "cycles"
+   ],
+   [
+    "sup",
+    "review"
+   ],
+   [
+    "multi",
+    "review"
+   ],
+   [
+    "oneclass",
+    "review"
+   ],
+   [
+    "season",
+    "review"
+   ]
+  ],
+  "ideas": [
+   "Name the kind of anomaly first: point, contextual (wrong time or place) or collective (a burst of individually normal events).",
+   "Z-scores are simple but suffer from masking; IQR fences and median-based scores are more robust to the very outliers you are hunting.",
+   "Isolation forest scores rows by how quickly random splits isolate them, a strong default for many-column tabular data.",
+   "For time series, score the residual against a same-hour or forecast baseline, and group consecutive flags into one incident.",
+   "Set the threshold from the team's review budget and report precision at k and recall at k from real reviews."
+  ],
+  "traps": [
+   "Using a global z-score on a series with a daily cycle, which misses night-time attacks and flags normal busy hours.",
+   "Picking a threshold from a textbook rule and flooding the team with alerts until they stop reading them.",
+   "Measuring only on flagged cases, so anomalies the model never ranks high are never labelled or counted as misses."
+  ],
+  "qa": [
+   [
+    "A bank wants fraud detection but has only 40 confirmed fraud cases. What do you build first?",
+    "An unsupervised score such as isolation forest on transaction features, plus a few clear rules, ranked so analysts review the top k per day. Their labels become training data; once there are hundreds of confirmed cases, add a supervised model that uses the anomaly score as one feature."
+   ],
+   [
+    "How do you choose the alert threshold?",
+    "From the review budget and the cost of misses. If the team can check 50 cases a day, alert on the top 50 and track precision at 50 and recall from spot checks. Then tune with the team as labels accumulate, rather than fixing a z of 3 because a textbook said so."
+   ],
+   [
+    "Why can a z-score miss an obvious spike?",
+    "Because a larger spike in the same data inflates the mean and standard deviation, which shrinks every other point's z-score. This is masking. Robust statistics such as the median and IQR barely move, so they still flag it."
+   ]
+  ]
+ },
+ {
+  "id": "timeseries",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Time-series forecasting",
+  "title": "Time-series forecasting: baselines, models and backtests",
+  "thesis": "Every forecast starts with a seasonal-naive baseline and is judged by a backtest that only ever trains on the past. Exponential smoothing and ARIMA are strong on single series; gradient boosting with lag features scales to many series and outside drivers. Report MAE or WAPE, not a MAPE broken by zeros.",
+  "format": "animation",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "A four-fold backtest in 15 lines",
+  "code": "import numpy as np\nimport pandas as pd\nfrom statsmodels.tsa.holtwinters import ExponentialSmoothing\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\ny = pd.Series(100 + 0.3 * np.arange(168) + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n              + rng.normal(0, 6, 168), index=idx).round()\n\nh, results = 14, []\nfor cut in [112, 126, 140, 154]:                   # four forecast origins, oldest first\n    train, test = y.iloc[:cut], y.iloc[cut:cut + h]  # past only, then the next 14 days\n    snaive = np.tile(train.iloc[-7:].to_numpy(), 2)\n    ets = ExponentialSmoothing(train, trend=\"add\", seasonal=\"add\",\n                               seasonal_periods=7).fit().forecast(h)\n    results.append([np.abs(test - snaive).mean(), np.abs(test - ets).mean()])\nmae = np.array(results).mean(axis=0)               # average over folds\nprint(f\"seasonal naive {mae[0]:.1f}, Holt-Winters {mae[1]:.1f}\")\nprint(\"keep model\" if mae[1] < 0.9 * mae[0] else \"keep the baseline\")\n\n# Output:\n# seasonal naive 7.1, Holt-Winters 4.6\n# keep model",
+  "nodes": [
+   [
+    "hist",
+    90,
+    70,
+    "History",
+    "daily sales"
+   ],
+   [
+    "clean",
+    265,
+    70,
+    "Clean",
+    "gaps, holidays"
+   ],
+   [
+    "split",
+    440,
+    70,
+    "Time split",
+    "train | next 14d"
+   ],
+   [
+    "base",
+    615,
+    70,
+    "Baseline",
+    "seasonal naive"
+   ],
+   [
+    "model",
+    615,
+    210,
+    "Candidate",
+    "Holt-Winters"
+   ],
+   [
+    "score",
+    440,
+    210,
+    "Score fold",
+    "MAE per fold"
+   ],
+   [
+    "roll",
+    265,
+    210,
+    "Roll forward",
+    "move cut-off"
+   ],
+   [
+    "avg",
+    90,
+    210,
+    "Average folds",
+    "compare models"
+   ],
+   [
+    "decide",
+    90,
+    350,
+    "Decide",
+    "beat baseline?"
+   ]
+  ],
+  "edges": [
+   [
+    "hist",
+    "clean"
+   ],
+   [
+    "clean",
+    "split"
+   ],
+   [
+    "split",
+    "base"
+   ],
+   [
+    "base",
+    "model"
+   ],
+   [
+    "model",
+    "score"
+   ],
+   [
+    "score",
+    "roll"
+   ],
+   [
+    "roll",
+    "split",
+    0,
+    "next fold"
+   ],
+   [
+    "roll",
+    "avg"
+   ],
+   [
+    "avg",
+    "decide"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Collect the history",
+    "n": [
+     "hist"
+    ],
+    "e": [],
+    "d": "24 weeks of daily sales for one bakery, with a slow upward trend and a strong weekly pattern.",
+    "l": [
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "t": "Clean before modelling",
+    "n": [
+     "hist",
+     "clean"
+    ],
+    "e": [
+     "hist>clean"
+    ],
+    "d": "Fill or mark missing days, and flag holidays and promotions so large misses can be explained later.",
+    "l": []
+   },
+   {
+    "t": "Split by time",
+    "n": [
+     "clean",
+     "split"
+    ],
+    "e": [
+     "clean>split"
+    ],
+    "d": "Pick a cut-off. Train only on days before it and test on the next 14 days. Never shuffle.",
+    "l": [
+     10,
+     11
+    ]
+   },
+   {
+    "t": "Score the baseline",
+    "n": [
+     "split",
+     "base"
+    ],
+    "e": [
+     "split>base"
+    ],
+    "d": "Seasonal naive copies the last week forward. Its error is the number every model must beat.",
+    "l": [
+     12
+    ]
+   },
+   {
+    "t": "Fit a candidate model",
+    "n": [
+     "base",
+     "model"
+    ],
+    "e": [
+     "base>model"
+    ],
+    "d": "Fit Holt-Winters on the same training window and forecast the same 14 days.",
+    "l": [
+     13,
+     14
+    ]
+   },
+   {
+    "t": "Record the errors",
+    "n": [
+     "model",
+     "score"
+    ],
+    "e": [
+     "model>score"
+    ],
+    "d": "Store the MAE of both forecasts for this fold, in loaves per day.",
+    "l": [
+     15
+    ]
+   },
+   {
+    "t": "Roll the cut-off forward",
+    "n": [
+     "score",
+     "roll",
+     "split"
+    ],
+    "e": [
+     "score>roll",
+     "roll>split"
+    ],
+    "d": "Move the cut-off 14 days later and repeat, so both methods are tested on four different periods.",
+    "l": [
+     10
+    ]
+   },
+   {
+    "t": "Average over folds",
+    "n": [
+     "roll",
+     "avg"
+    ],
+    "e": [
+     "roll>avg"
+    ],
+    "d": "Averaged over four folds, seasonal naive misses by 7.1 loaves a day and Holt-Winters by 4.6.",
+    "l": [
+     16,
+     17
+    ]
+   },
+   {
+    "t": "Make the call",
+    "n": [
+     "avg",
+     "decide"
+    ],
+    "e": [
+     "avg>decide"
+    ],
+    "d": "Keep the model only if it clearly beats the baseline, here by at least 10 percent. It does, so ship it and keep seasonal naive as a fallback.",
+    "l": [
+     18
+    ]
+   }
+  ],
+  "ideas": [
+   "Decompose a series into trend, seasonality and noise before modelling; the noise level tells you the best accuracy you can hope for.",
+   "Naive and seasonal-naive forecasts are free, and any model that cannot beat them is not worth shipping.",
+   "Exponential smoothing weights recent data more; Holt-Winters adds trend and season and is a strong default for one series.",
+   "Gradient boosting with lag features handles many series and outside drivers, as long as every feature exists at forecast time.",
+   "Backtest over several time-ordered folds and report MAE, WAPE or MASE next to the baseline."
+  ],
+  "traps": [
+   "Shuffling rows in a random train/test split, so the model trains on days after the ones it is tested on.",
+   "Reporting MAPE on data with zeros or tiny values, where it explodes or rewards under-forecasting.",
+   "Using lag features shorter than the forecast horizon, which are not available when the forecast is actually made."
+  ],
+  "qa": [
+   [
+    "A customer's data scientist reports 3 percent MAPE on next month's demand. What do you check?",
+    "How the test was split (by time, never shuffled), whether any feature used information from after the forecast date, the horizon and level being scored, how many folds were averaged, and what seasonal naive scores on the same test. I would also ask how zeros were handled, since MAPE hides or explodes on them."
+   ],
+   [
+    "When would you choose gradient boosting over Holt-Winters or ARIMA?",
+    "When there are many related series to learn from together, or important outside drivers such as price, promotions or weather. For a single series with a clear season and little else, ETS or ARIMA is simpler, faster and often just as accurate."
+   ],
+   [
+    "What is a seasonal-naive forecast and why start with it?",
+    "It repeats the value from one season ago, for example last Monday for next Monday. It costs nothing, is often hard to beat, and gives a clear bar that any proposed model must clear on the same backtest."
+   ]
+  ]
+ },
+ {
+  "id": "recsys",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Recommender systems",
+  "title": "Recommender systems: from popularity to personalisation",
+  "thesis": "A recommender gathers candidates cheaply, filters them, ranks them and logs what users do next. Start with a popularity baseline, add content-based and collaborative signals, plan for cold start and implicit feedback, and prove value with precision@k, NDCG and finally an A/B test.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Candidates, filter, rank",
+  "code": "import numpy as np\n\nitems = np.array([\"tent\", \"stove\", \"lamp\", \"mat\", \"chair\", \"kettle\"])\npopularity = np.array([120, 80, 60, 40, 30, 90])        # purchases, last 30 days\nsim_to_last = np.array([1.0, 0.8, 0.5, 0.6, 0.1, 0.2])  # similarity to the user's last buy (tent)\nin_stock = np.array([True, True, True, False, True, True])\nowned = np.array([True, False, False, False, False, False])\n\npop = popularity / popularity.max()                      # scale to 0..1\ncandidates = np.argsort(-(pop + sim_to_last))[:5]        # cheap first pass: top 5\ncandidates = [i for i in candidates if in_stock[i] and not owned[i]]\nscore = 0.3 * pop + 0.7 * sim_to_last                    # the \"ranker\" (a real one is a model)\ntop_k = sorted(candidates, key=lambda i: -score[i])[:3]\nprint(items[top_k].tolist())                              # shown to the user\n\n# Output:\n# ['stove', 'lamp', 'kettle']",
+  "nodes": [
+   [
+    "user",
+    90,
+    70,
+    "User arrives",
+    "id, page, history"
+   ],
+   [
+    "cand",
+    265,
+    70,
+    "Candidates",
+    "popular + similar"
+   ],
+   [
+    "filter",
+    440,
+    70,
+    "Filter",
+    "owned, no stock"
+   ],
+   [
+    "rank",
+    615,
+    70,
+    "Rank",
+    "score each item"
+   ],
+   [
+    "show",
+    615,
+    220,
+    "Show top k",
+    "3 to 10 slots"
+   ],
+   [
+    "log",
+    440,
+    220,
+    "Log events",
+    "views, clicks, buys"
+   ],
+   [
+    "train",
+    265,
+    220,
+    "Retrain",
+    "nightly job"
+   ],
+   [
+    "eval",
+    90,
+    220,
+    "Evaluate",
+    "offline, then A/B"
+   ]
+  ],
+  "edges": [
+   [
+    "user",
+    "cand"
+   ],
+   [
+    "cand",
+    "filter"
+   ],
+   [
+    "filter",
+    "rank"
+   ],
+   [
+    "rank",
+    "show"
+   ],
+   [
+    "show",
+    "log"
+   ],
+   [
+    "log",
+    "train"
+   ],
+   [
+    "train",
+    "eval"
+   ],
+   [
+    "eval",
+    "cand",
+    0,
+    "ship winner"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A user arrives",
+    "n": [
+     "user"
+    ],
+    "e": [],
+    "d": "A shopper who just bought a tent opens the home page. We know their history and what page they are on.",
+    "l": [
+     2,
+     6
+    ]
+   },
+   {
+    "t": "Gather candidates cheaply",
+    "n": [
+     "user",
+     "cand"
+    ],
+    "e": [
+     "user>cand"
+    ],
+    "d": "Pull a short list by mixing overall popularity with similarity to the last purchase. Real systems gather hundreds from several sources.",
+    "l": [
+     8,
+     9
+    ]
+   },
+   {
+    "t": "Filter what cannot be shown",
+    "n": [
+     "cand",
+     "filter"
+    ],
+    "e": [
+     "cand>filter"
+    ],
+    "d": "Remove items the user already owns and items that are out of stock.",
+    "l": [
+     10
+    ]
+   },
+   {
+    "t": "Rank the survivors",
+    "n": [
+     "filter",
+     "rank"
+    ],
+    "e": [
+     "filter>rank"
+    ],
+    "d": "Score each remaining item carefully. Here it is a weighted blend; in production it is a trained ranking model.",
+    "l": [
+     11,
+     12
+    ]
+   },
+   {
+    "t": "Show the top k",
+    "n": [
+     "rank",
+     "show"
+    ],
+    "e": [
+     "rank>show"
+    ],
+    "d": "The user sees stove, lamp and kettle.",
+    "l": [
+     13
+    ]
+   },
+   {
+    "t": "Log what happens",
+    "n": [
+     "show",
+     "log"
+    ],
+    "e": [
+     "show>log"
+    ],
+    "d": "Every impression, click and purchase is logged. This implicit feedback is next week's training data.",
+    "l": []
+   },
+   {
+    "t": "Retrain",
+    "n": [
+     "log",
+     "train"
+    ],
+    "e": [
+     "log>train"
+    ],
+    "d": "A nightly job rebuilds popularity counts, item similarities and the ranking model from fresh logs.",
+    "l": []
+   },
+   {
+    "t": "Evaluate before shipping",
+    "n": [
+     "train",
+     "eval",
+     "cand"
+    ],
+    "e": [
+     "train>eval",
+     "eval>cand"
+    ],
+    "d": "Score the new model offline with precision@k and NDCG on a time split, then A/B test it on live traffic before it replaces the old one.",
+    "l": []
+   }
+  ],
+  "ideas": [
+   "A popularity baseline, filtered for items already owned, is cheap, handles new users and is the bar to beat.",
+   "Content-based methods compare item attributes and work for brand-new items; collaborative filtering learns 'bought together' patterns from behaviour.",
+   "Matrix factorization gives every user and item a short factor vector; their dot product predicts interest.",
+   "Most business data is implicit feedback; unseen does not mean disliked, and cold start needs its own plan.",
+   "Evaluate offline with precision@k, recall@k and NDCG on a time split, then prove value with an A/B test."
+  ],
+  "traps": [
+   "Shipping a personalised model that never beat the popularity baseline on the same offline test.",
+   "Treating every item a user never clicked as a dislike, when most were simply never shown.",
+   "Declaring success from offline metrics alone without an A/B test on a business metric."
+  ],
+  "qa": [
+   [
+    "A retailer with only purchase logs asks for recommendations. Where do you start?",
+    "Build a recent-popularity baseline with filters, then item-based collaborative filtering from co-purchases, and compare both offline on a time split with precision@k, NDCG and coverage. Add content-based candidates for new items, then A/B test the winner against what the site shows today."
+   ],
+   [
+    "What is the cold-start problem and how do you handle it?",
+    "New users and items have no history, so collaborative methods cannot score them. Use popularity and session behaviour for new users, content similarity for new items, and reserve some slots so new items collect interactions."
+   ],
+   [
+    "Why use NDCG as well as precision@k?",
+    "Precision@k ignores order inside the top k. NDCG gives more credit to relevant items near the top, which matches how people actually scan a list."
+   ]
+  ]
+ }
+]

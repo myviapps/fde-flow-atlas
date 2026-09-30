@@ -1,0 +1,287 @@
+{
+ "aireadiness": [
+  {
+   "q": "Which set lists the five readiness dimensions taught in this topic?",
+   "options": [
+    "Budget, headcount, vendors, timeline, hardware",
+    "Data, people, process, platform, risk",
+    "Models, prompts, evals, costs, latency",
+    "Sales, marketing, support, finance, legal"
+   ],
+   "answer": 1,
+   "why": "Readiness asks whether the data, people, process, platform and risk controls are in place. Model and cost questions come later, once a use case is chosen."
+  },
+  {
+   "q": "On a value versus effort 2x2, which box usually holds the best first pilot?",
+   "options": [
+    "High value, low effort",
+    "High value, high effort",
+    "Low value, low effort",
+    "Low value, high effort"
+   ],
+   "answer": 0,
+   "why": "A quick win (high value, low effort) proves results fast and builds trust. Big bets are better once access, platform and trust exist."
+  },
+  {
+   "q": "A CEO at Harwick Tiles says 'we need AI' but names no problem. What do you do first?",
+   "options": [
+    "Build a demo chatbot on their website that week",
+    "Run a readiness check and a use-case workshop with the people who do the work",
+    "Send a price list for your largest platform package",
+    "Ask IT to open access to every database"
+   ],
+   "answer": 1,
+   "why": "You need specific use cases with users, volume and a baseline before building anything. A demo without a problem rarely leads to a funded pilot."
+  },
+  {
+   "q": "The top-scored idea has data availability scored 1: the records are on paper in a warehouse. What is the best move?",
+   "options": [
+    "Pilot it anyway since it scored highest on value",
+    "Drop it from the list forever",
+    "Pick the next quick win for the pilot and put digitising the data on the roadmap",
+    "Raise its data score to 3 so it qualifies"
+   ],
+   "answer": 2,
+   "why": "Data availability acts as a gate. Keep the idea, plan the data work with an owner, and pilot something that can start now."
+  },
+  {
+   "q": "Spot the mistake: 'Our roadmap starts eight pilots in parallel in Q1 so every department gets something.'",
+   "options": [
+    "Nothing, parallel pilots finish faster",
+    "Eight is too few for a large company",
+    "Pilots should always last at least a year",
+    "A first customer rarely has owners, data access and attention for eight pilots at once"
+   ],
+   "answer": 3,
+   "why": "Too many parallel pilots spread owners and access thin, so most stall. Stage the roadmap and tie later pilots to results from the first."
+  }
+ ],
+ "golive": [
+  {
+   "q": "What is user acceptance testing (UAT)?",
+   "options": [
+    "Engineers running unit tests before each commit",
+    "Business users testing realistic tasks and formally accepting the system",
+    "Security staff scanning the system for weak points",
+    "A load test that checks peak traffic"
+   ],
+   "answer": 1,
+   "why": "UAT is done by the customer's users on realistic work, and ends with a written sign-off. Unit, security and load tests are important but answer different questions."
+  },
+  {
+   "q": "What is the main purpose of a go/no-go meeting?",
+   "options": [
+    "To celebrate the launch with the sponsor",
+    "To plan next year's roadmap",
+    "For named owners to confirm agreed criteria are met before cutover",
+    "To write the UAT scripts"
+   ],
+   "answer": 2,
+   "why": "Go/no-go is a decision against criteria set in advance, such as UAT signed and rollback tested. The result can be go, go with accepted risks, or no-go."
+  },
+  {
+   "q": "Your dry-run migration at Halvard Clinics takes 9 hours but the cutover window is 5 hours. What is the best fix?",
+   "options": [
+    "Ask for a bigger window only on the night",
+    "Load history the week before and move only recent changes (a delta) at cutover",
+    "Skip reconciliation to save time",
+    "Migrate half the data and add the rest later by hand"
+   ],
+   "answer": 1,
+   "why": "Splitting into a history load and a delta load fits the window without dropping checks. Skipping reconciliation removes the proof the data is right."
+  },
+  {
+   "q": "At the go/no-go, UAT is signed but the rollback has never been tried. What should you say?",
+   "options": [
+    "Go, since UAT is signed",
+    "Go, and test the rollback if something breaks",
+    "Rollbacks are optional for AI systems",
+    "No-go or go-with-risk only if the sponsor accepts it; better to test the rollback in staging first"
+   ],
+   "answer": 3,
+   "why": "An untested rollback may not work when you need it. Test it in staging, or at least have the sponsor accept the risk in writing."
+  },
+  {
+   "q": "Spot the mistake: 'Staging passed, so production will work. We tested with the vendor's own test login.'",
+   "options": [
+    "Staging should never be used before production",
+    "Staging may differ from production, such as a different identity provider, so check real sign-in",
+    "Nothing is wrong with this reasoning",
+    "Production must always be tested before staging"
+   ],
+   "answer": 1,
+   "why": "Staging is often not a perfect copy. Differences in sign-in, network rules or data volume are common causes of go-live day failures."
+  }
+ ],
+ "supportops": [
+  {
+   "q": "In a typical support model, what does L2 do?",
+   "options": [
+    "Investigates harder problems: logs, configuration, data, reproduction",
+    "Answers only password resets",
+    "Writes new product features",
+    "Signs the support contract"
+   ],
+   "answer": 0,
+   "why": "L1 handles known answers, L2 investigates and fixes configuration or data, and L3 changes code."
+  },
+  {
+   "q": "What does a first-response SLA promise?",
+   "options": [
+    "The problem will be fully fixed within that time",
+    "A person will acknowledge the ticket and start work within that time",
+    "The customer gets a refund if unhappy",
+    "The ticket will be closed within one day"
+   ],
+   "answer": 1,
+   "why": "First response is about acknowledgement and starting work. Resolution targets, if any, are separate promises."
+  },
+  {
+   "q": "A user at Dunmore Bank writes 'the assistant is broken'. What do you ask first?",
+   "options": [
+    "Whether they have tried a different browser",
+    "For their manager's name",
+    "Who is affected, exact steps, the output they saw, and the conversation ID",
+    "Whether they want a refund"
+   ],
+   "answer": 2,
+   "why": "You need facts to reproduce the issue: scope, steps, actual output and an ID to find it in logs."
+  },
+  {
+   "q": "Half of last month's tickets were 'how do I export a report'. What is the best next step?",
+   "options": [
+    "Hire two more L2 engineers",
+    "Escalate it to L3 as a severity 1 bug",
+    "Ignore it because it is not a bug",
+    "Write a clear KB article and put it in the ticket form and L1 scripts"
+   ],
+   "answer": 3,
+   "why": "A repeat how-to question is a deflection opportunity. A short article where users look removes most of those tickets."
+  },
+  {
+   "q": "Spot the mistake: 'Hypercare ends when the FDE starts the next project.'",
+   "options": [
+    "Hypercare should end when agreed exit criteria are met, such as no open Sev 1-2 and SLAs met",
+    "Hypercare should never end",
+    "Hypercare should end on go-live day",
+    "Nothing is wrong; that is the normal rule"
+   ],
+   "answer": 0,
+   "why": "Tying the end to the FDE's calendar leaves the customer without trained support. Exit criteria agreed at go-live make the handover safe."
+  }
+ ],
+ "incidents": [
+  {
+   "q": "During an incident, what is the incident commander's main job?",
+   "options": [
+    "Debug the code personally",
+    "Coordinate the response, assign work and make decisions",
+    "Write the post-mortem only",
+    "Talk only to the press"
+   ],
+   "answer": 1,
+   "why": "The IC keeps the whole picture and decides. If the IC is debugging, nobody is coordinating."
+  },
+  {
+   "q": "A release went out at 09:30 and errors started at 09:32. What should you usually do first?",
+   "options": [
+    "Spend an hour finding the exact line of code",
+    "Wait to see if it fixes itself",
+    "Roll back the release or turn off the feature to stop the harm",
+    "Email all users an apology"
+   ],
+   "answer": 2,
+   "why": "Stabilise first. Rolling back a recent change is often the fastest way to stop harm and also tests whether it caused the problem."
+  },
+  {
+   "q": "You promised a Sev 1 update at 11:00 but have no news. What do you do?",
+   "options": [
+    "Wait until you have news",
+    "Send an update saying the status is unchanged, what you are trying, and the next update time",
+    "Ask the customer to stop asking",
+    "Close the incident"
+   ],
+   "answer": 1,
+   "why": "Keeping the timer builds trust. An update with no news but a clear next time is better than silence."
+  },
+  {
+   "q": "Evidence shows the customer's firewall change broke your product. What is the best approach?",
+   "options": [
+    "Announce on the bridge that it is their fault",
+    "Refuse to help because it is not your code",
+    "Share the evidence as a shared problem, help them fix it, and look for what your product could do better",
+    "Hide the evidence to avoid conflict"
+   ],
+   "answer": 2,
+   "why": "Blame slows the fix. Evidence plus help fixes it fastest, and your product can usually fail more gracefully too."
+  },
+  {
+   "q": "Spot the mistake in this review action: 'The team should be more careful with releases.'",
+   "options": [
+    "It has no single owner, no date and no way to check it is done",
+    "It is too specific",
+    "Actions should never mention releases",
+    "Nothing is wrong with it"
+   ],
+   "answer": 0,
+   "why": "Useful actions are concrete, owned by one person, dated and checkable, such as adding a test or an alert."
+  }
+ ],
+ "enablement": [
+  {
+   "q": "What is the main difference between training and enablement?",
+   "options": [
+    "Training is online and enablement is in person",
+    "Enablement is the whole system of skills, materials and help, judged by what people can do later",
+    "Enablement is only for admins",
+    "There is no difference"
+   ],
+   "answer": 1,
+   "why": "Training is one activity. Enablement includes materials, help channels, champions and measuring behaviour weeks later."
+  },
+  {
+   "q": "Users at Pellbrook Clinic accept every date the assistant gives. What should you teach?",
+   "options": [
+    "Never to use the assistant",
+    "That the model is always right with dates",
+    "How transformers work inside",
+    "Calibrated trust: always check dates and numbers against the source, with the source shown"
+   ],
+   "answer": 3,
+   "why": "Dates and numbers are a known weak spot. A simple check rule plus visible sources builds calibrated trust."
+  },
+  {
+   "q": "Which prompt library entry is most useful?",
+   "options": [
+    "A tested prompt for a real task with an example, a check step and an owner",
+    "A list of general tips such as 'be specific'",
+    "A prompt copied from a public website",
+    "A prompt with real client names left in"
+   ],
+   "answer": 0,
+   "why": "Entries tied to real tasks, with examples, checks and an owner, get used and stay accurate. Confidential text must be removed."
+  },
+  {
+   "q": "A new AI Center of Excellence has a charter but no owner, budget or intake form. What will probably happen?",
+   "options": [
+    "It will approve many useful projects",
+    "It will replace IT",
+    "It becomes a meeting with no output while people use tools without oversight",
+    "It will train every user automatically"
+   ],
+   "answer": 2,
+   "why": "A CoE needs a lead with time, a simple intake process and published decisions to have any effect."
+  },
+  {
+   "q": "Spot the mistake: 'Enablement succeeded because 95% of staff attended training.'",
+   "options": [
+    "Attendance should be 100%",
+    "Attendance does not show skill; measure task checks, weekly use and output quality",
+    "Training should never be measured",
+    "Nothing is wrong"
+   ],
+   "answer": 1,
+   "why": "Attendance is easy to count but shows nothing about behaviour. Measure what people can do and how they use the tool."
+  }
+ ]
+}

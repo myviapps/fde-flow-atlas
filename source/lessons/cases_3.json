@@ -1,0 +1,289 @@
+{
+ "linux": {
+  "title": "Korvessa Freight: the AI dispatch assistant that went silent on go-live morning",
+  "company": "Korvessa Freight (made up), road logistics, about 900 staff, Poland",
+  "situation": "An FDE had deployed a dispatch Q&A assistant onto a Linux VM inside Korvessa's own data center. On go-live morning, 60 dispatchers opened the web page and every question returned 'Service unavailable'. The only access was an SSH session through a jump host, with a customer sysadmin watching the shared screen.",
+  "problem": "The service was dead, and nobody knew whether the cause was the app, the server or the network. Redeploying from scratch, the obvious move, would have taken two hours and would probably have hit the same hidden fault again.",
+  "approach": [
+   "SSHed in through the jump host and ran systemctl status dispatch-qa, which showed the service in a restart loop, failing about every 10 seconds.",
+   "Read the last errors with journalctl -u dispatch-qa -n 50 and saw 'PermissionError: /var/lib/dispatch-qa/cache.db'.",
+   "Used ls -l to find the cache file owned by root after a manual test run the night before, while the service runs as the dispatchqa user, and fixed ownership with chown.",
+   "Once the service started, ran curl against the local /health endpoint and then against the model API through the corporate proxy, which returned a timeout.",
+   "Found the proxy settings missing from the service's environment file in /etc/dispatch-qa/env, added HTTPS_PROXY there, and restarted with systemctl.",
+   "Wrote a five-command runbook for the customer's sysadmins covering status, logs, disk space, ownership and the curl checks."
+  ],
+  "artifact": {
+   "lang": "bash",
+   "code": "# Dispatch Q&A triage runbook (run as a sudo-capable user)\nsystemctl status dispatch-qa --no-pager          # running or restart loop?\njournalctl -u dispatch-qa -n 50 --no-pager        # last 50 log lines\ndf -h /var                                        # disk full stops services too\nls -l /var/lib/dispatch-qa/                       # files must belong to dispatchqa\nsudo chown -R dispatchqa:dispatchqa /var/lib/dispatch-qa\n\n# Can the service answer, and can it reach the model API?\ncurl -s -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/health\nsudo -u dispatchqa env $(cat /etc/dispatch-qa/env | xargs) \\\n  curl -s -o /dev/null -w '%{http_code} %{time_total}s\\n' https://api.model-provider.example/v1/health\n\nsudo systemctl restart dispatch-qa && journalctl -u dispatch-qa -f"
+  },
+  "outcome": "The assistant was back 38 minutes after the first report, against a two-hour estimate for a full redeploy. In the following month the customer's sysadmins resolved two further incidents (a full disk and an expired proxy password) with the runbook, each in under 15 minutes, without calling the FDE.",
+  "lessons": [
+   "Work in a fixed order: is it running, what did it log, can it reach what it needs.",
+   "Many 'the app is broken' incidents are really file ownership, disk space or network settings.",
+   "A service's environment is not your shell's environment; test connectivity as the service user with the service's settings.",
+   "Leave behind a runbook so the customer can fix the next incident themselves."
+  ],
+  "discuss": [
+   "How would you prevent a manual test run from leaving root-owned files next time?",
+   "What would you check first if curl to the model API worked from your shell but not from the service?"
+  ]
+ },
+ "frontend": {
+  "title": "Pellandine Mutual: turning a notebook into a claims triage screen in three days",
+  "company": "Pellandine Mutual (made up), home and motor insurer, about 1,400 staff, Ireland",
+  "situation": "An FDE team had built a model that reads a new motor claim and suggests a priority and a short summary. Results lived in a Jupyter notebook, and when the head of claims saw it she said 'my handlers will never use this'. A steering meeting in three days would decide whether the pilot went ahead with 25 handlers.",
+  "problem": "Handlers needed to paste or pick a claim, see the suggestion and correct it, in a screen that felt like a tool rather than code. A full React app with login and a design system would take weeks, and the first rough draft called the model API straight from browser JavaScript with the API key in the page source.",
+  "approach": [
+   "Sketched one screen on paper with two handlers: claim text on the left, suggested priority and summary on the right, and 'Accept' and 'Change' buttons.",
+   "Built it as plain HTML with a flexbox two-column layout and a small script, so it loaded fast on the handlers' locked-down browsers.",
+   "Moved the API key out of the page into a small FastAPI endpoint, so the browser called /triage on the FDE's server and only the server held the secret.",
+   "Used fetch with a loading state and a clear error message, so a slow model call showed 'Working...' instead of a frozen page.",
+   "Logged every Accept or Change click to the server, giving the team a first measure of how often handlers agreed with the model.",
+   "Ran a 20-minute hallway test with three handlers and fixed the two things they tripped on: font size and the order of the buttons."
+  ],
+  "artifact": {
+   "lang": "JavaScript",
+   "code": "// app.js: calls our own backend, never the model provider directly\nconst btn = document.querySelector('#triage');\nconst out = document.querySelector('#result');\n\nbtn.addEventListener('click', async () => {\n  const text = document.querySelector('#claim').value.trim();\n  if (!text) { out.textContent = 'Paste a claim first.'; return; }\n  btn.disabled = true;\n  out.textContent = 'Working...';\n  try {\n    const res = await fetch('/triage', {\n      method: 'POST',\n      headers: { 'Content-Type': 'application/json' },\n      body: JSON.stringify({ claim_text: text })\n    });\n    if (!res.ok) throw new Error('Server returned ' + res.status);\n    const data = await res.json();\n    out.innerHTML = '';\n    out.append(`Priority: ${data.priority}\\n${data.summary}`);\n  } catch (err) {\n    out.textContent = 'Could not triage this claim. Try again or triage manually.';\n  } finally {\n    btn.disabled = false;\n  }\n});"
+  },
+  "outcome": "The steering group approved the pilot after using the screen live in the meeting. Over the first two weeks, 25 handlers triaged 1,900 claims through it and accepted the suggested priority 81 percent of the time, and the average time to first triage fell from about 11 minutes to about 4.",
+  "lessons": [
+   "A simple, working screen on the customer's real task persuades more than any notebook or slide.",
+   "Never put an API key in front-end code; anything the browser can see, anyone can see.",
+   "Loading and error states are part of the demo; a frozen button looks like a broken product.",
+   "Log what users do on the screen so the demo also produces evidence."
+  ],
+  "discuss": [
+   "At what point would you move this from plain HTML to React or a framework, and why?",
+   "Why does the snippet use append with a string rather than setting innerHTML to the model's output?"
+  ]
+ },
+ "sysdesign": {
+  "title": "Hallowgate Engineering: sizing a policy assistant for the Monday morning rush",
+  "company": "Hallowgate Engineering (made up), industrial engineering services, about 5,000 employees, Germany",
+  "situation": "A pilot HR policy assistant ran on one VM with the app, a vector index and a SQLite log side by side, and worked well for 150 pilot users. The customer planned to open it to all 5,000 employees on the Monday after a new travel policy was announced. The CIO asked the FDE directly: 'Will it hold, and what happens if your AI provider goes down?'",
+  "problem": "Load tests on the single VM showed errors above about 8 requests per second, and the expected Monday peak was around 25. Buying a bigger VM would raise the ceiling a little but would keep a single point of failure and still block on slow model calls.",
+  "approach": [
+   "Estimated load on the whiteboard: 5,000 users, about 40 percent active in the first hour, 3 questions each, bunched into 20 minutes, giving roughly 25 requests per second at peak.",
+   "Split the design into stateless FastAPI app servers behind a load balancer with a /health check, and moved chat sessions into Redis so any server could answer any request.",
+   "Moved logs and feedback from SQLite into a managed PostgreSQL database with one read replica for the HR reporting dashboard.",
+   "Added a Redis cache keyed on the normalized question and policy version, since discovery showed many people ask the same few questions after an announcement.",
+   "Put a timeout and one retry with backoff on model calls, plus a fallback message linking to the policy page if the provider was down, so failures degraded instead of crashing.",
+   "Presented the design on one page with the numbers and the trade-offs, including what was deliberately left out (multi-region failover)."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "CAPACITY SKETCH - policy assistant, launch Monday\nUsers                5,000\nActive first hour    40%  -> 2,000 people\nQuestions each       3    -> 6,000 requests\nBunched into         20 min (1,200 s) -> 5 req/s average\nPeak factor          5x   -> ~25 req/s peak\n\nPer app server       ~10 req/s (model call ~2.5 s, 32 workers)\nServers needed       3 for peak + 1 spare = 4 behind the load balancer\nCache hit estimate   40% on repeated questions -> ~15 req/s reach the model\nProvider limit       60 req/s on current plan -> headroom OK\n\nFailure plan\n- App server dies    LB health check removes it in < 10 s\n- Redis dies         sessions lost, users re-ask; answers still work\n- Model API down     timeout 20 s, 1 retry, then fallback message + policy link"
+  },
+  "outcome": "On launch Monday the system handled a measured peak of 22 requests per second with a p95 response time of 4.1 seconds and an error rate under 0.5 percent. The cache answered 37 percent of questions, which cut the model bill for the week by about a third compared with the estimate without caching.",
+  "lessons": [
+   "Start with a back-of-envelope load estimate; it turns 'will it hold?' into numbers you can defend.",
+   "Stateless app servers plus shared state in Redis and a database let you add servers without surprises.",
+   "Plan what happens when each part fails, especially the external AI provider.",
+   "Say out loud what you chose not to build and why."
+  ],
+  "discuss": [
+   "What would change if the assistant had to answer from documents that differ by country and user permissions?",
+   "When would you add a queue to this design, and what user experience would it create?"
+  ]
+ },
+ "warehouse": {
+  "title": "Quorrin Market: why the AI forecast and finance never agreed on revenue",
+  "company": "Quorrin Market (made up), supermarket chain, 120 stores, Australia",
+  "situation": "An FDE was deploying a demand forecasting model that wrote weekly predictions per store and category. In the first review, the model's 'actual revenue' for last quarter was 3.8 percent higher than the finance dashboard, and the CFO stopped the meeting to ask which number was wrong. Category managers for 14 departments were waiting to use the forecasts for ordering.",
+  "problem": "The model's training data had been pulled straight from the point-of-sale database with a hand-written query, while finance used the warehouse's dbt models, which removed refunds and staff discounts and mapped stores to their current regions. Patching the forecast query to 'look like' finance would have created a second, silently diverging definition of revenue.",
+  "approach": [
+   "Read the customer's dbt project and lineage graph to find the model finance used: fct_sales joined to dim_store, dim_product and dim_date in a star schema.",
+   "Reconciled one store for one week line by line and found the gap: refunds and staff discounts kept in the raw query, plus 2 stores moved between regions.",
+   "Pointed the forecast pipeline at fct_sales instead of the POS database, so the model and finance shared one definition of revenue.",
+   "Added a new dbt model, fct_forecast, at the same grain (store, category, week) with foreign keys to the same dimensions, so forecasts and actuals could be joined in one query.",
+   "Added dbt tests for not-null keys, unique grain and relationships to the dimensions, and a custom test that fails if weekly totals drift more than 0.5 percent from finance's revenue.",
+   "Documented the new model in the dbt project so it appeared in the lineage graph next to the finance models."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "-- models/marts/fct_forecast_vs_actual.sql\n{{ config(materialized='table') }}\n\nselect\n    f.store_key,\n    f.category_key,\n    f.week_key,\n    f.predicted_revenue,\n    coalesce(sum(s.net_revenue), 0) as actual_revenue,\n    f.predicted_revenue - coalesce(sum(s.net_revenue), 0) as error\nfrom {{ ref('fct_forecast') }} f\nleft join {{ ref('fct_sales') }} s\n    on  s.store_key    = f.store_key\n    and s.category_key = f.category_key\n    and s.week_key     = f.week_key\ngroup by 1, 2, 3, 4"
+  },
+  "outcome": "After the switch, the model's actual revenue matched the finance dashboard to within 0.1 percent for every week of the quarter. Forecast error measured against the trusted actuals was 6.2 percent at store and category level, and the CFO approved use by all 14 category teams.",
+  "lessons": [
+   "Build on the customer's trusted warehouse models instead of re-deriving business numbers from raw tables.",
+   "Match the grain and reuse the same dimensions so new AI outputs join cleanly to existing facts.",
+   "dbt tests turn 'the numbers look right' into checks that run every night.",
+   "When two numbers disagree, reconcile one small slice by hand before changing any code."
+  ],
+  "discuss": [
+   "Who should own fct_forecast after the FDE leaves, the data team or the forecasting team?",
+   "How would you handle a store that changes region mid-quarter when comparing forecasts over time?"
+  ]
+ },
+ "dsa": {
+  "title": "Zelvora Payments: the duplicate-merchant script that would have run for a week",
+  "company": "Zelvora Payments (made up), payment processing, about 300 staff, Netherlands",
+  "situation": "Before loading merchant records into a new AI risk-scoring tool, an FDE had to find likely duplicates among 1.2 million merchants from three onboarding systems. A customer analyst's script compared every merchant with every other one and had handled a 5,000-row sample in 12 seconds. On the full table it was projected to take more than a week.",
+  "problem": "The script was O(n squared): 1.2 million records means about 720 billion pairs. A bigger machine or parallel workers would divide that by 8 or 16, but still leave a day or more of runtime and no room to rerun after fixing a rule.",
+  "approach": [
+   "Estimated the cost out loud from the sample: 5,000 rows is 12.5 million pairs in 12 seconds, about a million pairs a second, so 720 billion pairs is roughly 720,000 seconds, or 8 days, on one core.",
+   "Replaced the pairwise loop with a hash map keyed on a normalized form of each merchant: VAT number where present, otherwise cleaned name plus postcode.",
+   "Grouped records by key in one O(n) pass, so only records sharing a key were compared in detail.",
+   "For near-miss names, used blocking: bucket by postcode, then compare names only within each bucket, which kept the expensive comparisons small.",
+   "Used a heap to keep the 200 largest duplicate groups for manual review by the operations team.",
+   "Tested the new script on the 5,000-row sample and confirmed it found the same duplicate pairs as the original."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import re, heapq\nfrom collections import defaultdict\n\ndef norm_key(m: dict) -> str:\n    if m.get(\"vat\"):\n        return \"VAT:\" + m[\"vat\"].replace(\" \", \"\").upper()\n    name = re.sub(r\"\\b(b\\.?v\\.?|ltd|gmbh)\\b|[^a-z0-9]\", \"\", m[\"name\"].lower())\n    return f\"NP:{name}:{m['postcode'].replace(' ', '').upper()}\"\n\ndef duplicate_groups(merchants: list[dict]) -> dict[str, list[str]]:\n    groups = defaultdict(list)           # one pass, O(n)\n    for m in merchants:\n        groups[norm_key(m)].append(m[\"id\"])\n    return {k: ids for k, ids in groups.items() if len(ids) > 1}\n\ndef biggest(groups: dict, k: int = 200):\n    return heapq.nlargest(k, groups.items(), key=lambda kv: len(kv[1]))"
+  },
+  "outcome": "The full 1.2 million records ran in 3 minutes 40 seconds instead of a projected 8 days. It found about 41,000 duplicate groups; the operations team confirmed 96 percent of a 300-group random sample as real duplicates, and the risk tool launched with a clean merchant table a week earlier than planned.",
+  "lessons": [
+   "Always check how an approach grows before running it on the customer's full data.",
+   "When you see a loop inside a loop searching for matches, ask whether a dict keyed on the right value removes the inner loop.",
+   "Blocking (only comparing within small buckets) makes fuzzy matching affordable.",
+   "Keep the slow, obviously correct version as a test for the fast one."
+  ],
+  "discuss": [
+   "What duplicates would the normalized key miss, and how would you find them without going back to O(n squared)?",
+   "If the table grew to 50 million rows, what would you change?"
+  ]
+ },
+ "discovery": {
+  "title": "Marrowline Water: the 'chatbot' request that turned out to be a search problem",
+  "company": "Marrowline Water (made up), regional water utility, about 1,100 staff, United States",
+  "situation": "Marrowline's customer service director asked for 'an AI chatbot on our website' to cut call volume. The contact center of 45 agents handled about 1,300 calls a day, with an average handling time of 7.5 minutes and a backlog that peaked after every billing run.",
+  "problem": "Nobody had checked why customers were calling or where the time went. Building the chatbot straight away risked a polished tool that answered questions customers were not asking, while agents kept struggling with the real bottleneck.",
+  "approach": [
+   "Wrote an interview guide with one goal (find where call time goes and why) and open, past-behavior questions such as 'walk me through the last call that took more than 10 minutes'.",
+   "Interviewed 6 agents, 2 team leads and the billing supervisor for 45 minutes each, asking 'why' until answers reached something concrete.",
+   "Shadowed four agents for a morning and timed each call step, noting every screen they opened.",
+   "Tagged 400 recent call notes by reason and found that 38 percent were about estimated bills and meter readings, and that on those calls agents spent about half the time searching three old knowledge bases and a shared drive.",
+   "Wrote a one-paragraph problem statement with the baseline and a success measure, and got the director and two team leads to agree to it in writing.",
+   "Proposed starting with an agent-facing answer search over the knowledge bases, with the public chatbot as a later phase once answers were trusted."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "PROBLEM STATEMENT (agreed 14 March, v2)\n\nWho:      Contact center agents (45) handling billing calls.\nProblem:  On estimated-bill and meter-reading calls (38% of volume),\n          agents spend about half of each call searching three old\n          knowledge bases and a shared drive for the right procedure.\nCost:     ~500 calls/day x ~4 min searching = ~33 agent-hours/day.\nEvidence: 10 interviews, 4 shadowing sessions, 400 tagged call notes.\nNot now:  Public website chatbot (revisit after phase 1).\nSuccess:  Average handling time on these calls from 8.8 to under\n          6.5 min within 8 weeks, with no rise in repeat calls."
+  },
+  "outcome": "The agent answer search went live after five weeks. After eight weeks, average handling time on estimated-bill calls fell from 8.8 to 6.1 minutes and repeat calls stayed flat, freeing roughly 22 agent-hours a day; the director then funded the public chatbot using the same, now trusted, answer base.",
+  "lessons": [
+   "Treat the customer's requested solution as a clue, not a spec; find the pain first.",
+   "Ask about the last real time something happened, then watch people work; stories and timings beat opinions.",
+   "End discovery with a written problem statement that has a baseline number and a success measure.",
+   "A narrower first phase that fixes the real bottleneck often makes the original request succeed later."
+  ],
+  "discuss": [
+   "How would you handle the director if they insisted on the public chatbot first?",
+   "What would you do if agents and team leads described the problem very differently?"
+  ]
+ },
+ "docs": {
+  "title": "Talwyn Cooperative Bank: the SOW that promised 'all product documents'",
+  "company": "Talwyn Cooperative Bank (made up), retail bank, about 2,200 staff and 60 branches, Wales",
+  "situation": "Talwyn signed a 10-week engagement for an assistant that helps branch staff answer product questions. Three weeks in, the branch operations manager expected mortgage, savings and insurance documents, the FDE team had only planned for savings and current accounts, and the bank's security architect had not yet seen how customer data would flow.",
+  "problem": "The SOW said the assistant would cover 'the bank's product documentation', which each side read differently, and there was no PRD or design doc to settle it. Simply agreeing to add everything would have broken the timeline and pulled in regulated insurance material that needed a separate compliance review.",
+  "approach": [
+   "Wrote a two-page PRD with the branch operations manager: the problem, the users (branch staff, not customers), the 3 product families in scope, and success as 'correct, cited answers on 85 percent of a 200-question test set'.",
+   "Worked with the account lead and bank procurement on a short SOW change note listing the exact document sets, the acceptance test and what was out of scope, including insurance products.",
+   "Wrote a design doc covering architecture, data flow, where documents and logs are stored, access control through the bank's existing single sign-on, and a no-customer-data rule for phase 1.",
+   "Sent the design doc to the security architect for a review meeting in week 4 instead of week 9.",
+   "Started a decision log and recorded each choice, starting with 'Insurance products moved to phase 2 because they need compliance review'."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "DECISION LOG - Branch product assistant\n\n#  Date    Decision                                Why                                Who\n1  03 Jun  Scope = current accounts, savings,      Matches 10-week SOW; mortgages     Ops mgr,\n           mortgages (3 families, 410 docs)        are 30% of branch questions        FDE lead\n2  03 Jun  Insurance products -> phase 2           Needs separate compliance review   Compliance\n3  05 Jun  Acceptance = 85% correct + cited on     Measurable, agreed test set        Ops mgr\n           200-question set built by branch staff\n4  10 Jun  No customer data in phase 1             Keeps DPIA simple; staff ask       Security\n                                                   product questions, not account ones\n5  12 Jun  Use bank SSO, groups = branch roles     Reuses existing access control     IT, FDE"
+  },
+  "outcome": "Security approved the design in week 5 with two small changes, instead of the usual late review. The assistant passed acceptance in week 10 at 88 percent correct and cited answers, and there was no dispute at sign-off; insurance products became a paid phase 2.",
+  "lessons": [
+   "The SOW, PRD and design doc answer different questions for different readers; you usually need all three.",
+   "Vague scope words like 'all' or 'documentation' become arguments later; list the exact items and the acceptance test.",
+   "Send the design doc to security early, when changes are still cheap.",
+   "A decision log turns 'who agreed to that?' into a one-line lookup."
+  ],
+  "discuss": [
+   "Who should be allowed to add entries to the decision log, and should the customer sign off each one?",
+   "How would you raise the SOW ambiguity without making the account lead or the customer feel blamed?"
+  ]
+ },
+ "demo": {
+  "title": "Ambervane Health Cover: a demo that survived the conference-room Wi-Fi",
+  "company": "Ambervane Health Cover (made up), health insurer, about 1,600 staff, Canada",
+  "situation": "After a four-week pilot of an assistant that summarizes pre-authorization requests, the FDE had 30 minutes with the VP of operations, the medical director and the CFO to win approval for a rollout to 90 reviewers. The previous vendor's demo had been a 25-screen feature tour that ended with the CFO asking 'so what does this save us?'.",
+  "problem": "The assistant had many features (summaries, policy lookups, draft letters, a dashboard), and the temptation was to show them all. The live demo also depended on the customer's guest Wi-Fi and a model API, either of which could fail in the room.",
+  "approach": [
+   "Built the story around one reviewer from discovery, called Dana in the demo, and one real type of request: an MRI pre-authorization, using a de-identified case approved by privacy.",
+   "Opened with the before: a 40-second screen recording of Dana moving through five screens, and the measured baseline of 17 minutes per request.",
+   "Showed the after live on the same case: the summary, the matching policy clause with a citation, and a draft decision letter, reaching the key moment within the first 8 minutes.",
+   "Prepared a fallback: a recorded run of the same case and screenshots, plus a phone hotspot, and rehearsed switching to them calmly.",
+   "Closed with pilot numbers, an honest note on two cases where the summary missed a detail, and one clear ask: approve a 90-reviewer rollout starting next month."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "DEMO RUN SHEET - Pre-auth assistant, 30 min\n\n00-03  Why we are here: Dana, pre-auth reviewer, 22 requests a day\n03-05  Before: 40 s recording, 5 screens, 17 min per request (timed)\n05-13  Live: MRI request -> summary -> policy clause -> draft letter\n       IF live step fails: say 'let me switch to the recording\n       from this morning', play clip 2, continue at 13:00\n13-18  After: pilot results, 4 weeks, 11 reviewers, 1,240 requests\n18-22  Honest limits: 2 missed details, how the reviewer catches them\n22-27  Questions\n27-30  The ask: approve rollout to 90 reviewers from 1 November\n\nKit: laptop + hotspot, clip 2 on desktop, screenshots in slide backup"
+  },
+  "outcome": "The Wi-Fi dropped in minute 9, and the FDE switched to the recording in about 20 seconds without losing the thread. The rollout was approved in the meeting based on pilot results of 17 down to 7 minutes per request, and the CFO asked for the run sheet to reuse in the board update.",
+  "lessons": [
+   "Tell one named user's story with one workflow; skip features that do not serve it.",
+   "Show the painful before with a real number, then the same task after.",
+   "Assume the live step can fail and rehearse the switch to a backup.",
+   "End with a specific ask, and mention the limits yourself before someone else does."
+  ],
+  "discuss": [
+   "How would you change this demo for an audience of reviewers instead of executives?",
+   "Is it ever right to show only a recording and no live demo?"
+  ]
+ },
+ "builddrill": {
+  "title": "Meera's 90-minute build: shipping a thin slice instead of a half-built LLM pipeline",
+  "company": "Meera (made up), data engineer with 6 years' experience, interviewing for an FDE role at Lumquist (made up), a 400-person AI software company, Singapore",
+  "situation": "Meera received a live 90-minute build prompt: build a small service that takes a support ticket and returns a category and a confidence, using a provided CSV of 2,000 labeled tickets. In a practice run the week before, she had spent 70 minutes wiring up an LLM call and a vector store and ended with nothing that ran and no tests.",
+  "problem": "The prompt invited an ambitious AI solution, but reviewers score clarifying questions, a working core path, tests and honest trade-offs. Trying the fancy approach first risked the same result as the practice run: impressive plans and no working service.",
+  "approach": [
+   "Spent the first 10 minutes reading and asking three clarifying questions: expected volume, whether an LLM API key was allowed, and whether a simple baseline counted.",
+   "Wrote a time plan in the README: scaffold by minute 25, core path by 55, tests by 70, README and cuts by 85.",
+   "Built the core path with FastAPI and a Pydantic request model, using a keyword and TF-IDF baseline trained on the CSV, so an end-to-end request worked by minute 50.",
+   "Wrote tests for the happy path, an empty ticket (422) and a ticket with no known words (returns 'other' with low confidence).",
+   "At minute 70, decided not to add the LLM call and wrote the trade-off in the README instead: how she would add it behind the same interface and evaluate it against the baseline's 79 percent accuracy.",
+   "Used the last 10 minutes to run everything from a clean terminal and walk the interviewer through the design and the cuts."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "# tests/test_triage.py\nfrom fastapi.testclient import TestClient\nfrom app.main import app\n\nclient = TestClient(app)\n\ndef test_billing_ticket_is_classified():\n    r = client.post(\"/triage\", json={\"text\": \"I was charged twice for my invoice\"})\n    assert r.status_code == 200\n    body = r.json()\n    assert body[\"category\"] == \"billing\"\n    assert 0.0 <= body[\"confidence\"] <= 1.0\n\ndef test_empty_ticket_is_rejected():\n    r = client.post(\"/triage\", json={\"text\": \"\"})\n    assert r.status_code == 422\n\ndef test_unknown_words_fall_back_to_other():\n    r = client.post(\"/triage\", json={\"text\": \"zxqv plorth\"})\n    assert r.json()[\"category\"] == \"other\"\n    assert r.json()[\"confidence\"] < 0.5"
+  },
+  "outcome": "Meera finished with a running service, 3 passing tests and a README listing two cuts and how she would address them, with 4 minutes to spare. The interviewer's feedback noted her clarifying questions and her decision at minute 70 as strengths, and she advanced to the final round.",
+  "lessons": [
+   "Clarify first; three good questions in the first 10 minutes save half an hour later.",
+   "A simple baseline that works end to end beats an ambitious pipeline that does not run.",
+   "Cut scope, not tests or the README, and write down what you cut and why.",
+   "Check the clock at planned points so you notice a rabbit hole early."
+  ],
+  "discuss": [
+   "If the interviewer said 'we really want to see an LLM used', how would you change the plan?",
+   "What is the smallest set of tests that still shows good judgment in 90 minutes?"
+  ]
+ },
+ "career": {
+  "title": "Arjun's resume rewrite: from 'responsible for pipelines' to FDE interviews",
+  "company": "Arjun (made up), senior data engineer with 8 years' experience at Dravelle Analytics (made up), a 250-person analytics consultancy, India",
+  "situation": "Arjun applied to 30 FDE and solutions engineering roles over two months and got 1 recruiter call. His resume listed duties such as 'responsible for ETL pipelines on Spark' and 'worked with clients on data requirements', and in the one interview he answered 'tell me about a difficult customer' with a vague, five-minute story.",
+  "problem": "He had the right experience, including client workshops and a deployment at a customer site, but his materials hid it. Sending the same resume to more companies would not change the response rate, because recruiters scanning for FDE signals (shipping, customers, measurable impact) did not see them in the first seconds.",
+  "approach": [
+   "Listed his last four years of projects and, for each, wrote what he built, for whom, and a number he could defend, checking figures against old status reports rather than memory.",
+   "Rewrote each bullet as verb, what was built, and result, and moved customer-facing work (discovery workshops, an on-site go-live, user training) to the top of each role.",
+   "Built a story bank of 10 STAR stories mapped to common FDE questions: ambiguous requirements, a failed deployment, a pushback from a customer, a fast build under pressure.",
+   "Practiced each story out loud to a 2-minute limit, recording himself and cutting background until the Action and Result took most of the time.",
+   "Replaced mass applications with a target list of 15 companies, a tailored summary line for each, and messages to 8 former colleagues working at or near them."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "BEFORE\n- Responsible for ETL pipelines on Spark for retail clients.\n- Worked with clients on data requirements.\n\nAFTER\n- Built a Spark and Airflow pipeline that consolidated sales data from\n  140 stores for a retail client, cutting the weekly reporting delay\n  from 4 days to 6 hours.\n- Ran 12 discovery workshops with a logistics client's operations team\n  and turned them into a scoped backlog; the first release was adopted\n  by 3 regional hubs within 6 weeks.\n- Led an on-site go-live for a demand dashboard, fixing 2 data quality\n  issues with the client's IT team during launch week.\n\nSTORY BANK INDEX (10 stories)\n1 Ambiguous ask -> workshops -> backlog   (discovery)\n2 Go-live data issue on site              (debugging under pressure)\n3 Client pushed back on timeline          (negotiation, trade-offs)"
+  },
+  "outcome": "From the next 15 targeted applications and 8 referral messages, Arjun got 6 first-round interviews, compared with 1 from the previous 30 applications. He reached 2 final rounds and accepted an FDE offer after negotiating a 12 percent higher base salary than the first number offered.",
+  "lessons": [
+   "Bullets should show what changed because of you, with numbers you can explain in detail.",
+   "Put customer-facing and shipping work where a recruiter sees it first.",
+   "Prepare and rehearse STAR stories before interviews; a two-minute specific story beats a long general one.",
+   "A short targeted list with referrals usually outperforms a long list of cold applications."
+  ],
+  "discuss": [
+   "Which of your own projects would make the strongest FDE story, and what number would you attach to it?",
+   "How would you describe impact honestly when you do not have exact numbers?"
+  ]
+ }
+}

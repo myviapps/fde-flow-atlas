@@ -1,0 +1,30 @@
+{
+ "agentmemory": {
+  "best": [
+   "animation",
+   "interactive"
+  ],
+  "why": "Watching a thread fill, compact and write facts turn by turn shows memory as data flow; the stepper lets you try it."
+ },
+ "llmobs": {
+  "best": [
+   "interactive",
+   "flowchart"
+  ],
+  "why": "Clicking through a real span tree to find the slow and costly step builds the core skill; the diagram shows the feedback loop."
+ },
+ "labeling": {
+  "best": [
+   "interactive",
+   "practice"
+  ],
+  "why": "Computing agreement on real disagreements makes kappa click, and labeling your own small batch is the only way to learn guidelines."
+ },
+ "voice": {
+  "best": [
+   "interactive",
+   "animation"
+  ],
+  "why": "Moving stage sliders against an 800 ms target makes the latency budget tangible; the animation shows audio flowing turn by turn."
+ }
+}

@@ -1,0 +1,17 @@
+{
+  "orders": {
+    "A1001": {"customer": "Test Customer 1", "status": "shipped", "items": ["USB-C cable", "Phone case"], "total": 34.50, "placed": "2026-09-10", "tracking": "TRK-555001"},
+    "A1002": {"customer": "Test Customer 2", "status": "processing", "items": ["Laptop stand"], "total": 59.00, "placed": "2026-09-22", "tracking": null},
+    "A1003": {"customer": "Test Customer 3", "status": "delivered", "items": ["Headphones"], "total": 129.99, "placed": "2026-08-30", "tracking": "TRK-555003"}
+  },
+  "shipments": {
+    "TRK-555001": {"carrier": "FastShip", "status": "in transit", "last_scan": "Denver hub", "eta": "2026-09-29"},
+    "TRK-555003": {"carrier": "FastShip", "status": "delivered", "last_scan": "Front door", "eta": "2026-09-04"}
+  },
+  "policies": [
+    {"id": "returns", "title": "Returns", "text": "Items can be returned within 30 days of delivery if unused. Refunds go to the original payment method within 5 business days."},
+    {"id": "shipping", "title": "Shipping", "text": "Standard shipping takes 3 to 7 business days. Orders ship within 2 business days of being placed."},
+    {"id": "damaged", "title": "Damaged items", "text": "If an item arrives damaged, contact support within 7 days with a photo and we will send a free replacement."},
+    {"id": "cancel", "title": "Cancellations", "text": "Orders can be cancelled free of charge while their status is processing. Shipped orders must be returned instead."}
+  ]
+}

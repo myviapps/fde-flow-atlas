@@ -1,0 +1,1220 @@
+{
+ "boosting": {
+  "replace_subtopics": [
+   {
+    "title": "Boosting intuition: fit the residuals",
+    "body": "Start with the simplest prediction: the mean of the target for every row. Compute the residual for each row, which is actual minus predicted. The residuals show what the model still gets wrong.\n\nNow train a small tree (a few levels deep) to predict those residuals from the features. Add that tree's output to the running prediction, multiplied by a learning rate such as 0.1 or 0.3. Recompute residuals and repeat. Each round nudges the model toward the rows it gets most wrong.\n\nWhy 'gradient'? For squared error, the residual is exactly the negative gradient of the loss with respect to the prediction. For other losses such as log loss for classification, the library fits trees to the gradient of that loss instead, so the same recipe works for yes or no targets, counts and rankings.\n\nThis differs from a random forest. A forest trains deep, independent trees in parallel and averages them to reduce variance. Boosting trains shallow trees in sequence, each depending on the previous ones, to reduce bias step by step.\n\nA little history that interviewers still ask about: the first popular boosting method was AdaBoost (1995). Instead of fitting residuals, AdaBoost gives every training row a weight. After each small tree, it raises the weights of the rows that tree got wrong and lowers the others, so the next tree concentrates on the hard rows; the final model is a weighted vote of all the trees. Gradient boosting later generalised the same 'focus on your mistakes' idea to any loss function, which is why modern libraries use it and AdaBoost is mostly seen in textbooks.",
+    "example": "A courier, Linthwaite Couriers, wants to predict delivery minutes from distance. The code below implements boosting by hand with depth-2 trees and learning rate 0.3. The training error falls from 6.74 after one round to 0.39 after 10 rounds and 0.16 after 30. The last number is below the noise level in the data (0.25), a sign that later rounds are starting to fit noise, which is why real projects watch a validation set.",
+    "code": "import numpy as np\nfrom sklearn.tree import DecisionTreeRegressor\n\nrng = np.random.default_rng(0)\nX = rng.uniform(0, 10, (300, 1))                       # e.g. distance in km\ny = 3 * np.sin(X[:, 0]) + X[:, 0] + rng.normal(0, 0.5, 300)   # e.g. delivery minutes\n\npred = np.full(300, y.mean())                          # round 0: predict the average\nlr = 0.3\nfor round_ in range(1, 31):\n    residual = y - pred                                # what we still get wrong\n    stump = DecisionTreeRegressor(max_depth=2).fit(X, residual)\n    pred += lr * stump.predict(X)                      # take a small step toward the fix\n    if round_ in (1, 2, 5, 10, 30):\n        print(f\"round {round_:>2}: mean squared error = {np.mean((y - pred) ** 2):.2f}\")\n\n# Output:\n# round  1: mean squared error = 6.74\n# round  2: mean squared error = 3.87\n# round  5: mean squared error = 1.11\n# round 10: mean squared error = 0.39\n# round 30: mean squared error = 0.16",
+    "lang": "Python"
+   },
+   {
+    "title": "Early stopping",
+    "body": "Guessing the right number of trees is hard, so let the data decide. Early stopping holds back a validation set, measures the loss on it after each round, and stops when it has not improved for a set number of rounds (the patience). The model keeps the trees up to the best round.\n\nIn scikit-learn's HistGradientBoosting set early_stopping=True, validation_fraction and n_iter_no_change; recent versions also accept your own validation rows through fit(X, y, X_val=..., y_val=...). In XGBoost pass early_stopping_rounds and an eval_set; in LightGBM use the early_stopping callback. After fitting, check how many trees were really built (n_iter_, best_iteration, best_iteration_).\n\nTwo cautions. First, the validation set used for stopping has influenced the model, so still keep a separate test set for your final number. Second, for time-ordered data the validation rows should be the most recent ones, not a random sample, otherwise the model peeks at the future (see the timeseries topic).\n\nOnce early stopping has chosen the model, save it so the service that scores new rows uses exactly the same trees. For scikit-learn models use joblib.dump and joblib.load; for XGBoost and LightGBM prefer their own formats (booster.save_model('model.json') in XGBoost, booster_.save_model('model.txt') in LightGBM), which load across library versions more safely than a pickle. Write down the library version next to the file, because a pickle made with one scikit-learn version may refuse to load or behave differently in another. Finally, new rows must arrive in the same shape as training rows: same column names and order, and for categorical features the same pandas category dtype with the same categories. A region the model never saw is treated like a missing value, so log how often that happens. The mlops topic covers model registries and versioning in depth.",
+    "example": "With a ceiling of 2,000 trees, learning rate 0.1 and patience 20, the model stops after 160 trees and scores R2 0.936 on the untouched test set, matching the best hand-picked setting from the previous grid at a fraction of the search effort.",
+    "code": "from sklearn.datasets import make_friedman1\nfrom sklearn.ensemble import HistGradientBoostingRegressor\nfrom sklearn.model_selection import train_test_split\n\nX, y = make_friedman1(n_samples=3000, noise=1.0, random_state=0)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=0)\n\nm = HistGradientBoostingRegressor(\n    learning_rate=0.1,\n    max_iter=2000,             # a generous ceiling, not a target\n    early_stopping=True,\n    validation_fraction=0.15,  # 15 percent of training rows held back to watch\n    n_iter_no_change=20,       # stop after 20 rounds with no improvement\n    random_state=0,\n).fit(X_tr, y_tr)\n\nprint(\"trees actually built:\", m.n_iter_)\nprint(\"test R2:\", round(m.score(X_te, y_te), 3))\n\n# Output:\n# trees actually built: 160\n# test R2: 0.936\n\nimport json, joblib, sklearn, numpy as np\njoblib.dump(m, \"boost_model.joblib\")                          # save the fitted model\njson.dump({\"sklearn\": sklearn.__version__, \"trees\": int(m.n_iter_)},\n          open(\"boost_model.meta.json\", \"w\"))                 # record the version beside it\n\nloaded = joblib.load(\"boost_model.joblib\")                    # later, in the scoring service\nprint(\"same predictions after reload:\", np.allclose(loaded.predict(X_te), m.predict(X_te)))\nprint(\"saved with:\", json.load(open(\"boost_model.meta.json\"))[\"trees\"], \"trees\")\n\n# Output:\n# same predictions after reload: True\n# saved with: 160 trees",
+    "lang": "Python"
+   },
+   {
+    "title": "Key hyperparameters across libraries",
+    "body": "Beyond learning rate and tree count, a handful of settings do most of the work. They control how complex each tree is, how much randomness is injected, and how strongly large leaf values are penalised.\n\nTree size: max_depth or max_leaf_nodes (num_leaves in LightGBM). Boosting wants small trees, typically 15 to 63 leaves or depth 3 to 8. Minimum data in a leaf (min_samples_leaf, min_child_weight, min_data_in_leaf) stops tiny leaves that memorise rows. Row and column subsampling (subsample, colsample_bytree) train each tree on a random fraction of rows or features, which adds diversity like a forest and often helps. L2 regularisation (l2_regularization, reg_lambda) shrinks leaf values.\n\nTune in this order: fix learning rate at 0.1 with early stopping, tune tree size and minimum leaf size, then subsampling, then regularisation, then lower the learning rate at the end. Use cross-validation or a fixed validation set, and tools such as RandomizedSearchCV or Optuna when the search grows. The optional code shows XGBoost and LightGBM with the same ideas; it only runs if those libraries are installed.\n\nImbalanced targets. Fraud, churn and defect models often have 1 to 3 percent positives. Accuracy is then useless: always saying 'no' scores 97 percent or more. Judge the model with PR-AUC (average precision) and recall at a chosen threshold instead (see mlmetrics). To make the model pay more attention to the rare class, weight it: class_weight='balanced' in HistGradientBoosting and LightGBM (LightGBM also has is_unbalance=True), and scale_pos_weight in XGBoost, usually set to the number of negatives divided by the number of positives. Weighting mostly moves the probabilities up for the rare class, so more rows cross 0.5; it rarely improves the ranking itself. Often simply lowering the decision threshold on an unweighted model works just as well, and it keeps the probabilities honest.\n\nMonotonic constraints. Sometimes the business or a regulator insists on a direction: more overdue days must never lower the risk score, and a higher income must never raise it. Trees can learn odd wiggles that break such rules on a few rows. All major libraries let you force a direction per feature: monotonic_cst in HistGradientBoosting (1 = can only go up, -1 = only down, 0 = free) and monotone_constraints in XGBoost and LightGBM. You usually lose very little accuracy and gain a model that is easier to defend.",
+    "example": "An insurer's claims-cost model at Oakhollow Mutual improved from R2 0.61 to 0.64 mostly by lowering max_leaf_nodes from 63 to 31 and raising min_samples_leaf from 20 to 100; the extra regularisation removed leaves that had fitted a handful of large one-off claims. Further tuning of subsampling added less than 0.005.",
+    "code": "# Optional: the same idea in XGBoost and LightGBM, if they are installed.\n# pip install xgboost lightgbm\nfrom sklearn.datasets import make_friedman1\nfrom sklearn.model_selection import train_test_split\n\nX, y = make_friedman1(n_samples=3000, noise=1.0, random_state=0)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=0)\nX_fit, X_val, y_fit, y_val = train_test_split(X_tr, y_tr, test_size=0.15, random_state=0)\n\ntry:\n    import xgboost as xgb\n    m = xgb.XGBRegressor(n_estimators=2000, learning_rate=0.1, max_depth=4,\n                         subsample=0.8, colsample_bytree=0.8,\n                         early_stopping_rounds=20)\n    m.fit(X_fit, y_fit, eval_set=[(X_val, y_val)], verbose=False)\n    print(\"xgboost  best round:\", m.best_iteration, \" test R2:\", round(m.score(X_te, y_te), 3))\nexcept ImportError:\n    print(\"xgboost not installed\")\n\ntry:\n    import lightgbm as lgb\n    m = lgb.LGBMRegressor(n_estimators=2000, learning_rate=0.1, num_leaves=15,\n                          subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1)\n    m.fit(X_fit, y_fit, eval_set=[(X_val, y_val)],\n          callbacks=[lgb.early_stopping(20, verbose=False)])\n    print(\"lightgbm best round:\", m.best_iteration_, \" test R2:\", round(m.score(X_te, y_te), 3))\nexcept ImportError:\n    print(\"lightgbm not installed\")\n\n# Output (with xgboost 3.2 and lightgbm 4.7 installed):\n# xgboost  best round: 265  test R2: 0.941\n# lightgbm best round: 180  test R2: 0.942\n\n# Imbalanced target: 2.5 percent positives\nfrom sklearn.datasets import make_classification\nfrom sklearn.ensemble import HistGradientBoostingClassifier\nfrom sklearn.metrics import average_precision_score, recall_score\nimport numpy as np\n\nXc, yc = make_classification(n_samples=20000, n_features=8, n_informative=4,\n                             weights=[0.98], flip_y=0.01, random_state=1)\nXc_tr, Xc_te, yc_tr, yc_te = train_test_split(Xc, yc, stratify=yc, random_state=1)\nprint(\"share positive:\", round(yc_te.mean(), 3))\nfor cw in [None, \"balanced\"]:\n    c = HistGradientBoostingClassifier(class_weight=cw, random_state=1).fit(Xc_tr, yc_tr)\n    p = c.predict_proba(Xc_te)[:, 1]\n    print(f\"class_weight={str(cw):<8} accuracy={c.score(Xc_te, yc_te):.3f} \"\n          f\"PR-AUC={average_precision_score(yc_te, p):.3f} recall={recall_score(yc_te, p > 0.5):.2f}\")\n\n# Monotonic constraint: risk must never fall as overdue days rise\nfrom sklearn.ensemble import HistGradientBoostingRegressor\nrng = np.random.default_rng(3)\ndays = rng.uniform(0, 90, 2000)\nrisk = days / 90 + rng.normal(0, 0.15, 2000)           # noisy, but truly rising\nfree = HistGradientBoostingRegressor(random_state=0).fit(days.reshape(-1, 1), risk)\nmono = HistGradientBoostingRegressor(monotonic_cst=[1], random_state=0).fit(days.reshape(-1, 1), risk)\ngrid = np.arange(0, 91).reshape(-1, 1)\nfor name, mdl in [(\"free\", free), (\"monotonic\", mono)]:\n    drops = int((np.diff(mdl.predict(grid)) < 0).sum())\n    print(f\"{name:<9} places where more overdue days lowered the score: {drops}\")\n\n# Output (imbalance and monotonic constraints):\n# share positive: 0.025\n# class_weight=None     accuracy=0.987 PR-AUC=0.685 recall=0.58\n# class_weight=balanced accuracy=0.966 PR-AUC=0.645 recall=0.76\n# free      places where more overdue days lowered the score: 39\n# monotonic places where more overdue days lowered the score: 0",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Idea",
+      "HistGradientBoosting",
+      "XGBoost",
+      "LightGBM"
+     ],
+     "rows": [
+      [
+       "Rounds",
+       "max_iter",
+       "n_estimators",
+       "n_estimators"
+      ],
+      [
+       "Step size",
+       "learning_rate",
+       "learning_rate (eta)",
+       "learning_rate"
+      ],
+      [
+       "Tree size",
+       "max_leaf_nodes, max_depth",
+       "max_depth",
+       "num_leaves"
+      ],
+      [
+       "Min leaf size",
+       "min_samples_leaf",
+       "min_child_weight",
+       "min_child_samples"
+      ],
+      [
+       "Row sampling",
+       "not available",
+       "subsample",
+       "subsample + subsample_freq"
+      ],
+      [
+       "Column sampling",
+       "max_features",
+       "colsample_bytree",
+       "colsample_bytree"
+      ],
+      [
+       "L2 penalty",
+       "l2_regularization",
+       "reg_lambda",
+       "reg_lambda"
+      ],
+      [
+       "Rare-class weight",
+       "class_weight",
+       "scale_pos_weight",
+       "class_weight or is_unbalance"
+      ],
+      [
+       "Force a direction",
+       "monotonic_cst",
+       "monotone_constraints",
+       "monotone_constraints"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Explaining predictions with SHAP",
+    "body": "Operations staff will ask 'why is this shipment flagged?'. Global importance charts answer 'what matters overall', but not 'why this row'. SHAP (SHapley Additive exPlanations) answers the per-row question.\n\nThe idea comes from game theory. Treat the features as players who cooperate to produce the prediction. SHAP gives each feature a contribution such that the base value (the model's average prediction over the background data) plus all contributions equals this row's prediction exactly. A positive value pushed the prediction up, a negative one pushed it down.\n\nFor tree models SHAP has a fast exact method called TreeExplainer. Common views are a waterfall plot for one prediction and a beeswarm or bar plot of mean absolute SHAP values for the whole dataset.\n\nLimits to state clearly: SHAP explains the model, not the real world, so a large value is not proof of cause. Correlated features can split credit in surprising ways. And explanations of a poor model are explanations of poor reasoning. The shap library is optional; install it with pip install shap.\n\nWhat about the built-in feature_importances_ bar chart? Be careful with it. 'Split' importance counts how often a feature is used in a split, and 'gain' importance adds up how much each split reduced the loss. Both are measured on the training data and both favour features with many distinct values, such as IDs or exact amounts, even when those features only help the model memorise. A safer, model-agnostic global check is permutation importance on a validation set: shuffle one column at a time and measure how much the validation score drops. A feature whose shuffling does not hurt the score is not really used for generalising, whatever the training-based chart says. In the code below features 5 to 9 are pure noise by design, and permutation importance correctly gives them about zero.",
+    "example": "For one row, the model predicts 16.44. The average prediction (base value) is 14.0. Feature 1 adds 2.1, feature 0 adds 1.51, feature 2 subtracts 1.1, and the rest add small amounts. Adding them all to 14.0 gives exactly 16.44. In a dispatcher's screen this becomes: 'Flagged mainly because: Budgetship carrier (+), region R17 (+), long distance (+).'",
+    "code": "# pip install shap   (optional library)\nimport shap\nfrom sklearn.datasets import make_friedman1\nfrom sklearn.ensemble import HistGradientBoostingRegressor\n\nX, y = make_friedman1(n_samples=1000, noise=1.0, random_state=0)\nmodel = HistGradientBoostingRegressor(random_state=0).fit(X, y)\n\nexplainer = shap.TreeExplainer(model)               # fast, exact method for tree models\nsv = explainer(X[:5])                                # explain the first 5 predictions\n\nrow = 0\nprint(\"model prediction:\", round(model.predict(X[:1])[0], 2))\nprint(\"base value      :\", round(sv.base_values[row], 2))\nprint(\"contributions   :\", sv.values[row].round(2))\nprint(\"base + sum      :\", round(sv.base_values[row] + sv.values[row].sum(), 2))\n\n# Output (requires pip install shap):\n# model prediction: 16.44\n# base value      : 14.0\n# contributions   : [ 1.51  2.1  -1.1   0.27 -0.24  0.08 -0.04 -0.08 -0.05 -0.01]\n# base + sum      : 16.44\n\nfrom sklearn.inspection import permutation_importance\nfrom sklearn.model_selection import train_test_split\nX_tr, X_val, y_tr, y_val = train_test_split(X, y, random_state=0)\nmodel2 = HistGradientBoostingRegressor(random_state=0).fit(X_tr, y_tr)\npi = permutation_importance(model2, X_val, y_val, n_repeats=10, random_state=0)\nprint(\"drop in validation R2 when shuffled:\", pi.importances_mean.round(3))\n\n# Output (permutation importance):\n# drop in validation R2 when shuffled: [ 0.393  0.453  0.123  0.658  0.143  0.001  0.001  0.001 -0.003  0.001]",
+    "lang": "Python",
+    "checklist": [
+     "Show per-row reasons in words staff use, not raw feature names",
+     "Pair SHAP with a global view so people see the usual drivers",
+     "Say plainly that contributions describe the model, not causes",
+     "Check a few explanations with a domain expert before release",
+     "Recompute explanations after every retrain; they change with the model"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "AdaBoost",
+    "An early boosting method that reweights training rows so each new small tree focuses on the rows earlier trees got wrong."
+   ],
+   [
+    "scale_pos_weight",
+    "XGBoost setting that multiplies the weight of positive rows, usually negatives divided by positives, for rare-class problems."
+   ],
+   [
+    "Monotonic constraint",
+    "A rule forcing the model's prediction to only rise (or only fall) as one feature increases."
+   ],
+   [
+    "Permutation importance",
+    "How much a validation score drops when one feature's column is shuffled; a model-agnostic measure of how much the model relies on it."
+   ],
+   [
+    "PR-AUC",
+    "Area under the precision-recall curve (average precision); a better summary than accuracy when positives are rare."
+   ]
+  ],
+  "add_practice": [
+   "On a synthetic fraud table with 2 percent positives, train a boosting model with and without class weighting, compare accuracy, PR-AUC and recall at threshold 0.5, then find the threshold that gives 80 percent recall on the unweighted model.",
+   "Add monotonic_cst so predicted risk can only rise with days overdue, check on a grid that it never falls, and report how much validation score you lost.",
+   "Save a fitted HistGradientBoosting model with joblib plus a small JSON file of library versions and column dtypes, reload it in a fresh Python process and confirm identical predictions."
+  ]
+ },
+ "knnsvm": {
+  "replace_subtopics": [
+   {
+    "title": "kNN: distance and neighbours",
+    "body": "kNN does no real training. It stores the training rows. To predict, it measures the distance from the new row to every stored row, takes the k closest, and returns the majority class (classification) or the average value (regression).\n\nThe usual distance is Euclidean: square the difference in each feature, add them up, take the square root. Manhattan distance adds the absolute differences instead. For text embeddings, cosine similarity (the angle between vectors) is common; the embeddings topic covers it.\n\nk controls smoothness. k=1 copies the single nearest row, so one mislabelled row changes predictions around it. A larger k averages over more neighbours and gives smoother, more stable boundaries, but too large a k blurs real differences. Choose k with cross-validation, and use an odd k for two classes to avoid ties. Neighbours can also be weighted by distance (weights='distance') so closer rows count more.\n\nBecause prediction compares against every stored row, kNN gets slow on large data and struggles when there are many features, since in high dimensions all points look roughly equally far apart.\n\nAt scale, nobody compares a query with every stored row. With a million rows or more, neighbour search uses an approximate nearest-neighbour (ANN) index. The most common one is HNSW (Hierarchical Navigable Small World): it links each point to a few close points in several layers, like a map with motorways on top and local streets below, and a search hops along the links toward the query. It returns almost always the true nearest neighbours (recall of 95 to 99 percent is typical) in milliseconds instead of seconds. This is exactly the machinery inside vector databases and pgvector, so kNN over embeddings and 'vector search' in the embeddings topic are the same idea at different sizes.",
+    "example": "A garden centre chain, Mossgrove, wants to guess whether a customer will buy an annual membership from monthly visits and average basket in dollars. A new customer has 7 visits and a 50 dollar basket. Their nearest known customer is 5.4 away, and with k=3 the neighbours vote 2 to 1 for 'buys'. Notice the distances are driven almost entirely by basket size, because dollars span a much wider range than visits. That is the problem the next subtopic fixes.",
+    "code": "import numpy as np\n\n# known customers: [monthly visits, average basket in dollars], label 1 = bought the upgrade\nX = np.array([[2, 20], [3, 25], [8, 60], [9, 55], [7, 70], [1, 15], [8, 40]])\ny = np.array([0, 0, 1, 1, 1, 0, 0])\nnew = np.array([7, 50])\n\ndist = np.sqrt(((X - new) ** 2).sum(axis=1))    # Euclidean distance to every known customer\norder = np.argsort(dist)                         # nearest first\nfor k in (1, 3, 5):\n    votes = y[order[:k]]\n    print(f\"k={k}: neighbours {order[:k].tolist()}, votes {votes.tolist()}, \"\n          f\"predict {int(votes.mean() > 0.5)}\")\nprint(\"distances:\", dist.round(1).tolist())\n\n# Output:\n# k=1: neighbours [3], votes [1], predict 1\n# k=3: neighbours [3, 2, 6], votes [1, 1, 0], predict 1\n# k=5: neighbours [3, 2, 6, 4, 1], votes [1, 1, 0, 1, 0], predict 1\n# distances: [30.4, 25.3, 10.0, 5.4, 20.0, 35.5, 10.0]",
+    "lang": "Python"
+   },
+   {
+    "title": "SVM: the widest margin and the C setting",
+    "body": "A linear SVM looks for a straight line (or flat plane in more dimensions) that separates the classes. Many lines might separate them; the SVM picks the one with the widest margin, meaning the biggest distance to the nearest points of each class. Those nearest points are the support vectors. Only they define the boundary; moving any other point does not change it.\n\nReal data overlaps, so SVMs use a soft margin: some points may sit inside the margin or on the wrong side, at a cost. C sets that cost. A small C tolerates many violations and gives a wide, calm margin with many support vectors. A large C punishes violations and gives a narrow margin that bends to fit individual points, which can overfit.\n\nSVMs output a class and a distance from the boundary, not a probability. SVC(probability=True) adds a calibrated probability at extra training cost. Standard kernel SVMs train in time that grows faster than the number of rows, so they suit thousands to tens of thousands of rows. For very large or text data, LinearSVC or SGDClassifier are much faster.\n\nMore than two classes. An SVM draws one boundary between two groups, so a multi-class problem is split into several two-class ones. One-vs-rest (OvR) trains one model per class, 'this class against all others', and picks the class whose model is most confident; with 6 classes that is 6 models. One-vs-one (OvO) trains a model for every pair of classes and lets them vote; with 6 classes that is 15 models, each on less data. SVC uses one-vs-one internally, LinearSVC uses one-vs-rest, and you rarely need to change either.\n\nRare classes. If one class has far fewer rows, the margin gets pushed toward it, because violations on the big class cost more in total. class_weight='balanced' raises the cost of mistakes on each class in proportion to how rare it is, which usually lifts recall on the rare class at a small cost in precision.",
+    "example": "On 400 points in two overlapping groups, C=0.01 uses 198 support vectors, C=1 uses 65 and C=100 uses 58. Test accuracy barely changes (0.94 to 0.96) here, which is common: C mainly changes how confident and how brittle the boundary is. Pick C by cross-validation on a log scale such as 0.01, 0.1, 1, 10, 100.",
+    "code": "from sklearn.datasets import make_blobs\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.svm import SVC\n\nX, y = make_blobs(n_samples=400, centers=2, cluster_std=1.2, random_state=4)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=4)\n\nfor C in (0.01, 1, 100):\n    model = make_pipeline(StandardScaler(), SVC(kernel=\"linear\", C=C)).fit(X_tr, y_tr)\n    svc = model[-1]\n    print(f\"C={C:<5} support vectors={svc.n_support_.sum():>3}  \"\n          f\"train={model.score(X_tr, y_tr):.2f}  test={model.score(X_te, y_te):.2f}\")\n\n# Output:\n# C=0.01  support vectors=198  train=0.92  test=0.94\n# C=1     support vectors= 65  train=0.92  test=0.96\n# C=100   support vectors= 58  train=0.92  test=0.96\n\n# Multi-class and rare classes\nfrom sklearn.metrics import recall_score\nX3, y3 = make_blobs(n_samples=400, centers=4, random_state=1)   # 4 classes\nfor shape in (\"ovr\", \"ovo\"):\n    m3 = make_pipeline(StandardScaler(), SVC(decision_function_shape=shape)).fit(X3, y3)\n    print(shape, \"models (scores per row):\", m3.decision_function(X3[:1]).shape[1])\n\nXr, yr = make_blobs(n_samples=[950, 50], centers=[[0, 0], [2, 2]], cluster_std=1.0, random_state=0)\nXr_tr, Xr_te, yr_tr, yr_te = train_test_split(Xr, yr, stratify=yr, random_state=0)\nfor cw in (None, \"balanced\"):\n    mr = make_pipeline(StandardScaler(), SVC(kernel=\"linear\", class_weight=cw)).fit(Xr_tr, yr_tr)\n    print(f\"class_weight={str(cw):<8} recall on rare class={recall_score(yr_te, mr.predict(Xr_te)):.2f}\")\n\n# Output (multi-class and class_weight):\n# ovr models (scores per row): 4\n# ovo models (scores per row): 6\n# class_weight=None     recall on rare class=0.67\n# class_weight=balanced recall on rare class=0.75",
+    "lang": "Python"
+   },
+   {
+    "title": "Naive Bayes for text with word counts",
+    "body": "Naive Bayes applies Bayes' rule: the chance of a class given the words is proportional to the prior chance of the class times the chance of seeing those words in that class. The naive part is assuming each word appears independently of the others given the class. That is clearly false for language, yet the ranking of classes is often still right.\n\nFor text, first turn each document into word counts with CountVectorizer. MultinomialNB then learns, for each class, how often each word appears. To classify, it adds up the log probabilities of the words in the new text for each class and picks the highest. Smoothing (alpha, usually 1) adds a small count to every word so an unseen word does not make a probability zero.\n\nIt trains in one pass, works with a few hundred labelled examples, and is easy to inspect: you can list the words most tied to each class. Its probabilities tend to be too extreme, so use them for ranking rather than as exact odds. For higher accuracy on text, compare against logistic regression or LinearSVC on TF-IDF features, and against embeddings or an LLM when there is little labelled data.\n\nTF-IDF, which the next models use, stands for term frequency times inverse document frequency. Term frequency is how often a word appears in this document. Inverse document frequency rewards rare words: idf = log(number of documents / number of documents containing the word). With 1,000 tickets, 'refund' in 10 of them gets idf = log(1000/10) = log(100), about 4.6, while 'the', found in all 1,000, gets log(1) = 0. So a ticket saying 'refund' twice scores 2 x 4.6 = 9.2 for that word, and 'the' scores nothing however often it appears. scikit-learn's TfidfVectorizer uses a smoothed version, idf = ln((1 + n) / (1 + df)) + 1, so common words get 1 rather than 0, and then scales each row to length 1.\n\nNaive Bayes comes in flavours for different data. MultinomialNB suits word counts. ComplementNB is a variant that learns from each class's complement (all the other classes) and is usually more accurate when classes are imbalanced, which help-desk queues nearly always are. GaussianNB assumes each numeric feature follows a bell curve per class, for measurements such as temperatures or amounts rather than words.",
+    "example": "A software company's help desk has tickets labelled billing or technical. After training on 8 examples, 'where is my refund' comes out 93 percent billing. 'I was charged but the app shows an error' mixes both vocabularies and lands 78 percent technical, which is exactly the kind of ticket a human should double-check.",
+    "code": "from sklearn.feature_extraction.text import CountVectorizer\nfrom sklearn.naive_bayes import MultinomialNB\n\ntickets = [\n    \"my invoice shows the wrong amount\", \"charged twice on my card\",\n    \"refund has not arrived\", \"billing address is wrong on the invoice\",\n    \"app crashes when I log in\", \"password reset email never arrives\",\n    \"cannot log in after the update\", \"the page shows an error when saving\",\n]\nlabels = [\"billing\"] * 4 + [\"technical\"] * 4\n\nvec = CountVectorizer()                      # turns each text into word counts\nX = vec.fit_transform(tickets)\nnb = MultinomialNB(alpha=1.0).fit(X, labels)  # alpha=1 is add-one smoothing\n\nnew = [\"I was charged but the app shows an error\", \"where is my refund\"]\nprobs = nb.predict_proba(vec.transform(new))\nfor text, p in zip(new, probs):\n    print(f\"{text!r}: billing={p[0]:.2f} technical={p[1]:.2f}\")\n\n# Output:\n# 'I was charged but the app shows an error': billing=0.22 technical=0.78\n# 'where is my refund': billing=0.93 technical=0.07\n\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.naive_bayes import ComplementNB\ntf = TfidfVectorizer().fit(tickets)\nidf = dict(zip(tf.get_feature_names_out(), tf.idf_.round(2)))\nprint(\"idf of 'the':\", idf[\"the\"], \" idf of 'refund':\", idf[\"refund\"])   # 'the' is in 4 of 8, 'refund' in 1\n\ncnb = ComplementNB().fit(tf.transform(tickets), labels)\nprint(\"ComplementNB on TF-IDF:\", cnb.predict(tf.transform(new)).tolist())\n\n# Output (TF-IDF and ComplementNB):\n# idf of 'the': 1.59  idf of 'refund': 2.5\n# ComplementNB on TF-IDF: ['technical', 'billing']",
+    "lang": "Python"
+   },
+   {
+    "title": "Which one fits when",
+    "body": "None of these three is the default choice for most tabular business problems today; gradient boosting usually is (see the boosting topic). They still have clear niches.\n\nkNN fits when similarity itself is the product: 'show me the five most similar past claims', recommendations by nearest item, or lookups over embeddings (where a vector database does the neighbour search). It needs scaled features, modest dimensions and enough memory to hold the data.\n\nSVMs fit small to medium datasets with many features and clear margins, such as text classification with LinearSVC, or small scientific datasets with an RBF kernel. They need scaling and careful tuning of C and gamma.\n\nNaive Bayes fits text and other count data when you need a baseline in minutes, have few labels, or need something tiny and explainable. It is also a good sanity check: if a large model barely beats Naive Bayes, question the extra cost.\n\nOne link worth making explicit: a linear SVM and logistic regression draw the same kind of straight boundary and differ only in the loss they minimise. LinearSVC and SGDClassifier(loss='hinge') minimise hinge loss, max(0, 1 - margin), where margin is the signed score times the true label (+1 or -1). A row that is correct and at least 1 unit past the boundary costs exactly zero, so only rows near or across the boundary (the support vectors) matter. Logistic regression minimises log loss, log(1 + e^(-margin)), which never reaches zero, so every row pulls a little and the output can be read as a probability. In practice their accuracy is often within a point of each other; pick logistic regression when you need probabilities.",
+    "example": "Rookfield Legal routes incoming emails to 6 teams. Week one: MultinomialNB on word counts gives 84 percent accuracy in an afternoon. Week two: LinearSVC on TF-IDF reaches 89 percent. A kNN search over past emails powers a 'similar past matters' panel for the lawyers. Each model does the job it is best at.",
+    "code": "import numpy as np\nmargin = np.array([-2, 0, 0.5, 1, 3])          # signed score x true label (+1 or -1)\nhinge = np.maximum(0, 1 - margin)               # what LinearSVC minimises\nlogloss = np.log(1 + np.exp(-margin))           # what logistic regression minimises\nfor m_, h, l in zip(margin, hinge, logloss):\n    print(f\"margin {m_:>4}: hinge loss {h:.2f}   log loss {l:.2f}\")\n\n# Output:\n# margin -2.0: hinge loss 3.00   log loss 2.13\n# margin  0.0: hinge loss 1.00   log loss 0.69\n# margin  0.5: hinge loss 0.50   log loss 0.47\n# margin  1.0: hinge loss 0.00   log loss 0.31\n# margin  3.0: hinge loss 0.00   log loss 0.05",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "",
+      "kNN",
+      "SVM",
+      "Naive Bayes"
+     ],
+     "rows": [
+      [
+       "Training",
+       "None, stores data",
+       "Slow on big data",
+       "One fast pass"
+      ],
+      [
+       "Prediction",
+       "Slow, compares all rows",
+       "Fast",
+       "Very fast"
+      ],
+      [
+       "Needs scaling",
+       "Yes",
+       "Yes",
+       "No (uses counts)"
+      ],
+      [
+       "Best data",
+       "Low dimensions, similarity tasks",
+       "Small to medium, many features",
+       "Text and counts"
+      ],
+      [
+       "Key settings",
+       "k, distance, weights",
+       "C, kernel, gamma",
+       "alpha smoothing"
+      ],
+      [
+       "Probabilities",
+       "Share of votes",
+       "Needs extra calibration",
+       "Yes, but overconfident"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "TF-IDF",
+    "Term frequency times inverse document frequency: a word's weight is high when it is frequent in this document but rare across documents."
+   ],
+   [
+    "ComplementNB",
+    "A Naive Bayes variant that learns from each class's complement; usually better than MultinomialNB on imbalanced text classes."
+   ],
+   [
+    "GaussianNB",
+    "Naive Bayes for numeric features, assuming each follows a bell curve within each class."
+   ],
+   [
+    "One-vs-rest",
+    "Splitting a multi-class problem into one model per class, each separating that class from all others."
+   ],
+   [
+    "One-vs-one",
+    "Splitting a multi-class problem into one model per pair of classes that then vote."
+   ],
+   [
+    "HNSW",
+    "Hierarchical Navigable Small World, a graph index for fast approximate nearest-neighbour search used by most vector databases."
+   ],
+   [
+    "Hinge loss",
+    "max(0, 1 - margin); the loss a linear SVM minimises, zero for rows safely on the right side."
+   ]
+  ],
+  "add_practice": [
+   "By hand, compute the TF-IDF weight of 'refund' and 'the' in a 5-document toy corpus with idf = log(N/df), then check the ranking against TfidfVectorizer's output.",
+   "On a 3-class text dataset with one rare class, compare MultinomialNB, ComplementNB and LinearSVC(class_weight='balanced') on macro recall.",
+   "Time exact kNN (brute force) against an HNSW index (for example the hnswlib or faiss library) on 200,000 random 128-dimension vectors and report speed and recall@10."
+  ]
+ },
+ "clustering": {
+  "add_subtopics": [
+   {
+    "title": "Clustering text and embeddings",
+    "body": "Today the most common clustering request an FDE hears is not about numbers at all. It is 'what are our 40,000 support tickets (or survey comments, or sales-call notes) actually about?' Nobody can read them all, and nobody has labels. The standard recipe has four steps.\n\n1. Embed. Turn each text into an embedding vector with an embedding model (see the embeddings topic). Texts with similar meaning get nearby vectors, even when they use different words, such as 'money back' and 'refund'.\n2. Reduce (optional). Embeddings have hundreds of dimensions, where distances become less informative. Reducing to 10 to 50 dimensions with PCA or UMAP often gives cleaner clusters and faster runs (see dimred).\n3. Cluster. k-means is fine when you want a fixed number of themes for a report. HDBSCAN is popular for text because it finds the number of themes itself and puts odd one-off texts into a noise group instead of forcing them into a theme. Normalise the vectors to length 1 first so Euclidean distance behaves like cosine similarity.\n4. Name. Cluster numbers mean nothing to a customer. Take 10 to 20 random members of each cluster, send them to an LLM, and ask for a short name and a one-line description. Then a human reads a few members of each cluster to confirm the name is honest.\n\nFinally, report sizes and trends: 'Delivery tracking complaints: 18 percent of tickets, up from 11 percent last quarter' is the sentence the customer wants.",
+    "example": "Wrenfield Home, an online furniture shop, has 12 sample tickets in the code below. After embedding (TF-IDF plus TruncatedSVD stands in for a real embedding model so the example runs offline) and k-means with k=3, the tickets fall cleanly into refunds, login problems and parcel tracking, four each. With an API key set, the loop also asks an LLM to name each cluster from three sampled members. On the real 40,000 tickets the same pipeline produced 14 themes; the team merged two near-duplicates and renamed one after reading its members.",
+    "code": "import os\nimport numpy as np\nfrom sklearn.cluster import KMeans\nfrom sklearn.decomposition import TruncatedSVD\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.preprocessing import normalize\n\ntickets = [\n    \"refund not received for my order\", \"where is my refund for order 1182\",\n    \"please refund the broken lamp order\", \"refund promised but my money never arrived\",\n    \"cannot log in after password reset\", \"login fails and says wrong password\",\n    \"password reset email never arrives so I cannot log in\", \"account locked after failed login attempts\",\n    \"parcel tracking shows delivered but no parcel\", \"parcel tracking has not updated for five days\",\n    \"courier left the parcel at the wrong address\", \"delivery late and parcel tracking stuck\",\n]\n\n# Step 1: embed. In production call an embedding model (see the embeddings topic);\n# TF-IDF plus TruncatedSVD stands in here so the example runs offline; it only\n# matches shared words, while a real embedding model also matches synonyms.\ntfidf = TfidfVectorizer(stop_words=\"english\").fit_transform(tickets)\nvectors = normalize(TruncatedSVD(n_components=4, random_state=0).fit_transform(tfidf))\n\n# Step 2: cluster (normalised vectors, so Euclidean distance follows cosine similarity)\nkm = KMeans(n_clusters=3, n_init=10, random_state=0).fit(vectors)\n\n# Step 3: sample members of each cluster and ask an LLM to name it\ndef naming_prompt(samples):\n    joined = \"\\n\".join(f\"<ticket>{t}</ticket>\" for t in samples)\n    return (\"Here are support tickets from one cluster:\\n\" + joined +\n            \"\\nGive the cluster a short name (at most 4 words) and one sentence describing it.\")\n\nrng = np.random.default_rng(0)\nfor c in range(3):\n    members = [t for t, lab in zip(tickets, km.labels_) if lab == c]\n    sample = [members[i] for i in rng.choice(len(members), size=min(3, len(members)), replace=False)]\n    print(f\"cluster {c} ({len(members)} tickets), sampled:\", sample[:2])\n    if os.environ.get(\"ANTHROPIC_API_KEY\"):          # only call the API when a key is set\n        import anthropic\n        client = anthropic.Anthropic()\n        resp = client.messages.create(model=\"MODEL\", max_tokens=200,\n                                      messages=[{\"role\": \"user\", \"content\": naming_prompt(sample)}])\n        print(\"   name:\", \"\".join(b.text for b in resp.content if b.type == \"text\"))\n\n# Output (no API key set, so clusters are not named):\n# cluster 0 (4 tickets), sampled: ['password reset email never arrives so I cannot log in', 'account locked after failed login attempts']\n# cluster 1 (4 tickets), sampled: ['delivery late and parcel tracking stuck', 'courier left the parcel at the wrong address']\n# cluster 2 (4 tickets), sampled: ['where is my refund for order 1182', 'refund promised but my money never arrived']",
+    "lang": "Python",
+    "checklist": [
+     "Embed with the same model for every text, and store the vectors",
+     "Normalise vectors before k-means; try HDBSCAN when the number of themes is unknown",
+     "Sample members at random for naming, not the first rows",
+     "Have a human read a few members of each cluster before trusting the LLM's name",
+     "Report cluster sizes and change over time, not just names",
+     "Keep the noise group; odd texts are sometimes the most urgent"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "k-means step by step",
+    "body": "k-means needs you to choose k, the number of clusters. Then it repeats two steps.\n\n1. Initialise: pick k starting centers, for example k random rows. The better default, k-means++, spreads the starting centers apart.\n2. Assign: put every point in the cluster of its nearest center.\n3. Update: move each center to the mean (average position) of the points assigned to it.\n4. Repeat assign and update until the centers stop moving.\n\nThe quality score is inertia: the sum of squared distances from each point to its cluster center. Each assign and update step can only lower inertia or keep it the same, so the method always settles, usually within a few dozen iterations. It settles at a local best, not always the global best, which is why libraries run several random starts (n_init) and keep the lowest inertia.\n\nk-means assumes clusters are roughly round and similar in size, and it uses distances, so features must be scaled first.\n\nUsing the segments later. A segmentation is only useful if next month's new customers can be placed into the same segments. Save the fitted scaler and the fitted KMeans together (a Pipeline does this) and call predict on new rows: each new row goes to the nearest existing center, and the centers do not move. Do not refit on the new data, or the segment numbers and meanings can change.\n\nVery large data. Standard k-means looks at every row in every iteration. With millions of rows, MiniBatchKMeans updates the centers from small random batches (for example 1,024 rows at a time). Each step needs only one batch in memory, and partial_fit lets you feed it chunk by chunk from a file or database when the data does not fit in RAM. Its inertia is usually within a few percent of full k-means. Whether it is also faster depends on the machine, because scikit-learn's full KMeans is heavily optimised, so time both on a sample of your data.",
+    "example": "The code implements k-means in NumPy on 150 points around three centres. Inertia drops from 1,349 after the first assignment to 222 and then 91, and the centers stop moving on the third iteration. The final centers land near the true group centres at (2, 2), (7, 3) and (4, 7).",
+    "code": "import numpy as np\n\nrng = np.random.default_rng(1)\nX = np.vstack([rng.normal([2, 2], 0.6, (50, 2)),       # three loose groups of points\n               rng.normal([7, 3], 0.6, (50, 2)),\n               rng.normal([4, 7], 0.6, (50, 2))])\nk = 3\ncenters = X[rng.choice(len(X), k, replace=False)]      # step 1: pick k random points as centers\n\nfor it in range(1, 11):\n    d = np.linalg.norm(X[:, None, :] - centers[None, :, :], axis=2)\n    labels = d.argmin(axis=1)                           # step 2: assign each point to nearest center\n    inertia = (d[np.arange(len(X)), labels] ** 2).sum()\n    new_centers = np.array([X[labels == j].mean(axis=0) for j in range(k)])  # step 3: move centers\n    print(f\"iteration {it}: inertia={inertia:.1f}\")\n    if np.allclose(new_centers, centers):               # step 4: stop when nothing moves\n        break\n    centers = new_centers\nprint(\"final centers:\", centers.round(1).tolist())\n\n# Output:\n# iteration 1: inertia=1349.0\n# iteration 2: inertia=222.4\n# iteration 3: inertia=90.6\n# final centers: [[6.9, 3.0], [3.8, 7.0], [2.0, 1.9]]\n\n# In practice: scaler + KMeans in one pipeline, then place new rows\nfrom sklearn.cluster import KMeans, MiniBatchKMeans\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\n\nseg = make_pipeline(StandardScaler(), KMeans(n_clusters=3, n_init=10, random_state=1)).fit(X)\nnew_rows = np.array([[2.1, 1.8], [6.5, 3.4]])\nprint(\"segments for new rows:\", seg.predict(new_rows).tolist())   # centers stay fixed\n\nmb = MiniBatchKMeans(n_clusters=3, random_state=1, n_init=3)\nfor chunk in np.array_split(np.vstack([X] * 200), 30):            # 30,000 rows fed in 30 chunks\n    mb.partial_fit(chunk)                                          # only one chunk in memory at a time\nfull = KMeans(n_clusters=3, n_init=10, random_state=1).fit(X)\nprint(\"full k-means centers :\", sorted(full.cluster_centers_.round(1).tolist()))\nprint(\"mini-batch centers   :\", sorted(mb.cluster_centers_.round(1).tolist()))\n\n# Output:\n# segments for new rows: [2, 0]\n# full k-means centers : [[2.0, 1.9], [3.8, 7.0], [6.9, 3.0]]\n# mini-batch centers   : [[2.0, 1.9], [3.8, 7.0], [6.9, 3.0]]",
+    "lang": "Python"
+   },
+   {
+    "title": "DBSCAN: clusters as dense regions",
+    "body": "DBSCAN (Density-Based Spatial Clustering of Applications with Noise) does not need k. It has two settings: eps, a radius, and min_samples, the number of points needed within that radius.\n\nA core point has at least min_samples neighbours within eps. Clusters grow by linking core points that are within eps of each other, and by attaching border points that are near a core point. Anything else is noise and gets the label -1.\n\nThis lets DBSCAN find clusters of any shape, such as curved bands, and flags outliers for free. Its weakness is that one eps must suit the whole dataset, so clusters with very different densities are hard. A common way to choose eps is to plot each point's distance to its k-th nearest neighbour, sorted, and pick the value at the bend. Scale features first, as always with distances. HDBSCAN (in scikit-learn as sklearn.cluster.HDBSCAN) relaxes the single-eps limit and is worth trying when densities vary.\n\nSoft clustering with Gaussian mixtures. k-means, DBSCAN and hierarchical clustering give every row exactly one label. Real customers often sit between segments. A Gaussian mixture model (GaussianMixture in scikit-learn) assumes the data comes from k overlapping bell-shaped clouds, each allowed its own size and stretched oval shape, and gives each row a probability of belonging to each cloud, for example 0.55 'bargain hunter' and 0.45 'loyal regular'. That is useful for targeting (only send the loyalty offer when the probability is above 0.8) and for spotting borderline rows. You still choose k, and BIC (a score that rewards fit and penalises extra parameters; lower is better) helps compare values.",
+    "example": "Two interlocking half-moons plus 3 stray points. k-means with k=2 cuts straight across the moons (agreement score 0.26, where 1.0 is perfect). DBSCAN with eps 0.2 and min_samples 5 recovers both moons exactly (1.0) and labels all 3 stray points as noise. In a fraud setting those stray points are often the most interesting rows.",
+    "code": "import numpy as np\nfrom sklearn.cluster import DBSCAN, KMeans\nfrom sklearn.datasets import make_moons\nfrom sklearn.metrics import adjusted_rand_score\n\nX, true = make_moons(n_samples=400, noise=0.06, random_state=2)\nX = np.vstack([X, [[2.5, 1.5], [-1.5, -0.8], [0.5, 1.6]]])     # add 3 odd points\ntrue = np.append(true, [-1, -1, -1])\n\nkm = KMeans(n_clusters=2, n_init=10, random_state=2).fit(X)\ndb = DBSCAN(eps=0.2, min_samples=5).fit(X)\n\nprint(\"k-means agreement with the true moons:\", round(adjusted_rand_score(true[:400], km.labels_[:400]), 2))\nprint(\"DBSCAN agreement with the true moons :\", round(adjusted_rand_score(true[:400], db.labels_[:400]), 2))\nprint(\"DBSCAN clusters found:\", len(set(db.labels_) - {-1}), \" noise points:\", (db.labels_ == -1).sum())\nprint(\"labels of the 3 odd points:\", db.labels_[-3:].tolist())   # -1 means noise\n\n# Output:\n# k-means agreement with the true moons: 0.26\n# DBSCAN agreement with the true moons : 1.0\n# DBSCAN clusters found: 2  noise points: 3\n# labels of the 3 odd points: [-1, -1, -1]\n\nfrom sklearn.mixture import GaussianMixture\nfrom sklearn.datasets import make_blobs\nXg, _ = make_blobs(n_samples=500, centers=[[0, 0], [3, 0]], cluster_std=1.0, random_state=0)\ngm = GaussianMixture(n_components=2, random_state=0).fit(Xg)\nprobs = gm.predict_proba(np.array([[-1.0, 0], [1.5, 0], [4.0, 0]]))\nfor x, p in zip([-1.0, 1.5, 4.0], probs.round(2)):\n    print(f\"point at x={x}: probability of each segment {p.tolist()}\")\nprint(\"BIC for k=1,2,3:\", [round(GaussianMixture(k, random_state=0).fit(Xg).bic(Xg)) for k in (1, 2, 3)])\n\n# Output (Gaussian mixture):\n# point at x=-1.0: probability of each segment [1.0, 0.0]\n# point at x=1.5: probability of each segment [0.4, 0.6]\n# point at x=4.0: probability of each segment [0.0, 1.0]\n# BIC for k=1,2,3: [3444, 3401, 3438]",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Question",
+      "k-means",
+      "DBSCAN",
+      "Hierarchical",
+      "Gaussian mixture"
+     ],
+     "rows": [
+      [
+       "Must choose k first?",
+       "Yes",
+       "No, choose eps and min_samples",
+       "No, cut the tree later",
+       "Yes (compare with BIC)"
+      ],
+      [
+       "Cluster shapes",
+       "Round, similar size",
+       "Any shape",
+       "Depends on linkage",
+       "Oval, can overlap"
+      ],
+      [
+       "Outliers",
+       "Forced into a cluster",
+       "Labelled noise (-1)",
+       "Forced into a cluster",
+       "Forced in, but low probability shows it"
+      ],
+      [
+       "Large data",
+       "Fast, scales well",
+       "Fine with indexing",
+       "Slow beyond tens of thousands",
+       "Fine, like k-means"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Pitfalls to avoid",
+    "body": "Clustering always returns clusters, even on random data with no real groups. That makes it easy to fool yourself and your customer.\n\nThe biggest technical traps are unscaled features, skewed features that let a few extreme rows drive the result, and too many features, which make distances meaningless (consider selecting features or reducing dimensions first; see dimred). Categorical columns do not fit k-means well; one-hot encoding them inflates distances oddly, and methods such as k-prototypes or Gower distance exist for mixed data.\n\nThe biggest process traps are treating clusters as facts rather than a useful simplification, reporting cluster ids instead of profiles, and never checking stability. Rerun with different seeds and on a different month of data. If customers jump between segments, the segments are not solid enough to plan campaigns around. Finally, judge clusters by use: do different segments respond differently to the actions you planned?\n\nTrack segment drift before campaigns rely on it. Customers change and so does the business, so a segmentation built in January can quietly stop matching reality. Each month, score everyone with the saved model and watch two things. First, the share of customers per segment: if 'lapsed' grows from 20 to 35 percent, something changed, in the customers or in the data feed. Second, a migration matrix: a table of last month's segment against this month's segment for the same customers. Most customers should stay put (a strong diagonal). Large flows between two segments are either a real change worth telling the business about or a sign the segments are not stable enough to plan around. When drift is large, refit, rename the segments from fresh profiles, and tell the teams that use them.",
+    "example": "Tannerbrook, an online bookshop, first clustered on raw spend and visit counts. One segment contained 12 customers who were actually libraries buying in bulk; everyone else was lumped together. After a log transform, scaling and a separate rule to pull out institutional buyers, the remaining segments were stable across two quarters of data.",
+    "code": "import pandas as pd\nlast = pd.Series([\"loyal\"] * 50 + [\"new\"] * 30 + [\"lapsed\"] * 20, name=\"last month\")\nthis = pd.Series([\"loyal\"] * 44 + [\"lapsed\"] * 6 + [\"new\"] * 12 + [\"loyal\"] * 8 + [\"lapsed\"] * 10\n                 + [\"lapsed\"] * 17 + [\"loyal\"] * 3, name=\"this month\")\nprint(\"share per segment:\")\nprint(pd.DataFrame({\"last\": last.value_counts(normalize=True), \"this\": this.value_counts(normalize=True)}))\nprint()\nprint(pd.crosstab(last, this))            # rows: where customers were, columns: where they are now\n\n# Output:\n# share per segment:\n#         last  this\n# lapsed   0.2  0.33\n# loyal    0.5  0.55\n# new      0.3  0.12\n#\n# this month  lapsed  loyal  new\n# last month\n# lapsed          17      3    0\n# loyal            6     44    0\n# new             10      8   12",
+    "lang": "Python",
+    "checklist": [
+     "Scale every numeric feature, and log-transform heavy-tailed ones",
+     "Remove or separately handle obvious outlier groups and IDs",
+     "Try more than one k and more than one method",
+     "Check silhouette and stability across seeds and time periods",
+     "Profile clusters with medians and counts, then name them",
+     "Confirm segments are big enough and lead to different actions",
+     "Document the features and settings so the segmentation can be rerun",
+     "Each month, compare segment shares and a migration matrix before reusing the segments"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "MiniBatchKMeans",
+    "A faster k-means that updates centers from small random batches of rows, for millions of rows."
+   ],
+   [
+    "Gaussian mixture model",
+    "Soft clustering that models data as overlapping bell-shaped clouds and gives each row a probability per cluster."
+   ],
+   [
+    "BIC",
+    "Bayesian information criterion; a score that rewards fit and penalises extra parameters, lower is better, used to choose k."
+   ],
+   [
+    "HDBSCAN",
+    "A density-based clustering method that finds the number of clusters itself and handles clusters of different densities."
+   ],
+   [
+    "Migration matrix",
+    "A table of each customer's previous segment against their current one, used to spot segment drift."
+   ]
+  ],
+  "add_practice": [
+   "Cluster 200 short texts you write yourself (or public reviews) with an embedding model, try k-means and HDBSCAN, and write a name and one-line description for each cluster from 10 random members.",
+   "Fit a scaler plus KMeans pipeline on January customers, save it, score February customers with predict, and build a migration matrix for customers present in both months.",
+   "Fit a GaussianMixture with 3 components on RFM data, list the 20 customers with the most uncertain membership (highest probability below 0.6) and describe them."
+  ]
+ },
+ "dimred": {
+  "replace_subtopics": [
+   {
+    "title": "PCA intuition: the direction of most spread",
+    "body": "Picture the height and weight of 300 people as a cloud of dots. The cloud is a long, tilted oval, because taller people tend to be heavier. PCA asks: if I could draw only one line through the cloud and describe each person by where they sit along it, which line keeps the most information? The answer is the long axis of the oval. That line is the first principal component (PC1). The second component (PC2) sits at a right angle to it and captures what is left.\n\nThe maths, gently. First centre each column by subtracting its mean. Then compute the covariance matrix, a small table saying how each pair of columns moves together. Its eigenvectors are the directions of the oval's axes, and its eigenvalues are the variance (spread) along each one. Sort by eigenvalue, biggest first, and you have the components in order of importance.\n\nEach component is a weighted mix of the original columns. Here PC1 is roughly 0.67 x height + 0.74 x weight, a 'body size' score. The sign is arbitrary: a library may return -0.67 and -0.74, which is the same line pointing the other way.\n\nGoing back, and why it matters. PCA can also run in reverse: inverse_transform takes the kept components and rebuilds an approximate original row. With all components the rebuild is perfect; with fewer it keeps the main pattern and loses the rest. The gap between a row and its rebuild is its reconstruction error. For normal rows that follow the usual pattern (tall people are heavier) the error is small. A row that breaks the pattern, say 190 cm and 50 kg, cannot be rebuilt from 'body size' alone, so its error is large. That makes reconstruction error a simple anomaly score for correlated data such as sensor readings, and the anomaly topic uses exactly this idea.",
+    "example": "The code builds the height and weight cloud, finds the axes by hand with numpy and checks the answer against scikit-learn. Both find the same first axis, and PC1 holds about 94 percent of the variance, so one number per person describes this data almost as well as two. The widget on this page lets you change how tightly the two columns are linked and watch that share move.",
+    "code": "import numpy as np\nfrom sklearn.decomposition import PCA\n\nrng = np.random.default_rng(1)\nheight = rng.normal(170, 10, 300)                   # cm\nweight = 0.9 * height - 85 + rng.normal(0, 5, 300)  # kg, tied to height\nX = np.column_stack([height, weight])\n\nXc = X - X.mean(axis=0)                  # 1. centre each column at zero\ncov = np.cov(Xc, rowvar=False)           # 2. 2x2 covariance matrix\nvals, vecs = np.linalg.eigh(cov)         # 3. eigenvalues = variance along each axis\norder = vals.argsort()[::-1]             #    sort biggest first\nvals, vecs = vals[order], vecs[:, order]\nprint(\"share of variance:\", np.round(vals / vals.sum(), 3))\nprint(\"first axis (by hand):\", np.round(vecs[:, 0], 3))\n\npca = PCA(n_components=2).fit(X)         # scikit-learn does the same steps\nprint(\"first axis (sklearn):\", np.round(pca.components_[0], 3))\nprint(\"explained_variance_ratio_:\", np.round(pca.explained_variance_ratio_, 3))\n\n# Output:\n# share of variance: [0.938 0.062]\n# first axis (by hand): [0.673 0.74 ]\n# first axis (sklearn): [0.673 0.74 ]\n# explained_variance_ratio_: [0.938 0.062]\n\n# Rebuild from PC1 only and measure reconstruction error\npca1 = PCA(n_components=1).fit(X)\nodd = np.array([[190.0, 50.0]])                       # tall but very light: breaks the pattern\ntypical = np.array([[180.0, 77.0]])\nfor name, row in [(\"typical\", typical), (\"odd\", odd)]:\n    rebuilt = pca1.inverse_transform(pca1.transform(row))\n    err = np.linalg.norm(row - rebuilt)\n    print(f\"{name:<8} rebuilt as {rebuilt.round(1).tolist()[0]}  error {err:.1f}\")\n\n# Output (reconstruction error):\n# typical  rebuilt as [178.9, 78.0]  error 1.5\n# odd      rebuilt as [170.0, 68.2]  error 27.1",
+    "lang": "Python"
+   },
+   {
+    "title": "Explained variance and choosing k",
+    "body": "The attribute explained_variance_ratio_ lists the share of total variance each component holds. Add them up in order (a cumulative sum) and you get a curve that rises quickly and then flattens. You choose k, the number of components to keep, where the curve is high enough for your purpose.\n\nThe table shows the usual rules. In scikit-learn you can also pass a fraction, PCA(n_components=0.90), and it picks k for you.\n\nRemember what variance means here: spread, which is not the same as usefulness. A small component can still carry the signal that separates fraud from normal. Explained variance tells you how much of the data's shape you kept, not how much predictive power you kept.\n\nOne warning about the numbers you will see in different places: scaling changes the answer. On the raw digit pixels, 21 components reach 90 percent. If you first standardise every pixel (StandardScaler), 31 are needed, which is the figure the animation on this page uses. Neither is wrong. Raw pixels let the busy central pixels dominate the variance, while standardising gives every pixel, including nearly blank edge pixels, an equal say, so more components are needed to cover them. Always state whether the data was scaled when you quote 'k components keep 90 percent'.",
+    "example": "The digits dataset has 1,797 handwritten digits, each an 8 by 8 image, so 64 pixel columns. Two components keep only 29 percent of the variance: enough for a rough picture and little else. Twenty-one components keep 90 percent, so a team storing millions of such images could cut storage by about two thirds and still keep most of the detail.",
+    "code": "import numpy as np\nfrom sklearn.datasets import load_digits\nfrom sklearn.decomposition import PCA\n\nX, y = load_digits(return_X_y=True)       # 1,797 images of 8x8 = 64 pixels\npca = PCA().fit(X)                        # keep all 64 components for now\ncum = np.cumsum(pca.explained_variance_ratio_)\n\nfor k in [2, 10, 20, 30]:\n    print(f\"{k:>2} components keep {cum[k-1]:.0%} of the variance\")\nk90 = int(np.argmax(cum >= 0.90)) + 1     # first k that reaches 90 percent\nprint(\"components needed for 90%:\", k90)\n\npca90 = PCA(n_components=0.90).fit(X)     # or ask sklearn for the 90% cut directly\nprint(\"sklearn picked:\", pca90.n_components_)\n\n# Output:\n#  2 components keep 29% of the variance\n# 10 components keep 74% of the variance\n# 20 components keep 89% of the variance\n# 30 components keep 96% of the variance\n# components needed for 90%: 21\n# sklearn picked: 21\n\nfrom sklearn.preprocessing import StandardScaler\nXs = StandardScaler().fit_transform(X)\nprint(\"after standardising, components for 90%:\", PCA(n_components=0.90).fit(Xs).n_components_)\n\n# Output (scaled):\n# after standardising, components for 90%: 31",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Rule",
+      "How it works",
+      "Use it when"
+     ],
+     "rows": [
+      [
+       "Variance target",
+       "Smallest k reaching 90 or 95 percent",
+       "Compressing data for storage or speed"
+      ],
+      [
+       "Elbow",
+       "Stop where the curve flattens",
+       "Exploring, with no model yet"
+      ],
+      [
+       "Validation score",
+       "Try several k, keep the best model score",
+       "PCA feeds a model"
+      ],
+      [
+       "Fixed 2 or 3",
+       "Keep 2 or 3 components",
+       "Only to draw a quick plot"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Using PCA before a model",
+    "body": "PCA is often one step in a pipeline: scale the columns, reduce with PCA, then train a model on the components. Good reasons: many strongly correlated columns (50 sensors that all measure the same vibration), a model that is slow or unstable with many columns, or a need to shrink data.\n\nThree rules keep it honest. Scale first: PCA follows variance, so a column in pounds with values in the thousands swamps a column in percent unless you standardise. Fit PCA on the training rows only, inside a Pipeline, so no information from the test rows leaks into the components. And compare against the same model without PCA, because on many tabular problems tree models such as gradient boosting (see boosting) do better on the raw columns.\n\nThe cost is interpretability. A component is a blend of dozens of columns, so 'PC3 raised the risk score' is hard to explain. If people must understand the model, prefer selecting a few original columns.\n\nText is a special case. A TF-IDF matrix (see knnsvm) has one column per word, often 50,000 columns, and is sparse: almost every value is zero, so it is stored as a list of the few non-zero values. PCA must first centre every column by subtracting its mean, which turns all those zeros into non-zero numbers and makes the matrix too big for memory. TruncatedSVD does the same kind of reduction without centring, so it works directly on the sparse matrix. Applied to TF-IDF it is known as LSA (latent semantic analysis): the components become loose 'topics' of words that appear together. It is a quick, cheap baseline for text features, though embeddings from a language model usually capture meaning better.",
+    "example": "The code trains logistic regression on the digits with 5, 10 and 20 components and with all 64 pixels. Test accuracy climbs from 0.815 to 0.952 as k grows, and the full 64 pixels still win at 0.972. On this small dataset PCA buys smaller, faster data at a cost of about two points of accuracy. That trade-off is the conversation to have with the customer.",
+    "code": "from sklearn.datasets import load_digits\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.decomposition import PCA\nfrom sklearn.linear_model import LogisticRegression\n\nX, y = load_digits(return_X_y=True)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, random_state=0, stratify=y)\n\nfor k in [5, 10, 20, None]:               # None = no PCA, all 64 pixels\n    steps = [StandardScaler()]\n    if k:\n        steps.append(PCA(n_components=k, random_state=0))\n    steps.append(LogisticRegression(max_iter=2000))\n    model = make_pipeline(*steps)         # PCA is fitted on the training rows only\n    model.fit(X_tr, y_tr)\n    print(f\"{'all 64' if k is None else k:>6} features: test accuracy {model.score(X_te, y_te):.3f}\")\n\n# Output:\n#      5 features: test accuracy 0.815\n#     10 features: test accuracy 0.876\n#     20 features: test accuracy 0.952\n# all 64 features: test accuracy 0.972\n\nfrom sklearn.decomposition import TruncatedSVD\nfrom sklearn.feature_extraction.text import TfidfVectorizer\ndocs = [\"refund for my order\", \"order refund please\", \"login password reset\",\n        \"reset my login\", \"parcel tracking late\", \"late parcel delivery\"]\ntfidf = TfidfVectorizer().fit_transform(docs)          # sparse: mostly zeros\nprint(\"TF-IDF shape:\", tfidf.shape, \" non-zero values:\", tfidf.nnz)\nlsa = TruncatedSVD(n_components=3, random_state=0).fit(tfidf)\nprint(\"each document as 3 numbers:\", lsa.transform(tfidf).shape)\n\n# Output (TruncatedSVD on sparse text):\n# TF-IDF shape: (6, 12)  non-zero values: 19\n# each document as 3 numbers: (6, 3)",
+    "lang": "Python",
+    "checklist": [
+     "Scale the columns before PCA (StandardScaler)",
+     "Put PCA inside a Pipeline so it is fitted on training rows only",
+     "Choose k with validation scores, not only the variance rule",
+     "Compare against the same model with no PCA",
+     "Ask whether stakeholders need to explain individual features",
+     "Save the fitted scaler and PCA with the model for inference",
+     "For sparse TF-IDF text, use TruncatedSVD (LSA) instead of PCA"
+    ]
+   },
+   {
+    "title": "t-SNE and UMAP for visualising embeddings",
+    "body": "PCA draws straight lines, so it cannot unroll curved or tangled structure. t-SNE (t-distributed stochastic neighbour embedding) and UMAP (uniform manifold approximation and projection) are nonlinear methods built for one job: placing each row as a dot on a 2D map so that rows which are neighbours in the original space stay neighbours on the map.\n\nThey are popular for embeddings, the long lists of numbers (often 768 or 1,536 values) that language models produce for each piece of text (see embeddings). A map of support-ticket embeddings coloured by product quickly shows whether topics group together and which tickets sit in the wrong group.\n\nThe main knob in t-SNE is perplexity, roughly how many neighbours each point pays attention to (commonly 5 to 50). In UMAP it is n_neighbors, plus min_dist for how tightly points pack. t-SNE ships with scikit-learn; UMAP lives in the separate umap-learn package and is usually faster on large data. A common recipe for big embeddings is PCA to about 50 dimensions first, then t-SNE or UMAP down to 2.\n\nIn production, the more common reason to reduce embeddings is not a picture but storage and speed. A million documents at 1,536 float numbers each take about 6 GB, and search time grows with the dimension. Two options avoid a separate PCA step. Many embedding APIs accept a dimensions (or output dimension) parameter and return shorter vectors directly. Models trained as Matryoshka embeddings pack the most important information into the first numbers, so you can simply keep the first 256 or 512 values and re-normalise them, often losing only a little search quality. Always check the loss with a recall test on your own queries before switching (see embeddings).",
+    "example": "The code maps the 1,797 digit images to 2D with t-SNE. For 98.8 percent of images, the closest dot on the map is the same digit, so the map keeps local neighbourhoods very well. That makes it a good tool for spotting mislabelled data: a '7' sitting inside the cluster of '1's is worth a look.",
+    "code": "import numpy as np\nfrom sklearn.datasets import load_digits\nfrom sklearn.manifold import TSNE\n\nX, y = load_digits(return_X_y=True)\nemb = TSNE(n_components=2, perplexity=30, init=\"pca\", random_state=0).fit_transform(X)\nprint(emb.shape)                          # one 2D point per image\n\n# How often is a point's nearest 2D neighbour the same digit?\nd = ((emb[:, None, :] - emb[None, :, :]) ** 2).sum(-1)\nnp.fill_diagonal(d, np.inf)\nnn = d.argmin(axis=1)\nprint(\"same-digit nearest neighbour:\", round((y[nn] == y).mean(), 3))\n# To plot: plt.scatter(emb[:, 0], emb[:, 1], c=y, s=5)\n\n# Output:\n# (1797, 2)\n# same-digit nearest neighbour: 0.988\n\n# Storage arithmetic for stored embeddings (4 bytes per float32 number)\nfor dims in [1536, 512, 256]:\n    gb = 1_000_000 * dims * 4 / 1e9\n    print(f\"1 million vectors x {dims:>4} dims = {gb:.1f} GB\")\n\n# Output (storage):\n# 1 million vectors x 1536 dims = 6.1 GB\n# 1 million vectors x  512 dims = 2.0 GB\n# 1 million vectors x  256 dims = 1.0 GB",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Reconstruction error",
+    "The distance between a row and its rebuild from a reduced representation; large values flag unusual rows."
+   ],
+   [
+    "TruncatedSVD",
+    "A reduction like PCA that skips centring, so it works on large sparse matrices such as TF-IDF."
+   ],
+   [
+    "LSA",
+    "Latent semantic analysis: TruncatedSVD applied to a TF-IDF matrix, giving rough word topics."
+   ],
+   [
+    "Matryoshka embeddings",
+    "Embeddings trained so the first values carry the most information, letting you keep only a prefix of each vector."
+   ],
+   [
+    "inverse_transform",
+    "A method that maps reduced data back to the original columns, giving an approximate rebuild."
+   ]
+  ],
+  "add_practice": [
+   "Fit PCA with 5 components on 10 correlated simulated sensor columns, compute each row's reconstruction error, inject 10 rows that break the correlation, and check they land in the top 2 percent of errors.",
+   "Reduce a TF-IDF matrix of 1,000 short texts with TruncatedSVD to 100 components, train a logistic regression on it and on the full TF-IDF, and compare accuracy and training time.",
+   "Take any stored embeddings, keep the first 256 values, re-normalise, and measure how many of each query's true top-10 neighbours are still found."
+  ]
+ },
+ "anomaly": {
+  "replace_subtopics": [
+   {
+    "title": "Kinds of anomalies",
+    "body": "Before choosing a method, name the kind of anomaly you are hunting. A point anomaly is one value that is odd on its own: a 9,000 euro coffee-shop payment. A contextual anomaly is a value that is normal in one context and odd in another: 290 logins is ordinary at noon and alarming at 3am. A collective anomaly is a group of points that is odd together even if each one looks fine: fifty 1 euro payments from one card in ten minutes, a classic card-testing pattern.\n\nThen check what you have. How many columns? Is there a time order? Do you have any confirmed bad cases, and are they recent? Is there a clean stretch of normal data? The answers point to a method, as the table shows.\n\nFinally, agree what happens to a flagged case. A fraud alert might block a payment, a monitoring alert might page an engineer, and a data-quality alert might just go in a report. The action decides how many false alarms are acceptable.\n\nTurning context and groups into columns. Most tabular detectors, such as isolation forest, only see one row at a time. The usual trick is to build features that carry the context into the row. Velocity features count recent activity: payments by this card in the last 10 minutes, or logins from this IP address in the last hour. Aggregate features compare a value with the entity's own history: this amount divided by the card's median amount over the last 30 days. After that, a burst of tiny payments shows up as one row with a count of 50, and a normal-sized payment that is huge for this particular customer shows up as a ratio of 40. Collective and contextual anomalies have become point anomalies that any method in this lesson can score. Compute these features only from data before the current row, so live scoring and training see the same thing.",
+    "example": "A payments startup, Orvella Payments (made up), asks for 'AI fraud detection'. In the first meeting the FDE sorts their worries into the three kinds: single huge refunds (point), card payments at unusual hours for that merchant (contextual) and bursts of tiny test payments (collective). Each gets a different detector, and the burst rule turns out to be a simple count per card per 10 minutes. For the contextual worry, the FDE adds a second feature, amount divided by the card's own 30-day median, so a 300 euro payment from a card that usually spends 8 euro stands out even though 300 euro is ordinary across all customers.",
+    "code": "import pandas as pd\n\n# Card payments; card C2 fires five tiny payments within a few minutes\np = pd.DataFrame({\n    \"card\":   [\"C1\", \"C2\", \"C2\", \"C2\", \"C2\", \"C2\", \"C1\", \"C3\"],\n    \"time\":   pd.to_datetime([\"2026-05-01 10:00\", \"2026-05-01 10:01\", \"2026-05-01 10:02\",\n                              \"2026-05-01 10:03\", \"2026-05-01 10:04\", \"2026-05-01 10:05\",\n                              \"2026-05-01 10:30\", \"2026-05-01 10:40\"]),\n    \"amount\": [42.0, 1.0, 1.0, 1.0, 1.0, 1.0, 38.0, 55.0],\n}).sort_values(\"time\")\n\n# Velocity feature: payments by the same card in the last 10 minutes (including this one)\np[\"count_10min\"] = (p.set_index(\"time\").groupby(\"card\")[\"amount\"]\n                     .rolling(\"10min\").count().reset_index(level=0, drop=True)\n                     .reindex(p[\"time\"]).to_numpy())\nprint(p[[\"card\", \"time\", \"amount\", \"count_10min\"]].to_string(index=False))\n\n# Output:\n# card                time  amount  count_10min\n#   C1 2026-05-01 10:00:00    42.0          1.0\n#   C2 2026-05-01 10:01:00     1.0          1.0\n#   C2 2026-05-01 10:02:00     1.0          2.0\n#   C2 2026-05-01 10:03:00     1.0          3.0\n#   C2 2026-05-01 10:04:00     1.0          4.0\n#   C2 2026-05-01 10:05:00     1.0          5.0\n#   C1 2026-05-01 10:30:00    38.0          1.0\n#   C3 2026-05-01 10:40:00    55.0          1.0",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Kind",
+      "Example",
+      "Good first method"
+     ],
+     "rows": [
+      [
+       "Point",
+       "One 9,000 euro refund",
+       "z-score or IQR on the column"
+      ],
+      [
+       "Point, many columns",
+       "Odd mix of amount, hour, country",
+       "Isolation forest"
+      ],
+      [
+       "Contextual",
+       "Normal value at the wrong hour",
+       "Compare with a same-hour baseline"
+      ],
+      [
+       "Collective",
+       "50 tiny payments in 10 minutes",
+       "Counts in a time window"
+      ],
+      [
+       "Only normal data known",
+       "Healthy pump readings",
+       "One-class model"
+      ],
+      [
+       "Collective or contextual, many columns",
+       "Burst per card, amount odd for this customer",
+       "Velocity and ratio features, then isolation forest"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Z-scores and IQR fences",
+    "body": "The simplest detector asks how many standard deviations a value sits from the mean. That number is the z-score: z = (x - mean) / sd. With roughly bell-shaped data, |z| above 3 happens about 3 times in 1,000, so 3 is a common first threshold.\n\nThe z-score has a weakness called masking: big anomalies inflate the mean and standard deviation they are measured against, which hides smaller anomalies. The IQR method is more robust. Take the 25th percentile (Q1) and the 75th percentile (Q3); the interquartile range is IQR = Q3 - Q1. Tukey's fences flag anything below Q1 - 1.5 x IQR or above Q3 + 1.5 x IQR. Percentiles barely move when a few extreme values appear. A related robust option is the modified z-score. It swaps the mean for the median and the standard deviation for the median absolute deviation (MAD): take each value's distance from the median, then take the median of those distances. The formula is modified z = 0.6745 x (x - median) / MAD, and the usual threshold is |modified z| above 3.5. The 0.6745 rescales MAD so the number reads like an ordinary z-score on bell-shaped data. Because medians ignore a few extreme values, the big spike cannot hide the smaller one. One catch: if more than half the values are identical, MAD is 0 and the formula divides by zero, so fall back to IQR in that case.\n\nBoth methods look at one number at a time. They are ideal for a first pass, for data-quality checks and for explaining an alert in one sentence.",
+    "example": "A café chain, Pembrook Cafés (made up), sees 12 to 16 refunds a day at one shop, then 95 on one day and 60 on another. The 95 inflates the standard deviation so much that the 60 gets a z-score of only 1.6 and is missed. The IQR fences (8.1 to 19.1) flag both days. The 60 turned out to be a staff member refunding cash sales to themselves. The modified z-score agrees with IQR: with a median of 14 and a MAD of 1.5, both spike days score far above 3.5.",
+    "code": "import numpy as np\n\n# Daily card refunds at one store (count per day); two suspicious days\nrefunds = np.array([12, 15, 11, 14, 13, 16, 12, 95, 14, 13, 15, 60, 12, 14])\n\nz = (refunds - refunds.mean()) / refunds.std()\nprint(\"z-scores of spikes:\", np.round(z[[7, 11]], 2))\nprint(\"flagged by |z| > 3:\", np.where(np.abs(z) > 3)[0])\n\nq1, q3 = np.percentile(refunds, [25, 75])\niqr = q3 - q1\nlow, high = q1 - 1.5 * iqr, q3 + 1.5 * iqr    # Tukey fences\nprint(f\"IQR fences: {low:.1f} to {high:.1f}\")\nprint(\"flagged by IQR:\", np.where((refunds < low) | (refunds > high))[0])\n\n# Output:\n# z-scores of spikes: [3.09 1.6 ]\n# flagged by |z| > 3: [7]\n# IQR fences: 8.1 to 19.1\n# flagged by IQR: [ 7 11]\n\nmed = np.median(refunds)\nmad = np.median(np.abs(refunds - med))          # median absolute deviation\nmz = 0.6745 * (refunds - med) / mad              # modified z-score\nprint(f\"median {med}, MAD {mad}\")\nprint(\"modified z of spikes:\", np.round(mz[[7, 11]], 1))\nprint(\"flagged by |modified z| > 3.5:\", np.where(np.abs(mz) > 3.5)[0])\n\n# Output (modified z-score):\n# median 14.0, MAD 1.5\n# modified z of spikes: [36.4 20.7]\n# flagged by |modified z| > 3.5: [ 7 11]",
+    "lang": "Python"
+   },
+   {
+    "title": "One-class and novelty approaches",
+    "body": "Sometimes you have a clean sample of normal data only: a month of readings from a healthy pump, or logins from before an attack. One-class methods learn the boundary of that normal set and flag new points that fall outside it. This is called novelty detection. Outlier detection is the other case, where the training data itself may already contain anomalies.\n\nTwo common tools in scikit-learn. OneClassSVM draws a flexible boundary around the training data; its nu setting is roughly the share of training points allowed outside. LocalOutlierFactor (LOF) compares each point's local density with its neighbours' density; set novelty=True to score new points. Both use distances, so scale the columns first.\n\nThe risk is that 'normal' changes. If the pump is serviced or the product launches in a new country, yesterday's boundary flags everything. Plan to retrain on fresh normal data and watch the daily alert rate.\n\nReconstruction error is a third novelty approach, and the standard one for sensor data with many related columns. Train a model that squeezes each healthy row into a few numbers and then rebuilds it: PCA with a few components (see dimred), or a small neural network called an autoencoder that does the same with curves. On healthy data the sensors move together (more load means more current, more heat, more vibration), so the rebuild is close. A faulty row breaks that pattern and cannot be rebuilt well, so the gap between the row and its rebuild, the reconstruction error, is large. Set the alert threshold from the errors on held-back healthy data, for example their 99th percentile. A bonus: the per-column error shows which sensor broke the pattern, which helps the engineer.",
+    "example": "A water utility, Kestrelford Water (made up), trains on 500 hourly readings from a healthy pump: temperature around 60 C and vibration around 3 mm/s. Four new readings arrive. Both methods pass the first two and flag the third (vibration 5.5, a worn bearing) and the fourth (75 C, a blocked cooling line), without a single labelled failure.",
+    "code": "import numpy as np\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.svm import OneClassSVM\nfrom sklearn.neighbors import LocalOutlierFactor\n\nrng = np.random.default_rng(7)\n# Sensor readings (temperature C, vibration mm/s) from a healthy pump only\nhealthy = np.column_stack([rng.normal(60, 2, 500), rng.normal(3, 0.4, 500)])\nnew = np.array([[61, 3.1], [59, 2.8], [62, 5.5], [75, 3.0]])   # last two look wrong\n\nocsvm = make_pipeline(StandardScaler(), OneClassSVM(nu=0.01, gamma=\"scale\")).fit(healthy)\nprint(\"one-class SVM:\", ocsvm.predict(new))     # 1 = like training data, -1 = novel\n\nlof = make_pipeline(StandardScaler(), LocalOutlierFactor(n_neighbors=20, novelty=True)).fit(healthy)\nprint(\"LOF novelty:  \", lof.predict(new))\n\n# Output:\n# one-class SVM: [ 1  1 -1 -1]\n# LOF novelty:   [ 1  1 -1 -1]\n\nfrom sklearn.decomposition import PCA\n\n# Reconstruction error: three sensors that all rise with pump load\nload = rng.uniform(0.3, 1.0, 500)\nhealthy3 = np.column_stack([40 + 30 * load, 5 + 10 * load, 1 + 3 * load]) + rng.normal(0, 0.3, (500, 3))\nscaler = StandardScaler().fit(healthy3)\npca = PCA(n_components=1).fit(scaler.transform(healthy3))   # one \"load\" direction\n\ndef recon_error(rows):\n    z = scaler.transform(rows)\n    return np.linalg.norm(z - pca.inverse_transform(pca.transform(z)), axis=1)\n\nthreshold = np.percentile(recon_error(healthy3), 99)\n# temperature, current, vibration: a normal row, then high current at low temperature\nnew3 = np.array([[61, 12.0, 3.1], [50, 14.0, 2.2]])\nprint(f\"threshold {threshold:.2f}, errors {np.round(recon_error(new3), 2)}\")\nprint(\"flagged:\", recon_error(new3) > threshold)\n\n# Output (reconstruction error):\n# threshold 0.94, errors [0.   2.12]\n# flagged: [False  True]",
+    "lang": "Python"
+   },
+   {
+    "title": "Time-based anomalies",
+    "body": "Time series add context. 290 logins is normal at noon and alarming at 3am. A global z-score over all hours misses both kinds of problem, because the daily cycle itself makes the standard deviation large.\n\nThe fix is to compare each point with a baseline for its own context: the same hour of day, the same weekday, or a forecast. Compute the residual (actual minus expected) and score the residual instead of the raw value. Simple versions use the median of the same hour over recent weeks; stronger versions use a forecasting model (see timeseries) and flag points outside its prediction interval.\n\nAlso decide what counts as one incident. A 40-minute outage produces 40 anomalous minutes, so group consecutive flags into a single alert and add a short cool-down, so the on-call engineer gets one page, not forty.\n\nNot every problem is a spike. A level shift is when the line jumps to a new level and stays there, for example error rate moving from 2 to 2.35 percent after a release. Drift is a slow creep, such as a sensor losing calibration a little each day. No single point looks odd, so point detectors stay silent. Change-point detection looks for the moment the average moved. The simple version compares a short recent window with a longer earlier one: if the last 7 days' mean sits several standard errors away from the previous 28 days' mean, raise an alert. A classic method is CUSUM (cumulative sum): add up each day's excess over the expected level, minus a small allowance, and alarm when the running total passes a limit. Small daily excesses that are each harmless add up quickly, so CUSUM catches small persistent shifts that a z-score never would.",
+    "example": "A software company monitors hourly logins over two weeks, with a strong daily cycle. Two problems are injected: an extra 150 logins at a busy noon, and 290 logins at 3am when about 100 is normal. A global z-score flags nothing. A same-hour baseline flags both, and the 3am burst turns out to be a credential-stuffing attack (someone trying stolen passwords).",
+    "code": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nidx = pd.date_range(\"2026-05-01\", periods=24 * 14, freq=\"h\")      # two weeks, hourly\nhour = idx.hour.to_numpy()\nlogins = 200 + 150 * np.sin((hour - 6) / 24 * 2 * np.pi) + rng.normal(0, 15, len(idx))\ns = pd.Series(logins, index=idx)\ns.iloc[300] = s.iloc[300] + 150        # a spike, but at a busy hour\ns.iloc[315] = 290                      # 3am: normal for noon, odd for night\n\nglob_z = (s - s.mean()) / s.std()      # global z-score ignores the daily cycle\nsame_hour = s.groupby(s.index.hour)\nctx_z = (s - same_hour.transform(\"median\")) / same_hour.transform(\"std\")\nprint(\"global |z|>3 flags:\", list(s.index[glob_z.abs() > 3].strftime(\"%d %H:00\")))\nprint(\"same-hour |z|>3 flags:\", list(s.index[ctx_z.abs() > 3].strftime(\"%d %H:00\")))\n\n# Output:\n# global |z|>3 flags: []\n# same-hour |z|>3 flags: ['13 12:00', '14 03:00']\n\n# A level shift: daily error rate moves from about 2.0 to 2.35 percent on day 40\ndays = pd.date_range(\"2026-03-01\", periods=70, freq=\"D\")\nerr = pd.Series(np.r_[rng.normal(2.0, 0.25, 40), rng.normal(2.35, 0.25, 30)], index=days)\nz = (err - err[:30].mean()) / err[:30].std()\nprint(\"days with |z| > 3:\", int((z.abs() > 3).sum()))      # no clear spike to point at\n\n# CUSUM: add up excess over the old level, minus an allowance k; alarm above limit h\ntarget, sd = err[:30].mean(), err[:30].std()\nk, h, total = 0.5 * sd, 5 * sd, 0.0\nfor day, x in err.items():\n    total = max(0.0, total + (x - target - k))\n    if total > h:\n        print(\"CUSUM alarm on\", day.strftime(\"%d %b\"), \"(shift started 10 Apr)\")\n        break\n\n# Output (level shift):\n# days with |z| > 3: 0\n# CUSUM alarm on 15 Apr (shift started 10 Apr)",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Modified z-score",
+    "A robust z-score: 0.6745 x (x - median) / MAD, usually flagged above 3.5."
+   ],
+   [
+    "MAD",
+    "Median absolute deviation: the median of each value's distance from the median."
+   ],
+   [
+    "Reconstruction error",
+    "How far a row is from its rebuild by a model trained on normal data; large means unusual."
+   ],
+   [
+    "Autoencoder",
+    "A neural network trained to compress a row and rebuild it; its reconstruction error is an anomaly score."
+   ],
+   [
+    "Velocity feature",
+    "A count of recent activity for one entity, such as payments per card in the last 10 minutes."
+   ],
+   [
+    "Level shift",
+    "A lasting jump of a series to a new level, with no single spike."
+   ],
+   [
+    "CUSUM",
+    "Cumulative sum control chart: adds up small excesses over a target and alarms when the total passes a limit."
+   ]
+  ],
+  "add_practice": [
+   "Compute the modified z-score for the refunds array by hand for the day with 60 refunds, then check it with numpy. Make a series where more than half the values are equal and show what happens to MAD.",
+   "Simulate 4 sensors driven by one hidden load, fit PCA with 1 component on 1,000 healthy rows, set a 99th percentile threshold on held-back rows, and inject 10 faulty rows that break the pattern. Report how many are flagged and which column has the biggest error for each.",
+   "Build 90 days of a metric with a small upward shift of 1 standard deviation on day 60. Show that a |z| > 3 rule misses it, then implement CUSUM and report the alarm day and the delay after the real shift."
+  ]
+ },
+ "timeseries": {
+  "add_subtopics": [
+   {
+    "title": "Prediction intervals and quantile forecasts",
+    "body": "A forecast of 150 loaves is really a guess that could land anywhere from 140 to 160. The decision often depends on that spread, not on the middle. A bakery that runs out loses sales and annoys customers, so it may want to bake enough to cover 9 days out of 10. A call centre plans staff for a busy but plausible day, not an average one. That is why good forecasts come with a prediction interval: a range that should contain the actual value a stated share of the time, such as 80 percent.\n\nThere are two common ways to get one. Statistical models such as ARIMA and ETS estimate the size of their own errors, so statsmodels can return a range: get_forecast(h).conf_int(alpha=0.2) gives an 80 percent band (alpha is the share allowed outside). Tree models give a single number by default, but you can train them with quantile loss (also called pinball loss), which aims at a chosen percentile instead of the average. A P90 forecast is the value the actual should stay below 90 percent of the time. HistGradientBoostingRegressor(loss=\"quantile\", quantile=0.9) and LightGBM's objective=\"quantile\" both do this; train one model per percentile you need, such as P10, P50 and P90.\n\nIntervals must be checked like point forecasts. In the backtest, count how often the actual falls inside the band. An 80 percent interval should cover roughly 80 percent of test points. Much less means the model is overconfident; much more means the band is too wide to be useful. Coverage on 14 test days is noisy, so judge it across all folds.",
+    "example": "Hartwell Bakeries (made up) wants to know how much to bake so it rarely runs out. The SARIMA model's 80 percent band for the first test day runs from 139 to 154 loaves. Only 64 percent of the 14 test days fall inside it, below the promised 80 percent, a hint that the band is a little too narrow, so the FDE checks coverage across all backtest folds before trusting it. A P90 boosting model is also trained, and 96 percent of test days land at or below it, so it is safe but a little generous. The FDE recommends baking to the P90 number for bread that keeps a day and to the P50 for cakes that go to waste, and puts both lines on one chart for the owner.",
+    "code": "import warnings\nimport numpy as np\nimport pandas as pd\nfrom statsmodels.tsa.arima.model import ARIMA\nfrom sklearn.ensemble import HistGradientBoostingRegressor\nwarnings.filterwarnings(\"ignore\")\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\nsales = pd.Series(100 + 0.3 * np.arange(168)\n                  + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n                  + rng.normal(0, 6, 168), index=idx).round()\ntrain, test = sales[:-14], sales[-14:]\n\n# 1) Statistical model: ask for a forecast distribution, not just a point\nmodel = ARIMA(train, order=(1, 0, 1), seasonal_order=(0, 1, 1, 7), trend=\"t\").fit()\nfc = model.get_forecast(14)\nband = fc.conf_int(alpha=0.2)                    # 80% interval: 10th to 90th percentile\nprint(band.head(2).round().astype(int).to_string())\ninside = ((test >= band.iloc[:, 0]) & (test <= band.iloc[:, 1])).mean()\nprint(f\"SARIMA 80% interval coverage on the test: {inside:.0%}\")\n\n# 2) Machine learning: quantile loss trains a model for one chosen percentile\ndf = pd.DataFrame({\"y\": sales, \"lag_7\": sales.shift(7), \"lag_14\": sales.shift(14),\n                   \"dow\": sales.index.dayofweek}).dropna()\ntr, te = df.iloc[:-28], df.iloc[-28:]\nX = [\"lag_7\", \"lag_14\", \"dow\"]\np90 = HistGradientBoostingRegressor(loss=\"quantile\", quantile=0.9, random_state=0)\np90.fit(tr[X], tr[\"y\"] - tr[\"lag_7\"])\nhigh = te[\"lag_7\"] + p90.predict(te[X])\nprint(f\"share of test days at or below the P90 forecast: {(te['y'] <= high).mean():.0%}\")\n\n# Output:\n#             lower y  upper y\n# 2025-06-09      139      154\n# 2025-06-10      143      158\n# SARIMA 80% interval coverage on the test: 64%\n# share of test days at or below the P90 forecast: 96%",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Need",
+      "Forecast to use",
+      "Why"
+     ],
+     "rows": [
+      [
+       "Stock that must not run out",
+       "P90 or P95",
+       "Covers busy days; some waste accepted"
+      ],
+      [
+       "Perishable goods",
+       "P50 or lower",
+       "Waste costs more than a missed sale"
+      ],
+      [
+       "Staff rota",
+       "Upper quantile per hour",
+       "Queues are worse than idle time"
+      ],
+      [
+       "Budget or board report",
+       "P50 plus a P10 to P90 range",
+       "Shows the likely value and the risk"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Preparing time data",
+    "body": "Real data rarely arrives as a neat row per day. It comes as events (each sale, each login) with timestamps, and the first job is to build a regular grid: one row per hour, day or week. In pandas, resample(\"D\").sum() turns events into daily totals and fills days with no events. asfreq(\"D\") does the same for a series that already has one value per step but skips some.\n\nThen decide what a gap means. A day with no sales in the data can be a real zero (the shop was open and sold nothing) or missing (the shop was closed, the till was offline, the file did not arrive). Filling a closed day with 0 teaches the model that demand dropped. Mark those days as missing, drop them from training or fill them from a similar day, and ask the customer which it is.\n\nTime zones catch almost everyone. Systems often log in UTC, but the business thinks in local days. Convert to local time before grouping by day, or late-evening sales land on the next day. Daylight saving time makes one day a year 23 hours long and one 25 hours, which matters for hourly data.\n\nForecast at the level where the decision is made. If orders go to the supplier weekly per shop, forecast weekly per shop; forecasting each product by the hour adds noise nobody uses. Finally, collect a holiday and event calendar (public holidays, promotions, closures) and add it as feature columns. The customer usually has this list somewhere and it explains many of the biggest misses.",
+    "example": "Tillmoor Grocers (made up) sends a year of till events in UTC. After converting to London time and resampling to days (a few late-evening orders had been landing on the wrong day in UTC), the FDE finds 9 days with no rows. Asking the store manager shows 2 were real zero days and 7 were a broken till upload. Filling all 9 with 0 would have pulled the average down; instead the 7 are marked missing, and a holiday flag explains the three biggest spikes.",
+    "code": "import numpy as np\nimport pandas as pd\n\n# Raw web orders for a bakery: timestamps in UTC, only days with an order appear\nevents = pd.DataFrame({\n    \"ts\": pd.to_datetime([\"2026-03-28 09:15\", \"2026-03-28 17:40\", \"2026-03-29 23:30\",\n                          \"2026-03-30 08:05\", \"2026-04-01 10:00\", \"2026-04-03 11:00\"], utc=True),\n    \"loaves\": [3, 5, 4, 2, 6, 9],\n})\n# 1) Group by LOCAL day. London moved to summer time on 29 March, so 23:30 UTC is 00:30 next day\nutc_days = events.set_index(\"ts\")[\"loaves\"].resample(\"D\").sum()\nlocal = events.set_index(events[\"ts\"].dt.tz_convert(\"Europe/London\"))[\"loaves\"]\ndaily = local.resample(\"D\").sum()                # one row per calendar day, empty days get 0\ndaily.index = daily.index.date\nprint(pd.DataFrame({\"utc_day\": utc_days.to_numpy(), \"local_day\": daily.to_numpy()},\n                   index=daily.index).to_string())\n\n# 2) A day with no orders is not always zero: the shop was closed for a refit on 31 March\ndaily.loc[pd.Timestamp(\"2026-03-31\").date()] = np.nan    # unknown, not 'sold nothing'\nprint(\"mean if closed day counted as 0:\", round(daily.fillna(0).mean(), 2))\nprint(\"mean skipping the closed day:  \", round(daily.mean(), 2))\n\n# 3) Holiday flag as a feature (Good Friday 2026 is 3 April)\nholidays = pd.to_datetime([\"2026-04-03\", \"2026-04-06\"]).date\nprint(\"is_holiday:\", [int(d in holidays) for d in daily.index])\n\n# Output:\n#             utc_day  local_day\n# 2026-03-28        8          8\n# 2026-03-29        4          0\n# 2026-03-30        2          6\n# 2026-03-31        0          0\n# 2026-04-01        6          6\n# 2026-04-02        0          0\n# 2026-04-03        9          9\n# mean if closed day counted as 0: 4.14\n# mean skipping the closed day:   4.83\n# is_holiday: [0, 0, 0, 0, 0, 0, 1]",
+    "lang": "Python",
+    "checklist": [
+     "Build a regular grid with resample or asfreq",
+     "Ask whether each gap is a true zero or missing",
+     "Convert to the business's local time before daily grouping",
+     "Check the two daylight saving days in hourly data",
+     "Aggregate to the level of the decision (shop, week, product group)",
+     "Add holiday, promotion and closure flags as features"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "ARIMA at a high level",
+    "body": "ARIMA is a classic family of statistical models, and its name lists its three parts. AR (autoregressive, order p): today depends on the last p values. I (integrated, order d): difference the series d times (today minus yesterday) to remove trend, so its average stays stable. MA (moving average, order q): today depends on the last q forecast errors. This MA is about past errors, which is different from the moving average in the previous section.\n\nSeasonal ARIMA (SARIMA) adds the same three parts at the seasonal lag, written (P, D, Q, s), with s = 7 for a weekly pattern in daily data. Choosing orders used to be an art with ACF and PACF plots; today people usually try a few small orders and compare them with AIC (lower is better) and, more importantly, with a backtest.\n\nThe practical view for an FDE: ARIMA and ETS are well understood, fast and good on a single series with a few years of history. They get awkward with thousands of series, many outside drivers (price, weather, promotions) or messy data, which is where the next section comes in.\n\nStationarity in one line: a series is stationary when its average and spread do not change over time, with no trend and no changing season. ARIMA's AR and MA parts assume stationarity, which is why the I part differences the series first. The standard check is the Augmented Dickey-Fuller (ADF) test: its p-value asks 'could this series have a unit root, that is, wander without returning to a fixed level?'. A p-value below 0.05 suggests the series is stationary; above 0.05, difference it and test again. This question comes up in almost every forecasting interview.",
+    "example": "A seasonal ARIMA with order (1, 0, 1), a weekly seasonal part (0, 1, 1, 7) and a trend term gets MAE 4.8 on the bakery holdout, very close to Holt-Winters at 4.9. When two sensible models agree this closely, pick the one the customer's team can maintain and explain.",
+    "code": "import warnings\nimport numpy as np\nimport pandas as pd\nfrom statsmodels.tsa.arima.model import ARIMA\nwarnings.filterwarnings(\"ignore\")                 # hide convergence chatter for the demo\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\nsales = pd.Series(100 + 0.3 * np.arange(168)\n                  + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n                  + rng.normal(0, 6, 168), index=idx).round()\ntrain, test = sales[:-14], sales[-14:]\n\n# (p, d, q) = (1, 0, 1) with a weekly seasonal part (P, D, Q, s) = (0, 1, 1, 7)\nmodel = ARIMA(train, order=(1, 0, 1), seasonal_order=(0, 1, 1, 7), trend=\"t\").fit()\nfc = model.forecast(14)\nprint(\"SARIMA MAE:\", round(np.abs(test - fc).mean(), 1))\nprint(\"AIC:\", round(model.aic))                  # lower is better when comparing orders\n\n# Output:\n# SARIMA MAE: 4.8\n# AIC: 961\n\nfrom statsmodels.tsa.stattools import adfuller\nprint(\"ADF p-value, raw sales:\", round(adfuller(train)[1], 3))\nweekly_diff = train.diff(7).dropna()              # this week minus the same day last week\nprint(\"ADF p-value, after weekly differencing:\", round(adfuller(weekly_diff)[1], 3))\n\n# Output (stationarity check):\n# ADF p-value, raw sales: 0.707\n# ADF p-value, after weekly differencing: 0.001",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Letter",
+      "Name",
+      "Plain meaning"
+     ],
+     "rows": [
+      [
+       "p",
+       "Autoregressive order",
+       "How many past values feed today"
+      ],
+      [
+       "d",
+       "Differencing order",
+       "How many times to subtract yesterday"
+      ],
+      [
+       "q",
+       "Moving-average order",
+       "How many past errors feed today"
+      ],
+      [
+       "P, D, Q, s",
+       "Seasonal parts",
+       "The same ideas at the season length s"
+      ],
+      [
+       "ADF test",
+       "Augmented Dickey-Fuller",
+       "p below 0.05 suggests stationary; else difference"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Gradient boosting with lag features",
+    "body": "You can turn forecasting into ordinary supervised learning (see boosting). Each row is a day, the target is that day's value, and the features are things known before that day: lag features (the value 1, 7 or 14 days earlier), rolling averages of past values, the day of the week, holidays and planned promotions.\n\nThree details matter. Every feature must exist at forecast time: if you forecast 14 days ahead, yesterday's value does not exist yet, so use only lags of at least the horizon, or forecast one step at a time. Shift before rolling, so a rolling mean never includes the target day. And tree models cannot extrapolate: they never predict above the highest value seen in training, so with a rising trend predict the change from last week and add it back.\n\nThe big win is scale and outside drivers. One model can learn from thousands of shops or products at once, with price, weather and promotions as features, which classic single-series models find hard.\n\nOther tools a customer may already use. Prophet (from Meta) fits trend, seasons and holidays with little setup and is common in analytics teams; it is easy to use but often loses to a tuned ETS or boosting model in backtests. statsforecast from Nixtla runs ETS, ARIMA and Croston very fast across thousands of series, and its sister library mlforecast builds lag features for boosting for you. Pretrained time-series foundation models, such as Amazon's Chronos and Google's TimesFM, were trained on huge numbers of series and can forecast a new one with no training at all (zero-shot). Treat every one of these the same way: run it through the same backtest, next to seasonal naive, and keep it only if it wins on the metric the customer cares about.",
+    "example": "Forecasting tomorrow's bakery sales each night over the last 28 days: boosting that predicts sales directly scores MAE 6.1, slightly worse than seasonal naive at 6.0, because the trees cannot follow the upward trend. Predicting the change versus last week instead scores 5.7. The gain is small because this synthetic series has no promotions or weather; on real data, those extra features are where boosting pulls ahead.",
+    "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.ensemble import HistGradientBoostingRegressor\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\nsales = pd.Series(100 + 0.3 * np.arange(168)\n                  + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n                  + rng.normal(0, 6, 168), index=idx).round()\n\n# Task: each night, forecast tomorrow. So any value up to today is allowed.\ndf = pd.DataFrame({\"y\": sales})\ndf[\"lag_1\"] = df[\"y\"].shift(1)            # yesterday\ndf[\"lag_7\"] = df[\"y\"].shift(7)            # same weekday last week\ndf[\"lag_14\"] = df[\"y\"].shift(14)\ndf[\"lag_21\"] = df[\"y\"].shift(21)\ndf[\"mean_7\"] = df[\"y\"].shift(1).rolling(7).mean()   # shift(1) first: never include the target day\ndf[\"dow\"] = df.index.dayofweek\ndf = df.dropna()\n\ntrain, test = df.iloc[:-28], df.iloc[-28:]    # split by time, never shuffle\nX_cols = [\"lag_1\", \"lag_7\", \"lag_14\", \"lag_21\", \"mean_7\", \"dow\"]\ngbm = HistGradientBoostingRegressor(max_iter=200, learning_rate=0.05, random_state=0)\nfor target in [\"level\", \"change\"]:\n    if target == \"level\":                     # predict sales directly\n        gbm.fit(train[X_cols], train[\"y\"])\n        pred = gbm.predict(test[X_cols])\n    else:                                     # predict change vs last week, then add it back\n        gbm.fit(train[X_cols], train[\"y\"] - train[\"lag_7\"])\n        pred = test[\"lag_7\"] + gbm.predict(test[X_cols])\n    print(f\"boosting ({target}) MAE:\", round(np.abs(test[\"y\"] - pred).mean(), 1))\nprint(\"seasonal naive MAE:\", round(np.abs(test[\"y\"] - test[\"lag_7\"]).mean(), 1))\n\n# Output:\n# boosting (level) MAE: 6.1\n# boosting (change) MAE: 5.7\n# seasonal naive MAE: 6.0",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Tool",
+      "What it is",
+      "Good for"
+     ],
+     "rows": [
+      [
+       "Prophet",
+       "Trend + seasons + holidays, little setup",
+       "Quick business forecasts with holidays"
+      ],
+      [
+       "statsforecast (Nixtla)",
+       "Fast ETS, ARIMA, Croston",
+       "Thousands of series at once"
+      ],
+      [
+       "mlforecast or LightGBM",
+       "Boosting with lag features",
+       "Many series with prices, weather, promotions"
+      ],
+      [
+       "Chronos, TimesFM",
+       "Pretrained foundation models",
+       "A zero-shot baseline to backtest"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Backtesting and the MAPE trap",
+    "body": "A random train/test split leaks the future into training. For time series, always split by time. A backtest (also called time-series cross-validation or rolling-origin evaluation) repeats this several times: train up to a cut-off, forecast the next h periods, score, move the cut-off forward and repeat. Averaging over folds shows whether a model is reliably better or got lucky in one period. scikit-learn's TimeSeriesSplit produces these folds.\n\nChoose the error metric with care. MAPE (mean absolute percentage error) is popular because '8 percent off' sounds clear, but it divides by the actual value. One zero-sales day makes it infinite, low-volume items dominate the average, and it punishes over-forecasts more than under-forecasts, which quietly rewards forecasting too low. Safer choices: MAE in units; WAPE, the sum of absolute errors divided by the sum of actuals; or MASE, the error divided by the seasonal-naive error, so below 1 means you beat the baseline.\n\nFinally, agree with the customer on the horizon (next day or next month?) and the level (per shop, per product, or total). An accuracy number means nothing without both.\n\nIntermittent demand is its own case: a spare part or a slow product that sells 0, 0, 3, 0, 0, 0, 2 and so on. Seasonal naive and ETS behave badly here, and MAPE is useless because of the zeros. Croston's method splits the series into two smaller problems: how big a sale is when it happens, and how many periods pass between sales. It smooths each one and forecasts their ratio, a steady average demand per period (variants such as SBA correct a small bias). Score these series only with WAPE or MASE. In the example code Croston's MASE of 0.69 beats the naive error, while its WAPE above 1 shows how hard such a series is to forecast week by week, which is why stock decisions for rare items usually use the total over the lead time. Remember too that a forecast of all zeros can look accurate on MAE while being useless for stocking, so check the total too.",
+    "example": "Four folds of 14 days each give seasonal-naive MAE of 8.6, 8.1, 6.1 and 5.4. That spread shows how much results vary by period, so a model that beat the baseline only in the last fold proves little. For a slow-selling product with a zero day, MAPE comes out infinite, while WAPE gives a sensible 9 percent.",
+    "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.model_selection import TimeSeriesSplit\n\nrng = np.random.default_rng(0)\nidx = pd.date_range(\"2025-01-06\", periods=168, freq=\"D\")\ny = pd.Series(100 + 0.3 * np.arange(168)\n              + np.array([0, 5, 8, 10, 25, 40, -20])[idx.dayofweek]\n              + rng.normal(0, 6, 168), index=idx).round().to_numpy()\n\ntss = TimeSeriesSplit(n_splits=4, test_size=14)       # each fold: train on the past, test on next 14 days\nfor i, (tr, te) in enumerate(tss.split(y)):\n    fc = y[tr][-7:][np.arange(len(te)) % 7]           # seasonal naive from the end of the train window\n    print(f\"fold {i}: train up to day {tr[-1]}, MAE {np.abs(y[te] - fc).mean():.1f}\")\n\nactual = np.array([0, 2, 50, 48])                     # a slow product with a zero day\npred = np.array([1, 1, 45, 50])\nwith np.errstate(divide=\"ignore\"):\n    print(\"MAPE:\", np.mean(np.abs(actual - pred) / actual))      # inf because of the zero\nprint(\"WAPE:\", round(np.abs(actual - pred).sum() / actual.sum(), 3))\n\n# Output:\n# fold 0: train up to day 111, MAE 8.6\n# fold 1: train up to day 125, MAE 8.1\n# fold 2: train up to day 139, MAE 6.1\n# fold 3: train up to day 153, MAE 5.4\n# MAPE: inf\n# WAPE: 0.09\n\n# Intermittent demand: a spare part that sells rarely\ndemand = np.array([0, 0, 3, 0, 0, 0, 2, 0, 0, 4, 0, 0, 0, 0, 3, 0, 2, 0, 0, 0, 3, 0, 0, 2])\n\ndef croston(y, alpha=0.1):\n    size, gap, periods = None, None, 1\n    for v in y:\n        if v > 0:\n            size = v if size is None else alpha * v + (1 - alpha) * size\n            gap = periods if gap is None else alpha * periods + (1 - alpha) * gap\n            periods = 1\n        else:\n            periods += 1\n    return size / gap                               # average demand per period\n\ntrain_d, test_d = demand[:16], demand[16:]\nfc = croston(train_d)\nprint(f\"Croston forecast per week: {fc:.2f}\")\nwape = np.abs(test_d - fc).sum() / test_d.sum()\nnaive_mae = np.abs(np.diff(train_d)).mean()         # in-sample naive error, the MASE scale\nmase = np.abs(test_d - fc).mean() / naive_mae\nprint(f\"WAPE {wape:.2f}, MASE {mase:.2f}\")\n\n# Output (intermittent demand):\n# Croston forecast per week: 0.92\n# WAPE 1.26, MASE 0.69",
+    "lang": "Python",
+    "checklist": [
+     "Split by time and never shuffle",
+     "Backtest over at least 3 to 5 folds",
+     "Match the test horizon to how the forecast will be used",
+     "Report the baseline error next to the model error",
+     "Use MAE, WAPE or MASE; avoid MAPE when zeros or tiny values occur",
+     "Check every feature exists at forecast time",
+     "Note holidays and one-off events that explain big misses",
+     "For intermittent demand, try Croston and score only with WAPE or MASE"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Prediction interval",
+    "A range that should contain the future actual value a stated share of the time, such as 80 percent."
+   ],
+   [
+    "Quantile forecast",
+    "A forecast for a chosen percentile, such as P90: the actual should be below it 90 percent of the time."
+   ],
+   [
+    "Quantile loss",
+    "A training loss, also called pinball loss, that makes a model aim at a chosen percentile instead of the average."
+   ],
+   [
+    "Interval coverage",
+    "The share of test points that fall inside the prediction interval; it should match the promised level."
+   ],
+   [
+    "Resample",
+    "Turning events or irregular data into a regular grid, such as one total per day."
+   ],
+   [
+    "Stationary",
+    "A series whose average and spread do not change over time."
+   ],
+   [
+    "ADF test",
+    "Augmented Dickey-Fuller test; a p-value below 0.05 suggests the series is stationary."
+   ],
+   [
+    "Intermittent demand",
+    "A series with many zero periods, such as a slow spare part."
+   ],
+   [
+    "Croston's method",
+    "A forecast for intermittent demand that smooths sale size and the gap between sales separately."
+   ],
+   [
+    "MASE",
+    "Mean absolute scaled error: model error divided by a naive forecast's error; below 1 beats the baseline."
+   ],
+   [
+    "Foundation model (time series)",
+    "A model pretrained on many series, such as Chronos or TimesFM, that can forecast a new series without training."
+   ]
+  ],
+  "add_practice": [
+   "Fit the bakery SARIMA on a 5-fold backtest and record, for each fold, how many test days fall inside the 80 percent interval. Report the overall coverage and say whether the model is over- or under-confident.",
+   "Train HistGradientBoostingRegressor with loss='quantile' at 0.1, 0.5 and 0.9 on the bakery lag features and check the share of test days below each line.",
+   "Take a list of UTC event timestamps that crosses a daylight saving change, resample to local days, mark one closed day as missing, and show how the daily mean changes if you wrongly fill it with 0.",
+   "Run adfuller on a random walk (np.cumsum of random noise) and on its first difference and explain the two p-values."
+  ]
+ },
+ "recsys": {
+  "add_subtopics": [
+   {
+    "title": "Two-stage production architecture",
+    "body": "A shop with a million products cannot run a careful model on every product for every page view. Production recommenders therefore work in stages, the pattern the animation on this page shows.\n\nStage 1, candidate retrieval, is fast and rough. It pulls a few hundred items from several sources and merges them. Co-visitation counts record how often two items appear in the same session or basket; they are just counts, updated nightly, and are surprisingly strong. Embedding retrieval gives every item a vector (from matrix factorization, a text embedding model or a two-tower model) and uses approximate nearest neighbour (ANN) search to find items near the user's vector in milliseconds (see embeddings and rag). A two-tower model is a neural network with one tower that turns a user into a vector and another that turns an item into a vector, trained so that the dot product is high for items the user engaged with. Popularity per segment and fresh items are other common sources.\n\nStage 2, ranking, is slow and careful but only sees those few hundred candidates. A learning-to-rank model, often LightGBM's LGBMRanker, scores each candidate with many features: user history, item price and stock, co-visit counts, time of day, device. It is trained on impression logs, with bought or clicked items as the positives.\n\nStage 3 applies business rules: remove owned and out-of-stock items, respect age limits, cap how many items from one brand appear, pin a promotion. Finally, decide the serving mode. Precomputed lists (built nightly per user and cached) are cheap and simple; real-time scoring reacts to what the user did a minute ago but needs a low-latency service. Many teams precompute candidates and rank in real time.",
+    "example": "Brackenfield Outdoor (made up) sells 80,000 items. Nightly co-visitation counts show that after a tent, shoppers most often also viewed a stove (3 sessions), a lamp and a mat. These plus 200 embedding neighbours and 50 popular items form each user's candidates. A LightGBM ranker using co-visit count, popularity and price gap lifts NDCG@5 from 0.58 (sorting by co-visits alone) to 0.76 on held-out users. A rule then removes out-of-stock items before the top 10 are shown.",
+    "code": "import numpy as np\nfrom collections import Counter\nfrom itertools import permutations\nimport lightgbm as lgb\nfrom sklearn.metrics import ndcg_score\n\n# Stage 1: co-visitation candidates from browsing sessions\nsessions = [[\"tent\", \"stove\", \"lamp\"], [\"tent\", \"mat\", \"stove\"], [\"stove\", \"gas\", \"pan\"],\n            [\"tent\", \"lamp\", \"mat\"], [\"kettle\", \"mugs\"], [\"tent\", \"stove\", \"gas\"]]\ncovisit = Counter()\nfor s in sessions:\n    for a, b in permutations(set(s), 2):\n        covisit[(a, b)] += 1                    # a and b seen in the same session\ncands = sorted(((b, n) for (a, b), n in covisit.items() if a == \"tent\"), key=lambda x: (-x[1], x[0]))\nprint(\"candidates after 'tent':\", cands)\n\n# Stage 2: a learning-to-rank model on candidate features\nrng = np.random.default_rng(0)\nn_users, n_cands = 400, 20\ncovis = rng.poisson(3, (n_users, n_cands)).astype(float)   # co-visit count with user's last item\npop = rng.random((n_users, n_cands))                        # item popularity, 0..1\nprice_gap = rng.normal(0, 1, (n_users, n_cands))            # price vs what the user usually pays\nX = np.stack([covis, pop, price_gap], axis=-1)\ntrue = 0.5 * covis + 2 * pop - 1.5 * np.abs(price_gap) + rng.normal(0, 1, (n_users, n_cands))\nrel = np.digitize(true, np.quantile(true, [0.7, 0.9]))      # 0, 1 or 2 = bought\ntr, te = slice(0, 300), slice(300, 400)\nranker = lgb.LGBMRanker(n_estimators=200, learning_rate=0.05, verbose=-1, random_state=0)\nranker.fit(X[tr].reshape(-1, 3), rel[tr].ravel(), group=[n_cands] * 300)\nscores = ranker.predict(X[te].reshape(-1, 3)).reshape(100, n_cands)\nprint(\"NDCG@5 ranking by co-visit count only:\", round(ndcg_score(rel[te], covis[te], k=5), 3))\nprint(\"NDCG@5 learning-to-rank model:       \", round(ndcg_score(rel[te], scores, k=5), 3))\n\n# Output:\n# candidates after 'tent': [('stove', 3), ('lamp', 2), ('mat', 2), ('gas', 1)]\n# NDCG@5 ranking by co-visit count only: 0.58\n# NDCG@5 learning-to-rank model:        0.763",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Stage",
+      "Typical methods",
+      "Size and speed"
+     ],
+     "rows": [
+      [
+       "Candidate retrieval",
+       "Co-visitation, ANN on embeddings, two-tower, popularity",
+       "Millions to a few hundred, under 20 ms"
+      ],
+      [
+       "Ranking",
+       "LightGBM ranker or a neural ranker with many features",
+       "Hundreds to an ordered list, under 50 ms"
+      ],
+      [
+       "Business rules",
+       "Owned, stock, age limits, brand caps, promotions",
+       "Final 5 to 20 slots"
+      ],
+      [
+       "Serving",
+       "Precomputed nightly or real-time",
+       "Cache versus fresh reaction to clicks"
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Content-based recommendations",
+    "body": "Content-based methods recommend items similar to ones the user liked, using the items' own attributes: text descriptions, categories, brand, price band, or embeddings of product text and images. Each item becomes a vector, and similarity is usually cosine similarity, the angle between two vectors, where 1 means the same direction and 0 means unrelated.\n\nTF-IDF is a simple way to turn text into vectors: words that are frequent in one description but rare across the catalogue get more weight. A modern alternative is to embed each description with a text embedding model (see embeddings) and compare those vectors.\n\nStrengths: it works for a brand-new item the moment it has a description, and every suggestion is easy to explain ('because you viewed Trail runner 2'). Weaknesses: it recommends more of the same and rarely surprises, and it is only as good as the catalogue data.\n\nLarge language models help in two places. First, thin catalogues: many shops have items with a title and nothing else, which gives content-based methods nothing to work with. An LLM can write a short, consistent description and a fixed set of tags (activity, season, material, style) for every item from its title, supplier sheet or photo, and those fields feed TF-IDF or an embedding model. Give the model a fixed tag list to choose from, check a sample by hand, and never let it invent facts such as sizes or safety ratings. Second, explanations: given the item the user bought and the recommended item, an LLM can write one plain sentence such as 'Because you bought a trail shoe: these socks are made for the same muddy runs'. Generate these offline for the most common pairs to keep costs and latency low.",
+    "example": "At an outdoor shop, a user views 'Trail runner 2'. TF-IDF over five product descriptions ranks 'Road racer' first (similarity 0.40, sharing lightweight, running and shoe), then 'Running socks' (0.26), then 'Hiking boot' (0.14, sharing mud). The rain jacket shares no words and is not suggested. The shop's new 'Merino trail sock' has only a title, so it would never be matched. An LLM writes a description with the tags running, trail and lightweight, and the sock now appears next to the trail shoe with a one-line reason.",
+    "code": "from sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\n\nitems = {\n    \"Trail runner 2\":   \"lightweight trail running shoe grip mud\",\n    \"Road racer\":       \"lightweight road running shoe racing\",\n    \"Hiking boot\":      \"waterproof hiking boot ankle support mud\",\n    \"Rain jacket\":      \"waterproof jacket hiking rain\",\n    \"Running socks\":    \"running socks lightweight blister\",\n}\nnames = list(items)\ntfidf = TfidfVectorizer().fit_transform(items.values())   # words -> weighted vectors\nsim = cosine_similarity(tfidf)                             # item x item similarity, 0 to 1\n\nliked = names.index(\"Trail runner 2\")\nranked = sim[liked].argsort()[::-1][1:4]                   # skip the item itself\nfor j in ranked:\n    print(f\"{names[j]:<14} {sim[liked, j]:.2f}\")\n\n# Output:\n# Road racer     0.40\n# Running socks  0.26\n# Hiking boot    0.14",
+    "lang": "Python"
+   },
+   {
+    "title": "Implicit feedback and cold start",
+    "body": "Explicit feedback is a user stating a preference: a star rating or a thumbs up. It is clear but rare. Implicit feedback is behaviour: views, clicks, add-to-cart, purchases, minutes watched. It is plentiful but noisy. A missing interaction may mean 'not interested' or simply 'never saw it', and a click may be a mis-tap. Most business data is implicit, so treat it as a confidence signal (a purchase counts more than a view) and never treat unseen items as dislikes.\n\nCold start is the problem of new users and new items with no history. For new users, start with popularity for their region or entry page, ask two or three onboarding questions, or use what they have done in this session. For new items, lean on content-based similarity until they collect interactions, and reserve a small share of slots for fresh items so they get seen.\n\nMost production systems are hybrids: they combine popularity, content and CF signals, and a ranking model decides the final order.\n\nPosition bias is the other trap in implicit data. Items shown at the top of a list get more clicks just because they are at the top: people scan from the top and stop early. If you train on raw clicks, the model learns 'whatever we ranked first is good' and keeps ranking it first. The fix starts with logging: for every impression, record the item, the position it was shown in and whether it was clicked. Then compare items fairly, for example by dividing each click-through rate by the average click-through rate for that position, as the code does: raw click rate says the tent is best, but once each click is compared with what its slot usually earns, the lamp, which was mostly shown at the bottom, comes out on top. Another fix is to add position as a feature during training and set it to the same value for every item when scoring.",
+    "example": "An online grocer, Tamberlin Fresh (made up), adds 300 new products a month. Pure CF never recommends them, because nobody has bought them yet, so they never get bought. The FDE adds a content-based candidate source for items under 30 days old and reserves 1 of every 10 slots for them. New products start collecting purchases within a week and move into the CF model naturally.",
+    "code": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(0)\n# Impression log: the old ranker put the tent on top most of the time and the lamp at the bottom\nn = 3000\nitem = rng.choice([\"tent\", \"stove\", \"lamp\"], n)\ntop_slot = {\"tent\": [0.8, 0.1, 0.1], \"stove\": [0.1, 0.8, 0.1], \"lamp\": [0.1, 0.1, 0.8]}\nposition = np.array([rng.choice([1, 2, 3], p=top_slot[i]) for i in item])\nappeal = {\"tent\": 0.20, \"stove\": 0.20, \"lamp\": 0.35}          # hidden truth: the lamp is best\nlook = {1: 1.0, 2: 0.5, 3: 0.25}                             # people look at lower slots less\nclicked = rng.random(n) < np.array([appeal[i] * look[p] for i, p in zip(item, position)])\nlog = pd.DataFrame({\"item\": item, \"position\": position, \"clicked\": clicked.astype(int)})\n\nby_pos = log.groupby(\"position\")[\"clicked\"].mean()\nprint(\"click rate by position:\", by_pos.round(2).to_dict())\nlog[\"expected\"] = log[\"position\"].map(by_pos)               # what that slot usually earns\nfair = log.groupby(\"item\").agg(raw_ctr=(\"clicked\", \"mean\"),\n                               clicks=(\"clicked\", \"sum\"), expected=(\"expected\", \"sum\"))\nfair[\"clicks_vs_expected\"] = fair[\"clicks\"] / fair[\"expected\"]\nprint(fair[[\"raw_ctr\", \"clicks_vs_expected\"]].round(2).to_string())\n\n# Output:\n# click rate by position: {1: 0.24, 2: 0.1, 3: 0.09}\n#        raw_ctr  clicks_vs_expected\n# item\n# lamp      0.13                1.26\n# stove     0.10                0.88\n# tent      0.19                0.92",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Signal",
+      "Type",
+      "How to use it"
+     ],
+     "rows": [
+      [
+       "Star rating",
+       "Explicit",
+       "Direct score; rare and biased to extremes"
+      ],
+      [
+       "Purchase",
+       "Implicit",
+       "Strong positive, high confidence"
+      ],
+      [
+       "Add to cart",
+       "Implicit",
+       "Medium positive"
+      ],
+      [
+       "Product view",
+       "Implicit",
+       "Weak positive, very common"
+      ],
+      [
+       "Shown, not clicked",
+       "Implicit",
+       "Weak negative at best"
+      ],
+      [
+       "Click at position 1",
+       "Implicit, biased",
+       "Correct for position before using it as a label"
+      ]
+     ]
+    },
+    "checklist": [
+     "New user: popularity for their region or entry page",
+     "New user: use this session's clicks straight away",
+     "New user: optional two or three onboarding questions",
+     "New item: content-based similarity from its description",
+     "New item: reserve a few slots so it gets exposure",
+     "Log impressions, not only clicks, so you know what was seen",
+     "Log the position of every impression and correct for position bias"
+    ]
+   },
+   {
+    "title": "Offline metrics and A/B testing",
+    "body": "To evaluate offline, hide each user's most recent interactions, recommend from their older history, and check how many hidden items appear in the top k. Precision@k is hits divided by k. Recall@k is hits divided by the number of hidden items. NDCG@k (normalised discounted cumulative gain) also rewards putting hits near the top: a hit at position i counts 1 / log2(i + 1), and the total is divided by the best possible score, so 1.0 is perfect.\n\nSplit by time, as in forecasting: train on events before a date and test on events after it, or the model learns from the future. Also check coverage (what share of the catalogue ever gets recommended), so you do not just rebuild the bestseller list.\n\nOffline metrics suggest value but do not prove it. The real test is an A/B test (see stats): randomly send some users to the new recommender and some to the old one, agree the primary metric in advance (for example revenue per session or add-to-cart rate), run for whole weeks to cover weekly cycles, and check guardrail metrics such as returns and page speed.\n\nAccuracy is not the only goal. Diversity asks whether one list mixes different kinds of items or shows five nearly identical tents. Novelty asks whether the list includes less obvious items the user was unlikely to find alone; a common measure is the average of -log2(item popularity share), which is higher for rarer items. Popularity bias is the tendency of most recommenders to push already-popular items, so check what share of recommendations comes from the top 10 percent of items.\n\nThese matter because of feedback loops. A recommender only learns from what it showed: items it never shows collect no clicks, look bad in the next training run and are shown even less. To break the loop, reserve a small exploration share, for example 5 percent of slots, for items chosen at random or from under-shown candidates, and log them so their results can be used as fairer training data.",
+    "example": "A user's held-out week contains a tent and a stove. Model A recommends them in positions 1 and 2; model B in positions 4 and 5. Both have precision@5 of 0.40 and recall@5 of 1.00, but NDCG@5 is 1.00 for A and 0.50 for B, because few users scroll to position 5. NDCG captures the difference that precision misses. Looking only at the top 3, model A (tent, stove, lamp) mixes camping and cooking items, while model B (lamp, mat, chair) is all camping but made of rarer items, so it scores lower on diversity and higher on novelty. Which matters more is a business choice to agree with the customer.",
+    "code": "import numpy as np\n\ndef precision_recall_at_k(recs, relevant, k):\n    hits = len(set(recs[:k]) & relevant)\n    return hits / k, hits / len(relevant)\n\ndef ndcg_at_k(recs, relevant, k):\n    dcg = sum(1 / np.log2(i + 2) for i, r in enumerate(recs[:k]) if r in relevant)\n    ideal = sum(1 / np.log2(i + 2) for i in range(min(k, len(relevant))))\n    return dcg / ideal                      # 1.0 = hits all at the very top\n\nrelevant = {\"tent\", \"stove\"}               # what the user bought in the held-out week\nmodel_a = [\"tent\", \"stove\", \"lamp\", \"mat\", \"chair\"]\nmodel_b = [\"lamp\", \"mat\", \"chair\", \"tent\", \"stove\"]\nfor name, recs in [(\"A\", model_a), (\"B\", model_b)]:\n    p, r = precision_recall_at_k(recs, relevant, 5)\n    print(f\"model {name}: precision@5 {p:.2f}, recall@5 {r:.2f}, NDCG@5 {ndcg_at_k(recs, relevant, 5):.2f}\")\n\n# Output:\n# model A: precision@5 0.40, recall@5 1.00, NDCG@5 1.00\n# model B: precision@5 0.40, recall@5 1.00, NDCG@5 0.50\n\n# Diversity and novelty for the same two lists\ncategory = {\"tent\": \"camp\", \"stove\": \"cook\", \"lamp\": \"camp\", \"mat\": \"camp\", \"chair\": \"camp\"}\nshare = {\"tent\": 0.30, \"stove\": 0.25, \"lamp\": 0.05, \"mat\": 0.02, \"chair\": 0.01}   # popularity share\n\ndef diversity(recs):                       # share of item pairs from different categories\n    pairs = [(a, b) for i, a in enumerate(recs) for b in recs[i + 1:]]\n    return np.mean([category[a] != category[b] for a, b in pairs])\n\ndef novelty(recs):                         # rarer items give higher scores\n    return np.mean([-np.log2(share[r]) for r in recs])\n\nfor name, recs in [(\"A\", model_a[:3]), (\"B\", model_b[:3])]:\n    print(f\"model {name} top 3 {recs}: diversity {diversity(recs):.2f}, novelty {novelty(recs):.1f}\")\n\n# Output (beyond accuracy):\n# model A top 3 ['tent', 'stove', 'lamp']: diversity 0.67, novelty 2.7\n# model B top 3 ['lamp', 'mat', 'chair']: diversity 0.00, novelty 5.5",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Candidate retrieval",
+    "The fast first stage that narrows millions of items to a few hundred possible recommendations."
+   ],
+   [
+    "Co-visitation",
+    "A count of how often two items appear in the same session or basket."
+   ],
+   [
+    "Two-tower model",
+    "A neural network with a user tower and an item tower whose output vectors are compared by dot product."
+   ],
+   [
+    "Learning to rank",
+    "Training a model to order a list of candidates well, for example with LightGBM's LGBMRanker."
+   ],
+   [
+    "Position bias",
+    "Items shown higher in a list get more clicks because of their position, not only their quality."
+   ],
+   [
+    "Diversity",
+    "How different the items in one recommendation list are from each other."
+   ],
+   [
+    "Novelty",
+    "How unexpected or less popular the recommended items are."
+   ],
+   [
+    "Popularity bias",
+    "A recommender's tendency to keep pushing already-popular items."
+   ],
+   [
+    "Feedback loop",
+    "A model learning only from what it showed, so unshown items never get a fair chance."
+   ],
+   [
+    "Exploration",
+    "Deliberately showing a small share of less certain items to collect fair feedback."
+   ]
+  ],
+  "add_practice": [
+   "From a list of 1,000 synthetic sessions, build co-visitation counts, take the top 20 candidates per last-viewed item, and measure what share of next-viewed items are in that candidate list (candidate recall).",
+   "Train an LGBMRanker on synthetic candidate features and compare NDCG@10 with sorting by a single feature. Then write the business rules you would apply after ranking for a pharmacy shop.",
+   "Simulate an impression log where position 1 gets twice the clicks of position 3 for the same item. Show that raw click rate misjudges items and that dividing by the position's click rate fixes it.",
+   "For two recommendation lists, compute diversity, novelty and the share of items from the top 10 percent most popular items, and write two sentences on which list you would ship and why."
+  ]
+ },
+ "neuralnets": {
+  "add_subtopics": [
+   {
+    "title": "Many classes and a real PyTorch training loop",
+    "body": "So far the network gave one probability for a yes or no question. Most real tasks have many classes: which of ten digits is in the picture, which of six queues a ticket belongs to. The change is small. The output layer has one raw score per class (these raw scores are called logits), and softmax turns them into probabilities that add up to 1. The loss is then cross-entropy for many classes: minus the log of the probability given to the correct class.\n\nIn PyTorch, nn.CrossEntropyLoss expects the raw logits and the correct class number (0, 1, 2 ...), not probabilities and not one-hot vectors. It applies softmax inside, in a numerically safe way. A very common beginner bug is to add a softmax layer at the end of the model and then use CrossEntropyLoss, which squashes the scores twice and slows learning. Apply softmax yourself only when you want to read the probabilities.\n\nReal data does not fit in memory as one block, so you wrap it in a Dataset and let a DataLoader hand out shuffled batches. The loop has the same shape every time: for each batch, clear old gradients with opt.zero_grad(), run the forward pass, compute the loss, call loss.backward(), and step the optimizer. After each epoch you switch to model.eval() and torch.no_grad() and measure loss and accuracy on the validation set. Move model and batches to a GPU with .to(device) when one exists; the code still runs on a CPU, only slower. Finally, save model.state_dict(), the learned numbers only, and load it into a model built the same way.",
+    "example": "A support team at Larkfield Telecom sorts tickets into ten queues. The model outputs ten logits, CrossEntropyLoss compares them with the true queue number, and after 15 epochs of batches of 64 the validation accuracy is about 94 percent. The team saves the state_dict, and the web service rebuilds the same layers and loads it. The digits data below stands in for tickets so the whole example runs in seconds.",
+    "code": "import numpy as np\nimport torch\nfrom torch import nn\nfrom torch.utils.data import DataLoader, TensorDataset\nfrom sklearn.datasets import load_digits\nfrom sklearn.model_selection import train_test_split\n\ntorch.manual_seed(0)\ndevice = \"cuda\" if torch.cuda.is_available() else \"cpu\"     # use a GPU when there is one\n\nX, y = load_digits(return_X_y=True)                          # 1,797 images, 10 classes (0-9)\nX_tr, X_val, y_tr, y_val = train_test_split(X / 16.0, y, test_size=0.2, random_state=0)\nto_ds = lambda a, b: TensorDataset(torch.tensor(a, dtype=torch.float32), torch.tensor(b))\ntrain_dl = DataLoader(to_ds(X_tr, y_tr), batch_size=64, shuffle=True)   # batches of 64\nval_dl = DataLoader(to_ds(X_val, y_val), batch_size=256)\n\nmodel = nn.Sequential(nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, 10)).to(device)\nloss_fn = nn.CrossEntropyLoss()              # takes RAW scores (logits); softmax is inside\nopt = torch.optim.AdamW(model.parameters(), lr=1e-3)\n\nfor epoch in range(1, 16):\n    model.train()\n    for xb, yb in train_dl:\n        xb, yb = xb.to(device), yb.to(device)\n        opt.zero_grad()\n        loss = loss_fn(model(xb), yb)\n        loss.backward()\n        opt.step()\n    model.eval()\n    correct, val_loss = 0, 0.0\n    with torch.no_grad():\n        for xb, yb in val_dl:\n            xb, yb = xb.to(device), yb.to(device)\n            logits = model(xb)\n            val_loss += loss_fn(logits, yb).item() * len(yb)\n            correct += (logits.argmax(1) == yb).sum().item()\n    if epoch % 5 == 0:\n        print(f\"epoch {epoch:2d}  val loss {val_loss / len(y_val):.3f}  val accuracy {correct / len(y_val):.3f}\")\n\nprobs = torch.softmax(model(val_dl.dataset[:1][0].to(device)), dim=1)   # softmax only to read probabilities\nprint(\"first validation image: predicted\", probs.argmax(1).item(), \"true\", y_val[0],\n      \"confidence\", round(probs.max().item(), 3))\ntorch.save(model.state_dict(), \"digits_model.pt\")            # save the weights, not the whole object\nmodel2 = nn.Sequential(nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, 10))\nmodel2.load_state_dict(torch.load(\"digits_model.pt\", map_location=\"cpu\"))\nprint(\"reloaded weights OK\")\n\n# Output (CPU run, seed 0; numbers can differ slightly on another machine):\n# epoch  5  val loss 1.097  val accuracy 0.872\n# epoch 10  val loss 0.468  val accuracy 0.936\n# epoch 15  val loss 0.292  val accuracy 0.942\n# first validation image: predicted 2 true 2 confidence 0.96\n# reloaded weights OK",
+    "lang": "Python",
+    "checklist": [
+     "Output layer has one logit per class; no softmax layer before CrossEntropyLoss",
+     "Labels are integer class numbers",
+     "model.train() while training, model.eval() and torch.no_grad() when validating",
+     "Same device for the model and every batch",
+     "Save state_dict, and record the code and library version that built the model"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Activation functions",
+    "body": "An activation function is the small bend applied after the weighted sum. It matters because a stack of layers with no bend is mathematically the same as one layer: multiplying by one grid of weights and then another is still just multiplying by a single combined grid. The bend is what lets a deep network draw curved boundaries.\n\nThe classic choices are sigmoid, which squashes any number into the range 0 to 1, and tanh, which squashes into -1 to 1. Both flatten out for large inputs, so their slope is almost zero there and learning slows. ReLU (rectified linear unit) simply turns negatives into zero and keeps positives. It is cheap and does not flatten for positive values, so it became the default for hidden layers in deep networks.\n\nAt the output you pick the activation that matches the question. Sigmoid gives one probability for a yes or no question. Softmax turns a list of scores into probabilities that add up to 1, one per class; it is also what an LLM uses to choose its next token.\n\nTwo practical details. First, softmax has a numerical trap: exp of a big score, such as exp(1000), overflows to infinity, and infinity divided by infinity gives not-a-number. Softmax does not change if you subtract the same number from every score, so real code subtracts the largest score first. The largest exponent then becomes exp(0) = 1 and nothing overflows. Library functions (torch.softmax, and the softmax inside CrossEntropyLoss) already do this; you need it when you write softmax yourself, and the transformer lesson does exactly that.\n\nSecond, newer models rarely use plain ReLU. GELU and SiLU (also called swish) are smooth versions: they let small negative values through a little instead of cutting them to zero, and they are the usual choice in transformers and many modern networks. If a model card says GELU or SiLU, read it as ReLU with a gentle curve.",
+    "example": "A clinic triage model scores a message for three queues: urgent 2.0, routine 1.0, admin 0.1. Softmax turns these into 66 percent, 24 percent and 10 percent. The model routes to urgent, and the 66 percent can be shown to staff as a confidence. A hand-written softmax over scores of 1000, 999 and 990 gives not-a-number until the maximum is subtracted; then it returns 73 percent, 27 percent and almost nothing.",
+    "code": "import numpy as np\n\nz = np.array([-3.0, -1.0, 0.0, 1.0, 3.0])   # raw scores before activation\n\nsigmoid = 1 / (1 + np.exp(-z))     # squashes to 0..1\ntanh = np.tanh(z)                  # squashes to -1..1\nrelu = np.maximum(0, z)            # negatives become 0\n\nprint(\"sigmoid\", sigmoid.round(3))\nprint(\"tanh   \", tanh.round(3))\nprint(\"relu   \", relu)\n\n# softmax turns a list of scores into probabilities that sum to 1\nscores = np.array([2.0, 1.0, 0.1])\nprobs = np.exp(scores) / np.exp(scores).sum()\nprint(\"softmax\", probs.round(3), \"sum\", probs.sum().round(3))\n\n# Output:\n# sigmoid [0.047 0.269 0.5   0.731 0.953]\n# tanh    [-0.995 -0.762  0.     0.762  0.995]\n# relu    [0. 0. 0. 1. 3.]\n# softmax [0.659 0.242 0.099] sum 1.0\n\n# Softmax overflows for big scores unless you subtract the maximum first.\nbig = np.array([1000.0, 999.0, 990.0])\nwith np.errstate(over=\"ignore\", invalid=\"ignore\"):\n    naive = np.exp(big) / np.exp(big).sum()          # exp(1000) is infinity\nprint(\"naive \", naive)\nshifted = np.exp(big - big.max())                    # same answer, no overflow\nprint(\"stable\", (shifted / shifted.sum()).round(3))\n\n# The modern smooth cousins of ReLU used in transformers\ngelu = z * 0.5 * (1 + np.tanh(np.sqrt(2 / np.pi) * (z + 0.044715 * z ** 3)))  # tanh form\nsilu = z / (1 + np.exp(-z))                          # also called swish\nprint(\"gelu\", gelu.round(3))\nprint(\"silu\", silu.round(3))\n\n# Output:\n# naive  [nan nan nan]\n# stable [0.731 0.269 0.   ]\n# gelu [-0.004 -0.159  0.     0.841  2.996]\n# silu [-0.142 -0.269  0.     0.731  2.858]",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Activation",
+      "Output range",
+      "Typical use"
+     ],
+     "rows": [
+      [
+       "Step",
+       "0 or 1",
+       "Original perceptron, not trainable by gradients"
+      ],
+      [
+       "Sigmoid",
+       "0 to 1",
+       "Output for yes/no probability"
+      ],
+      [
+       "Tanh",
+       "-1 to 1",
+       "Hidden layers in small or older networks"
+      ],
+      [
+       "ReLU",
+       "0 to infinity",
+       "Default for hidden layers"
+      ],
+      [
+       "Softmax",
+       "0 to 1, sums to 1",
+       "Output for choosing one of many classes"
+      ],
+      [
+       "GELU / SiLU",
+       "About -0.17 to infinity",
+       "Smooth ReLU variants in transformers and modern networks"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Training: optimizers, batches and epochs",
+    "body": "Gradient descent repeats three moves: forward pass, backward pass, update each weight by minus learning rate times gradient. The learning rate is the step size. Too big and the loss bounces or explodes; too small and training crawls.\n\nComputing the gradient over millions of examples for every step is slow, so we use batches: small random groups, often 32 to 256 examples. One update per batch is stochastic gradient descent (SGD). One full pass over every batch is an epoch, and training typically runs for many epochs.\n\nAdam is the most common optimizer today. It keeps a running average of recent gradients (momentum, so steps keep a steady direction) and of their size (so each weight gets its own step scale). It usually works with little tuning, often starting at a learning rate of 0.001.\n\nThe code trains a 2-4-1 network on XOR, the problem a perceptron cannot solve. With random seed 1 it reaches near-perfect predictions. With seed 0 the same code stalls at a loss of about 0.35, stuck with two predictions at 0.5, which shows that starting weights matter and why people rerun or use better optimizers.\n\nThree more things appear in almost every real training config. The first is a learning-rate schedule: instead of one fixed step size, the rate changes during training. Warmup starts tiny and rises over the first few hundred steps, because early gradients are noisy and a big step can wreck the network. Cosine decay then lowers the rate smoothly toward zero so the last steps are fine adjustments. ReduceLROnPlateau is a simpler option: halve the rate whenever the validation loss stops improving. If a fine-tuning file says warmup_ratio or lr_scheduler_type, this is what it controls.\n\nThe second is the vanishing and exploding gradient problem. Backpropagation multiplies many small factors together, one per layer. In a deep network, if the factors are below 1 (sigmoid and tanh have slopes under 1 and flatten out) the gradient shrinks toward zero and the early layers stop learning; if they are above 1 it blows up. The output of the second example shows the first layer of a 12-layer network getting a gradient orders of magnitude smaller with sigmoid than with ReLU. Three remedies are standard: ReLU-family activations, careful weight initialisation (the starting weights are scaled by the layer width, as in the Xavier and He schemes that PyTorch layers use by default), and normalisation layers.\n\nThe third is gradient clipping. If one batch produces a gigantic gradient, one update can throw the weights far away. clip_grad_norm_ rescales all gradients so their combined size never exceeds a limit, typically 1.0. It is a cheap safety net that most transformer training scripts include.",
+    "example": "A parcel company, Brisklane, trains a delay predictor on 400,000 past deliveries with batches of 256. That is about 1,563 updates per epoch. After 10 epochs the validation loss stops improving, so the team stops there instead of the 50 epochs they had planned. The Brisklane team also switched on 500 steps of warmup and cosine decay, after a run in which the loss suddenly jumped to not-a-number at step 90; adding gradient clipping at 1.0 stopped it from happening again.",
+    "code": "import numpy as np\n\nrng = np.random.default_rng(1)\nX = np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=float)\ny = np.array([[0], [1], [1], [0]], dtype=float)   # XOR: 1 when inputs differ\n\nW1 = rng.normal(0, 1, (2, 4)); b1 = np.zeros(4)   # 2 inputs -> 4 hidden\nW2 = rng.normal(0, 1, (4, 1)); b2 = np.zeros(1)   # 4 hidden -> 1 output\nsig = lambda z: 1 / (1 + np.exp(-z))\nlr = 1.0\n\nfor epoch in range(3001):\n    # forward pass\n    h = np.tanh(X @ W1 + b1)\n    p = sig(h @ W2 + b2)\n    loss = -np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))\n    # backward pass (chain rule, layer by layer)\n    dz2 = (p - y) / len(X)              # gradient at output score\n    dW2 = h.T @ dz2; db2 = dz2.sum(0)\n    dh = dz2 @ W2.T * (1 - h ** 2)      # back through tanh\n    dW1 = X.T @ dh; db1 = dh.sum(0)\n    # gradient descent update\n    W1 -= lr * dW1; b1 -= lr * db1\n    W2 -= lr * dW2; b2 -= lr * db2\n    if epoch % 1000 == 0:\n        print(f\"epoch {epoch:4d}  loss {loss:.4f}\")\n\nprint(\"predictions\", p.ravel().round(3))\n\n# Output:\n# epoch    0  loss 0.6712\n# epoch 1000  loss 0.0024\n# epoch 2000  loss 0.0012\n# epoch 3000  loss 0.0008\n# predictions [0.    0.999 0.999 0.001]\n\n# ---- Second example (PyTorch): learning-rate schedule, vanishing gradients, clipping ----\nimport torch\nfrom torch import nn\n\n# 1. Learning-rate schedule: warm up, then cosine decay\nmodel = nn.Linear(4, 1)\nopt = torch.optim.AdamW(model.parameters(), lr=1e-3)\nwarm, total = 5, 20\nsched = torch.optim.lr_scheduler.LambdaLR(\n    opt, lambda s: (s + 1) / warm if s < warm\n    else 0.5 * (1 + torch.cos(torch.tensor(3.14159265 * (s - warm) / (total - warm))).item()))\nlrs = []\nfor step in range(total):\n    opt.step()                       # (a real loop computes the loss and calls backward first)\n    lrs.append(opt.param_groups[0][\"lr\"])\n    sched.step()\nprint(\"lr at steps 0, 4, 12, 19:\", [f\"{lrs[i]:.5f}\" for i in (0, 4, 12, 19)])\n\n# 2. Vanishing gradients: same 12-layer net, sigmoid versus ReLU\ndef first_layer_grad(act):\n    torch.manual_seed(0)\n    layers = []\n    for _ in range(12):\n        layers += [nn.Linear(32, 32), act()]\n    net = nn.Sequential(*layers, nn.Linear(32, 1))\n    loss = net(torch.randn(64, 32)).pow(2).mean()\n    loss.backward()\n    return net[0].weight.grad.norm().item()\nprint(\"gradient size at layer 1, sigmoid:\", f\"{first_layer_grad(nn.Sigmoid):.1e}\")\nprint(\"gradient size at layer 1, ReLU:   \", f\"{first_layer_grad(nn.ReLU):.1e}\")\n\n# 3. Gradient clipping: cap the total gradient size before the update\nnet = nn.Linear(32, 1)\nnet(torch.randn(8, 32) * 50).pow(2).mean().backward()\nbefore = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=1.0)   # returns the size before clipping\nafter = sum(p.grad.norm() ** 2 for p in net.parameters()) ** 0.5\nprint(f\"grad norm before {before:.0f}, after clipping {after:.1f}\")\n\n# Output:\n# lr at steps 0, 4, 12, 19: ['0.00020', '0.00100', '0.00055', '0.00001']\n# gradient size at layer 1, sigmoid: 4.5e-12\n# gradient size at layer 1, ReLU:    1.4e-06\n# grad norm before 5929, after clipping 1.0",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Optimizer",
+      "How it steps",
+      "When people use it"
+     ],
+     "rows": [
+      [
+       "SGD",
+       "Fixed learning rate times gradient",
+       "Simple baselines, some vision training"
+      ],
+      [
+       "SGD with momentum",
+       "Keeps part of the previous step",
+       "Smoother, faster than plain SGD"
+      ],
+      [
+       "Adam",
+       "Momentum plus per-weight step size",
+       "Default for most deep learning"
+      ],
+      [
+       "AdamW",
+       "Adam with decoupled weight decay",
+       "Common for transformers and fine-tuning"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Overfitting controls and PyTorch",
+    "body": "A big network can memorise its training data, including the noise, and then fail on new data. That is overfitting (see mlbasics). You spot it when training loss keeps falling while validation loss, measured on held-out data, starts rising.\n\nThree controls are used almost everywhere. Early stopping watches validation loss and stops training, keeping the best checkpoint, once it has not improved for a set number of epochs (the patience). Dropout randomly switches off a fraction of hidden units on each training step, so the network cannot rely on any single unit; it is turned off when predicting. Weight decay adds a small pull toward zero on every weight, which keeps the model simpler; AdamW is Adam with weight decay applied in the recommended way. More data and data augmentation (for example flipping images) help too.\n\nIn practice nobody writes backprop by hand. PyTorch builds the network from layers, computes gradients with loss.backward(), and applies the optimizer with opt.step(). The example below is the XOR network again with all three controls. The code was run with PyTorch 2.x and its real output is shown at the end; with torch installed (pip install torch) you can reproduce it.\n\nOne more tool sits between overfitting and training speed: normalisation layers. As numbers pass through many layers their scale drifts, which makes training unstable. A normalisation layer rescales them to a steady average of 0 and spread of 1, then lets the network learn its own scale and shift. Batch normalisation (BatchNorm) does this for each feature across the examples in a batch; it speeds up training of image networks and gives a mild regularising effect, but it depends on batch size and behaves differently in eval mode, which uses stored running averages. Layer normalisation (LayerNorm) works within a single example across its features, so it does not depend on the batch at all; that is why transformers use it, and the transformer lesson assumes you know it. Rule of thumb: BatchNorm for image networks, LayerNorm for text and sequence models.",
+    "example": "Wrenholt Components trained a sensor model whose validation loss was lowest at epoch 14 but training continued to epoch 60. Test accuracy was 81 percent. Turning on early stopping with patience 5, dropout 0.2 and weight decay 0.0001 kept the epoch 14 weights and test accuracy rose to 86 percent. Wrenholt's image-defect network also gained BatchNorm layers between its convolutions, and training reached the same accuracy in about half the epochs.",
+    "code": "# Requires torch (pip install torch). Output below is from a real run.\nimport torch\nfrom torch import nn\n\ntorch.manual_seed(0)\n\nX = torch.tensor([[0., 0.], [0., 1.], [1., 0.], [1., 1.]])\ny = torch.tensor([[0.], [1.], [1.], [0.]])\n\nmodel = nn.Sequential(\n    nn.Linear(2, 8), nn.Tanh(),\n    nn.Dropout(p=0.1),        # dropout: silence 10% of hidden units while training\n    nn.Linear(8, 1),          # one raw score (a logit) per example\n)\nloss_fn = nn.BCEWithLogitsLoss()   # sigmoid plus cross-entropy, done stably\nopt = torch.optim.AdamW(model.parameters(), lr=0.05, weight_decay=1e-4)\n\nbest, waited = float(\"inf\"), 0\nfor epoch in range(3000):\n    model.train()\n    opt.zero_grad()                # clear last step's gradients\n    loss = loss_fn(model(X), y)    # forward pass and loss\n    loss.backward()                # backpropagation, done for you\n    opt.step()                     # Adam update with weight decay\n    model.eval()                   # dropout off for checking\n    with torch.no_grad():          # use a separate validation set in real work\n        val = loss_fn(model(X), y).item()\n    if val < best - 1e-4:\n        best, waited = val, 0\n    else:\n        waited += 1\n    if waited >= 200:              # early stopping: no progress for 200 epochs\n        break\nprint(\"stopped at epoch\", epoch, \"best loss\", round(best, 4))\nmodel.eval()\nprint(torch.sigmoid(model(X)).ravel().detach().numpy().round(3))\n\n# Output (seed 0, CPU):\n# stopped at epoch 853 best loss 0.0002\n# [0. 1. 1. 0.]\n\n# Batch norm and layer norm: rescale the numbers inside the network\nimport torch\nfrom torch import nn\n\ntorch.manual_seed(0)\nh = torch.randn(4, 6) * 5 + 10           # 4 examples, 6 features, big and off-centre\nln = nn.LayerNorm(6)                      # normalises each example across its features\nbn = nn.BatchNorm1d(6)                    # normalises each feature across the batch\nprint(\"layer norm, mean and std per example:\", ln(h).mean(1).detach().numpy().round(2), ln(h).std(1, unbiased=False).detach().numpy().round(2))\nprint(\"batch norm, mean per feature:        \", bn(h).mean(0).detach().numpy().round(2))\n\n# Output:\n# layer norm, mean and std per example: [ 0. -0. -0. -0.] [1. 1. 1. 1.]\n# batch norm, mean per feature:         [ 0. -0. -0. -0.  0.  0.]",
+    "lang": "Python (requires torch)",
+    "checklist": [
+     "Split off a validation set before training starts",
+     "Plot training and validation loss per epoch",
+     "Turn on early stopping and keep the best checkpoint",
+     "Try dropout (0.1 to 0.5) on hidden layers",
+     "Add weight decay, for example with AdamW",
+     "Call model.eval() before predicting so dropout is off",
+     "Use BatchNorm for image networks and LayerNorm for transformers; remember eval mode changes BatchNorm"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Logits",
+    "The raw, unnormalised scores a network outputs before softmax or sigmoid turns them into probabilities."
+   ],
+   [
+    "Learning-rate schedule",
+    "A rule that changes the learning rate during training, for example warmup followed by cosine decay."
+   ],
+   [
+    "Vanishing gradient",
+    "When gradients shrink toward zero as they travel back through many layers, so early layers barely learn."
+   ],
+   [
+    "Gradient clipping",
+    "Rescaling gradients so their combined size never exceeds a limit, which stops one bad batch from wrecking the weights."
+   ],
+   [
+    "Batch normalisation",
+    "A layer that rescales each feature across a batch to a steady average and spread, to speed and steady training."
+   ],
+   [
+    "Layer normalisation",
+    "A layer that rescales the features of each single example; the normalisation used in transformers."
+   ],
+   [
+    "GELU / SiLU",
+    "Smooth variants of ReLU used in transformers and other modern networks."
+   ],
+   [
+    "DataLoader",
+    "A PyTorch helper that hands out shuffled batches of examples from a dataset."
+   ]
+  ],
+  "add_practice": [
+   "Train the digits classifier from the multi-class example with a hidden layer of 16 units and then 128 units. Record validation accuracy for each and say which you would ship and why.",
+   "Add a warmup plus cosine schedule to the digits loop and print the learning rate each epoch. Does the final validation loss change?",
+   "Write softmax by hand without subtracting the maximum, try scores [1000, 999, 990], then fix it. Explain in one sentence why subtracting the maximum does not change the answer."
+  ],
+  "fix": []
+ },
+ "dlarch": {
+  "add_subtopics": [
+   {
+    "title": "Generative and multimodal architectures",
+    "body": "So far the architectures learned to label or predict. Generative architectures create new content, and multimodal ones connect different kinds of data such as text, images and sound. An FDE meets them in image generation, visual search, document photos and voice agents. The multimodal topic goes deeper; this section gives the core ideas.\n\nAn autoencoder has two halves. The encoder squeezes an input into a short vector, the bottleneck. The decoder tries to rebuild the original from that vector. Training minimises the rebuild error. The bottleneck is forced to keep only what matters, so it works as compression, as a way to learn features, and, because unusual inputs rebuild badly, as an anomaly detector (see anomaly).\n\nDiffusion models make images. Training takes a real image, adds noise a little at a time until only static remains, and teaches a network to undo one small step of the noise. To generate, start from pure noise and apply the learned denoising step many times, guided by a text prompt, until a picture appears. Most current image generators work this way.\n\nCLIP-style models train an image encoder and a text encoder together so that a photo and its caption land close together in one shared vector space. You can then search photos with words, or classify images with labels you never trained on, using the same cosine similarity you meet in embeddings.\n\nSpeech models are also transformers. Automatic speech recognition (ASR), such as Whisper, turns audio into text; text-to-speech (TTS) does the reverse. A voice agent chains ASR, an LLM, and TTS, and the delay of each step adds up.",
+    "example": "Fernhill Retail wanted shoppers to search its catalogue by describing a photo, such as 'green raincoat with a hood'. The FDE used a CLIP-style model to embed all 40,000 product photos once, embedded each search phrase at query time, and returned the nearest photos by cosine similarity. No training was needed. For a voice ordering line they chained Whisper-style speech recognition, an LLM and text-to-speech, and measured the delay of each step against a one-second target.",
+    "code": "import numpy as np, torch\nfrom torch import nn\nfrom sklearn.datasets import load_digits\n\ntorch.manual_seed(0)\nX = torch.tensor(load_digits().data / 16.0, dtype=torch.float32)   # 1,797 images of 64 pixels\n\n# 1. Autoencoder: squeeze 64 numbers into 8, then rebuild them\nenc = nn.Sequential(nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 8))      # encoder\ndec = nn.Sequential(nn.Linear(8, 32), nn.ReLU(), nn.Linear(32, 64))      # decoder\nopt = torch.optim.Adam(list(enc.parameters()) + list(dec.parameters()), lr=0.01)\nfor step in range(300):\n    opt.zero_grad()\n    loss = ((dec(enc(X)) - X) ** 2).mean()       # how badly did we rebuild the image?\n    loss.backward(); opt.step()\nprint(\"autoencoder rebuild error:\", round(loss.item(), 4), \"versus\", round(X.var().item(), 4), \"for guessing the average\")\n\n# 2. Diffusion, the forward half: blend an image with more and more noise\nimg = X[0]\nnoise = torch.randn_like(img)\nfor keep in (1.0, 0.7, 0.3, 0.0):       # share of the original signal that remains\n    noisy = keep ** 0.5 * img + (1 - keep) ** 0.5 * noise\n    corr = np.corrcoef(noisy.numpy(), img.numpy())[0, 1]\n    print(f\"signal kept {keep:.1f}: similarity to the original {corr:.2f}\")\n\n# 3. CLIP-style search: text and images live in the SAME vector space (made-up vectors)\nimage_vecs = {\"photo of a red bicycle\": np.array([0.9, 0.1, 0.2]),\n              \"photo of a blue kettle\": np.array([0.1, 0.9, 0.3])}\ntext_vec = np.array([0.8, 0.2, 0.1])      # the text \"a red bike\"\nfor name, v in image_vecs.items():\n    cos = text_vec @ v / (np.linalg.norm(text_vec) * np.linalg.norm(v))\n    print(f\"{name}: cosine {cos:.2f}\")\n\n# Output:\n# autoencoder rebuild error: 0.0207 versus 0.1414 for guessing the average\n# signal kept 1.0: similarity to the original 1.00\n# signal kept 0.7: similarity to the original 0.41\n# signal kept 0.3: similarity to the original 0.12\n# signal kept 0.0: similarity to the original -0.13\n# photo of a red bicycle: cosine 0.99\n# photo of a blue kettle: cosine 0.37",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Architecture",
+      "What it learns",
+      "Typical FDE use"
+     ],
+     "rows": [
+      [
+       "Autoencoder",
+       "Compress and rebuild the input",
+       "Anomaly detection, feature learning, compression"
+      ],
+      [
+       "Diffusion model",
+       "Undo noise step by step",
+       "Image and video generation, editing"
+      ],
+      [
+       "CLIP-style model",
+       "Text and images in one space",
+       "Visual search, zero-shot image labels"
+      ],
+      [
+       "ASR / TTS model",
+       "Audio to text, text to audio",
+       "Voice agents, call transcripts"
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Attention and the jump to transformers",
+    "body": "Attention was first added to RNN translators around 2014 to remove the bottleneck. Instead of relying on one summary vector, the decoder could look back at every input word and decide how much each one mattered for the word it was writing.\n\nThe mechanism is simple. Each token asks a question (a query vector), every token offers a label (a key vector), and the dot product of query and key says how relevant they are. Softmax turns those scores into weights that add up to 1, and the output is a weighted blend of the tokens' value vectors. In the toy code, the word 'bank' gives most weight to itself, then to 'loan' and 'river', and least to 'the'.\n\nIn 2017 the paper 'Attention Is All You Need' dropped recurrence entirely. The transformer uses only attention plus small dense layers, so every token in a sequence is processed at the same time. That made training massively parallel on GPUs, which allowed much bigger models on much more data. This architecture underlies today's LLMs and many vision models. The transformer topic walks through one forward pass in detail.\n\nA variation you will see in model cards is the mixture of experts (MoE). Instead of one big dense block after attention, the layer holds several smaller expert blocks and a small router that picks a few of them for each token. Only the chosen experts do any work for that token. The model card then lists two sizes: total parameters (everything stored) and active parameters (used per token). Speed and cost per token follow the active number, while the memory needed to load the model follows the total number. So an MoE model can be as knowledgeable as a much larger dense model yet cost about as much per token as a smaller one, but it still needs a big GPU (or several) to hold all the experts.",
+    "example": "In 'she paid the bank before walking by the river bank', attention lets each 'bank' look at 'paid' or 'river' directly, however far away they are, to work out which meaning applies. An RNN would have to carry that clue step by step through every word in between. When Ravelsby read a model card that said '47B total, 13B active', they learned it would generate tokens about as fast as a 13B model but would still need memory for all 47B parameters.",
+    "code": "import numpy as np\n\n# Four words, each already turned into a 3-number vector (made-up values)\nwords = [\"the\", \"bank\", \"river\", \"loan\"]\nvecs = np.array([[0.1, 0.0, 0.1],\n                 [0.9, 0.8, 0.1],\n                 [0.2, 0.9, 0.0],\n                 [0.9, 0.1, 0.8]])\n\nquery = vecs[1]                          # \"bank\" asks: who is relevant to me?\nscores = vecs @ query / np.sqrt(3)       # dot product with every word, scaled\nweights = np.exp(scores) / np.exp(scores).sum()   # softmax to percentages\ncontext = weights @ vecs                 # blend of all words, by weight\n\nfor w, a in zip(words, weights):\n    print(f\"{w:6s} attention {a:.2f}\")\nprint(\"new vector for 'bank':\", context.round(2))\n\n# Output:\n# the    attention 0.16\n# bank   attention 0.34\n# river  attention 0.25\n# loan   attention 0.26\n# new vector for 'bank': [0.6  0.52 0.26]\n\n# Mixture of experts: total versus active parameters\nexperts, active_per_token = 8, 2            # 8 expert blocks, 2 chosen for each token\nexpert_params = 5.6e9                       # parameters in each expert block (made-up round numbers)\nshared_params = 1.6e9                       # attention layers and other parts every token uses\ntotal = shared_params + experts * expert_params\nactive = shared_params + active_per_token * expert_params\nprint(f\"total {total / 1e9:.1f}B parameters, active per token {active / 1e9:.1f}B\")\nprint(f\"memory must hold all {total / 1e9:.1f}B; compute per token is that of a {active / 1e9:.1f}B model\")\n\n# Output:\n# total 46.4B parameters, active per token 12.8B\n# memory must hold all 46.4B; compute per token is that of a 12.8B model",
+    "lang": "Python"
+   },
+   {
+    "title": "GPUs and why they matter",
+    "body": "Almost all the work in a neural network is multiplying matrices: huge grids of weights times vectors of inputs. Each output number is independent of the others, so they can all be computed at the same time.\n\nA CPU has a handful of powerful cores designed for varied, step-by-step work. A GPU (graphics processing unit) has thousands of simpler cores designed to do the same arithmetic on many numbers at once, plus very fast memory. For matrix maths a data-centre GPU is often tens to hundreds of times faster than a CPU. The 2012 image model AlexNet was trained on two gaming GPUs, and that result helped start the deep learning boom.\n\nThree numbers dominate planning. Compute: generating one token costs roughly two operations per parameter, and this maths is what limits training and the reading of a long prompt (prefill), where thousands of tokens are processed together. Memory: all the weights must fit in the GPU's memory. Memory bandwidth: when one user is generating one token at a time (decoding), the chip must read every weight from memory for each token, so the limit is how fast memory can be read, not how fast it can multiply. A 7 billion parameter model in 16-bit is 14 GB, so a laptop reading at about 50 GB per second needs roughly 0.3 seconds per token, while a data-centre GPU reading at about 3,000 GB per second needs about 5 milliseconds. That is why a fast GPU feels so different, and why batching many users together is efficient: one read of the weights serves all of them.\n\nQuantisation means storing each weight in fewer bits. 16-bit uses 2 bytes per weight, 8-bit uses 1 byte and 4-bit uses half a byte. A 7 billion parameter model shrinks from 14 GB to 7 GB to 3.5 GB, usually with a small quality loss that you should test on your own task. Less memory to read also means faster decoding.\n\nThe attention cache (the KV cache) is extra memory that grows with the length of the context and with the number of requests served at once: about layers x 2 x key-value size per token, times tokens, times batch size. Long contexts and many users can need more memory than the weights themselves. Training needs several times more memory than inference because gradients and optimizer state are stored too. This is why quantisation, smaller models and hosted APIs matter so much in practice.",
+    "example": "Ravelsby Insurance asked why their laptop took minutes per answer from an open 7 billion parameter model. The reason is memory bandwidth: every token needs the 14 GB of weights read once, about 0.3 seconds per token on a laptop CPU, against about 5 ms on a data-centre GPU. The pure arithmetic (14 ms per token on a strong CPU, 0.05 ms on a GPU) is far smaller than the time spent reading memory. The 14 GB of weights would also not fit on their small office GPU, and a 4-bit version (3.5 GB) would fit but needed a quality test. Moving to a hosted endpoint was the practical answer.",
+    "code": "# Rough compute to run a model: about 2 floating point operations\n# (a multiply and an add) per parameter for each token processed.\nparams = 7e9                  # a 7 billion parameter model\nflops_per_token = 2 * params\n\ncpu_flops = 1e12              # example: ~1 TFLOP/s for a strong CPU\ngpu_flops = 300e12            # example: ~300 TFLOP/s for a data-centre GPU\n\n# The maths matters for training and for reading a long prompt (prefill).\nfor name, speed in [(\"CPU\", cpu_flops), (\"GPU\", gpu_flops)]:\n    ms = flops_per_token / speed * 1000\n    print(f\"{name}: {ms:.2f} ms of pure maths per token\")\n\n# Decoding one token for one user must read ALL the weights from memory.\nweights_gb = params * 2 / 1e9            # 16-bit = 2 bytes per weight\nprint(\"weights in 16-bit:\", weights_gb, \"GB\")\nfor name, gb_per_s in [(\"laptop CPU (~50 GB/s)\", 50), (\"data-centre GPU (~3000 GB/s)\", 3000)]:\n    print(f\"{name}: about {weights_gb / gb_per_s * 1000:.0f} ms per token (memory-bound)\")\n\n# Quantisation: bytes per weight for 16-bit, 8-bit and 4-bit\nfor bits in (16, 8, 4):\n    print(f\"{bits}-bit: {params * bits / 8 / 1e9:.1f} GB for 7B, {70e9 * bits / 8 / 1e9:.0f} GB for 70B\")\n\n# KV cache: 2 (keys and values) x layers x key-value heads x head size x bytes, per token\nlayers, kv_heads, head_dim, bytes_each = 32, 8, 128, 2      # a typical 7B-class design\nper_token = 2 * layers * kv_heads * head_dim * bytes_each\nfor tokens, batch in [(4_000, 1), (32_000, 1), (32_000, 8)]:\n    print(f\"context {tokens:>6,} x batch {batch}: {per_token * tokens * batch / 1e9:.1f} GB of cache\")\n\n# Output:\n# CPU: 14.00 ms of pure maths per token\n# GPU: 0.05 ms of pure maths per token\n# weights in 16-bit: 14.0 GB\n# laptop CPU (~50 GB/s): about 280 ms per token (memory-bound)\n# data-centre GPU (~3000 GB/s): about 5 ms per token (memory-bound)\n# 16-bit: 14.0 GB for 7B, 140 GB for 70B\n# 8-bit: 7.0 GB for 7B, 70 GB for 70B\n# 4-bit: 3.5 GB for 7B, 35 GB for 70B\n# context  4,000 x batch 1: 0.5 GB of cache\n# context 32,000 x batch 1: 4.2 GB of cache\n# context 32,000 x batch 8: 33.6 GB of cache",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "",
+      "CPU",
+      "GPU"
+     ],
+     "rows": [
+      [
+       "Cores",
+       "Tens of powerful cores",
+       "Thousands of simple cores"
+      ],
+      [
+       "Best at",
+       "Varied, branching logic",
+       "Same maths on many numbers"
+      ],
+      [
+       "Memory",
+       "Large but slower",
+       "Smaller but very fast"
+      ],
+      [
+       "Deep learning role",
+       "Data prep, small models",
+       "Training and serving big models"
+      ],
+      [
+       "Reading memory",
+       "About 50 GB/s (laptop)",
+       "About 3,000 GB/s (data centre)"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Autoencoder",
+    "A network that squeezes input into a short vector and rebuilds it; large rebuild error can flag unusual inputs."
+   ],
+   [
+    "Diffusion model",
+    "An image generator trained to remove noise step by step; generation starts from pure noise."
+   ],
+   [
+    "CLIP",
+    "A model family that places images and text in one shared vector space so words can search pictures."
+   ],
+   [
+    "ASR / TTS",
+    "Automatic speech recognition (audio to text) and text-to-speech (text to audio)."
+   ],
+   [
+    "Mixture of experts (MoE)",
+    "A layer with several expert blocks where a router uses only a few per token, so active parameters are fewer than total parameters."
+   ],
+   [
+    "Active parameters",
+    "The parameters actually used for one token in a mixture-of-experts model; they set the compute cost per token."
+   ],
+   [
+    "Quantisation",
+    "Storing weights in fewer bits (8 or 4 instead of 16) to save memory and speed decoding, at a small quality cost."
+   ],
+   [
+    "KV cache",
+    "Memory holding the keys and values of earlier tokens so they are not recomputed; it grows with context length and batch size."
+   ],
+   [
+    "Memory bandwidth",
+    "How fast data can be read from memory; it limits token speed when one user is decoding."
+   ]
+  ],
+  "add_practice": [
+   "A model card says '120B total, 20B active'. Explain in three sentences what that means for memory and for speed per token.",
+   "Using the GPU code, compute the KV cache for a 128,000 token context at batch size 4 with the same layer settings. Would it fit next to a 4-bit 70B model on an 80 GB GPU?",
+   "Sketch how you would build 'search my photo library by describing the photo' using a CLIP-style model. List what you embed, when, and how you rank the results."
+  ],
+  "fix": []
+ }
+}

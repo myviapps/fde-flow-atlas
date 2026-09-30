@@ -1,0 +1,66 @@
+function isViewId(id){return id==='syllabus'||id==='templates'||/^tpl-/.test(id||'');}
+function openView(id,fromUser){if(id==='syllabus')openSyllabus(fromUser);else openTemplates(id==='templates'?null:id.slice(4),fromUser);}
+function qstore(){try{return JSON.parse(localStorage.getItem('fde-atlas-quiz')||'{}')}catch(e){return {}}}
+function qsave(s){try{localStorage.setItem('fde-atlas-quiz',JSON.stringify(s))}catch(e){}}
+const FIT_LABEL={interactive:'Interactive tool',document:'Document and template',animation:'Animation',flowchart:'Flowchart',reading:'Reading',project:'Hands-on project',practice:'Timed practice'};
+function renderFit(c){const el=document.getElementById('fitline');const F=(typeof FIT!=='undefined')&&FIT[c.id];
+  if(!F){el.hidden=true;return;}el.hidden=false;el.textContent='';const b=document.createElement('b');
+  let best=(F.best||[]).filter(x=>x!=='interactive'||WIDGETS[c.id]);if(!best.length)best=['reading'];
+  b.textContent='Best way to learn this: '+best.map(x=>FIT_LABEL[x]||x).join(' + ')+'. ';el.append(b,document.createTextNode(F.why||''));}
+function renderTry(c){const sec=document.getElementById('tryit');const host=document.getElementById('tryhost');host.innerHTML='';
+  const W=(typeof WIDGETS!=='undefined')&&WIDGETS[c.id];if(!W){sec.hidden=true;return;}sec.hidden=false;
+  document.getElementById('trytitle').textContent='Try it yourself: '+(W.title||'');document.getElementById('tryintro').textContent=W.intro||'';
+  try{W.render(host)}catch(e){console.error(e);host.textContent='This tool could not start in your browser.';}}
+function renderQuiz(c){const sec=document.getElementById('quiz');const list=document.getElementById('quizlist');list.innerHTML='';
+  const Q=(typeof QUIZ!=='undefined')&&QUIZ[c.id];if(!Q||!Q.length){sec.hidden=true;return;}sec.hidden=false;
+  let answered=0,right=0;const score=document.getElementById('qzscore');
+  const best=()=>{const b=qstore()[c.id];return (b!=null)?' Best so far: '+b+' of '+Q.length+'.':'';};
+  const upd=()=>{score.textContent=answered<Q.length?('Answered '+answered+' of '+Q.length+'.'+best()):('You scored '+right+' of '+Q.length+'. '+(right===Q.length?'Excellent.':right>=Q.length-1?'Nearly there, reread the one you missed.':'Reread the lesson sections for the ones you missed.')+best());};
+  Q.forEach((q,qi)=>{const li=document.createElement('li');const p=document.createElement('p');p.textContent=q.q;li.appendChild(p);
+    const opts=document.createElement('div');opts.className='qzopts';const why=document.createElement('p');why.className='qzwhy';why.hidden=true;
+    q.options.forEach((o,oi)=>{const b=document.createElement('button');b.type='button';b.textContent=String.fromCharCode(65+oi)+'. '+o;
+      b.onclick=()=>{const bs=opts.querySelectorAll('button');bs.forEach(x=>x.disabled=true);bs[q.answer].classList.add('right');
+        const ok=oi===q.answer;if(!ok)b.classList.add('wrong');answered++;if(ok)right++;
+        why.hidden=false;why.textContent=(ok?'Correct. ':'Not quite, the answer is '+String.fromCharCode(65+q.answer)+'. ')+(q.why||'');
+        if(answered===Q.length){const s=qstore();if(s[c.id]==null||right>s[c.id]){s[c.id]=right;qsave(s);}}upd();};
+      opts.appendChild(b);});
+    li.append(opts,why);list.appendChild(li);});
+  document.getElementById('qzreset').onclick=()=>renderQuiz(c);upd();}
+function docsFor(id){return (typeof DOCS!=='undefined')?DOCS.filter(d=>(d.topics||[]).includes(id)):[];}
+function renderTplRel(c){const sec=document.getElementById('tplrel');const box=document.getElementById('tplbtns');box.innerHTML='';const ds=docsFor(c.id);
+  if(!ds.length){sec.hidden=true;return;}sec.hidden=false;
+  ds.forEach(d=>{const b=document.createElement('button');b.type='button';b.className='btn';b.textContent=d.title;b.onclick=()=>openTemplates(d.slug,true);box.appendChild(b);});}
+function mdInline(s){return s.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g,'$1<em>$2</em>').replace(/(^|\W)_([^_\s][^_]*)_(?=\W|$)/g,'$1<em>$2</em>').replace(/\[([^\]]+)\]\([^)]*\)/g,'<u>$1</u>');}
+function mdToHtml(md){const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');const L=md.replace(/\r/g,'').split('\n');let out='',i=0;
+  while(i<L.length){let l=L[i];
+    if(/^```/.test(l)){let code=[];i++;while(i<L.length&&!/^```/.test(L[i]))code.push(L[i++]);i++;out+='<pre><code>'+esc(code.join('\n'))+'</code></pre>';continue;}
+    let m=l.match(/^(#{1,4})\s+(.*)/);if(m){const n=Math.min(m[1].length,3);out+='<h'+n+'>'+mdInline(esc(m[2]))+'</h'+n+'>';i++;continue;}
+    if(/^\s*(---|\*\*\*)\s*$/.test(l)){out+='<hr>';i++;continue;}
+    if(/^\s*\|/.test(l)){let rows=[];while(i<L.length&&/^\s*\|/.test(L[i]))rows.push(L[i++]);
+      const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(x=>mdInline(esc(x.trim())));let h='<table>';
+      rows.forEach((r,ri)=>{if(/^\s*\|?\s*:?-{2,}/.test(r))return;const t=ri===0?'th':'td';h+='<tr>'+cells(r).map(x=>'<'+t+'>'+x+'</'+t+'>').join('')+'</tr>';});out+=h+'</table>';continue;}
+    if(/^\s*>/.test(l)){let q=[];while(i<L.length&&/^\s*>/.test(L[i]))q.push(L[i++].replace(/^\s*>\s?/,''));out+='<blockquote>'+mdInline(esc(q.join(' ')))+'</blockquote>';continue;}
+    if(/^\s*([-*+]|\d+[.)])\s+/.test(l)){const ord=/^\s*\d/.test(l);let items='';
+      while(i<L.length&&/^\s*([-*+]|\d+[.)])\s+/.test(L[i])){const ind=L[i].match(/^\s*/)[0].length;let t=L[i].replace(/^\s*([-*+]|\d+[.)])\s+/,'');
+        t=esc(t).replace(/^\[ \]\s*/,'&#9744; ').replace(/^\[x\]\s*/i,'&#9745; ');i++;
+        while(i<L.length&&/^\s{2,}\S/.test(L[i])&&!/^\s*([-*+]|\d+[.)])\s+/.test(L[i]))t+=' '+esc(L[i++].trim());
+        items+='<li'+(ind>=2?' style="margin-left:'+Math.min(ind,8)*10+'px"':'')+'>'+mdInline(t)+'</li>';}
+      out+=ord?'<ol>'+items+'</ol>':'<ul>'+items+'</ul>';continue;}
+    if(!l.trim()){i++;continue;}
+    let p=[];while(i<L.length&&L[i].trim()&&!/^(#{1,4}\s|```|\s*\||\s*>|\s*([-*+]|\d+[.)])\s+|\s*---\s*$)/.test(L[i]))p.push(L[i++]);out+='<p>'+mdInline(esc(p.join(' ')))+'</p>';}
+  return out;}
+let curTpl=null;
+function openTemplates(slug,fromUser){stop();animToken++;showView('templates');document.querySelectorAll('.group button').forEach(b=>b.setAttribute('aria-current','false'));
+  document.getElementById('picker').value='templates';const D=(typeof DOCS!=='undefined')?DOCS:[];if(!D.length)return;
+  const d=D.find(x=>x.slug===slug)||D[0];curTpl=d;
+  try{history.replaceState(null,'','#'+(slug?'tpl-'+d.slug:'templates'))}catch(e){}
+  const list=document.getElementById('tpllist');list.innerHTML='';
+  D.forEach(x=>{const b=document.createElement('button');b.type='button';b.setAttribute('aria-current',x===d?'true':'false');b.textContent=x.title;const s=document.createElement('small');s.textContent=x.when||'';b.appendChild(s);b.onclick=()=>openTemplates(x.slug,true);list.appendChild(b);});
+  document.getElementById('tplbody').innerHTML=mdToHtml(d.md);document.getElementById('tplmsg').textContent='';
+  if(fromUser)window.scrollTo({top:0});}
+function tplCopy(){if(!curTpl)return;const m=document.getElementById('tplmsg');const ok=()=>m.textContent='Copied.';
+  const fb=()=>{const t=document.createElement('textarea');t.value=curTpl.md;document.body.appendChild(t);t.select();try{document.execCommand('copy');ok()}catch(e){m.textContent='Copy failed, select the text instead.'}t.remove();};
+  try{navigator.clipboard.writeText(curTpl.md).then(ok,fb)}catch(e){fb()}}
+function tplDownload(){if(!curTpl)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([curTpl.md],{type:'text/markdown'}));a.download=curTpl.slug+'.md';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);}
+(function(){try{const st=document.createElement('style');st.textContent=(typeof WIDGET_CSS!=='undefined'?WIDGET_CSS:'');document.head.appendChild(st);}catch(e){}
+  const c=document.getElementById('tplcopy'),d=document.getElementById('tpldl');if(c)c.onclick=tplCopy;if(d){d.onclick=tplDownload;if(location.protocol!=='file:')d.hidden=true;}})();

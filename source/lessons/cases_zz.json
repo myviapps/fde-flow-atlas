@@ -1,0 +1,1246 @@
+{
+ "python1": {
+  "title": "Greenfield Dental: a first script that catches double-booked chairs",
+  "company": "Greenfield Dental Group (made up), dental practices, 3 sites and 55 staff, United Kingdom",
+  "situation": "Aisha, a practice coordinator at Greenfield Dental who was learning Python in the evenings, spent an hour each Friday scanning next week's bookings spreadsheet, about 1,400 appointments across 14 chairs at three sites, for chairs booked twice. She found most clashes but missed about two a month, and each miss meant a patient who had taken time off work was turned away at the desk. The practice manager asked whether 'a bit of code' could take over the check.",
+  "problem": "Visual checking does not scale with more sites and gets worse late on a Friday. A spreadsheet formula was tried, but it broke whenever someone inserted a row, and it only compared identical start times, while many real clashes were a 45 minute booking running into the next slot.",
+  "approach": [
+   "Wrote the rule in plain English with the practice manager first: a clash is two bookings on the same site and chair whose times overlap, not only ones that start together.",
+   "Loaded next week's export with csv.DictReader so each row became a dict with named fields instead of column letters, which is why inserted columns or rows no longer broke anything.",
+   "What went wrong first: version one stored (site, chair, start) in a dict and flagged repeats, which caught identical starts but missed a 09:00 to 09:45 booking overlapping a 09:40 slot. Aisha found it by testing on last month's file, where 3 of 8 known clashes went unreported.",
+   "Rewrote the check to group bookings by (site, chair), sort each group by start time and compare each booking with the one that ends latest so far, converting text times to datetime so the comparison is by time, not by spelling.",
+   "Read the traceback when an empty row caused a crash (the error named the exact line), then added a check that skips blank lines instead of deleting them by hand.",
+   "Ran the script alongside the manual check for three Fridays; both found the same clashes, plus one the manual check missed, so the manager agreed to drop the manual scan.",
+   "Put the script and a five line README in the practice's shared folder and taught a second coordinator to run it, so it did not depend on one person."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import csv, io\nfrom datetime import datetime\n\nSAMPLE = \"\"\"site,chair,start,end,patient_id\nLeeds,2,2026-10-05 09:00,2026-10-05 09:30,P101\nLeeds,2,2026-10-05 09:00,2026-10-05 09:45,P102\nLeeds,2,2026-10-05 09:40,2026-10-05 10:10,P103\n,,,,\nYork,1,2026-10-05 09:00,2026-10-05 09:30,P201\nYork,1,2026-10-05 09:30,2026-10-05 10:00,P202\n\"\"\"\n\ndef find_clashes(f):\n    \"\"\"Bookings on the same site and chair whose times overlap.\"\"\"\n    by_chair = {}\n    for row in csv.DictReader(f):\n        if not row[\"chair\"]:                          # skip blank rows\n            continue\n        row[\"start\"] = datetime.strptime(row[\"start\"], \"%Y-%m-%d %H:%M\")\n        row[\"end\"] = datetime.strptime(row[\"end\"], \"%Y-%m-%d %H:%M\")\n        by_chair.setdefault((row[\"site\"], row[\"chair\"]), []).append(row)\n    clashes = []\n    for key, rows in by_chair.items():\n        rows.sort(key=lambda r: r[\"start\"])\n        latest = rows[0]                              # booking that ends last so far\n        for row in rows[1:]:\n            if row[\"start\"] < latest[\"end\"]:          # starts before that one ends\n                clashes.append((key, latest[\"patient_id\"], row[\"patient_id\"], row[\"start\"]))\n            if row[\"end\"] > latest[\"end\"]:\n                latest = row\n    return clashes\n\n# Real run: with open(\"next_week.csv\", newline=\"\") as f: find_clashes(f)\nfor key, first, second, when in find_clashes(io.StringIO(SAMPLE)):\n    print(\"CLASH\", key, when.strftime(\"%a %H:%M\"), \"patients\", first, \"and\", second)"
+  },
+  "outcome": "The Friday check dropped from about an hour to about a minute. On last month's file the final version found all 8 known clashes, against 5 for the first version, and turned-away patients from double bookings went from about two a month to zero over the next three months.",
+  "lessons": [
+   "Write the rule in plain words, and test it on a case you already know the answer to.",
+   "Variables, if/else, loops, dicts and functions are enough to automate a surprising amount of office work.",
+   "Compare times as datetimes, not as text, and think about ranges rather than single points.",
+   "A traceback is a helpful clue that names the line, not a sign you have failed."
+  ],
+  "discuss": [
+   "The script compares each booking with the one that ends latest so far. Can you build a set of bookings where it reports a clash with a different partner than a person would, and does that matter?",
+   "Who should own this script once Aisha moves to another role?",
+   "How would you convince a cautious practice manager that the script is trustworthy enough to stop the manual check?"
+  ]
+ },
+ "sql": {
+  "title": "Meadowlark Subscriptions: finding why churn looked lower than it was",
+  "company": "Meadowlark Meal Kits (made up), meal kit subscriptions, 220,000 subscribers, Australia",
+  "situation": "Meadowlark's dashboard showed monthly churn of 3.1 percent across its 220,000 subscribers, yet finance's revenue numbers implied far more customers were leaving. The query behind the dashboard had been written two years earlier by an analyst who had since left. An FDE was asked to reconcile the two numbers ten days before a board meeting where the retention budget would be set.",
+  "problem": "The dashboard query joined subscribers to payments with an INNER JOIN, so a customer who stopped paying produced no row for that month and simply vanished instead of counting as churned. It also tried to filter on a window function result in WHERE, which fails because WHERE is evaluated before window functions. Tweaking the old query in place would have kept its undocumented definition of churn, which nobody could explain.",
+  "approach": [
+   "Reproduced the 3.1 percent from the dashboard SQL, then read it join by join asking 'who disappears here?'. The INNER JOIN to payments dropped every subscriber-month with no payment.",
+   "Agreed a one sentence definition with finance before writing new SQL: a subscriber churns in month M if they paid in M minus 1, did not pay in M and were not on a pause.",
+   "Built a grid of one row per subscriber per month with CROSS JOIN to a months list and a LEFT JOIN to payments, so a month with no payment becomes a row with paid = false instead of a missing row.",
+   "Used the window function LAG to bring in last month's status per subscriber, and filtered on it in the outer query, since WHERE runs before window functions in SQL's logical order.",
+   "What went wrong first: the first corrected version reported 7.9 percent, because about 9,000 subscribers on a planned pause were counted as churned. Finance spotted it at once, so pauses were added as an EXISTS check against the pauses table.",
+   "Checked the result against 20 subscriber histories verified by hand and against finance's revenue by month, which agreed to within 0.2 points.",
+   "Saved the query as a documented view that the dashboard now reads, with the definition in a comment, and added a check that the grid has exactly one row per subscriber per month."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "WITH months AS (\n  SELECT generate_series(DATE '2026-01-01', DATE '2026-08-01', INTERVAL '1 month')::date AS month_start\n), monthly AS (                                  -- one row per subscriber per month, paid or not\n  SELECT s.subscriber_id, m.month_start AS month,\n         COUNT(p.payment_id) > 0 AS paid,\n         EXISTS (SELECT 1 FROM pauses z\n                 WHERE z.subscriber_id = s.subscriber_id\n                   AND m.month_start BETWEEN z.pause_start AND z.pause_end) AS paused\n  FROM subscribers s\n  CROSS JOIN months m\n  LEFT JOIN payments p                           -- LEFT: a month with no payment still counts\n    ON p.subscriber_id = s.subscriber_id\n   AND date_trunc('month', p.paid_at) = m.month_start\n  WHERE m.month_start >= date_trunc('month', s.signed_up_at)\n  GROUP BY s.subscriber_id, m.month_start\n), flagged AS (\n  SELECT *, LAG(paid) OVER (PARTITION BY subscriber_id ORDER BY month) AS paid_last_month\n  FROM monthly\n)\nSELECT month,                                    -- filter window results out here, not in WHERE\n       ROUND(100.0 * COUNT(*) FILTER (WHERE paid_last_month AND NOT paid AND NOT paused)\n             / NULLIF(COUNT(*) FILTER (WHERE paid_last_month), 0), 1) AS churn_pct\nFROM flagged\nGROUP BY month\nORDER BY month;"
+  },
+  "outcome": "True monthly churn was 5.4 percent, not 3.1 percent, and it matched finance's revenue figures to within 0.2 points in each of the last eight months. The board approved a retention project based on the corrected number, and the dashboard and finance have reported the same figure every month since.",
+  "lessons": [
+   "An INNER JOIN silently drops rows with no match; always ask who disappears.",
+   "Agree the metric definition in words before writing SQL, including edge cases such as pauses.",
+   "SQL runs FROM and WHERE before window functions, so filter window results in an outer query.",
+   "Validate a metric against a few hand-checked examples and an independent source before trusting it."
+  ],
+  "discuss": [
+   "How would you define churn for a customer who pauses for one month and then returns?",
+   "How do you tell a customer that the number they have been reporting was wrong?",
+   "The grid has one row per subscriber per month. At 220,000 subscribers and five years of history, how big is it, and when would you materialize it instead of computing it each time?"
+  ]
+ },
+ "http": {
+  "title": "Bramblewick Couriers: debugging a silent failure in a delivery status API",
+  "company": "Bramblewick Couriers (made up), last-mile delivery, 700 drivers, Canada",
+  "situation": "Bramblewick's integration posted delivery updates to a retail partner's API for about 60,000 parcels a week, and the partner said about 5 percent never showed as delivered on their site. That caused around 300 'where is my parcel' calls a week to the partner's support team, and the partner had started asking about penalty clauses in the contract.",
+  "problem": "Bramblewick's logs showed every call as 'sent', because the code only checked that a response came back, not what status code it carried. The team's first idea was more retries, but retrying a request the server has already rejected as malformed just fails the same way, and resending a DELIVERED update blindly could create duplicates on the partner side.",
+  "approach": [
+   "Logged the method, URL, status code and the first 200 characters of the response body for every call for one day, with customer names and addresses left out of the log.",
+   "Grouped the failures by status code and found that all the missing updates got 422 Unprocessable Entity, with a JSON body saying the timestamp was missing a time zone. They all came from one depot whose server clock produced naive timestamps.",
+   "Fixed the request body to send ISO 8601 timestamps with a UTC offset, and used the json= argument so the Content-Type header is always application/json.",
+   "Changed the client to treat any other 4xx as a bug to alert on, and to retry only 429 and 5xx, with exponential backoff, jitter and respect for the Retry-After header.",
+   "Agreed with the partner to send an Idempotency-Key header built from the tracking id and status, so a retried update can never be recorded twice.",
+   "What went wrong first: the first replay pushed all 9,300 failed updates from the previous two weeks at once and ran straight into 429 rate limits. The replay was rerun at 5 requests per second and finished in about 35 minutes.",
+   "Added a daily count of responses by status code to the operations dashboard, with an alert if non-2xx responses exceed 1 percent."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import random, time\nfrom datetime import datetime, timezone\n\nRETRYABLE = {429, 500, 502, 503, 504}\n\ndef send_update(session, tracking_id, token, max_tries=4):\n    body = {\"tracking_id\": tracking_id, \"status\": \"DELIVERED\",\n            \"occurred_at\": datetime.now(timezone.utc).isoformat()}   # ends in +00:00\n    headers = {\"Authorization\": f\"Bearer {token}\",\n               \"Idempotency-Key\": f\"{tracking_id}-DELIVERED\"}       # resending is safe\n    for attempt in range(1, max_tries + 1):\n        resp = session.post(\"https://api.partner.example/v2/deliveries\",\n                            json=body, headers=headers, timeout=10)  # json= sets Content-Type\n        if resp.status_code in (200, 201):\n            return \"sent\"\n        if resp.status_code not in RETRYABLE:                      # 4xx: our request is wrong\n            return f\"alert: {resp.status_code} {resp.text[:200]}\"\n        wait = float(resp.headers.get(\"Retry-After\", 2 ** attempt)) + random.random()\n        time.sleep(min(wait, 30))                                  # back off, with jitter\n    return \"gave up: queued for the replay job\"\n\nclass FakeResp:        # stand-ins so the logic is testable without the partner API;\n    def __init__(self, code, text=\"\"):             # production passes requests.Session()\n        self.status_code, self.text, self.headers = code, text, {\"Retry-After\": \"0\"}\n\nclass FakeSession:\n    def __init__(self, codes): self.codes = list(codes)\n    def post(self, url, **kwargs): return FakeResp(self.codes.pop(0), \"occurred_at: missing offset\")\n\nprint(send_update(FakeSession([503, 201]), \"BW-1001\", \"token\"))   # sent\nprint(send_update(FakeSession([422]), \"BW-1002\", \"token\"))        # alert: 422 ..."
+  },
+  "outcome": "Missing delivery updates fell from about 5 percent to 0.2 percent within a week, and the partner reported 'where is my parcel' calls dropping by roughly 250 a week. Two months later the status-code alert caught an expired API token within 15 minutes instead of days.",
+  "lessons": [
+   "Getting a response is not success; read the status code and the body.",
+   "4xx means the request is wrong and retrying will not help; 429 and 5xx are usually worth retrying with backoff.",
+   "Retries are only safe when the receiver can recognise a repeat, which is what an idempotency key is for.",
+   "A backlog replay is itself load; pace it to the partner's rate limit."
+  ],
+  "discuss": [
+   "Idempotency keys stop duplicates on the partner side. What would you do if a partner API did not support them?",
+   "What would you log for every API call without leaking customer personal data?",
+   "The fix was one missing time zone. What test or check would have caught it before any parcels went missing?"
+  ]
+ },
+ "python2": {
+  "title": "Brightway Pharmacy: reconciling supplier invoices with dicts and pandas",
+  "company": "Brightway Pharmacy (made up), independent pharmacy chain, 12 stores, Ireland",
+  "situation": "A finance assistant at Brightway, Tom, matched about 1,800 supplier invoice lines against delivery records every month by searching two spreadsheets side by side. It took two days, and roughly 1 percent of mismatches slipped through, costing a few thousand euros in overpayments a year. Deliveries came as a JSON export from the stock system and invoices as a CSV from the accounts package.",
+  "problem": "Matching two lists by eye is slow and error prone. Nested loops that compare every invoice line to every delivery line would work, but they get slow as the files grow and are hard to read, and neither approach copes with suppliers writing the same product code in different ways.",
+  "approach": [
+   "Loaded the deliveries JSON into a dict keyed by (order_id, product code) so each lookup was instant instead of a scan of the whole list.",
+   "Read the invoice CSV row by row with csv.DictReader and looked up the matching delivery, recording any line with no match or a quantity difference along with the overbilled amount.",
+   "What went wrong first: the first run flagged 310 lines, and Tom found about 70 percent were false alarms, because one supplier wrote '00471' where the stock system had '471', and another used lower case. A small norm function that trims spaces, upper-cases and strips leading zeros brought the list down to real disputes.",
+   "Kept a set of the invoiced keys and subtracted it from the delivered keys to list deliveries that had not been invoiced yet, which finance wanted for accruals.",
+   "Moved the final list into pandas so Tom could group by supplier and total the disputed amounts in one line.",
+   "Ran the script alongside Tom's manual process for two months; it found everything he found plus 14 lines he had missed.",
+   "Wrote the results to a CSV that finance opens in Excel as before, so nobody had to change tools."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import csv, io, json\nimport pandas as pd\n\nDELIVERIES = \"\"\"[{\"order_id\": \"PO-881\", \"sku\": \"00471\", \"qty\": 20},\n {\"order_id\": \"PO-881\", \"sku\": \"A-12\", \"qty\": 5},\n {\"order_id\": \"PO-882\", \"sku\": \"B-7\", \"qty\": 10}]\"\"\"\nINVOICES = \"\"\"supplier,order_id,sku,qty,unit_price\nCorran Medical,PO-881,471,24,3.10\nCorran Medical,PO-881,a-12 ,5,11.00\nLisvane Pharma,PO-883,C-3,6,4.50\n\"\"\"\n\ndef norm(sku):                       # \"00471\" vs \"471\", \"a-12 \" vs \"A-12\"\n    return sku.strip().upper().lstrip(\"0\")\n\ndelivered = {(d[\"order_id\"], norm(d[\"sku\"])): d[\"qty\"] for d in json.loads(DELIVERIES)}\ninvoiced, issues = set(), []\nfor row in csv.DictReader(io.StringIO(INVOICES)):   # real run: open(\"invoices.csv\")\n    key = (row[\"order_id\"], norm(row[\"sku\"]))\n    invoiced.add(key)\n    billed, got = int(row[\"qty\"]), delivered.get(key, 0)\n    if billed != got:\n        issues.append({**row, \"delivered\": got,\n                       \"overbilled\": round((billed - got) * float(row[\"unit_price\"]), 2)})\n\ndf = pd.DataFrame(issues)\nprint(df.groupby(\"supplier\")[\"overbilled\"].sum().sort_values(ascending=False))\nprint(\"Delivered but not invoiced yet:\", sorted(set(delivered) - invoiced))\ndf.to_csv(\"disputes.csv\", index=False)               # finance opens this in Excel"
+  },
+  "outcome": "Monthly reconciliation fell from two days to about an hour, including review. False alarms dropped from about 70 percent of flagged lines to under 5 percent after normalising codes, and in the first quarter the pharmacy recovered about 2,600 euros of overbilling it would previously have paid.",
+  "lessons": [
+   "A dict turns 'search the whole list' into an instant lookup by key.",
+   "Normalise keys before matching; most matching bugs are formatting, not logic.",
+   "Sets are the quickest way to answer 'what is in A but not in B'.",
+   "Use plain Python to understand the logic, then pandas when you need to filter and total a table."
+  ],
+  "discuss": [
+   "What would you do about invoice lines where the product code is spelled differently in a way a simple normalise function cannot fix?",
+   "When would you keep the result as JSON instead of CSV?",
+   "Stripping leading zeros made '0471' and '471' match. Could that ever match two genuinely different products, and how would you check?"
+  ]
+ },
+ "git": {
+  "title": "Oakridge Utilities: ending 'final_v7.py' with Git and pull requests",
+  "company": "Oakridge Water Utilities (made up), regional water utility, 1,100 staff, United States",
+  "situation": "Three analysts and an FDE maintained Oakridge's leak-detection scripts, about 40 Python files, by emailing zip files and editing a shared network folder. In one month two people overwrote each other's changes, and a broken version ran in production for four days before anyone noticed, delaying 18 leak alerts. Nobody could say which version of the pressure threshold was running.",
+  "problem": "With no history, no one could tell what changed, who changed it or how to roll back quickly. Adding a 'please do not edit' rule to the folder would slow everyone down and still not show who changed what, and buying a heavier release tool would be overkill for four people.",
+  "approach": [
+   "Created a Git repository from the current production scripts, committed them as the known starting point and tagged that commit v1.0 so there was a named version to return to.",
+   "What went wrong first: the first push included a config file with the SCADA read-only database password. The FDE rotated the password the same day, rewrote the history of the new repository before anyone had cloned it, moved secrets to environment variables and added a .gitignore for .env and data files.",
+   "Set up the main branch so it only changes through pull requests with one review and a passing check, and had each person work on a short-lived branch per change.",
+   "Added a smoke test that runs detect_leaks.py on a week of sample data in CI, so an obviously broken script cannot be merged.",
+   "Wrote a short guide for commit messages that say what changed and why, with the data used to justify threshold changes, and a pull request template asking for the reason, the test and how to roll back.",
+   "Changed production to run only tagged versions, so a release is a tag and a rollback is running the previous tag.",
+   "Showed the team git log, git blame and git revert by undoing a real bad change in a practice copy."
+  ],
+  "artifact": {
+   "lang": "bash",
+   "code": "# One-time setup, done together with the team\ngit init -b main oakridge-leaks && cd oakridge-leaks\ncp -r /shared/leak_scripts/. .\nprintf \"*.csv\\n.env\\n__pycache__/\\n\" > .gitignore   # data and secrets never get committed\ngit add . && git commit -m \"Import production scripts as of 2026-03-02\"\ngit tag v1.0                                         # exactly what production runs today\n\n# Every change: a short-lived branch and a pull request\ngit switch -c fix/pressure-threshold\n# ... edit detect_leaks.py, run the smoke test on last week's sample ...\ngit commit -am \"Raise pressure drop threshold to 0.35 bar\n\nNight-time false alarms in zone 4 were 22/week at 0.25.\nTested on August data: 3 false alarms, no missed known leaks.\"\ngit push -u origin fix/pressure-threshold    # PR: 1 review and a passing check to merge\n\n# Release: production only runs tagged versions\ngit switch main && git pull && git tag v1.4 && git push origin v1.4\n\n# A bad change reached main\ngit log --oneline -5\ngit revert 3f9c2ab          # a new commit that undoes it; history stays intact"
+  },
+  "outcome": "Over the next six months there were no lost changes, and the one bad release was reverted in 12 minutes instead of lingering for days. The CI smoke test blocked two broken pull requests before merge, and new analysts could read the history to learn why thresholds were set as they were.",
+  "lessons": [
+   "Version control gives you history, blame and a fast undo.",
+   "Branches plus pull requests let people work in parallel and review before code goes live.",
+   "Keep secrets and data out of the repository from the first commit; a pushed secret must be rotated, not just deleted.",
+   "A good commit message explains why, not only what."
+  ],
+  "discuss": [
+   "When would you use git revert instead of resetting the branch?",
+   "How strict should review rules be for a team of four analysts?",
+   "The leaked password was in the repository for an hour and nobody had cloned it. Was rotating it still necessary, and why?"
+  ]
+ },
+ "tdd": {
+  "title": "Lindenwood Payroll: test-first fixes for overtime calculation bugs",
+  "company": "Lindenwood Payroll Services (made up), payroll outsourcing, 250 staff, Canada",
+  "situation": "An FDE from Lindenwood was maintaining a customer's overtime calculator used for 9,000 hourly workers paid every two weeks. Each pay run about 40 payslips were wrong, mainly around shifts crossing midnight and public holidays, and each correction cost the payroll team around 30 minutes plus an unhappy employee. The code had no tests at all.",
+  "problem": "Fixes were made by editing the code and eyeballing a few payslips, so a fix for holidays would quietly break night shifts. More manual checking before each pay run would not scale and would still miss edge cases, because nobody had written down what the correct answer was for the awkward shifts.",
+  "approach": [
+   "Collected the 12 real cases that had gone wrong and turned each into a pytest test named after its bug report, with the correct expected pay worked out by hand and signed off by the payroll lead.",
+   "What went wrong first: for the first few tests the FDE took the expected values from the current code's output, and three of them passed while encoding the very bug they were meant to catch. From then on every expected value came from the payroll lead's hand calculation, never from the code.",
+   "Ran the new tests and watched them fail, which proved they actually caught the bugs.",
+   "Fixed the code one test at a time, writing just enough to turn each red test green, then tidied the functions: shift length now subtracts full datetimes, so midnight is no longer special.",
+   "Agreed an explicit rule with payroll for night shifts that start on a holiday (the start date decides the rate) and captured it in a test, since the old code had no rule at all.",
+   "Added parametrized tests for boundaries: exactly 40 hours, 40.01 hours, 52.5 hours, a shift ending at midnight and an ordinary Sunday.",
+   "Set up CI so every pull request runs the full suite before it can be merged, and added a new test for each future bug report before fixing it."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "# test_overtime.py: the fixed rules and their tests in one file for this case (pytest -q)\nfrom datetime import date, datetime\nimport pytest\n\nHOLIDAYS = {date(2026, 7, 1), date(2026, 12, 25)}    # loaded from the payroll calendar\n\ndef overtime_hours(weekly_hours, threshold=40.0):\n    return round(max(0.0, weekly_hours - threshold), 2)\n\ndef shift_length(start, end):                        # full datetimes, so midnight is safe\n    return (end - start).total_seconds() / 3600\n\ndef pay_rate(shift_start, base):                     # rule agreed with payroll: start day decides\n    return base * 1.5 if shift_start.date() in HOLIDAYS else base\n\n@pytest.mark.parametrize(\"weekly_hours, expected\", [(40.0, 0.0), (40.01, 0.01), (52.5, 12.5)])\ndef test_overtime_threshold(weekly_hours, expected):\n    assert overtime_hours(weekly_hours) == pytest.approx(expected)\n\ndef test_shift_crossing_midnight_counts_full_length():         # bug report 3\n    assert shift_length(datetime(2026, 3, 6, 22), datetime(2026, 3, 7, 6)) == 8.0\n\ndef test_night_shift_starting_on_holiday_uses_holiday_rate():  # bug report 7\n    assert pay_rate(datetime(2026, 7, 1, 22), base=20.0) == 30.0\n\ndef test_ordinary_sunday_is_base_rate():                       # bug report 9\n    assert pay_rate(datetime(2026, 7, 5, 9), base=20.0) == 20.0"
+  },
+  "outcome": "Wrong payslips fell from about 40 per pay run to 3 over the next quarter, and none of the 12 original bugs came back. The suite grew to 64 tests that run in about 2 seconds on every change, and the three remaining errors each became a new test before being fixed.",
+  "lessons": [
+   "Every bug report is a test waiting to be written.",
+   "Expected values must come from the business rule, not from the code you are testing.",
+   "Watching a new test fail first proves it really checks something.",
+   "Boundary values like exactly 40 hours are where calculation bugs hide, and CI makes the tests a gate, not a suggestion."
+  ],
+  "discuss": [
+   "How would you test rules that differ by province or state without writing hundreds of tests by hand?",
+   "What is the risk of writing tests that simply copy the current code's behaviour?",
+   "The payroll lead decided that the start date sets the holiday rate for a night shift. Where should that decision be recorded so the next engineer does not 'fix' it?"
+  ]
+ },
+ "mathbasics": {
+  "title": "Summit Legal Search: p95 latency and cosine similarity in a document finder",
+  "company": "Summit Legal Services (made up), law firm, 150 staff, Singapore",
+  "situation": "Summit Legal's new internal tool found similar past contracts using embeddings across about 180,000 documents, and the partners said it 'felt slow' and 'kept suggesting the same huge agreements'. The dashboard showed an average response time of 0.9 seconds, which looked fine to the team that built it. An FDE was asked to look before the partners stopped using it.",
+  "problem": "The average hid a slow tail: a few searches took many seconds, and those were the ones partners remembered. Separately, results were ranked by raw dot product, so long documents with larger vectors kept appearing first even when they were less relevant. A faster server would not have fixed the ranking, and the average would still have looked fine.",
+  "approach": [
+   "Computed p50 and p95 latency from a week of logs instead of the mean.",
+   "What went wrong first: the first p95 came out at 3.1 seconds because the log query only kept successful searches, and the slowest searches were exactly the ones that timed out at 10 seconds. Counting timeouts at the 10 second cap gave the real p95 of 4.8 seconds with p50 at 0.6 seconds.",
+   "Traced the p95 cases to searches over the largest practice area, about 70,000 documents, which scanned every vector each time.",
+   "Showed with a three-document example that raw dot product rewards vector length, then normalised every embedding to length 1 so the dot product became cosine similarity, which compares direction rather than size.",
+   "Added an approximate nearest neighbour index for the large practice area and checked that its top 5 matched exact search 97 percent of the time on 200 test queries.",
+   "Replaced the average on the dashboard with p50 and p95 side by side, and added the timeout count as its own number."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import numpy as np\nrng = np.random.default_rng(7)\n\n# 1) Latency: the average hides the slow tail (synthetic week of 2,000 searches, seconds)\nfast = rng.lognormal(mean=-0.5, sigma=0.35, size=1865)   # most searches\nslow = rng.uniform(3.0, 10.0, size=135)                   # full scans, timeouts capped at 10 s\nlat = np.concatenate([fast, slow])\nprint(f\"mean {lat.mean():.2f}s  p50 {np.percentile(lat, 50):.2f}s  p95 {np.percentile(lat, 95):.2f}s\")\n\n# 2) Ranking: raw dot product favours long vectors, cosine compares direction only\ntitles = [\"NDA template\", \"Master services agreement\", \"Office lease\"]\ndocs = np.array([[0.9, 0.1, 0.0],      # short NDA, on topic\n                 [3.0, 3.0, 3.0],      # 200-page agreement: big vector, mixed topics\n                 [0.2, 0.9, 0.1]])     # lease\nquery = np.array([1.0, 0.0, 0.0])      # \"confidentiality clause\"\ndot = docs @ query                     # matrix times vector: one score per document\nunit = docs / np.linalg.norm(docs, axis=1, keepdims=True)\ncos = unit @ (query / np.linalg.norm(query))\nfor name, scores in [(\"dot\", dot), (\"cosine\", cos)]:\n    order = np.argsort(scores)[::-1]\n    print(f\"{name:6}\", [(titles[i], round(float(scores[i]), 2)) for i in order])"
+  },
+  "outcome": "p95 latency fell from 4.8 seconds to 1.3 seconds while p50 stayed about the same, and timeouts dropped from about 6 percent of searches to under 0.5 percent. In a blind review of 50 queries, lawyers rated the top result relevant 78 percent of the time, up from 61 percent.",
+  "lessons": [
+   "Averages hide the slow tail; p95 describes the experience people complain about.",
+   "Check what your data leaves out: dropping failures makes latency look better than it is.",
+   "Cosine similarity is a dot product on normalised vectors and ignores vector length.",
+   "A matrix times a vector scores every document against a query in one step."
+  ],
+  "discuss": [
+   "Why might p99 matter even more for a tool used by a few senior people?",
+   "What does it mean if two documents have cosine similarity close to zero?",
+   "The approximate index agreed with exact search 97 percent of the time. How would you decide whether 97 percent is good enough for legal research?"
+  ]
+ },
+ "spark": {
+  "title": "Tarnhollow Telecom: a 9 hour usage job cut down with Spark",
+  "company": "Tarnhollow Telecom (made up), mobile network operator, 8 million subscribers, Brazil",
+  "situation": "Tarnhollow's nightly pandas job on one large server summarised about 2 billion call and data records per day for billing checks. It took around 9 hours, often ran into the working day, and failed on memory about once a week, which left the billing assurance team of six without their morning numbers. Daily volume was growing about 20 percent a year.",
+  "problem": "The data no longer fit on one machine, and each failure meant starting over from the beginning. A bigger single server would delay the problem for a few months, and simply moving the pandas code onto a cluster would not help, because pandas runs on one machine however many are available.",
+  "approach": [
+   "Rewrote the job with PySpark DataFrames on a managed cluster, keeping the logic in one function that could be tested on a tiny local sample before touching the data lake.",
+   "Stored the raw records as Parquet partitioned by event date, so each run reads only one day instead of scanning everything.",
+   "What went wrong first: the first cluster run took 2 hours 40 minutes, far from the target. The Spark UI showed one stage where 3 tasks ran for over an hour while the other 197 finished in minutes, because a few test SIM cards had millions of records each. Filtering them out early removed the skew.",
+   "Broadcast the small tariff table to every executor so the big join avoided shuffling billions of rows.",
+   "Set the Spark session time zone to America/Sao_Paulo after a parallel run found totals 0.3 percent off the old job: late evening records were being assigned to the next day in UTC.",
+   "Ran old and new jobs side by side for 14 days and compared totals per tariff and per day until they matched exactly.",
+   "Wrote results with dynamic partition overwrite so rerunning a day replaces only that day, and set the cluster to shut down after each run."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from pyspark.sql import SparkSession, functions as F\n\ndef daily_usage(cdr, tariffs, day):\n    \"\"\"One day of usage per subscriber and tariff: same code locally and on the cluster.\"\"\"\n    return (cdr.where(F.col(\"event_date\") == day)              # reads one partition only\n               .where(~F.col(\"msisdn\").startswith(\"99900\"))     # test SIMs caused the skew\n               .join(F.broadcast(tariffs), \"tariff_id\")        # small table: no big shuffle\n               .groupBy(\"event_date\", \"msisdn\", \"tariff_id\")\n               .agg(F.sum(\"mb_used\").alias(\"mb\"),\n                    F.round(F.sum(F.col(\"mb_used\") * F.col(\"price_per_mb\")), 2).alias(\"charge\")))\n\nif __name__ == \"__main__\":      # local test on a tiny sample before touching the lake\n    spark = (SparkSession.builder.master(\"local[2]\").appName(\"daily_usage_test\")\n             .config(\"spark.sql.sources.partitionOverwriteMode\", \"dynamic\")\n             .config(\"spark.sql.session.timeZone\", \"America/Sao_Paulo\").getOrCreate())\n    cdr = spark.createDataFrame(\n        [(\"2026-09-26\", \"5511900000001\", \"T1\", 120.0), (\"2026-09-26\", \"5511900000001\", \"T1\", 30.0),\n         (\"2026-09-26\", \"99900000042\", \"T1\", 9999.0), (\"2026-09-25\", \"5511900000002\", \"T2\", 50.0)],\n        [\"event_date\", \"msisdn\", \"tariff_id\", \"mb_used\"])\n    tariffs = spark.createDataFrame([(\"T1\", 0.02), (\"T2\", 0.05)], [\"tariff_id\", \"price_per_mb\"])\n    daily_usage(cdr, tariffs, \"2026-09-26\").show()\n    # Cluster: read spark.read.parquet(\"s3://tarnhollow-lake/cdr/\"), then write with\n    # .write.mode(\"overwrite\").partitionBy(\"event_date\").parquet(\"s3://tarnhollow-lake/usage_daily/\")\n    spark.stop()"
+  },
+  "outcome": "The nightly job fell from about 9 hours to 38 minutes on a 12 node cluster, and memory failures stopped. After 14 days of parallel runs the totals matched the old job exactly, and cluster cost came to roughly 30 percent less than the large server it replaced, because the cluster shuts down after each run.",
+  "lessons": [
+   "Spark spreads work across partitions and machines when data outgrows one computer.",
+   "Partitioning files by date lets each run read only what it needs.",
+   "Skew, where a few keys hold most of the data, is a common reason one stage is slow; the Spark UI shows it as a few very long tasks.",
+   "Prove a rewrite with a parallel run before switching over; time zones and edge cases hide in the totals."
+  ],
+  "discuss": [
+   "When is Spark overkill, and what would you use for 50 million rows instead?",
+   "How would you prove to finance that the new job produces the same numbers as the old one?",
+   "If the skewed keys had been real customers rather than test SIMs, how would you handle them instead of filtering them out?"
+  ]
+ },
+ "terminal": {
+  "title": "Harbor Logistics: replacing 40 minutes of clicking with a short shell script",
+  "company": "Harbor Point Logistics (made up), freight forwarding, 120 staff, Australia",
+  "situation": "Every Monday an operations coordinator at Harbor Point, Sam, downloaded about 60 carrier CSV files, renamed each by hand, moved them into dated folders and ran a Python summary by double-clicking. The routine took about 40 minutes, and a misnamed or missing file broke the summary roughly once a month, which delayed the Monday capacity meeting.",
+  "problem": "The work was repetitive file handling that a graphical file explorer makes slow and error prone. A new desktop tool would add cost and another thing to learn, while the shell was already installed on his machine, and the risk with shell scripts is that they do the wrong thing quietly when run in the wrong place.",
+  "approach": [
+   "Sat with Sam and wrote down each click, which turned out to map onto five shell commands: cd, mkdir, mv, source and python.",
+   "Taught him pwd and ls first so he always knew which folder the shell was standing in, and cd with tab completion so he never had to type a full path.",
+   "Used a wildcard with mv to move all carrier_*.csv files in one step into a folder named after today's date, created with mkdir -p.",
+   "Created a virtual environment and installed pandas with pip so the summary script ran with the same packages every week.",
+   "What went wrong first: in week two Sam ran the first version from his home folder, the wildcard matched nothing and mv failed with a confusing message about a file literally called carrier_*.csv. The script now changes to Downloads itself, uses nullglob and stops with a plain English message when no files are found.",
+   "Added a warning when fewer than 55 files arrive, mv -n so nothing is ever overwritten, and a log file via tee so there is a record of every run.",
+   "Saved it as a small bash script with a comment on each line, and showed him how to read an error message instead of closing the window."
+  ],
+  "artifact": {
+   "lang": "bash",
+   "code": "#!/usr/bin/env bash\n# weekly_carriers.sh - collect this week's carrier files and build the summary\nset -euo pipefail                          # stop on errors, unset variables, failed pipes\ncd ~/Downloads                             # same starting folder wherever it is run from\nshopt -s nullglob                          # no matches gives an empty list, not \"carrier_*.csv\"\nfiles=(carrier_*.csv)\nif [ ${#files[@]} -eq 0 ]; then\n  echo \"No carrier_*.csv files in $(pwd). Download them first.\" >&2\n  exit 1\nfi\nif [ ${#files[@]} -lt 55 ]; then\n  echo \"Warning: only ${#files[@]} files (usually about 60). Carrying on.\" >&2\nfi\nWEEK=$(date +%Y-%m-%d)\nmkdir -p ~/carriers/\"$WEEK\"\nmv -n \"${files[@]}\" ~/carriers/\"$WEEK\"/    # -n never overwrites an existing file\ncd ~/carriers\nsource .venv/bin/activate                  # the project's own Python and pandas\npython summarize.py \"$WEEK\" 2>&1 | tee -a weekly.log\necho \"Done: $(ls \"$WEEK\" | wc -l) files in ~/carriers/$WEEK\""
+  },
+  "outcome": "The Monday routine fell from about 40 minutes to under 5, and there were no broken summaries in the following quarter. The low file count warning fired twice when a carrier was late, and both times Sam chased the file before the meeting instead of discovering the gap during it. Two other coordinators adopted the same script.",
+  "lessons": [
+   "Most repetitive file work is a handful of shell commands in the right order.",
+   "Always know where you are (pwd) before you move or delete anything, and make scripts set their own starting folder.",
+   "set -euo pipefail, clear error messages and a log make a small script safe for non-engineers to run.",
+   "Check that the input looks right (file count, names) before doing the work."
+  ],
+  "discuss": [
+   "What could go wrong if someone ran this script from the wrong folder, and how would you guard against it?",
+   "When is a shell script the right tool and when should it become a proper Python program?",
+   "Sam still downloads the 60 files by hand. What would you need to know about the carriers before automating that step too?"
+  ]
+ },
+ "acid": {
+  "title": "Kestrel Credit Union: the transfer that took money but never delivered it",
+  "company": "Kestrel Credit Union (made up), member-owned credit union, 60,000 members, Canada",
+  "situation": "Kestrel Credit Union's internal transfer service, handling about 4,000 transfers a day, debited one account and then credited another in two separate database calls. A few times a month the service crashed between the calls, and members saw money leave one account without arriving in the other, about 11 cases in the last quarter. Each case took the operations team around two hours to investigate and repair by hand.",
+  "problem": "Each step committed on its own, so a crash left the books half-changed. A nightly script to find and repair mismatches would still leave members without their money for hours and would itself be risky to run against live balances, and client retries after timeouts were creating a second, unrelated problem: duplicate transfers.",
+  "approach": [
+   "Wrapped the debit, the credit and the transfer record in a single transaction, so either all three commit or none do.",
+   "Gave each transfer request an idempotency key stored as the primary key of the transfers table, and inserted it first with ON CONFLICT DO NOTHING, so a retried request finds the key and returns 'already done' instead of moving money twice.",
+   "Added a CHECK constraint so a balance can never go below the account's overdraft limit, which the database enforces for every client, including old batch jobs.",
+   "What went wrong first: the first version locked the two accounts in request order (from, then to). A load test with transfers going both ways between the same accounts deadlocked about once in 2,000 transfers, and PostgreSQL aborted one side. Locking both rows with SELECT ... FOR UPDATE in account id order removed the deadlocks.",
+   "Put the logic in one PL/pgSQL function so every caller gets the same rules, and the service only has to open a transaction, call it and commit.",
+   "Tested by killing the service mid-transfer 500 times in a staging environment and confirming that no partial transfers remained and that the sum of all balances never changed.",
+   "Ran a one-off reconciliation to repair the 11 historical cases, with each correction reviewed by the operations lead before it was applied."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "CREATE TABLE accounts (\n  account_id      bigint PRIMARY KEY,\n  balance         numeric(12,2) NOT NULL,\n  overdraft_limit numeric(12,2) NOT NULL DEFAULT 0,\n  CHECK (balance >= -overdraft_limit)          -- enforced for every client, not just ours\n);\nCREATE TABLE transfers (\n  idempotency_key text PRIMARY KEY,            -- a retried request cannot run twice\n  from_acct bigint NOT NULL REFERENCES accounts,\n  to_acct   bigint NOT NULL REFERENCES accounts,\n  amount    numeric(12,2) NOT NULL CHECK (amount > 0)\n);\n\nCREATE FUNCTION transfer(p_key text, p_from bigint, p_to bigint, p_amount numeric)\nRETURNS text LANGUAGE plpgsql AS $$\nBEGIN\n  INSERT INTO transfers VALUES (p_key, p_from, p_to, p_amount) ON CONFLICT DO NOTHING;\n  IF NOT FOUND THEN RETURN 'duplicate: already done'; END IF;\n  PERFORM 1 FROM accounts WHERE account_id IN (p_from, p_to)\n    ORDER BY account_id FOR UPDATE;            -- lower id first, always: no deadlocks\n  UPDATE accounts SET balance = balance - p_amount WHERE account_id = p_from;\n  UPDATE accounts SET balance = balance + p_amount WHERE account_id = p_to;\n  RETURN 'done';\nEND $$;\n\n-- The service runs:  BEGIN; SELECT transfer('tr_8f2c1a', 1042, 2213, 250.00); COMMIT;\n-- Any error before COMMIT (a crash, or the CHECK failing) rolls back all three changes."
+  },
+  "outcome": "In the six months after the change there were zero half-completed transfers, down from about 11 per quarter, which saved roughly 22 hours of repair work a quarter. Duplicate transfers from client retries, previously 2 or 3 a month, also stopped, and no deadlocks were logged in production.",
+  "lessons": [
+   "Atomicity means a group of changes succeeds or fails as one.",
+   "Constraints enforce consistency inside the database, where every client must obey them.",
+   "Lock rows in a consistent order to avoid deadlocks.",
+   "Durability only covers committed work, and idempotency keys make retries safe."
+  ],
+  "discuss": [
+   "What isolation level would you choose for this workload, and what anomaly are you guarding against?",
+   "How would you handle a transfer between two different banks where one transaction cannot cover both?",
+   "The new CHECK constraint will reject some transfers that the old code allowed. How would you roll it out without surprising members or breaking the overnight batch jobs?"
+  ]
+ },
+ "computers": {
+  "title": "Maplebrook Clinic: the report that froze every laptop at 9am",
+  "company": "Maplebrook Family Clinic (made up), outpatient healthcare, 40 staff, Canada",
+  "situation": "Priya, a junior analyst, ran a Python script each morning that built the day's appointment report from a 2 GB export. On her 8 GB laptop it took about 25 minutes, and while it ran the browser and the booking system became almost unusable. Front desk staff sharing the same machine complained daily.",
+  "problem": "The script read the whole export into RAM at once, so the laptop ran out of memory and started swapping to the SSD, which is far slower. Buying a faster CPU would not help because the CPU was mostly waiting for data, not computing.",
+  "approach": [
+   "Opened Task Manager while the script ran and saw memory at 97 percent and disk activity pinned, while the CPU sat near 20 percent.",
+   "Explained to her manager the difference between RAM (fast, short-term) and storage (slow, permanent) using the numbers she had just observed.",
+   "Changed the script to read the export in chunks of 100,000 rows and keep only the running totals in memory.",
+   "Moved the job to run at 6:30am as a scheduled task so it no longer competed with people starting their day.",
+   "Wrote a one-page note on how to check CPU, memory and disk before blaming 'the computer is slow'."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import pandas as pd\n\ntotals = {}\n# Read 100k rows at a time instead of the whole 2 GB file\nfor chunk in pd.read_csv(\"appointments_export.csv\", chunksize=100_000,\n                         usecols=[\"clinic_room\", \"status\"]):\n    counts = chunk.groupby([\"clinic_room\", \"status\"]).size()\n    for key, n in counts.items():\n        totals[key] = totals.get(key, 0) + n\n\nfor (room, status), n in sorted(totals.items()):\n    print(f\"{room:10} {status:12} {n}\")"
+  },
+  "outcome": "Peak memory use of the script dropped from about 7 GB to 350 MB and run time fell from 25 minutes to 4 minutes. Complaints about the shared laptop stopped within the first week.",
+  "lessons": [
+   "When a machine is slow, check which resource is full (CPU, RAM or disk) before changing anything.",
+   "Running out of RAM makes the computer use storage as overflow, which can slow everything by 10x or more.",
+   "Reading only the columns and rows you need is often the cheapest speedup there is."
+  ],
+  "discuss": [
+   "If the export grew to 20 GB, what would you change next?",
+   "How would you explain RAM versus storage to a non-technical clinic manager in one sentence?",
+   "The clinic asks whether they should just buy laptops with 32 GB of RAM. How would you answer, and what would you measure first?"
+  ]
+ },
+ "internet": {
+  "title": "Quillmere Veterinary: why the booking page 'went down' for one site only",
+  "company": "Quillmere Veterinary Partners (made up), vet clinics, 8 sites, New Zealand",
+  "situation": "After moving their website to a new host, staff at one clinic reported that the online booking page would not load, while every other site was fine. Around 30 bookings a day normally came through that page, and receptionists were taking them by phone instead.",
+  "problem": "The obvious reaction was to restart the web server, but it was clearly working for everyone else. The failure had to be somewhere between that clinic's computers and the server: name lookup, connection or encryption.",
+  "approach": [
+   "Walked the request path in order: DNS lookup, TCP connection, TLS handshake, then the HTTP request.",
+   "Ran nslookup on a clinic computer and found it still returned the old host's IP address, while a public resolver returned the new one.",
+   "Discovered the clinic's router was set to use a small local DNS server that had cached the old record with a very long time to live.",
+   "Flushed the local DNS cache and lowered the record's time to live to 300 seconds for future moves.",
+   "Confirmed with curl -v that the connection, certificate and HTTP 200 response were all correct from inside the clinic."
+  ],
+  "artifact": {
+   "lang": "bash",
+   "code": "# From a clinic computer\nnslookup book.northwindvets.example\n#   Address: 203.0.113.10    <- old host (stale)\n\nnslookup book.northwindvets.example 1.1.1.1\n#   Address: 198.51.100.24   <- new host (correct)\n\n# After flushing the local DNS cache\ncurl -sv https://book.northwindvets.example/ -o /dev/null 2>&1 | \\\n  grep -E \"Connected to|SSL connection|HTTP/\"\n#   Connected to book.northwindvets.example (198.51.100.24) port 443\n#   SSL connection using TLSv1.3\n#   HTTP/2 200"
+  },
+  "outcome": "The booking page worked again at that clinic within 20 minutes of starting the investigation, and online bookings returned to about 30 a day. The next website change caused no outages because of the shorter time to live.",
+  "lessons": [
+   "A web request is several steps; find which one fails instead of restarting things.",
+   "DNS answers are cached, so different computers can disagree about where a name points.",
+   "curl -v shows each step of a request and is often the fastest diagnostic tool."
+  ],
+  "discuss": [
+   "What are the trade-offs of a very short DNS time to live?",
+   "How would the symptoms differ if the problem were an expired certificate instead of stale DNS?",
+   "What would you add to the website change checklist so the next DNS change cannot cause the same outage at one site?"
+  ]
+ },
+ "dbbasics": {
+  "title": "Rivertown Food Bank: from 14 spreadsheets to one SQLite file",
+  "company": "Rivertown Community Food Bank (made up), nonprofit, 6 staff and 200 volunteers, United States",
+  "situation": "Each of 14 volunteer shift leads kept their own spreadsheet of households served, and the coordinator merged them by hand every month for funder reports. Merging took about three days and different sheets often counted the same household twice, overstating visits by around 8 percent.",
+  "problem": "Spreadsheets let anyone type anything anywhere, so the same household appeared under different spellings and no one could safely update a shared copy. A bigger shared spreadsheet would have kept the same problems with more conflict.",
+  "approach": [
+   "Designed two tables: households (one row per household with a unique id) and visits (one row per visit pointing at a household id).",
+   "Created them in SQLite, a database stored in a single file that needs no server, suitable for a small team.",
+   "Imported the old sheets with a Python script that matched households by postcode plus first name and flagged unclear matches for a person to review.",
+   "Gave shift leads a simple form that inserts a visit row instead of editing a sheet.",
+   "Wrote the monthly funder numbers as a single SQL query the coordinator could rerun."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "CREATE TABLE households (\n  household_id INTEGER PRIMARY KEY,\n  last_name    TEXT NOT NULL,\n  postcode     TEXT NOT NULL,\n  size         INTEGER CHECK (size > 0)\n);\n\nCREATE TABLE visits (\n  visit_id     INTEGER PRIMARY KEY,\n  household_id INTEGER NOT NULL REFERENCES households(household_id),\n  visit_date   TEXT NOT NULL,\n  site         TEXT NOT NULL\n);\n\n-- Monthly funder report\nSELECT site, COUNT(*) AS visits, COUNT(DISTINCT household_id) AS households\nFROM visits\nWHERE visit_date BETWEEN '2026-08-01' AND '2026-08-31'\nGROUP BY site;"
+  },
+  "outcome": "The monthly report went from three days of merging to a query that runs in under a second. Duplicate counting fell from about 8 percent to under 1 percent, and the numbers sent to funders now match on-site sign-in sheets.",
+  "lessons": [
+   "A database enforces rules (required fields, unique ids) that a spreadsheet cannot.",
+   "Give every real-world thing its own table and a unique id, then link records by that id.",
+   "SQLite is a real database and is often the right first step for a small team."
+  ],
+  "discuss": [
+   "At what point would this food bank need to move from SQLite to a server database like PostgreSQL?",
+   "What privacy rules would you apply to a table of households receiving food aid?",
+   "Volunteers used to type anything into the spreadsheet. Which constraints would you add to the households table, and how would you handle the old rows that break them?"
+  ]
+ },
+ "mlbasics": {
+  "title": "Cedar Insurance Brokers: routing customer emails with a simple classifier",
+  "company": "Cedar Lane Insurance Brokers (made up), insurance brokerage, 90 staff, United Kingdom",
+  "situation": "About 1,200 customer emails a week landed in one shared inbox and a team member spent most of each day forwarding them to claims, renewals or billing. Average time before an email reached the right person was around 6 working hours.",
+  "problem": "Keyword rules such as 'contains the word claim' misrouted many emails, because customers write 'I claim I was never billed' or mention a claim inside a renewal question. Writing more rules kept making the rule list longer without making it much better.",
+  "approach": [
+   "Pulled 6,000 past emails where the final team was already known from the forwarding history, giving labelled examples.",
+   "Split them into 80 percent training data and 20 percent test data so the model was scored on emails it had never seen.",
+   "Trained a simple text classifier (TF-IDF features and logistic regression in scikit-learn) as a baseline before considering an LLM.",
+   "Measured accuracy per team on the test set and looked at the misrouted examples to understand the model's mistakes.",
+   "Deployed it to suggest a team only when its confidence was above 0.8, leaving the rest for a person."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.metrics import classification_report\n\nX_train, X_test, y_train, y_test = train_test_split(\n    emails[\"body\"], emails[\"team\"], test_size=0.2,\n    stratify=emails[\"team\"], random_state=42)\n\nmodel = make_pipeline(TfidfVectorizer(min_df=3, ngram_range=(1, 2)),\n                      LogisticRegression(max_iter=1000))\nmodel.fit(X_train, y_train)\nprint(classification_report(y_test, model.predict(X_test)))\n\nconfident = model.predict_proba(X_test).max(axis=1) >= 0.8\nprint(f\"auto-routed share: {confident.mean():.0%}\")"
+  },
+  "outcome": "On the test set the model reached 91 percent accuracy, and about 72 percent of emails cleared the 0.8 confidence bar and were routed automatically. Average time to reach the right team fell from about 6 hours to under 2.",
+  "lessons": [
+   "Machine learning learns rules from labelled examples instead of a person writing them.",
+   "Always test on data the model did not see during training.",
+   "Start with a simple baseline model; it tells you whether something bigger is worth it.",
+   "Use confidence thresholds so a person handles the cases the model is unsure about."
+  ],
+  "discuss": [
+   "How would you notice if the model got worse six months later?",
+   "When would an LLM be a better choice than this classifier, and what would it cost?",
+   "Emails below the 0.8 confidence bar go to a person. How would you choose that threshold, and what would change if you moved it to 0.6?"
+  ]
+ },
+ "genesis": {
+  "title": "Ironvale Rail: an FDE pair turns a stalled pilot into a daily tool",
+  "company": "Ironvale Rail Freight (made up), rail freight operator, 2,300 staff, Germany",
+  "situation": "Ironvale bought a licence for a made-up analytics platform, Loomstack, to predict wagon maintenance needs. Six months in, only 4 of 60 depot planners had logged in more than once, and the renewal decision was three months away.",
+  "problem": "The product worked in demos, but no one had connected it to Ironvale's actual maintenance records or to the way planners made decisions each morning. More training sessions or a feature list would not fix a tool that did not answer the planners' real question.",
+  "approach": [
+   "Loomstack sent a pair modelled on the Echo and Delta split: a deployment strategist to own the problem and relationships, and a forward deployed engineer to build.",
+   "The pair spent the first week in two depots watching the 7am planning meeting and learned the real question was 'which 10 wagons must come off service today'.",
+   "The engineer connected the depot maintenance system and wagon sensor feed, cleaned the data and built a ranked daily list inside Loomstack.",
+   "The strategist agreed one success measure with the depot head: unplanned wagon failures per month.",
+   "They shipped a first version in three weeks, then improved it weekly from planners' feedback, and fed two missing product features back to Loomstack's core team."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Weekly note to Ironvale depot heads (week 5)\n\nGoal we agreed: fewer unplanned wagon failures per month.\nBaseline (Jan-Jun average): 41 per month across 2 pilot depots.\n\nThis week\n- Daily 'Top 10 wagons to inspect' list live in both depots at 6:45am\n- 9 of 11 planners used it on 4 or more days\n- Added brake-pad sensor data (planners asked for it on Tuesday)\n\nNext week\n- Add reason text beside each wagon so planners can challenge it\n- Decide with you whether to extend to Depot 3\n\nRisks: sensor feed drops overnight about once a week; fix in progress."
+  },
+  "outcome": "After three months, unplanned failures in the two pilot depots fell from 41 to 33 a month, and weekly active planners rose from 4 to 27 as the tool expanded to a third depot. Ironvale renewed and expanded the contract.",
+  "lessons": [
+   "The FDE role exists because software rarely solves a customer's problem without someone fitting it to their real work.",
+   "Splitting ownership of the problem (strategist) and the build (engineer) keeps both moving.",
+   "Start from the decision people make every day, and agree one measurable goal.",
+   "Feed what you learn in the field back to the core product team."
+  ],
+  "discuss": [
+   "What would you do in week one if the maintenance data turned out to be mostly missing?",
+   "How do you avoid building a one-off custom project that the product team cannot support?",
+   "Which signals in the first month would tell you that this pilot is going to stall again, even if the planners say they like the tool?"
+  ]
+ },
+ "slg": {
+  "title": "Tallgrass Analytics: deciding which accounts deserve an FDE",
+  "company": "Tallgrass Analytics (made up), B2B data software vendor, 400 staff, United States",
+  "situation": "Tallgrass sold a self-serve analytics product and had 1,500 small customers growing mostly through product-led sign-ups. Its 40 largest accounts brought 45 percent of revenue, but their net revenue retention was only 98 percent, meaning they were slowly shrinking.",
+  "problem": "Leadership wanted to add FDEs to grow large accounts, but putting an engineer on every customer would wreck gross margin. Doing nothing kept big customers under-using the product and at risk of leaving.",
+  "approach": [
+   "Built a simple model of the cost of an FDE (about 220,000 dollars a year fully loaded) against the expected expansion revenue per account.",
+   "Chose 12 accounts with the largest gap between what they paid and what they could use, based on seats, data volume and open use cases.",
+   "Assigned FDEs to those accounts for fixed 90 day engagements with a named business goal each, instead of open-ended help.",
+   "Kept the other accounts on the product-led path, with better onboarding content built from what the FDEs learned.",
+   "Tracked gross margin and net revenue retention separately for the FDE cohort and the rest each quarter."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "FDE coverage model (per account, annual)\n\nCurrent annual contract value (ACV)          $180,000\nFDE cost share (0.33 of one FDE)             $ 73,000\nExpected expansion if engaged (+35%)         $ 63,000\nExpected churn avoided (risk 15% -> 5%)      $ 18,000\n                                              --------\nYear-1 net effect                            +$  8,000\nYear-2 net effect (FDE share drops to 0.1)   +$ 59,000\n\nRule: engage when year-2 net effect > $40k and customer names\none business goal with an executive sponsor."
+  },
+  "outcome": "After a year the 12 engaged accounts reached 124 percent net revenue retention against 101 percent for comparable accounts without an FDE. Company gross margin dipped from 78 to 75 percent, which the board accepted given the growth.",
+  "lessons": [
+   "Services-led growth trades short-term margin for deeper adoption and higher retention.",
+   "Pick FDE accounts deliberately using expected expansion, not just the loudest customer.",
+   "Time-box engagements and tie each to a measurable business goal.",
+   "Track NRR and gross margin together so the trade-off stays visible."
+  ],
+  "discuss": [
+   "How would you know when to move an account from FDE support back to self-serve?",
+   "What signals would suggest services-led growth is hiding a product that is too hard to use?",
+   "How would you measure whether a specific FDE engagement paid for itself, rather than the whole program on average?"
+  ]
+ },
+ "bigo": {
+  "title": "Pinecrest Retail: an O(n squared) duplicate check that took all night",
+  "company": "Pinecrest Home Stores (made up), home goods retailer, 85 stores, United Kingdom",
+  "situation": "A nightly job flagged duplicate customer records before the loyalty email went out. When the loyalty base grew from 40,000 to 600,000 customers the job's run time jumped from 2 minutes to over 7 hours, and the morning email started going out late.",
+  "problem": "The job compared every customer with every other customer, so doubling the list quadrupled the work. A bigger server would only buy a little time because the growth itself was the problem.",
+  "approach": [
+   "Read the code and identified two nested loops over the same list, which is O(n squared): about 180 billion comparisons at 600,000 rows.",
+   "Replaced the inner loop with a dict keyed by a normalised email and postcode, making each lookup roughly constant time and the whole job O(n).",
+   "Added defensive checks that reject rows with missing or malformed emails into a separate file instead of crashing the job.",
+   "Timed the old and new versions on 10,000, 50,000 and 100,000 rows to confirm the growth pattern changed as expected.",
+   "Explained the change to the retailer's team with a simple chart of run time against number of customers."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import re\nEMAIL = re.compile(r\"^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$\")\n\ndef find_duplicates(customers):\n    \"\"\"O(n): one pass, one dict lookup per customer.\"\"\"\n    first_seen, dupes, rejected = {}, [], []\n    for c in customers:\n        email = (c.get(\"email\") or \"\").strip().lower()\n        if not EMAIL.match(email):\n            rejected.append(c)            # defensive: keep, do not crash\n            continue\n        key = (email, c.get(\"postcode\", \"\").replace(\" \", \"\").upper())\n        if key in first_seen:\n            dupes.append((first_seen[key], c[\"id\"]))\n        else:\n            first_seen[key] = c[\"id\"]\n    return dupes, rejected"
+  },
+  "outcome": "The nightly job fell from over 7 hours to 9 seconds on 600,000 customers, and the loyalty email returned to its 7am slot. About 1,900 malformed records were surfaced for cleanup instead of silently skipped.",
+  "lessons": [
+   "Nested loops over the same list are O(n squared) and blow up as data grows.",
+   "A dict or set lookup often turns O(n squared) into O(n).",
+   "Measure at a few sizes to see the growth pattern, not just one run time.",
+   "Defensive checks should set bad data aside, not crash the whole job."
+  ],
+  "discuss": [
+   "How would you catch fuzzy duplicates like 'Jon Smith' and 'John Smith' without going back to O(n squared)?",
+   "When is an O(n squared) algorithm perfectly acceptable?",
+   "The fix used a dict keyed on normalised email and postcode. Roughly how much memory does that take for 600,000 customers, and at what size would it start to matter?"
+  ]
+ },
+ "resilient": {
+  "title": "Coastline Hotels: ingesting a flaky booking API without losing reservations",
+  "company": "Coastline Hotel Group (made up), hotels, 34 properties, Spain",
+  "situation": "An FDE built a nightly job pulling reservations from the group's booking engine API into a revenue dashboard. On a typical night the job failed partway about twice a week, and the revenue team found totals off by up to 4 percent against the booking engine.",
+  "problem": "The API returned occasional 503 errors, rate limited callers to 5 requests per second and sometimes sent records with missing prices. Simply wrapping everything in a retry loop would hammer the API, and skipping bad records would lose money from the totals without anyone noticing.",
+  "approach": [
+   "Retried only temporary failures (timeouts, 429 and 5xx) with exponential backoff and jitter, and respected the Retry-After header.",
+   "Throttled calls to 4 per second to stay under the rate limit.",
+   "Validated each record with a Pydantic model and sent failures to a dead letter table with the reason and raw payload.",
+   "Saved the last successful page cursor so a failed run resumed where it stopped instead of starting over.",
+   "Wrote records with an upsert on reservation id, making reruns safe, and added a nightly count check against the API's own total."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import random, time, requests\n\nRETRYABLE = {429, 500, 502, 503, 504}\n\ndef get_page(url, params, max_tries=6):\n    for attempt in range(max_tries):\n        try:\n            r = requests.get(url, params=params, timeout=15)\n        except requests.Timeout:\n            r = None\n        if r is not None and r.status_code == 200:\n            return r.json()\n        if r is not None and r.status_code not in RETRYABLE:\n            r.raise_for_status()               # 4xx: our bug, fail loudly\n        wait = float(r.headers.get(\"Retry-After\", 0)) if r is not None else 0\n        wait = max(wait, 2 ** attempt + random.uniform(0, 1))\n        time.sleep(wait)\n    raise RuntimeError(f\"gave up after {max_tries} tries: {url}\")"
+  },
+  "outcome": "Over two months the nightly job completed every night, with a median of 3 retries per run. The dashboard now matches the booking engine to within 0.1 percent, and about 40 bad records a week land in the dead letter table where the booking team fixes them.",
+  "lessons": [
+   "Retry only errors that are temporary, and back off with jitter.",
+   "Validate every record and park failures in a dead letter table rather than dropping them.",
+   "Checkpoints and idempotent upserts make reruns safe.",
+   "Reconcile counts against the source so silent loss becomes visible."
+  ],
+  "discuss": [
+   "How would you decide the maximum number of retries before giving up?",
+   "Who should own fixing records in the dead letter table: the FDE, the customer or the vendor?",
+   "How would you tell the difference between the booking API being flaky and your own job having a bug, when both show up as failed runs?"
+  ]
+ },
+ "planner": {
+  "title": "Fernhill Energy: a 40 second customer lookup fixed by reading the plan",
+  "company": "Fernhill Energy (made up), electricity retailer, 1.2 million customers, United Kingdom",
+  "situation": "Call centre agents used an internal screen that loaded a customer's last 12 months of meter readings. After a data migration the screen took about 40 seconds to load, and average call handling time rose by almost a minute across 600 agents.",
+  "problem": "The team's first idea was to double the database server size. EXPLAIN ANALYZE showed the real cause: the query did a sequential scan over 900 million readings because the index had not been recreated after the migration, and a type mismatch would have stopped the planner using it anyway.",
+  "approach": [
+   "Captured the slow query from the application logs and ran EXPLAIN (ANALYZE, BUFFERS) on a read replica.",
+   "Saw a Seq Scan on meter_readings with 900 million rows read to return about 400.",
+   "Noticed the application passed account_id as text while the column was bigint, which prevents a normal index match, and fixed the parameter type.",
+   "Created a composite index on (account_id, read_at) with CREATE INDEX CONCURRENTLY so the table stayed writable.",
+   "Ran ANALYZE to refresh statistics, then compared the new plan and timing, and added the query to a slow-query watch list."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "-- Before: Seq Scan on meter_readings (rows=912,443,120)  actual time=39,812 ms\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT read_at, kwh\nFROM meter_readings\nWHERE account_id = $1                     -- now bound as bigint, not text\n  AND read_at >= now() - interval '12 months'\nORDER BY read_at;\n\nCREATE INDEX CONCURRENTLY idx_readings_account_time\n  ON meter_readings (account_id, read_at);\nANALYZE meter_readings;\n\n-- After: Index Scan using idx_readings_account_time\n--        (rows=417)  actual time=3.9 ms"
+  },
+  "outcome": "The screen's load time fell from about 40 seconds to under 0.2 seconds with no hardware change. Average call handling time returned to its pre-migration level within a week.",
+  "lessons": [
+   "Read the plan before buying hardware; EXPLAIN ANALYZE shows what the database actually did.",
+   "Composite index column order should match how the query filters and sorts.",
+   "Type mismatches between query parameters and columns can stop an index being used.",
+   "Stale statistics lead the planner to bad choices, so ANALYZE after big loads."
+  ],
+  "discuss": [
+   "What is the cost of adding an index to a table that receives millions of inserts per day?",
+   "How would you spot the next slow query before agents complain?",
+   "The index was lost during the migration. What would you add to the migration checklist so indexes and statistics are verified before go-live?"
+  ]
+ },
+ "normalize": {
+  "title": "Willowbank Schools: untangling a one-sheet student system",
+  "company": "Willowbank Academy Trust (made up), group of schools, 7 schools and 5,500 pupils, United Kingdom",
+  "situation": "The trust tracked enrolments in one wide table with columns for the pupil, guardian, class, teacher and each subject. When a guardian changed phone number it had to be edited on every row for every sibling, and an audit found 14 percent of guardian contact details were inconsistent between siblings.",
+  "problem": "The same fact was stored many times, so updates missed copies and deleting a class could delete the only record of a teacher. Adding validation to the wide table would not stop the duplication itself.",
+  "approach": [
+   "Listed the real-world things in the data: pupils, guardians, teachers, classes and enrolments.",
+   "Moved to first normal form by removing the repeating subject1, subject2, subject3 columns into an enrolments table.",
+   "Applied second and third normal form so each fact depends on its table's key alone, such as teacher email living only in teachers.",
+   "Added a pupil_guardians link table because one pupil can have several guardians and one guardian several pupils.",
+   "Defined primary and foreign keys so the database refuses an enrolment for a class that does not exist, then migrated and deduplicated the old data."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "CREATE TABLE guardians (\n  guardian_id  SERIAL PRIMARY KEY,\n  full_name    TEXT NOT NULL,\n  phone        TEXT NOT NULL,\n  email        TEXT UNIQUE\n);\nCREATE TABLE pupils (\n  pupil_id     SERIAL PRIMARY KEY,\n  full_name    TEXT NOT NULL,\n  school_id    INT  NOT NULL REFERENCES schools(school_id)\n);\nCREATE TABLE pupil_guardians (\n  pupil_id     INT REFERENCES pupils(pupil_id),\n  guardian_id  INT REFERENCES guardians(guardian_id),\n  relationship TEXT,\n  PRIMARY KEY (pupil_id, guardian_id)\n);\nCREATE TABLE enrolments (\n  pupil_id     INT REFERENCES pupils(pupil_id),\n  class_id     INT REFERENCES classes(class_id),\n  PRIMARY KEY (pupil_id, class_id)\n);"
+  },
+  "outcome": "Guardian contact inconsistencies fell from 14 percent to under 1 percent after migration, since each phone number is now stored once. A phone change is one update instead of an average of 2.3.",
+  "lessons": [
+   "If the same fact is stored in many places, some copies will eventually be wrong.",
+   "Many-to-many relationships need their own link table.",
+   "Foreign keys let the database reject data that points at nothing.",
+   "Normalize for correctness first; add reporting views or tables later if reads get slow."
+  ],
+  "discuss": [
+   "When is it reasonable to denormalize on purpose, for example in a reporting warehouse?",
+   "How would you handle two guardian records that might be the same person with different spellings?",
+   "After normalising, some reports need five joins. How would you keep them fast and simple for the office staff who write them?"
+  ]
+ },
+ "etl": {
+  "title": "Harvest Lane Grocers: one trusted sales table instead of five versions",
+  "company": "Harvest Lane Grocers (made up), grocery chain, 60 stores, United States",
+  "situation": "Five teams built their own weekly sales numbers from the point of sale system, the e-commerce platform and a loyalty app, and they disagreed by up to 6 percent. Meetings spent the first 20 minutes arguing about whose number was right.",
+  "problem": "Each team extracted and cleaned data differently, with different rules for refunds, time zones and store closures. Asking everyone to agree on one spreadsheet would not fix a process that had to repeat every day.",
+  "approach": [
+   "Used an ELT pattern: loaded raw data from all three sources into the warehouse unchanged, into a raw schema.",
+   "Wrote transformations in SQL managed with dbt, building staging models that cleaned types and time zones, then one fact_sales table.",
+   "Wrote down the business rules with the finance lead, such as refunds reduce sales on the refund date and all times are in store local time.",
+   "Made the load incremental and idempotent, reprocessing the last 3 days each night to catch late-arriving records.",
+   "Added dbt tests for unique order lines, non-null store ids and a daily reconciliation against the point of sale total."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "# models/marts/fact_sales.yml (dbt)\nversion: 2\nmodels:\n  - name: fact_sales\n    description: \"One row per order line from POS, web and app, in store local time. Refunds are negative lines on the refund date.\"\n    config:\n      materialized: incremental\n      unique_key: order_line_id\n    columns:\n      - name: order_line_id\n        tests: [unique, not_null]\n      - name: store_id\n        tests:\n          - not_null\n          - relationships: {to: ref('dim_store'), field: store_id}\n      - name: net_amount\n        tests: [not_null]\n    tests:\n      - dbt_utils.expression_is_true:\n          expression: \"abs(net_amount) < 10000\""
+  },
+  "outcome": "Within two months all five teams reported from fact_sales, and the gap between reported numbers fell from up to 6 percent to zero by construction. The nightly pipeline finishes by 5am and has flagged 3 source data problems before anyone saw them on a dashboard.",
+  "lessons": [
+   "A pipeline is valuable because it repeats the same rules every day, not just once.",
+   "ELT keeps the raw data, so you can rebuild the clean tables when rules change.",
+   "Write business rules down and agree them with the people who own the numbers.",
+   "Tests and reconciliations catch bad data before it reaches a dashboard."
+  ],
+  "discuss": [
+   "When would you choose ETL, cleaning before loading, over ELT?",
+   "How far back should an incremental pipeline reprocess, and what does that choice cost?",
+   "A new store opens with a different point of sale vendor. What would you add so it joins fact_sales without breaking the tests or the numbers teams already trust?"
+  ]
+ },
+ "fastapi": {
+  "title": "Alderpoint Insurance: wrapping a claims triage model in a FastAPI service",
+  "company": "Alderpoint Mutual (made up), home insurance, 900 staff, Ireland",
+  "situation": "The data team had a model that predicted whether a new home insurance claim needed a senior adjuster, but it ran only in a notebook. Claims handlers copied details into an email to the data team and waited about a day for an answer on roughly 250 claims a week.",
+  "problem": "The claims system needed to call the model directly with each new claim. Sharing the notebook or a script would not give the claims system a stable, validated interface, and bad input such as negative amounts had previously caused silent nonsense predictions.",
+  "approach": [
+   "Built a FastAPI app with a POST /triage endpoint that takes a claim and returns a routing decision.",
+   "Defined the request and response with Pydantic models, including rules such as amount greater than zero and a fixed list of claim types, so bad input gets a clear 422 error.",
+   "Loaded the model once at startup rather than on every request to keep responses fast.",
+   "Added a /health endpoint for the load balancer and logged each request id, decision and latency.",
+   "Wrote tests with FastAPI's TestClient and shared the auto-generated /docs page with the claims system's developers."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from typing import Literal\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel, Field\nimport joblib\n\napp = FastAPI(title=\"Claims triage\")\nmodel = joblib.load(\"triage_model.joblib\")        # loaded once at startup\n\nclass Claim(BaseModel):\n    claim_id: str\n    claim_type: Literal[\"water\", \"fire\", \"theft\", \"storm\", \"other\"]\n    amount_eur: float = Field(gt=0, le=2_000_000)\n    days_since_policy_start: int = Field(ge=0)\n\nclass Decision(BaseModel):\n    claim_id: str\n    route: Literal[\"senior\", \"standard\"]\n    score: float\n\n@app.post(\"/triage\", response_model=Decision)\ndef triage(claim: Claim) -> Decision:\n    x = [[claim.amount_eur, claim.days_since_policy_start, claim.claim_type == \"theft\"]]\n    score = float(model.predict_proba(x)[0][1])\n    return Decision(claim_id=claim.claim_id, route=\"senior\" if score >= 0.6 else \"standard\", score=score)"
+  },
+  "outcome": "Triage decisions now arrive in about 80 milliseconds instead of about a day. In the first month the API rejected 37 malformed requests with clear errors that previously would have produced silent wrong predictions.",
+  "lessons": [
+   "An API turns a notebook model into something other systems can use.",
+   "Pydantic models are the contract: validate input at the door and return clear errors.",
+   "Load expensive resources like models once, not per request.",
+   "The automatic /docs page shortens integration work with other teams."
+  ],
+  "discuss": [
+   "How would you roll out a new model version without breaking the claims system?",
+   "What should the API return if the model file fails to load at startup?",
+   "After a claims system outage, a backlog of 2,000 claims arrives in a few minutes. What would you change in the service or its deployment to cope?"
+  ]
+ },
+ "linux": {
+  "title": "Korvessa Freight: the AI dispatch assistant that went silent on go-live morning",
+  "company": "Korvessa Freight (made up), road logistics, about 900 staff, Poland",
+  "situation": "An FDE had deployed a dispatch Q&A assistant onto a Linux VM inside Korvessa's own data center. On go-live morning, 60 dispatchers opened the web page and every question returned 'Service unavailable'. The only access was an SSH session through a jump host, with a customer sysadmin watching the shared screen.",
+  "problem": "The service was dead, and nobody knew whether the cause was the app, the server or the network. Redeploying from scratch, the obvious move, would have taken two hours and would probably have hit the same hidden fault again.",
+  "approach": [
+   "SSHed in through the jump host and ran systemctl status dispatch-qa, which showed the service in a restart loop, failing about every 10 seconds.",
+   "Read the last errors with journalctl -u dispatch-qa -n 50 and saw 'PermissionError: /var/lib/dispatch-qa/cache.db'.",
+   "Used ls -l to find the cache file owned by root after a manual test run the night before, while the service runs as the dispatchqa user, and fixed ownership with chown.",
+   "Once the service started, ran curl against the local /health endpoint and then against the model API through the corporate proxy, which returned a timeout.",
+   "Found the proxy settings missing from the service's environment file in /etc/dispatch-qa/env, added HTTPS_PROXY there, and restarted with systemctl.",
+   "Wrote a five-command runbook for the customer's sysadmins covering status, logs, disk space, ownership and the curl checks."
+  ],
+  "artifact": {
+   "lang": "bash",
+   "code": "# Dispatch Q&A triage runbook (run as a sudo-capable user)\nsystemctl status dispatch-qa --no-pager          # running or restart loop?\njournalctl -u dispatch-qa -n 50 --no-pager        # last 50 log lines\ndf -h /var                                        # disk full stops services too\nls -l /var/lib/dispatch-qa/                       # files must belong to dispatchqa\nsudo chown -R dispatchqa:dispatchqa /var/lib/dispatch-qa\n\n# Can the service answer, and can it reach the model API?\ncurl -s -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/health\nsudo -u dispatchqa env $(cat /etc/dispatch-qa/env | xargs) \\\n  curl -s -o /dev/null -w '%{http_code} %{time_total}s\\n' https://api.model-provider.example/v1/health\n\nsudo systemctl restart dispatch-qa && journalctl -u dispatch-qa -f"
+  },
+  "outcome": "The assistant was back 38 minutes after the first report, against a two-hour estimate for a full redeploy. In the following month the customer's sysadmins resolved two further incidents (a full disk and an expired proxy password) with the runbook, each in under 15 minutes, without calling the FDE.",
+  "lessons": [
+   "Work in a fixed order: is it running, what did it log, can it reach what it needs.",
+   "Many 'the app is broken' incidents are really file ownership, disk space or network settings.",
+   "A service's environment is not your shell's environment; test connectivity as the service user with the service's settings.",
+   "Leave behind a runbook so the customer can fix the next incident themselves."
+  ],
+  "discuss": [
+   "How would you prevent a manual test run from leaving root-owned files next time?",
+   "What would you check first if curl to the model API worked from your shell but not from the service?",
+   "What would a short runbook for the customer's sysadmins contain so they can handle the next outage without you?"
+  ]
+ },
+ "frontend": {
+  "title": "Pellandine Mutual: turning a notebook into a claims triage screen in three days",
+  "company": "Pellandine Mutual (made up), home and motor insurer, about 1,400 staff, Ireland",
+  "situation": "An FDE team had built a model that reads a new motor claim and suggests a priority and a short summary. Results lived in a Jupyter notebook, and when the head of claims saw it she said 'my handlers will never use this'. A steering meeting in three days would decide whether the pilot went ahead with 25 handlers.",
+  "problem": "Handlers needed to paste or pick a claim, see the suggestion and correct it, in a screen that felt like a tool rather than code. A full React app with login and a design system would take weeks, and the first rough draft called the model API straight from browser JavaScript with the API key in the page source.",
+  "approach": [
+   "Sketched one screen on paper with two handlers: claim text on the left, suggested priority and summary on the right, and 'Accept' and 'Change' buttons.",
+   "Built it as plain HTML with a flexbox two-column layout and a small script, so it loaded fast on the handlers' locked-down browsers.",
+   "Moved the API key out of the page into a small FastAPI endpoint, so the browser called /triage on the FDE's server and only the server held the secret.",
+   "Used fetch with a loading state and a clear error message, so a slow model call showed 'Working...' instead of a frozen page.",
+   "Logged every Accept or Change click to the server, giving the team a first measure of how often handlers agreed with the model.",
+   "Ran a 20-minute hallway test with three handlers and fixed the two things they tripped on: font size and the order of the buttons."
+  ],
+  "artifact": {
+   "lang": "JavaScript",
+   "code": "// app.js: calls our own backend, never the model provider directly\nconst btn = document.querySelector('#triage');\nconst out = document.querySelector('#result');\n\nbtn.addEventListener('click', async () => {\n  const text = document.querySelector('#claim').value.trim();\n  if (!text) { out.textContent = 'Paste a claim first.'; return; }\n  btn.disabled = true;\n  out.textContent = 'Working...';\n  try {\n    const res = await fetch('/triage', {\n      method: 'POST',\n      headers: { 'Content-Type': 'application/json' },\n      body: JSON.stringify({ claim_text: text })\n    });\n    if (!res.ok) throw new Error('Server returned ' + res.status);\n    const data = await res.json();\n    out.innerHTML = '';\n    out.append(`Priority: ${data.priority}\\n${data.summary}`);\n  } catch (err) {\n    out.textContent = 'Could not triage this claim. Try again or triage manually.';\n  } finally {\n    btn.disabled = false;\n  }\n});"
+  },
+  "outcome": "The steering group approved the pilot after using the screen live in the meeting. Over the first two weeks, 25 handlers triaged 1,900 claims through it and accepted the suggested priority 81 percent of the time, and the average time to first triage fell from about 11 minutes to about 4.",
+  "lessons": [
+   "A simple, working screen on the customer's real task persuades more than any notebook or slide.",
+   "Never put an API key in front-end code; anything the browser can see, anyone can see.",
+   "Loading and error states are part of the demo; a frozen button looks like a broken product.",
+   "Log what users do on the screen so the demo also produces evidence."
+  ],
+  "discuss": [
+   "At what point would you move this from plain HTML to React or a framework, and why?",
+   "Why does the snippet use append with a string rather than setting innerHTML to the model's output?",
+   "Handlers will paste claim text that may contain personal data. What would you check before letting the screen send it to the model API?"
+  ]
+ },
+ "sysdesign": {
+  "title": "Hallowgate Engineering: sizing a policy assistant for the Monday morning rush",
+  "company": "Hallowgate Engineering (made up), industrial engineering services, about 5,000 employees, Germany",
+  "situation": "A pilot HR policy assistant ran on one VM with the app, a vector index and a SQLite log side by side, and worked well for 150 pilot users. The customer planned to open it to all 5,000 employees on the Monday after a new travel policy was announced. The CIO asked the FDE directly: 'Will it hold, and what happens if your AI provider goes down?'",
+  "problem": "Load tests on the single VM showed errors above about 8 requests per second, and the expected Monday peak was around 25. Buying a bigger VM would raise the ceiling a little but would keep a single point of failure and still block on slow model calls.",
+  "approach": [
+   "Estimated load on the whiteboard: 5,000 users, about 40 percent active in the first hour, 3 questions each, bunched into 20 minutes, giving roughly 25 requests per second at peak.",
+   "Split the design into stateless FastAPI app servers behind a load balancer with a /health check, and moved chat sessions into Redis so any server could answer any request.",
+   "Moved logs and feedback from SQLite into a managed PostgreSQL database with one read replica for the HR reporting dashboard.",
+   "Added a Redis cache keyed on the normalized question and policy version, since discovery showed many people ask the same few questions after an announcement.",
+   "Put a timeout and one retry with backoff on model calls, plus a fallback message linking to the policy page if the provider was down, so failures degraded instead of crashing.",
+   "Presented the design on one page with the numbers and the trade-offs, including what was deliberately left out (multi-region failover)."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "CAPACITY SKETCH - policy assistant, launch Monday\nUsers                5,000\nActive first hour    40%  -> 2,000 people\nQuestions each       3    -> 6,000 requests\nBunched into         20 min (1,200 s) -> 5 req/s average\nPeak factor          5x   -> ~25 req/s peak\n\nPer app server       ~10 req/s (model call ~2.5 s, 32 workers)\nServers needed       3 for peak + 1 spare = 4 behind the load balancer\nCache hit estimate   40% on repeated questions -> ~15 req/s reach the model\nProvider limit       60 req/s on current plan -> headroom OK\n\nFailure plan\n- App server dies    LB health check removes it in < 10 s\n- Redis dies         sessions lost, users re-ask; answers still work\n- Model API down     timeout 20 s, 1 retry, then fallback message + policy link"
+  },
+  "outcome": "On launch Monday the system handled a measured peak of 22 requests per second with a p95 response time of 4.1 seconds and an error rate under 0.5 percent. The cache answered 37 percent of questions, which cut the model bill for the week by about a third compared with the estimate without caching.",
+  "lessons": [
+   "Start with a back-of-envelope load estimate; it turns 'will it hold?' into numbers you can defend.",
+   "Stateless app servers plus shared state in Redis and a database let you add servers without surprises.",
+   "Plan what happens when each part fails, especially the external AI provider.",
+   "Say out loud what you chose not to build and why."
+  ],
+  "discuss": [
+   "What would change if the assistant had to answer from documents that differ by country and user permissions?",
+   "When would you add a queue to this design, and what user experience would it create?",
+   "The cache answers 37 percent of questions. How would you stop it from serving an answer after the underlying policy document changes?"
+  ]
+ },
+ "warehouse": {
+  "title": "Quorrin Market: why the AI forecast and finance never agreed on revenue",
+  "company": "Quorrin Market (made up), supermarket chain, 120 stores, Australia",
+  "situation": "An FDE was deploying a demand forecasting model that wrote weekly predictions per store and category. In the first review, the model's 'actual revenue' for last quarter was 3.8 percent higher than the finance dashboard, and the CFO stopped the meeting to ask which number was wrong. Category managers for 14 departments were waiting to use the forecasts for ordering.",
+  "problem": "The model's training data had been pulled straight from the point-of-sale database with a hand-written query, while finance used the warehouse's dbt models, which removed refunds and staff discounts and mapped stores to their current regions. Patching the forecast query to 'look like' finance would have created a second, silently diverging definition of revenue.",
+  "approach": [
+   "Read the customer's dbt project and lineage graph to find the model finance used: fct_sales joined to dim_store, dim_product and dim_date in a star schema.",
+   "Reconciled one store for one week line by line and found the gap: refunds and staff discounts kept in the raw query, plus 2 stores moved between regions.",
+   "Pointed the forecast pipeline at fct_sales instead of the POS database, so the model and finance shared one definition of revenue.",
+   "Added a new dbt model, fct_forecast, at the same grain (store, category, week) with foreign keys to the same dimensions, so forecasts and actuals could be joined in one query.",
+   "Added dbt tests for not-null keys, unique grain and relationships to the dimensions, and a custom test that fails if weekly totals drift more than 0.5 percent from finance's revenue.",
+   "Documented the new model in the dbt project so it appeared in the lineage graph next to the finance models."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "-- models/marts/fct_forecast_vs_actual.sql\n{{ config(materialized='table') }}\n\nselect\n    f.store_key,\n    f.category_key,\n    f.week_key,\n    f.predicted_revenue,\n    coalesce(sum(s.net_revenue), 0) as actual_revenue,\n    f.predicted_revenue - coalesce(sum(s.net_revenue), 0) as error\nfrom {{ ref('fct_forecast') }} f\nleft join {{ ref('fct_sales') }} s\n    on  s.store_key    = f.store_key\n    and s.category_key = f.category_key\n    and s.week_key     = f.week_key\ngroup by 1, 2, 3, 4"
+  },
+  "outcome": "After the switch, the model's actual revenue matched the finance dashboard to within 0.1 percent for every week of the quarter. Forecast error measured against the trusted actuals was 6.2 percent at store and category level, and the CFO approved use by all 14 category teams.",
+  "lessons": [
+   "Build on the customer's trusted warehouse models instead of re-deriving business numbers from raw tables.",
+   "Match the grain and reuse the same dimensions so new AI outputs join cleanly to existing facts.",
+   "dbt tests turn 'the numbers look right' into checks that run every night.",
+   "When two numbers disagree, reconcile one small slice by hand before changing any code."
+  ],
+  "discuss": [
+   "Who should own fct_forecast after the FDE leaves, the data team or the forecasting team?",
+   "How would you handle a store that changes region mid-quarter when comparing forecasts over time?",
+   "The forecasting team needs a field that the finance dbt models do not have yet. How would you add it without creating a second version of revenue?"
+  ]
+ },
+ "dsa": {
+  "title": "Zelvora Payments: the duplicate-merchant script that would have run for a week",
+  "company": "Zelvora Payments (made up), payment processing, about 300 staff, Netherlands",
+  "situation": "Before loading merchant records into a new AI risk-scoring tool, an FDE had to find likely duplicates among 1.2 million merchants from three onboarding systems. A customer analyst's script compared every merchant with every other one and had handled a 5,000-row sample in 12 seconds. On the full table it was projected to take more than a week.",
+  "problem": "The script was O(n squared): 1.2 million records means about 720 billion pairs. A bigger machine or parallel workers would divide that by 8 or 16, but still leave a day or more of runtime and no room to rerun after fixing a rule.",
+  "approach": [
+   "Estimated the cost out loud from the sample: 5,000 rows is 12.5 million pairs in 12 seconds, about a million pairs a second, so 720 billion pairs is roughly 720,000 seconds, or 8 days, on one core.",
+   "Replaced the pairwise loop with a hash map keyed on a normalized form of each merchant: VAT number where present, otherwise cleaned name plus postcode.",
+   "Grouped records by key in one O(n) pass, so only records sharing a key were compared in detail.",
+   "For near-miss names, used blocking: bucket by postcode, then compare names only within each bucket, which kept the expensive comparisons small.",
+   "Used a heap to keep the 200 largest duplicate groups for manual review by the operations team.",
+   "Tested the new script on the 5,000-row sample and confirmed it found the same duplicate pairs as the original."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import re, heapq\nfrom collections import defaultdict\n\ndef norm_key(m: dict) -> str:\n    if m.get(\"vat\"):\n        return \"VAT:\" + m[\"vat\"].replace(\" \", \"\").upper()\n    name = re.sub(r\"\\b(b\\.?v\\.?|ltd|gmbh)\\b|[^a-z0-9]\", \"\", m[\"name\"].lower())\n    return f\"NP:{name}:{m['postcode'].replace(' ', '').upper()}\"\n\ndef duplicate_groups(merchants: list[dict]) -> dict[str, list[str]]:\n    groups = defaultdict(list)           # one pass, O(n)\n    for m in merchants:\n        groups[norm_key(m)].append(m[\"id\"])\n    return {k: ids for k, ids in groups.items() if len(ids) > 1}\n\ndef biggest(groups: dict, k: int = 200):\n    return heapq.nlargest(k, groups.items(), key=lambda kv: len(kv[1]))"
+  },
+  "outcome": "The full 1.2 million records ran in 3 minutes 40 seconds instead of a projected 8 days. It found about 41,000 duplicate groups; the operations team confirmed 96 percent of a 300-group random sample as real duplicates, and the risk tool launched with a clean merchant table a week earlier than planned.",
+  "lessons": [
+   "Always check how an approach grows before running it on the customer's full data.",
+   "When you see a loop inside a loop searching for matches, ask whether a dict keyed on the right value removes the inner loop.",
+   "Blocking (only comparing within small buckets) makes fuzzy matching affordable.",
+   "Keep the slow, obviously correct version as a test for the fast one."
+  ],
+  "discuss": [
+   "What duplicates would the normalized key miss, and how would you find them without going back to O(n squared)?",
+   "If the table grew to 50 million rows, what would you change?",
+   "How would you test the normalized-key approach so the operations team trusts that it does not merge merchants that are genuinely different?"
+  ]
+ },
+ "discovery": {
+  "title": "Marrowline Water: the 'chatbot' request that turned out to be a search problem",
+  "company": "Marrowline Water (made up), regional water utility, about 1,100 staff, United States",
+  "situation": "Marrowline's customer service director asked for 'an AI chatbot on our website' to cut call volume. The contact center of 45 agents handled about 1,300 calls a day, with an average handling time of 7.5 minutes and a backlog that peaked after every billing run.",
+  "problem": "Nobody had checked why customers were calling or where the time went. Building the chatbot straight away risked a polished tool that answered questions customers were not asking, while agents kept struggling with the real bottleneck.",
+  "approach": [
+   "Wrote an interview guide with one goal (find where call time goes and why) and open, past-behavior questions such as 'walk me through the last call that took more than 10 minutes'.",
+   "Interviewed 6 agents, 2 team leads and the billing supervisor for 45 minutes each, asking 'why' until answers reached something concrete.",
+   "Shadowed four agents for a morning and timed each call step, noting every screen they opened.",
+   "Tagged 400 recent call notes by reason and found that 38 percent were about estimated bills and meter readings, and that on those calls agents spent about half the time searching three old knowledge bases and a shared drive.",
+   "Wrote a one-paragraph problem statement with the baseline and a success measure, and got the director and two team leads to agree to it in writing.",
+   "Proposed starting with an agent-facing answer search over the knowledge bases, with the public chatbot as a later phase once answers were trusted."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "PROBLEM STATEMENT (agreed 14 March, v2)\n\nWho:      Contact center agents (45) handling billing calls.\nProblem:  On estimated-bill and meter-reading calls (38% of volume),\n          agents spend about half of each call searching three old\n          knowledge bases and a shared drive for the right procedure.\nCost:     ~500 calls/day x ~4 min searching = ~33 agent-hours/day.\nEvidence: 10 interviews, 4 shadowing sessions, 400 tagged call notes.\nNot now:  Public website chatbot (revisit after phase 1).\nSuccess:  Average handling time on these calls from 8.8 to under\n          6.5 min within 8 weeks, with no rise in repeat calls."
+  },
+  "outcome": "The agent answer search went live after five weeks. After eight weeks, average handling time on estimated-bill calls fell from 8.8 to 6.1 minutes and repeat calls stayed flat, freeing roughly 22 agent-hours a day; the director then funded the public chatbot using the same, now trusted, answer base.",
+  "lessons": [
+   "Treat the customer's requested solution as a clue, not a spec; find the pain first.",
+   "Ask about the last real time something happened, then watch people work; stories and timings beat opinions.",
+   "End discovery with a written problem statement that has a baseline number and a success measure.",
+   "A narrower first phase that fixes the real bottleneck often makes the original request succeed later."
+  ],
+  "discuss": [
+   "How would you handle the director if they insisted on the public chatbot first?",
+   "What would you do if agents and team leads described the problem very differently?",
+   "What would you measure in the first two weeks after launch to confirm the search tool is solving the problem you found in discovery?"
+  ]
+ },
+ "docs": {
+  "title": "Talwyn Cooperative Bank: the SOW that promised 'all product documents'",
+  "company": "Talwyn Cooperative Bank (made up), retail bank, about 2,200 staff and 60 branches, Wales",
+  "situation": "Talwyn signed a 10-week engagement for an assistant that helps branch staff answer product questions. Three weeks in, the branch operations manager expected mortgage, savings and insurance documents, the FDE team had only planned for savings and current accounts, and the bank's security architect had not yet seen how customer data would flow.",
+  "problem": "The SOW said the assistant would cover 'the bank's product documentation', which each side read differently, and there was no PRD or design doc to settle it. Simply agreeing to add everything would have broken the timeline and pulled in regulated insurance material that needed a separate compliance review.",
+  "approach": [
+   "Wrote a two-page PRD with the branch operations manager: the problem, the users (branch staff, not customers), the 3 product families in scope, and success as 'correct, cited answers on 85 percent of a 200-question test set'.",
+   "Worked with the account lead and bank procurement on a short SOW change note listing the exact document sets, the acceptance test and what was out of scope, including insurance products.",
+   "Wrote a design doc covering architecture, data flow, where documents and logs are stored, access control through the bank's existing single sign-on, and a no-customer-data rule for phase 1.",
+   "Sent the design doc to the security architect for a review meeting in week 4 instead of week 9.",
+   "Started a decision log and recorded each choice, starting with 'Insurance products moved to phase 2 because they need compliance review'."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "DECISION LOG - Branch product assistant\n\n#  Date    Decision                                Why                                Who\n1  03 Jun  Scope = current accounts, savings,      Matches 10-week SOW; mortgages     Ops mgr,\n           mortgages (3 families, 410 docs)        are 30% of branch questions        FDE lead\n2  03 Jun  Insurance products -> phase 2           Needs separate compliance review   Compliance\n3  05 Jun  Acceptance = 85% correct + cited on     Measurable, agreed test set        Ops mgr\n           200-question set built by branch staff\n4  10 Jun  No customer data in phase 1             Keeps DPIA simple; staff ask       Security\n                                                   product questions, not account ones\n5  12 Jun  Use bank SSO, groups = branch roles     Reuses existing access control     IT, FDE"
+  },
+  "outcome": "Security approved the design in week 5 with two small changes, instead of the usual late review. The assistant passed acceptance in week 10 at 88 percent correct and cited answers, and there was no dispute at sign-off; insurance products became a paid phase 2.",
+  "lessons": [
+   "The SOW, PRD and design doc answer different questions for different readers; you usually need all three.",
+   "Vague scope words like 'all' or 'documentation' become arguments later; list the exact items and the acceptance test.",
+   "Send the design doc to security early, when changes are still cheap.",
+   "A decision log turns 'who agreed to that?' into a one-line lookup."
+  ],
+  "discuss": [
+   "Who should be allowed to add entries to the decision log, and should the customer sign off each one?",
+   "How would you raise the SOW ambiguity without making the account lead or the customer feel blamed?",
+   "Which parts of the design doc would you keep up to date after launch, and which would you let freeze as a record of what was decided?"
+  ]
+ },
+ "demo": {
+  "title": "Ambervane Health Cover: a demo that survived the conference-room Wi-Fi",
+  "company": "Ambervane Health Cover (made up), health insurer, about 1,600 staff, Canada",
+  "situation": "After a four-week pilot of an assistant that summarizes pre-authorization requests, the FDE had 30 minutes with the VP of operations, the medical director and the CFO to win approval for a rollout to 90 reviewers. The previous vendor's demo had been a 25-screen feature tour that ended with the CFO asking 'so what does this save us?'.",
+  "problem": "The assistant had many features (summaries, policy lookups, draft letters, a dashboard), and the temptation was to show them all. The live demo also depended on the customer's guest Wi-Fi and a model API, either of which could fail in the room.",
+  "approach": [
+   "Built the story around one reviewer from discovery, called Dana in the demo, and one real type of request: an MRI pre-authorization, using a de-identified case approved by privacy.",
+   "Opened with the before: a 40-second screen recording of Dana moving through five screens, and the measured baseline of 17 minutes per request.",
+   "Showed the after live on the same case: the summary, the matching policy clause with a citation, and a draft decision letter, reaching the key moment within the first 8 minutes.",
+   "Prepared a fallback: a recorded run of the same case and screenshots, plus a phone hotspot, and rehearsed switching to them calmly.",
+   "Closed with pilot numbers, an honest note on two cases where the summary missed a detail, and one clear ask: approve a 90-reviewer rollout starting next month."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "DEMO RUN SHEET - Pre-auth assistant, 30 min\n\n00-03  Why we are here: Dana, pre-auth reviewer, 22 requests a day\n03-05  Before: 40 s recording, 5 screens, 17 min per request (timed)\n05-13  Live: MRI request -> summary -> policy clause -> draft letter\n       IF live step fails: say 'let me switch to the recording\n       from this morning', play clip 2, continue at 13:00\n13-18  After: pilot results, 4 weeks, 11 reviewers, 1,240 requests\n18-22  Honest limits: 2 missed details, how the reviewer catches them\n22-27  Questions\n27-30  The ask: approve rollout to 90 reviewers from 1 November\n\nKit: laptop + hotspot, clip 2 on desktop, screenshots in slide backup"
+  },
+  "outcome": "The Wi-Fi dropped in minute 9, and the FDE switched to the recording in about 20 seconds without losing the thread. The rollout was approved in the meeting based on pilot results of 17 down to 7 minutes per request, and the CFO asked for the run sheet to reuse in the board update.",
+  "lessons": [
+   "Tell one named user's story with one workflow; skip features that do not serve it.",
+   "Show the painful before with a real number, then the same task after.",
+   "Assume the live step can fail and rehearse the switch to a backup.",
+   "End with a specific ask, and mention the limits yourself before someone else does."
+  ],
+  "discuss": [
+   "How would you change this demo for an audience of reviewers instead of executives?",
+   "Is it ever right to show only a recording and no live demo?",
+   "The pilot numbers were 17 minutes down to 7. How would you present them so a sceptical finance director trusts them?"
+  ]
+ },
+ "builddrill": {
+  "title": "Meera's 90-minute build: shipping a thin slice instead of a half-built LLM pipeline",
+  "company": "Meera (made up), data engineer with 6 years' experience, interviewing for an FDE role at Lumquist (made up), a 400-person AI software company, Singapore",
+  "situation": "Meera received a live 90-minute build prompt: build a small service that takes a support ticket and returns a category and a confidence, using a provided CSV of 2,000 labeled tickets. In a practice run the week before, she had spent 70 minutes wiring up an LLM call and a vector store and ended with nothing that ran and no tests.",
+  "problem": "The prompt invited an ambitious AI solution, but reviewers score clarifying questions, a working core path, tests and honest trade-offs. Trying the fancy approach first risked the same result as the practice run: impressive plans and no working service.",
+  "approach": [
+   "Spent the first 10 minutes reading and asking three clarifying questions: expected volume, whether an LLM API key was allowed, and whether a simple baseline counted.",
+   "Wrote a time plan in the README: scaffold by minute 25, core path by 55, tests by 70, README and cuts by 85.",
+   "Built the core path with FastAPI and a Pydantic request model, using a keyword and TF-IDF baseline trained on the CSV, so an end-to-end request worked by minute 50.",
+   "Wrote tests for the happy path, an empty ticket (422) and a ticket with no known words (returns 'other' with low confidence).",
+   "At minute 70, decided not to add the LLM call and wrote the trade-off in the README instead: how she would add it behind the same interface and evaluate it against the baseline's 79 percent accuracy.",
+   "Used the last 10 minutes to run everything from a clean terminal and walk the interviewer through the design and the cuts."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "# tests/test_triage.py\nfrom fastapi.testclient import TestClient\nfrom app.main import app\n\nclient = TestClient(app)\n\ndef test_billing_ticket_is_classified():\n    r = client.post(\"/triage\", json={\"text\": \"I was charged twice for my invoice\"})\n    assert r.status_code == 200\n    body = r.json()\n    assert body[\"category\"] == \"billing\"\n    assert 0.0 <= body[\"confidence\"] <= 1.0\n\ndef test_empty_ticket_is_rejected():\n    r = client.post(\"/triage\", json={\"text\": \"\"})\n    assert r.status_code == 422\n\ndef test_unknown_words_fall_back_to_other():\n    r = client.post(\"/triage\", json={\"text\": \"zxqv plorth\"})\n    assert r.json()[\"category\"] == \"other\"\n    assert r.json()[\"confidence\"] < 0.5"
+  },
+  "outcome": "Meera finished with a running service, 3 passing tests and a README listing two cuts and how she would address them, with 4 minutes to spare. The interviewer's feedback noted her clarifying questions and her decision at minute 70 as strengths, and she advanced to the final round.",
+  "lessons": [
+   "Clarify first; three good questions in the first 10 minutes save half an hour later.",
+   "A simple baseline that works end to end beats an ambitious pipeline that does not run.",
+   "Cut scope, not tests or the README, and write down what you cut and why.",
+   "Check the clock at planned points so you notice a rabbit hole early."
+  ],
+  "discuss": [
+   "If the interviewer said 'we really want to see an LLM used', how would you change the plan?",
+   "What is the smallest set of tests that still shows good judgment in 90 minutes?",
+   "With 20 minutes left, one test fails and the README is unwritten. Which do you fix first, and how do you explain the choice to the interviewer?"
+  ]
+ },
+ "career": {
+  "title": "Arjun's resume rewrite: from 'responsible for pipelines' to FDE interviews",
+  "company": "Arjun (made up), senior data engineer with 8 years' experience at Dravelle Analytics (made up), a 250-person analytics consultancy, India",
+  "situation": "Arjun applied to 30 FDE and solutions engineering roles over two months and got 1 recruiter call. His resume listed duties such as 'responsible for ETL pipelines on Spark' and 'worked with clients on data requirements', and in the one interview he answered 'tell me about a difficult customer' with a vague, five-minute story.",
+  "problem": "He had the right experience, including client workshops and a deployment at a customer site, but his materials hid it. Sending the same resume to more companies would not change the response rate, because recruiters scanning for FDE signals (shipping, customers, measurable impact) did not see them in the first seconds.",
+  "approach": [
+   "Listed his last four years of projects and, for each, wrote what he built, for whom, and a number he could defend, checking figures against old status reports rather than memory.",
+   "Rewrote each bullet as verb, what was built, and result, and moved customer-facing work (discovery workshops, an on-site go-live, user training) to the top of each role.",
+   "Built a story bank of 10 STAR stories mapped to common FDE questions: ambiguous requirements, a failed deployment, a pushback from a customer, a fast build under pressure.",
+   "Practiced each story out loud to a 2-minute limit, recording himself and cutting background until the Action and Result took most of the time.",
+   "Replaced mass applications with a target list of 15 companies, a tailored summary line for each, and messages to 8 former colleagues working at or near them."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "BEFORE\n- Responsible for ETL pipelines on Spark for retail clients.\n- Worked with clients on data requirements.\n\nAFTER\n- Built a Spark and Airflow pipeline that consolidated sales data from\n  140 stores for a retail client, cutting the weekly reporting delay\n  from 4 days to 6 hours.\n- Ran 12 discovery workshops with a logistics client's operations team\n  and turned them into a scoped backlog; the first release was adopted\n  by 3 regional hubs within 6 weeks.\n- Led an on-site go-live for a demand dashboard, fixing 2 data quality\n  issues with the client's IT team during launch week.\n\nSTORY BANK INDEX (10 stories)\n1 Ambiguous ask -> workshops -> backlog   (discovery)\n2 Go-live data issue on site              (debugging under pressure)\n3 Client pushed back on timeline          (negotiation, trade-offs)"
+  },
+  "outcome": "From the next 15 targeted applications and 8 referral messages, Arjun got 6 first-round interviews, compared with 1 from the previous 30 applications. He reached 2 final rounds and accepted an FDE offer after negotiating a 12 percent higher base salary than the first number offered.",
+  "lessons": [
+   "Bullets should show what changed because of you, with numbers you can explain in detail.",
+   "Put customer-facing and shipping work where a recruiter sees it first.",
+   "Prepare and rehearse STAR stories before interviews; a two-minute specific story beats a long general one.",
+   "A short targeted list with referrals usually outperforms a long list of cold applications."
+  ],
+  "discuss": [
+   "Which of your own projects would make the strongest FDE story, and what number would you attach to it?",
+   "How would you describe impact honestly when you do not have exact numbers?",
+   "How would you prepare for the moment an interviewer asks you to go one level deeper on a bullet point on your resume?"
+  ]
+ },
+ "apistyles": {
+  "title": "Tremholt Freight: replacing a minute-by-minute poll with carrier webhooks",
+  "company": "Tremholt Freight (made up), freight forwarder, 650 staff, Germany",
+  "situation": "Tremholt's customer portal showed shipment status by polling three partner carriers' REST APIs every minute for about 5,000 open shipments. The busiest carrier started returning 429 errors most afternoons, and customer service logged around 120 calls a week from customers whose portal status was hours out of date.",
+  "problem": "Polling faster or buying a higher API tier would raise cost and still waste over 95 percent of calls on shipments that had not changed. Two of the three carriers offered signed webhooks, but Tremholt had never run a public endpoint and worried about fake or duplicate events.",
+  "approach": [
+   "Read each carrier's OpenAPI spec and webhook documentation, listing event types, payload fields and the signature scheme (HMAC SHA-256 over the raw body).",
+   "Built a small FastAPI receiver that verifies the signature, rejects bad calls with 401, stores the raw event, puts it on a queue and returns 200 within about 50 ms.",
+   "Made processing idempotent by keying on the carrier's event id, so retries and duplicates changed nothing, and ignored events older than the latest status already stored.",
+   "Kept polling only for the third carrier and slowed it to every 10 minutes, and added an hourly reconciliation poll for any shipment with no update in 24 hours.",
+   "Wrapped Tremholt's own status data in a versioned /v1 REST API with an OpenAPI spec, so the portal and two large customers' systems read from one contract."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "@app.post(\"/webhooks/{carrier}\")\nasync def receive(carrier: str, request: Request):\n    raw = await request.body()\n    secret = SECRETS[carrier]                         # one secret per carrier\n    expected = hmac.new(secret, raw, hashlib.sha256).hexdigest()\n    if not hmac.compare_digest(request.headers.get(\"X-Signature\", \"\"), expected):\n        raise HTTPException(status_code=401)\n    event = json.loads(raw)\n    inserted = db.execute(\n        \"INSERT INTO carrier_events (carrier, event_id, body) VALUES (%s, %s, %s) \"\n        \"ON CONFLICT (carrier, event_id) DO NOTHING\",\n        (carrier, event[\"id\"], raw.decode()),\n    ).rowcount\n    if inserted:\n        queue.send({\"carrier\": carrier, \"event_id\": event[\"id\"]})\n    return {\"ok\": True}                               # fast 200 so they stop retrying"
+  },
+  "outcome": "Calls to the two webhook carriers fell from about 430,000 a day to about 9,000 events plus the hourly reconciliation, and the 429 errors stopped. Median delay between a carrier scan and the portal update went from 11 minutes to under 1 minute, and 'status is out of date' calls dropped from about 120 to about 35 a week.",
+  "lessons": [
+   "Webhooks give fresher data with far fewer calls, but only with signature checks, fast replies and idempotent handling.",
+   "Keep a slow reconciliation poll as a safety net for events missed during outages.",
+   "Publishing your own API with an OpenAPI spec and a version number lets several consumers share one contract."
+  ],
+  "discuss": [
+   "What would you do if a carrier's webhook endpoint went silent for three hours without any errors?",
+   "When would you choose to keep polling even though webhooks are available?",
+   "The third carrier only offers polling. How would you design the system so adding its webhooks later changes as little code as possible?"
+  ]
+ },
+ "nosql": {
+  "title": "Quellora Home: talking a retailer out of a full database migration",
+  "company": "Quellora Home (made up), online furniture retailer, 220 staff, Portugal",
+  "situation": "Quellora's leadership asked the FDE team to move everything from Postgres to MongoDB because product pages were slow and a new AI 'find similar items' feature was planned. Product pages had a median load time of 1.8 seconds, and the catalog held 38,000 products with very different attributes per category.",
+  "problem": "A full migration would take months and break finance's SQL reports, which join orders, payments and refunds. The slowness had not been measured, so there was no evidence that a different database would fix it.",
+  "approach": [
+   "Listed the eight most important reads and writes with volumes, including product page loads (about 60 per second at peak), checkout transactions and monthly finance reports.",
+   "Profiled the product page and found it ran 14 queries against an attribute table with one row per attribute, so a single product needed dozens of rows joined back together.",
+   "Moved variable attributes into a JSONB column with a GIN index, so each product page reads one row, while orders and payments stayed relational with their transactions and joins.",
+   "Moved user sessions and carts from Postgres to Redis with a 30-minute expiry, removing about 40 percent of write traffic from the main database.",
+   "Added pgvector to the products table for 'similar items', storing one embedding per product and filtering by in-stock status in the same SQL query.",
+   "Wrote a one-page decision table for leadership showing each access pattern, the chosen store and why MongoDB was not needed now."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "ACCESS PATTERN                  VOLUME        STORE              WHY\nProduct page by id              60/s peak     Postgres + JSONB   one row, flexible attrs\nFilter by attribute             10/s          Postgres GIN index JSON containment queries\nCheckout (order + payment)      2/s           Postgres           needs a transaction\nSessions and carts              300/s         Redis, TTL 30 min  key lookups, short-lived\nSimilar items                   15/s          pgvector (HNSW)    filter by stock in SQL\nFinance monthly reports         monthly       Postgres replica   joins, ad hoc SQL\n\nSystem of record: Postgres. Redis data can be lost without harm.\nRevisit MongoDB only if catalog writes exceed what one Postgres primary handles."
+  },
+  "outcome": "Median product page load fell from 1.8 seconds to 0.4 seconds and database CPU at peak dropped from about 75 percent to 40 percent. The similar-items feature shipped in five weeks on pgvector, and finance reports kept working with no migration project.",
+  "lessons": [
+   "Measure the slow path before choosing a new database; the cause is often a query or schema problem.",
+   "Postgres with JSONB and pgvector covers many document and vector needs with one system to run.",
+   "Use specialized stores such as Redis for data whose access pattern clearly fits, and keep one system of record."
+  ],
+  "discuss": [
+   "What evidence would make you recommend a move to a document database after all?",
+   "How would you explain to a non-technical executive why their preferred database was not chosen?",
+   "If the product catalogue grew to 50 million items with very different attributes per category, which parts would you reconsider, and why?"
+  ]
+ },
+ "streaming": {
+  "title": "Varnbrook Mutual: moving card fraud checks from nightly batch to streaming",
+  "company": "Varnbrook Mutual (made up), building society with card accounts, 1,900 staff, United Kingdom",
+  "situation": "Varnbrook ran its fraud rules as a nightly batch job over the day's card transactions. Fraud was often spotted 12 to 30 hours after the first bad payment, by which time a compromised card had typically made several more purchases. Losses from card fraud averaged about 38,000 pounds a month.",
+  "problem": "Running the batch every hour would still leave a gap of up to an hour and would hammer the core banking database with repeated scans. The core system was vendor software, so its code could not be changed to publish events.",
+  "approach": [
+   "Agreed with the DBA to enable logical replication on the transactions database and create a dedicated replication user, then deployed Debezium to stream inserts from two tables into Kafka.",
+   "Created the topic with 12 partitions keyed by card id, so every transaction for one card stays in order in one partition.",
+   "Wrote the fraud scorer as a consumer group of four instances, keeping per-card state for a 10-minute window: count of payments, distinct merchant countries and total amount.",
+   "Used at-least-once delivery with offsets committed after processing, and wrote alerts with an upsert keyed by transaction id so reprocessing could never create duplicate alerts.",
+   "Added dashboards and alerts for consumer lag and for the database's retained replication log size, with a runbook for a stuck connector.",
+   "Kept the nightly batch running in parallel for four weeks and compared its alerts to the streaming alerts before switching the batch off."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "WINDOW = timedelta(minutes=10)\nrecent = defaultdict(deque)          # card_id -> deque of (time, amount, country)\n\ndef score(tx):\n    q = recent[tx[\"card_id\"]]\n    now = tx[\"ts\"]\n    q.append((now, tx[\"amount\"], tx[\"country\"]))\n    while q and now - q[0][0] > WINDOW:  # drop events outside the window\n        q.popleft()\n    countries = {c for _, _, c in q}\n    total = sum(a for _, a, _ in q)\n    if len(q) >= 6 or len(countries) >= 3 or total > 3000:\n        upsert_alert(tx[\"tx_id\"], reason=f\"{len(q)} tx, {len(countries)} countries\")\n\nwhile True:\n    msg = consumer.poll(1.0)\n    if msg is None or msg.error():\n        continue\n    score(parse_debezium(msg.value()))\n    consumer.commit(message=msg)       # commit after the alert is safely written"
+  },
+  "outcome": "Median time from first suspicious payment to alert fell from about 18 hours to 40 seconds. Over the first three months card fraud losses averaged about 24,000 pounds a month, roughly 37 percent lower, and the core database showed no measurable extra load.",
+  "lessons": [
+   "Log-based CDC gets events out of systems you cannot modify, without polling their tables.",
+   "Choose the partition key for the ordering you need; here all events for one card must stay in order.",
+   "At-least-once with idempotent writes is a practical, robust default for writing to outside systems.",
+   "Run the old batch in parallel before switching, so you can prove the new pipeline is complete."
+  ],
+  "discuss": [
+   "In-memory state is lost if a consumer restarts. How would you rebuild or persist the 10-minute window?",
+   "Which fraud checks would you still leave in a nightly batch, and why?",
+   "On a busy sale day one consumer falls 20 minutes behind. What does that mean for fraud detection, and what would you do about it?"
+  ]
+ },
+ "cicd": {
+  "title": "Olvenmark Health Analytics: from SSH deploys to a gated pipeline",
+  "company": "Olvenmark Health Analytics (made up), hospital analytics software vendor, 90 staff, Sweden",
+  "situation": "Olvenmark's FDE team maintained a patient-flow prediction service for three hospital regions. Deploys meant SSH-ing into a server and running git pull and a restart, about once a week. In one quarter two deploys broke production, one for 3 hours, and a regional hospital's IT security team paused further releases until changes were controlled.",
+  "problem": "Asking engineers to 'be more careful' would not satisfy the hospital's change control, which required evidence of testing, scanning and a named approver for each release. Deploying less often would make each release bigger and riskier.",
+  "approach": [
+   "Added a GitHub Actions workflow that runs ruff, unit tests and integration tests against a Postgres service container on every pull request, and required it to pass before merging.",
+   "Added dependency scanning with pip-audit and image scanning with Trivy, failing the build on critical vulnerabilities.",
+   "Built the Docker image once on merge to main, tagged it with the commit SHA and deployed that same image to staging automatically.",
+   "Created a production environment in GitHub with two required reviewers from the hospital-facing team and switched cloud access to short-lived OIDC credentials, removing stored keys.",
+   "Put a new model version behind a feature flag, enabled first for one hospital's two wards, so model changes could be turned off in seconds.",
+   "Wrote and rehearsed a rollback script that redeploys the previous image tag and runs a health check."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "RELEASE RECORD (generated from the pipeline run)\nRelease:        2026-04-14  image app:3f9c2e1\nPull requests:  #412 bed-occupancy fix, #415 new feature flag ward_model_v2\nChecks:         lint pass, unit 184/184, integration 22/22\nScans:          pip-audit 0 known vulns, trivy 0 critical\nStaging:        deployed 10:42, smoke test pass\nApproved by:    reviewer A, reviewer B at 13:05\nProduction:     deployed 13:07, health check pass\nFlags changed:  ward_model_v2 on for region-2 wards 4B, 5A\nRollback plan:  ./rollback.sh production 8a41d07  (tested 2026-04-10)"
+  },
+  "outcome": "The hospital security team approved the process and releases resumed within three weeks. Over the next two quarters the team went from weekly to about four releases a week with no multi-hour outages; the one bad release was rolled back in 6 minutes.",
+  "lessons": [
+   "A pipeline with tests, scans and approvals is often what earns permission to deploy in regulated customers.",
+   "Build once, tag with the commit SHA and promote the same image through each environment.",
+   "Feature flags and a rehearsed rollback make frequent releases safer than rare big ones."
+  ],
+  "discuss": [
+   "The hospital wants every release approved, but you need to ship an urgent fix at 2 a.m. How would you design for that?",
+   "How would you handle a database migration in this pipeline so rollback still works?",
+   "How would you show the hospital's auditors, a year from now, exactly what was deployed on a given date and who approved it?"
+  ]
+ },
+ "integration": {
+  "title": "Corvastro Pumps: feeding a demand forecast from SAP, EDI and SFTP",
+  "company": "Corvastro Pumps (made up), industrial pump manufacturer, 2,300 staff, Italy",
+  "situation": "Corvastro wanted an AI demand forecast to cut stockouts of spare parts, which caused about 9 percent of service orders to be delayed. The data it needed sat in an older SAP ECC system, EDI orders from 35 distributors, Salesforce service cases and a nightly inventory file from a third-party warehouse.",
+  "problem": "Corvastro's IT roadmap promised a modern API platform in 18 months, and the pilot had 12 weeks. Direct access to SAP's production database was not allowed, and one early script using a manager's Salesforce login broke when the manager changed his password.",
+  "approach": [
+   "Mapped each source with its method, freshness, owner and contact, and agreed a single internal data model for parts, orders and stock.",
+   "Extended Corvastro's existing MuleSoft flow, owned by IT, to export SAP sales orders and material master data to a staging schema every 30 minutes, instead of building a new SAP connection.",
+   "Took distributor purchase orders already parsed by Corvastro's EDI translator from its output tables, and mapped distributor part codes to Corvastro part numbers with a maintained lookup table.",
+   "Built an SFTP pickup job for the warehouse inventory file that waits for a .done marker, checks the trailer row count and records file checksums to skip repeats.",
+   "Replaced the personal Salesforce login with a service account limited to reading Cases and Assets, stored its credentials in the customer's vault, and used backoff on 429 responses.",
+   "Added monitoring for late files, failed loads and daily API quota use, with alerts to both the FDE team and the owning Corvastro team."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "sources:\n  sap_sales_orders:\n    method: mulesoft_flow        # owned by Corvastro IT\n    freshness: 30m\n    owner: erp-team@corvastro.example\n  distributor_orders:\n    method: edi_translator_tables  # X12 850 / EDIFACT ORDERS, pre-parsed\n    freshness: 15m\n    part_code_map: ref/distributor_part_map.csv\n  warehouse_inventory:\n    method: sftp\n    path: /outbound/inventory_{yyyymmdd}.csv\n    ready_marker: .done\n    expected_by: \"04:00 Europe/Rome\"\n    checks: [trailer_row_count, sha256_dedupe]\n  salesforce_cases:\n    method: rest_api\n    account: svc_forecast_reader   # read-only: Case, Asset\n    daily_call_budget: 5000\n    on_429: exponential_backoff_with_jitter"
+  },
+  "outcome": "All four sources were loading reliably by week 6, with late-file alerts firing twice in the pilot and both resolved the same morning. In the pilot product line, delayed service orders due to stockouts fell from about 9 percent to about 6 percent over the following quarter.",
+  "lessons": [
+   "Work with the integration tools and teams the customer already has; extending their iPaaS flow was faster and easier to hand over.",
+   "File drops need agreed completion signals, checksums and late-file alerts to be reliable.",
+   "Integrations must run as service accounts with least privilege, never as a person.",
+   "Mapping every source to an owner and freshness target up front prevents surprises later."
+  ],
+  "discuss": [
+   "SAP ECC is being replaced by S/4HANA in two years. How would you design the integration so the switch costs little?",
+   "A distributor starts sending EDI orders with a new part code format without warning. How should the pipeline react?",
+   "Who at Corvastro should be alerted when a file is late, and how would you avoid the alerts being ignored after a few weeks?"
+  ]
+ },
+ "bi": {
+  "title": "Tallowfen Physio: one definition of an active patient",
+  "company": "Tallowfen Physio (made up), physiotherapy clinic chain, 40 clinics and 600 staff, Canada",
+  "situation": "Tallowfen had deployed an AI scheduling assistant and needed to show whether it improved clinic utilization. The company had 14 Power BI dashboards, and three of them reported 'active patients' as 11,200, 13,900 and 16,400 for the same month. Leadership meetings spent more time arguing about numbers than acting on them.",
+  "problem": "Building yet another dashboard for the AI pilot would add a fourth number. The disagreement came from different definitions in each report's SQL, not from the tool, so the fix had to happen in the data model and the metric definitions.",
+  "approach": [
+   "Collected the SQL behind each 'active patient' figure and found three definitions: any booking in 90 days, any attended visit in 90 days, and any record not marked discharged.",
+   "Ran a 45-minute session with the clinical operations director and finance, who agreed: a patient with at least one attended visit in the last 60 days, excluding cancelled and no-show visits.",
+   "Built modeled tables in the warehouse, fct_visits and a daily summary agg_clinic_daily, and encoded active patients and utilization once in the Power BI data model with written descriptions.",
+   "Designed one pilot dashboard with four KPI tiles (utilization, active patients, no-show rate, AI-booked share), a 16-week trend, a bar chart by clinic and a detail table, and showed the refresh time.",
+   "Reconciled the headline visit count against the billing system for two months before launch, and repointed the three existing dashboards to the shared definitions."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "-- Agreed definition, signed off by clinical ops and finance\n-- Active patient: >= 1 attended visit in the 60 days up to the report date\nWITH attended AS (\n    SELECT patient_id, clinic_id, visit_date\n    FROM fct_visits\n    WHERE status = 'attended'              -- excludes cancelled, no_show\n)\nSELECT d.report_date,\n       count(DISTINCT a.patient_id) AS active_patients\nFROM dim_date d\nJOIN attended a\n  ON a.visit_date >  d.report_date - 60\n AND a.visit_date <= d.report_date\nWHERE d.is_month_end                    -- one row per month\n  AND d.report_date >= current_date - interval '12 months'\nGROUP BY d.report_date\nORDER BY d.report_date;"
+  },
+  "outcome": "All dashboards now show one active patient figure, 12,650 for the reference month, and the pilot dashboard loads in about 2 seconds instead of 40. Over 16 weeks, pilot clinics' utilization rose from 71 to 77 percent against 72 to 73 percent in comparison clinics, a result leadership accepted without dispute.",
+  "lessons": [
+   "Conflicting numbers are usually conflicting definitions; fix them with the business owners before touching charts.",
+   "Define each metric once, in a metrics layer or shared model, and point every dashboard at it.",
+   "A dashboard that proves AI impact needs a baseline and a comparison group, not just a current value."
+  ],
+  "discuss": [
+   "Clinical operations and finance cannot agree on a definition. How would you move forward?",
+   "Which of the four KPI tiles would you remove if the dashboard had room for only three, and why?",
+   "A clinic manager exports the dashboard to Excel and adds their own filters, producing a different number again. How would you respond?"
+  ]
+ },
+ "dimred": {
+  "title": "Veldmark Mutual: a ticket map that almost created five fake customer segments",
+  "company": "Veldmark Mutual (made up), home and motor insurer, about 1,200 staff, Netherlands",
+  "situation": "Veldmark's customer-service team had embedded 180,000 support tickets with a text embedding model (1,536 numbers each) and a consultant had shown the board a UMAP map with five colourful blobs. The board wanted five new service teams, one per blob, and asked the FDE to 'productionise the segments'. Ticket routing was manual and took a median of 9 hours.",
+  "problem": "Nobody had checked whether the five blobs were real groups or an artefact of the map settings, and the blob sizes on the slide were being read as team sizes. Building five teams from the picture could lock in a structure that did not match the tickets.",
+  "approach": [
+   "Reran UMAP with three n_neighbors values and three seeds; the map showed between four and eight blobs, and their relative sizes changed each time.",
+   "Reduced the embeddings with PCA to 50 components (keeping 82 percent of the variance) to make later steps fast and stable, fitting PCA on a training sample only.",
+   "Ran k-means clustering on the 50 PCA components for k from 3 to 12 and compared silhouette scores and stability across resamples (see clustering); seven groups were the most stable.",
+   "Read 30 tickets from each group with two senior agents, who named six clear topics and one mixed group of 'other'.",
+   "Used the map only as a navigation aid in the review tool, with a caption explaining what it can and cannot show.",
+   "Trained a simple classifier on the PCA components to route new tickets to the six named topics, with low-confidence tickets going to a general queue."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "How to read the ticket map (caption shown on the dashboard)\n\nEach dot is one support ticket. Tickets about similar things sit near each other.\n\nYou CAN use this map to:\n- browse examples of a topic and find tickets that look misfiled\n- see whether a new batch of tickets lands in familiar areas\n\nYou CANNOT use this map to:\n- count topics (the number of blobs changes with settings)\n- compare topic sizes (blob size is not ticket volume)\n- compare how different two topics are (gaps are not distances)\n\nTopic counts and sizes come from the routing report, not from this picture.\nQuestions: analytics team, #ticket-routing"
+  },
+  "outcome": "The board approved six topic queues instead of five new teams, re-using existing staff. Median time to the right queue fell from 9 hours to under 2, and misrouted tickets, measured by reassignment, dropped from 21 percent to 12 percent over the first two months.",
+  "lessons": [
+   "A t-SNE or UMAP map is a way to ask questions, never evidence for how many groups exist or how big they are.",
+   "PCA to a few dozen components is a sensible, fast step before clustering or classifying large embeddings.",
+   "Human reading of samples from each group is what turns clusters into names people trust.",
+   "Put the reading rules next to the picture, because the picture will be screenshotted and forwarded."
+  ],
+  "discuss": [
+   "How would you explain to a board member, in two sentences, why the blob sizes on the slide were misleading?",
+   "What would you monitor to notice that new ticket types are appearing that fit none of the six topics?",
+   "If the six topic queues turn out to be uneven, with one getting half of all tickets, would you split it, and what evidence would you use?"
+  ]
+ },
+ "anomaly": {
+  "title": "Orvella Payments: from 900 daily fraud alerts to 60 that analysts trust",
+  "company": "Orvella Payments (made up), card payments processor for about 3,000 small merchants, Portugal",
+  "situation": "Orvella's in-house rule engine raised about 900 fraud alerts a day for a team of four analysts who could review roughly 60. Analysts had started bulk-closing alerts, and confirmed fraud losses were about 38,000 euros a month. There were only 140 confirmed fraud cases in the last year.",
+  "problem": "Every rule used a fixed global threshold (any payment over 3 standard deviations of all merchants' amounts), which flagged big but normal merchants all day and missed small merchants being abused at night. With so few labels, a supervised fraud model was not yet realistic.",
+  "approach": [
+   "Sorted the known cases with the fraud lead into point (single huge refunds), contextual (odd hour or country for that merchant) and collective (bursts of tiny card-testing payments) patterns.",
+   "Replaced global thresholds with per-merchant robust baselines: median and IQR of amount by merchant and hour of day, scoring each payment's deviation from its own context.",
+   "Added an isolation forest over eight features (amount versus merchant median, hour, card age, country mismatch, payments per card in 10 minutes and so on) and blended its score with the robust scores.",
+   "Set the alert count from the review budget: the top 60 scores per day, with collective bursts grouped into one alert per card.",
+   "Built a simple review form so every alert got a label and a reason, and sampled 20 unflagged payments a week to estimate misses.",
+   "Reported precision at 60 and estimated recall weekly to the fraud lead, and after three months used the new labels to train a gradient boosting classifier on top of the anomaly scores."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "# Orvella alerting config (in-house format), agreed with the fraud team\nalert_budget:\n  per_day: 60               # what four analysts can review properly\n  rank_by: blended_score    # 0.5 isolation forest + 0.5 robust context score\nrobust_context:\n  baseline: median_iqr\n  group_by: [merchant_id, hour_of_day]\n  lookback_days: 56\n  min_history_payments: 200 # fall back to merchant-category baseline below this\ncollective:\n  window_minutes: 10\n  max_payments_per_card: 8\n  group_into_one_alert: true\nreview:\n  require_label: true       # fraud / not fraud / unsure\n  random_unflagged_sample_per_week: 20\nreporting:\n  metrics: [precision_at_budget, estimated_recall, alerts_per_day]"
+  },
+  "outcome": "Alerts fell from about 900 a day to 60, and precision at 60 settled around 28 percent, compared with under 2 percent before. Confirmed fraud losses dropped to about 24,000 euros a month over the next quarter, and analysts stopped bulk-closing alerts.",
+  "lessons": [
+   "Set the threshold from the review budget, then measure precision at that budget.",
+   "Context matters: compare each merchant with itself at that hour, not with every merchant at once.",
+   "Labels from reviewed alerts are the path from unsupervised scores to a supervised model.",
+   "Sample unflagged cases, or you will never learn what the system misses."
+  ],
+  "discuss": [
+   "How would you explain a blended anomaly score to a merchant whose payment was held?",
+   "What would you do if precision at 60 suddenly doubled one week? Is that good news?",
+   "A large merchant runs a flash sale and all its payments suddenly score as anomalies. How would you keep them from flooding the queue without missing fraud hidden inside the sale?"
+  ]
+ },
+ "timeseries": {
+  "title": "Brindlecroft Bakeries: cutting bread waste with a forecast that beat 'last Saturday'",
+  "company": "Brindlecroft Bakeries (made up), chain of 38 bakery shops, about 400 staff, Ireland",
+  "situation": "Each shop manager ordered next week's bake by copying the same weekday from last week and adding a bit 'to be safe'. About 14 percent of baked goods were thrown away, and popular items still sold out by early afternoon on Saturdays. Head office asked for 'an AI demand forecast'.",
+  "problem": "A vendor demo had shown a neural network with '4 percent MAPE', but it had been tested on a random shuffle of days, excluded zero-sales items and was scored on the chain total, not per shop and item. Nobody knew whether it beat what managers already did.",
+  "approach": [
+   "Defined the job with operations: a forecast per shop and product for each day of next week, made on Sunday evening, so the horizon is 1 to 7 days and only data up to Sunday may be used.",
+   "Rebuilt the managers' method as a seasonal-naive baseline and scored it with WAPE per shop and product, since MAPE was infinite on the many zero-sales days for slow items.",
+   "Set up a rolling backtest over 12 weekly folds covering Christmas and a bank holiday, training only on data before each Sunday.",
+   "Compared Holt-Winters per series with one gradient boosting model across all shops and products, using lags of 7 days or more, rolling means, day of week, school holidays and a weather forecast feature.",
+   "Found that boosting beat seasonal naive clearly on busy items and not on slow ones, so used boosting for the top 60 products and seasonal naive for the rest.",
+   "Sent the forecast to managers as a suggested order they could edit, and logged their edits to learn where the model was missing local knowledge."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Backtest summary, 12 weekly folds (forecast made Sunday for Mon-Sun)\nLevel: shop x product x day. Metric: WAPE (lower is better)\n\nMethod                      Top 60 items   Other items   All\nSeasonal naive (current)       24.1%          41.8%      27.9%\nHolt-Winters per series        21.7%          43.5%      26.4%\nBoosting, lags >= 7 days       17.9%          42.9%      23.3%\nHybrid (boost top 60, sn rest) 17.9%          41.8%      22.8%\n\nNotes\n- Folds 3 and 4 include Christmas; all methods miss badly there.\n- Vendor '4% MAPE' used shuffled days and chain totals; not comparable.\n- Recommend: hybrid, with manager edits logged and reviewed monthly."
+  },
+  "outcome": "Over the first 10 weeks after launch, waste fell from about 14 percent to about 10 percent of baked goods, and Saturday sell-outs before 2pm fell by roughly a third. The hybrid's live WAPE stayed within 1.5 points of its backtest score.",
+  "lessons": [
+   "Rebuild what people already do as a baseline; that is the bar the customer actually cares about.",
+   "Fix the horizon and the level first, then backtest on time-ordered folds that include hard periods.",
+   "Pick metrics that survive zeros; WAPE told the truth where MAPE could not.",
+   "Using different methods for different parts of the catalogue is fine if the backtest supports it."
+  ],
+  "discuss": [
+   "How would you respond if the vendor insisted their 4 percent MAPE proved their model was better?",
+   "Manager edits improve the order but also change what gets sold. How could that bias future training data?",
+   "A new shop opens with no sales history. How would you forecast its orders for the first eight weeks?"
+  ]
+ },
+ "recsys": {
+  "title": "Fennick Outdoor: proving a recommender earns its place on the product page",
+  "company": "Fennick Outdoor (made up), online outdoor gear retailer, about 180 staff and 12,000 products, Canada",
+  "situation": "Fennick's product pages showed 'Customers also viewed', filled by a hand-maintained list for the top 500 products and bestsellers everywhere else. About 4.1 percent of sessions that viewed a product page added a recommended item to the cart. The ecommerce director wanted 'AI recommendations' before the spring season.",
+  "problem": "The team had no ratings, only views, add-to-carts and purchases, and 30 percent of the catalogue changed each season, so many products had no history. A prototype matrix factorization model looked impressive in a demo, but nobody had compared it with the existing bestseller logic.",
+  "approach": [
+   "Rebuilt the current behaviour as a baseline: recent bestsellers within the product's category, filtered for items already in the cart or out of stock.",
+   "Built item-based collaborative filtering from co-purchases and add-to-carts, weighting purchases 3 times a view, and never treating unviewed items as negatives.",
+   "Added content-based candidates from product text embeddings for items under 45 days old, so new-season gear could appear on day one.",
+   "Evaluated offline on a time split (train to 1 February, test on the next four weeks) with precision@10, recall@10, NDCG@10 and catalogue coverage.",
+   "Designed a four-week A/B test with 50 percent of product-page traffic, add-to-cart rate from recommendations as the primary metric, and return rate and page load time as guardrails."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "A/B test plan: product-page recommendations\n\nHypothesis: hybrid CF + content recommendations raise add-to-cart\n            from the widget versus category bestsellers.\nUnits:      visitors (sticky assignment by visitor id)\nSplit:      50% control (bestsellers) / 50% treatment (hybrid)\nPrimary:    add-to-cart rate from the widget per product-page session\nGuardrails: return rate of widget-added items; p95 page load time\nMin run:    4 full weeks (covers weekly cycle and a payday)\nSample:     about 300,000 sessions per arm to detect +0.4 points\nShip if:    primary improves and is significant at 95%, guardrails\n            not worse by more than 0.5 points / 50 ms\nNo peeking: decision only at the end of week 4"
+  },
+  "outcome": "Offline, the hybrid beat the baseline on NDCG@10 (0.21 versus 0.15) and tripled catalogue coverage. In the A/B test, add-to-cart from the widget rose from 4.1 to 4.8 percent with no change in returns or page speed, and the hybrid was rolled out to all traffic.",
+  "lessons": [
+   "Rebuild what the site already does as the baseline, and beat it offline before any A/B test.",
+   "With implicit feedback, weight strong signals more and never treat unseen items as dislikes.",
+   "Plan cold start from day one when the catalogue changes every season.",
+   "Offline metrics pick candidates; an A/B test with guardrails decides what ships."
+  ],
+  "discuss": [
+   "Why might a model with higher NDCG offline still lose the A/B test?",
+   "How would you stop the recommender from only ever showing already-popular products?",
+   "The A/B test ran for four weeks in autumn. Why might the result not hold in the summer season, and how would you check?"
+  ]
+ }
+}

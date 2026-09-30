@@ -1,0 +1,230 @@
+{
+ "cxagents": [
+  {
+   "q": "In a customer-service agent, where should a rule like 'refunds over 150 need human approval' be enforced?",
+   "options": [
+    "Only in the system prompt, in capital letters",
+    "In the refund tool's code, with the prompt explaining it",
+    "In a weekly report reviewed by the care lead",
+    "In the customer's survey after the chat"
+   ],
+   "answer": 1,
+   "why": "A prompt can be talked around; the tool code runs every time. The prompt still explains the rule so the agent sets the right expectation."
+  },
+  {
+   "q": "What is the difference between containment rate and resolution rate?",
+   "options": [
+    "They are two names for the same number",
+    "Containment is about speed, resolution is about cost",
+    "Containment means no human joined; resolution means the problem was actually solved",
+    "Resolution counts only chats a human handled"
+   ],
+   "answer": 2,
+   "why": "A customer who gives up counts as contained but not resolved. That is why resolution is often measured as no recontact within 7 days."
+  },
+  {
+   "q": "A customer writes that a kettle burned their hand. What should the agent do?",
+   "options": [
+    "Offer a refund right away to calm them",
+    "Quote the product safety page and close the chat",
+    "Ask them to try the kettle again to confirm",
+    "Hand off to a human with a summary, as injury is an escalation trigger"
+   ],
+   "answer": 3,
+   "why": "Injury, legal and fraud mentions need a trained person. The handoff should carry the summary and order details so the customer does not repeat the story."
+  },
+  {
+   "q": "You are about to launch a new agent version to a retailer's customers. What comes first?",
+   "options": [
+    "Run the simulated conversation suite, then shadow mode",
+    "Switch 100 percent of traffic over on a quiet Sunday",
+    "Send a customer survey asking if they want an AI agent",
+    "Turn off the human queue to force adoption"
+   ],
+   "answer": 0,
+   "why": "The suite catches regressions offline, and shadow mode measures quality on real traffic with no customer risk, before a small percentage rollout."
+  },
+  {
+   "q": "Spot the mistake: 'Our agent hits 80 percent containment, so it is resolving 80 percent of customer problems.'",
+   "options": [
+    "Containment should be reported as a cost, not a percentage",
+    "Containment includes customers who gave up; resolution must be measured separately",
+    "80 percent containment is impossible for any agent",
+    "Containment only counts phone calls"
+   ],
+   "answer": 1,
+   "why": "Abandoned chats count as contained. Check resolution of contained conversations, recontact and CSAT before claiming success."
+  }
+ ],
+ "expansion": [
+  {
+   "q": "After go-live, who usually owns the customer relationship and the renewal conversation?",
+   "options": [
+    "The FDE who built the system",
+    "The customer's IT owner",
+    "The customer success manager",
+    "The support team"
+   ],
+   "answer": 2,
+   "why": "The CSM owns adoption, health and renewal. The FDE supplies technical health, value numbers and next use case feasibility."
+  },
+  {
+   "q": "What does 'value realised' mean in a success plan?",
+   "options": [
+    "The benefit the customer has actually received, measured against the baseline",
+    "The value promised in the original sales proposal",
+    "The total contract value over three years",
+    "The number of users who logged in this month"
+   ],
+   "answer": 0,
+   "why": "Value realised is measured, not promised: the same measure as the baseline, taken the same way, converted with the customer's own cost rate."
+  },
+  {
+   "q": "Usage at a customer is flat overall, but you learn two regional teams stopped three months ago. What do you do first?",
+   "options": [
+    "Nothing, since total usage is stable",
+    "Offer a discount at renewal",
+    "Ask the sponsor to mandate usage",
+    "Find out why those teams stopped and fix the cause"
+   ],
+   "answer": 3,
+   "why": "Total volume can hide teams that quit. A workflow change or a bug is often the cause, and fixing it is the cheapest save."
+  },
+  {
+   "q": "Which second use case is usually the easiest to win at an existing customer?",
+   "options": [
+    "One that needs new data and a new sponsor but is the most exciting",
+    "One that reuses the same data, integration or users as the first",
+    "Whatever the product roadmap wants to test next",
+    "The largest possible project, to maximise revenue"
+   ],
+   "answer": 1,
+   "why": "Reuse means lower effort and risk the customer already trusts, so it is faster to prove and easier to approve."
+  },
+  {
+   "q": "Spot the mistake: 'Adoption is great, 1,200 messages a week, so the renewal is safe.'",
+   "options": [
+    "Usage is not value; the sponsor needs outcomes against the baseline",
+    "1,200 messages a week is too low to measure",
+    "Renewals depend only on price",
+    "Message counts should be reported monthly"
+   ],
+   "answer": 0,
+   "why": "A new CFO sees cost unless someone shows the business outcome the system delivered. Convert usage into the measures in the success plan."
+  }
+ ],
+ "psa": [
+  {
+   "q": "Under a fixed-fee contract, who carries the cost if the work takes longer than planned?",
+   "options": [
+    "The customer, through extra invoices",
+    "The provider, through lower margin",
+    "The cost is always split evenly",
+    "Nobody, because fixed fees cannot overrun"
+   ],
+   "answer": 1,
+   "why": "The price does not change, so every extra hour lowers the provider's margin. That is why scope, assumptions and change requests matter."
+  },
+  {
+   "q": "An FDE had 160 available hours this month and logged 112 billable hours. What is their utilisation?",
+   "options": [
+    "70 percent",
+    "112 percent",
+    "43 percent",
+    "30 percent"
+   ],
+   "answer": 0,
+   "why": "Utilisation is billable hours divided by available hours: 112 divided by 160 is 0.70."
+  },
+  {
+   "q": "A customer wants a firm price for an integration with an API nobody has documented. What is the best proposal?",
+   "options": [
+    "A low fixed fee to win the deal, fixing problems later",
+    "Open-ended T&M with no estimate at all",
+    "A short paid discovery, then a fixed fee once scope is measured",
+    "Refuse the work until the API is documented"
+   ],
+   "answer": 2,
+   "why": "Discovery removes the biggest unknown, so the fixed price that follows is based on evidence instead of a guess."
+  },
+  {
+   "q": "Your customer's IT team has not approved a firewall change for a week, delaying the data phase. What helps most?",
+   "options": [
+    "Quietly move the date and say nothing",
+    "Work around the firewall with your own laptop",
+    "Wait until the steering meeting next month",
+    "Show it as a blocked customer task with an owner and date in the shared plan"
+   ],
+   "answer": 3,
+   "why": "Visible customer-side tasks get done faster, and everyone can see why the date is at risk."
+  },
+  {
+   "q": "Spot the mistake: 'Our goal is 100 percent utilisation for every FDE.'",
+   "options": [
+    "Utilisation should be measured yearly only",
+    "It leaves no time for training, sales support or reusable work that cuts future cost",
+    "Utilisation only applies to managers",
+    "100 percent is fine if people work weekends"
+   ],
+   "answer": 1,
+   "why": "Healthy targets leave room for non-billable work that makes the team better and future projects cheaper."
+  }
+ ],
+ "lowcode": [
+  {
+   "q": "A customer's staff work all day in Teams and IT only allows agents built in Copilot Studio. What is the best first plan?",
+   "options": [
+    "Build a separate web app and ask IT for an exception",
+    "Build the agent in Copilot Studio and add a custom connector for anything missing",
+    "Use Zapier because it has the most connectors",
+    "Wait until IT changes its policy"
+   ],
+   "answer": 1,
+   "why": "Building on the approved platform where users already work avoids a long security review and a new app, and a custom connector covers the gaps."
+  },
+  {
+   "q": "Your flow uses SharePoint (Business group) and your new custom connector, which the admin left in Non-Business. What happens?",
+   "options": [
+    "The flow is blocked by the DLP policy because it mixes the two groups",
+    "It works, because custom connectors ignore DLP",
+    "It works in production only",
+    "SharePoint is moved to Non-Business automatically"
+   ],
+   "answer": 0,
+   "why": "A DLP policy does not allow one app or flow to combine Business and Non-Business connectors. Ask the admin to classify the connector."
+  },
+  {
+   "q": "Which file do most platforms use to define a custom connector to your API?",
+   "options": [
+    "A requirements.txt file",
+    "A Dockerfile",
+    "A CSV of sample responses",
+    "An OpenAPI description of the API"
+   ],
+   "answer": 3,
+   "why": "OpenAPI describes paths, inputs, outputs and authentication, which the platform turns into actions makers can use."
+  },
+  {
+   "q": "An eligibility flow has grown to 70 steps, nobody can test it and it hits timeouts. What is the usual fix?",
+   "options": [
+    "Rebuild the whole agent in custom code",
+    "Split it into seven 10-step flows",
+    "Move the eligibility logic into a tested API and call it through a connector",
+    "Add more comments to the flow"
+   ],
+   "answer": 2,
+   "why": "Moving only the hard part to code gives tests and version control, while users keep the same agent on the platform."
+  },
+  {
+   "q": "Spot the mistake: 'Production flows use my personal account connection so they are quick to set up.'",
+   "options": [
+    "Personal connections are slower",
+    "It is fine as long as the account has admin rights",
+    "Connections must be recreated every day",
+    "The flows act with one person's permissions and can stop when that person leaves"
+   ],
+   "answer": 3,
+   "why": "Use a service account or shared ownership for production connections so the build does not depend on one employee."
+  }
+ ]
+}

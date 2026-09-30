@@ -1,0 +1,9 @@
+    <section class="syl" id="syllabusView" aria-label="Syllabus" hidden>
+      <div class="syl-head">
+        <div class="eyebrow">YOUR TO-DO LIST</div>
+        <h2>Syllabus and progress</h2>
+        <p>Every main topic, subtopic and micro topic in the atlas, from prerequisites to hands-on projects. Tick micro topics as you learn them. Your ticks are saved in this browser only.</p>
+      </div>
+      <div class="barrow"><div class="bar"><span id="sylFill"></span></div><span id="sylCount"></span></div>
+      <div id="sylBody" class="syl"></div>
+    </section>

@@ -1,0 +1,14 @@
+    <section class="proj" id="project" aria-label="Project" hidden>
+      <div class="pmeta" id="pmeta"></div>
+      <div class="panel"><h4>Project folder</h4><div id="ptree"></div></div>
+      <div class="panel"><h4>Setup</h4><div id="psetup" class="proj"></div></div>
+      <div class="panel"><h4>Build it step by step</h4><div id="psteps" class="proj"></div></div>
+      <div class="cols">
+        <div class="panel"><h4>Run it</h4><div id="prun"></div></div>
+        <div class="panel"><h4>Test it</h4><div id="ptests"></div></div>
+      </div>
+      <div class="cols">
+        <div class="panel"><h4>Stretch goals</h4><ul id="pstretch"></ul></div>
+        <div class="panel"><h4>How to talk about it in an interview</h4><p id="pinterview" style="margin:0;max-width:68ch"></p></div>
+      </div>
+    </section>

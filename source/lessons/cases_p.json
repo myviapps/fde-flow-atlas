@@ -1,0 +1,150 @@
+{
+ "change": {
+  "title": "Vardenholt Logistics: reviving an unused customs-email assistant",
+  "company": "Vardenholt Logistics (made up), freight forwarder, about 900 staff, Germany",
+  "situation": "Vardenholt's customs desk of 48 agents answers about 1,100 customer emails a day about shipment clearance. An AI assistant that drafts replies from shipment data went live across three teams. Eight weeks later only 11 of 48 agents (23 percent) used it in a typical week, and average handling time per email was unchanged at 9 minutes.",
+  "problem": "The sponsor's first idea was a mandatory refresher training for everyone. Usage data and interviews suggested training was not the main gap: agents who had tried the tool had stopped, which pointed to something in the tool or the process pushing them away. Another round of generic training would cost 48 agent-hours and leave the causes in place.",
+  "approach": [
+   "Pulled usage events by team and agent, and separated breadth (agents active per week) from depth (share of emails where a draft was used). One team was at 60 percent, the other two below 10 percent.",
+   "Shadowed six agents, including four who had stopped, and wrote down their exact words. Two blockers came up repeatedly: drafts lacked the customs reference number agents always paste in, and team leads still checked replies against a quality checklist written for manual emails.",
+   "Added the customs reference and the carrier's tracking link to every draft, and agreed with the sponsor to replace the old checklist with one that scores the sent reply regardless of how it was written.",
+   "Asked each team lead to name one champion. The three champions got the fixed version a week early and ran 15-minute huddles with their own teams.",
+   "Replaced the planned all-hands training with a 30-minute hands-on session per team using that week's real emails, including how to reject a bad draft.",
+   "Sent a short 'you told us, we changed' note from the operations director listing the two fixes, then reviewed breadth and depth weekly with the champions."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "ADOPTION REVIEW - customs email assistant - week 12\n                 Team North   Team South   Team Hub    All\nAgents           16           17           15          48\nActive (weekly)  13 (81%)     12 (71%)     10 (67%)    35 (73%)\nDrafts used      58%          49%          41%         50%\nHandling time    6.9 min      7.4 min      7.8 min     7.3 min\n\nTop feedback this week (from champions)\n 1. Drafts for Swiss shipments miss the T1 document note   -> fix in sprint 7\n 2. Hub team wants drafts in English and German side by side -> testing\n 3. Two agents still copy replies into Word first            -> champion to visit\n\nOld process retired: manual-email checklist (replaced week 9)\nNext review: Thursday 10:00, champions + team leads"
+  },
+  "outcome": "Four weeks after the changes, weekly active agents rose from 11 to 35 (73 percent), and drafts were used in about half of emails. Average handling time fell from 9 minutes to about 7.3 minutes. The team that had been at 60 percent became the reference team for later rollouts.",
+  "lessons": [
+   "Low adoption is a symptom. Look at data by team and talk to people who stopped before choosing a fix.",
+   "An old process that is still enforced, like a checklist or report, can quietly defeat a new tool.",
+   "Champions from the same team are more persuasive than a vendor engineer.",
+   "Tell users what changed because of their feedback, so they keep giving it."
+  ],
+  "discuss": [
+   "If the sponsor had refused to retire the old checklist, what would you have done next?",
+   "How would you tell whether rising usage came from real value or from managers pressuring agents?",
+   "What adoption target would you agree with the sponsor before the next rollout, and why that number?"
+  ]
+ },
+ "pm": {
+  "title": "Kestrelmoor Mutual: keeping a six-week claims pilot on schedule",
+  "company": "Kestrelmoor Mutual (made up), home and motor insurer, about 1,100 staff, United Kingdom",
+  "situation": "A two-person FDE team was hired for a six-week pilot of AI claim summaries with one team of eight handlers, ending in a readout to the claims director. The engineering work was estimated at about three weeks. A previous vendor pilot at Kestrelmoor had run four months over plan, mostly waiting for access and approvals.",
+  "problem": "Most of the schedule risk sat with the customer: a service account, a firewall change, a security review and handlers' time for training. Working harder on the build would not speed any of these up, and the customer teams involved were busy with a system migration.",
+  "approach": [
+   "In the first two days, listed every customer dependency in a shared RAID log, found a named owner for each and agreed dates. The security review had a three-week queue, so it was booked on day one.",
+   "Wrote the backlog as user stories with Given/When/Then acceptance criteria and ran a MoSCoW session with the claims manager. Musts were summaries, source links and a flag button; mobile access was recorded as a Won't.",
+   "Ran three two-week sprints, each ending in a demo to handlers. Sprint 1 used 200 anonymized past claims so the team did not wait for live access.",
+   "Sent a one-screen weekly status report every Friday with a RAG color and a short list of asks, each with an owner and date.",
+   "Moved the project to amber in week 3 when the service account was late, stated the impact as two days of live use per day of delay, and asked the sponsor to raise it with the IAM team lead.",
+   "Used retrospectives to change one thing each sprint, such as moving the handler demo to the morning when more of the team could attend."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "STATUS - Claims summary pilot - week 3 of 6          Overall: AMBER\nReason: live use starts late unless service account exists by Wed 19 Mar\n\nDone\n  - 200 past claims summarized; 2 handlers rated 182 of 200 correct (91%)\n  - Flag button and source links shipped (CLM-12, CLM-14)\nNext\n  - Live use with 8 handlers from Mon 24 Mar\nRAID highlights\n  D-3 Service account for DocStore    IAM team lead    due 14 Mar  LATE\n  R-1 Poor OCR on scanned faxes         FDE              testing 50 samples\nAsks\n  1. Service account by Wed 19 Mar (IAM team lead, via sponsor)\n  2. 30-min readout slot in week 6 (Claims director's office)"
+  },
+  "outcome": "The service account arrived in week 4, three days late, which the plan absorbed by dropping one Could item. Live use ran for the planned two and a half weeks with all eight handlers, and the readout happened on the original date. The claims director approved a rollout to two more teams, and the RAID log became the starting template for that phase.",
+  "lessons": [
+   "On FDE projects the critical path often runs through the customer, so dependencies need owners and dates from day one.",
+   "MoSCoW labels give you something to drop when time runs short, without missing the date.",
+   "Moving to amber early with a clear ask is what gets the sponsor to help.",
+   "Sample or historical data keeps the team productive while access is pending."
+  ],
+  "discuss": [
+   "What would you have done if the service account were three weeks late instead of three days?",
+   "How would you run this pilot if the customer insisted on a fixed plan with no sprint demos?",
+   "Which items in the status report would you share with the handlers themselves, and which only with the sponsor?"
+  ]
+ },
+ "roi": {
+  "title": "Quellwood Distribution: a business case for invoice exception handling",
+  "company": "Quellwood Distribution (made up), building-materials distributor, about 1,600 staff, Australia",
+  "situation": "Quellwood's accounts payable team of 14 handles about 3,200 invoice exceptions a month, such as price or quantity mismatches with purchase orders. A time study measured an average of 22 minutes per exception, and the team paid for 2 contractors every end of quarter to keep up. A four-week pilot of an AI assistant that explains each mismatch and drafts the supplier query cut the time to about 13 minutes on the exceptions where it was used.",
+  "problem": "The CFO would only fund a rollout with a business case that finance could check. The pilot team's first draft multiplied the time saved by all exceptions, assumed full adoption from month one, and left out running costs, so the CFO's team rejected it within a day.",
+  "approach": [
+   "Rebuilt the baseline from the AP system instead of estimates: exception volume by month, handling time from the time study, and loaded cost of 48 per hour from finance.",
+   "Applied a measured improvement of 9 minutes per exception and a ramp for adoption: 40 percent in months 1 to 3, then 75 percent based on the pilot's last two weeks.",
+   "Listed the full cost: 95,000 one-time for ERP integration, evaluation and security review, and 62,000 a year for API usage, hosting and a fifth of an engineer for maintenance.",
+   "Separated hard savings (ending the quarterly contractor spend of about 38,000 a year) from capacity (the remaining hours, planned for faster supplier payment and early-payment discounts).",
+   "Ran low, base and high scenarios and a break-even adoption, and showed that the hard savings alone did not cover the running cost, which the CFO appreciated seeing stated plainly.",
+   "Proposed a staged decision: fund the rollout, with a gate at month 4 requiring at least 60 percent adoption before the second-year budget is released."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "exceptions_per_month = 3_200\nminutes_saved = 9            # 22 -> 13 minutes, pilot\nhourly_cost = 48             # loaded, from finance\nbuild_cost, run_cost_year = 95_000, 62_000\n\ndef monthly_value(adoption):\n    return exceptions_per_month * adoption * minutes_saved / 60 * hourly_cost\n\n# Year 1 with ramp: 3 months at 40%, 9 months at 75%\nyear1 = 3 * monthly_value(0.40) + 9 * monthly_value(0.75)\nyear2 = 12 * monthly_value(0.75)\nnet1, net2 = year1 - run_cost_year, year2 - run_cost_year\n\ncum, month = -build_cost, 0\nwhile cum < 0:                               # payback with the ramp\n    month += 1\n    a = 0.40 if month <= 3 else 0.75\n    cum += monthly_value(a) - run_cost_year / 12\nprint(f\"Year 1 value {year1:,.0f}, net {net1:,.0f}\")   # 183,168 / 121,168\nprint(f\"Year 2 value {year2:,.0f}, net {net2:,.0f}\")   # 207,360 / 145,360\nprint(f\"Payback month: {month}\")                       # 10"
+  },
+  "outcome": "The CFO approved the rollout with the month-4 gate. Four months in, adoption was 71 percent, average handling time on exceptions was about 16 minutes against the 22-minute baseline, and the end-of-quarter contractors were not hired. Finance tracked the case against actuals each quarter using the same spreadsheet.",
+  "lessons": [
+   "A business case is believed when every number has a source and the downside is shown openly.",
+   "Hours saved are capacity unless spending actually falls. Say which is which.",
+   "An adoption ramp changes payback more than most other assumptions.",
+   "A staged decision with a gate lowers the CFO's risk and speeds up a yes."
+  ],
+  "discuss": [
+   "How would the case change if the supplier early-payment discounts could be measured and included?",
+   "What would you do if the month-4 gate were missed at 55 percent adoption?",
+   "Which cost line would you expect to grow fastest if exception volume doubled?"
+  ]
+ },
+ "casebank": {
+  "title": "Lanternfield Labs: a case-practice routine for new FDE hires",
+  "company": "Lanternfield Labs (made up), AI deployment consultancy, about 70 staff, Ireland",
+  "situation": "Lanternfield hired five junior FDEs in one quarter. In their first customer discovery calls, shadowing seniors noted that the new hires jumped to solutions within the first few minutes and rarely named a success metric. On a practice rubric scored 0 to 18, their first recorded mock cases averaged 9.",
+  "problem": "Reading about case frameworks had not changed how they behaved under time pressure. Pairing each junior with a senior on real calls was too slow and risky with live customers, and the seniors' time was limited to about one hour a week each.",
+  "approach": [
+   "Built a bank of eight prompts across retail, healthcare, insurance, banking, manufacturing, logistics, public sector and a stalled-pilot rescue, each with clarifying questions, a strong outline and common mistakes.",
+   "Set a routine of two 25-minute mock cases a week per junior, answered out loud and recorded, with another junior playing the interviewer from a short script.",
+   "Scored every recording with the same nine-dimension rubric, and asked each junior to pick their lowest dimension as the focus for the next case.",
+   "Used the senior hour for one live mock per junior every two weeks, with deliberate pushback such as withholding numbers or challenging an assumption.",
+   "Added a rule that every answer must end with a one-minute summary, since running out of time before the close was the most common lost point."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "MOCK CASE SCORE SHEET          Candidate: J3     Case: 6 Logistics (WISMO)\nDimension               Score (0-2)   Note\nClarifying questions    2             Asked for contact-reason breakdown first\nUsers and workflow      2             Recipient, agent, depot ops\nData                    1             Did not ask how fresh tracking data is\nMetric                  2             WISMO per 1,000 parcels, repeat contacts\nFirst slice             2             Proactive delay message before chatbot\nRisks                   1             Missed 'no route to a human'\nClose                   2             60-second summary, first-week plan\nPushback                1             Defended 40% deflection for 3 minutes\nCommunication           2             Signposted each section\nTOTAL                   15 / 18\nFocus next case: accept pushback, adjust, say what changes"
+  },
+  "outcome": "After six weeks, average rubric scores rose from 9 to 14 out of 18, and all five juniors ended every mock with a summary. Seniors reported that in live discovery calls the juniors now asked about the workflow and baseline before discussing solutions. Two juniors later passed internal reviews to lead discovery calls on their own.",
+  "lessons": [
+   "Case skills improve through spoken, timed practice with feedback, much more than through reading.",
+   "One consistent rubric makes progress visible and tells you what to practice next.",
+   "A practice bank across industries shows that most cases share the same shape.",
+   "Pushback practice matters: adjusting calmly is a skill of its own."
+  ],
+  "discuss": [
+   "Which of the nine rubric dimensions do you expect to be hardest for you, and how would you practice it?",
+   "How would you adapt this routine if you were preparing alone with no partner?",
+   "What would you add to the bank to prepare for an FDE role at a company in one specific industry?"
+  ]
+ },
+ "sqlbank": {
+  "title": "Pimbleton Vet Clinics: why the dashboard showed too many appointments",
+  "company": "Pimbleton Vet Clinics (made up), veterinary clinic chain, 45 clinics, New Zealand",
+  "situation": "A junior data analyst, three months into the job, maintained a weekly dashboard of appointments per clinic. The operations manager noticed the dashboard showed 6,480 appointments for March across the chain while the booking system's own report showed 5,210. Clinic managers had started to ignore the dashboard.",
+  "problem": "The analyst's query joined appointments to the invoice lines billed for each visit so the dashboard could also show revenue. Visits with several invoice lines were counted several times. Adding DISTINCT everywhere, the quick fix a colleague suggested, would fix the count but still leave revenue exposed to other joins added later.",
+  "approach": [
+   "Stated the grain of each table out loud: one row per appointment, one row per invoice line. The joined result was one row per invoice line, which explained the inflation.",
+   "Checked the idea with a small query that counted appointments with more than one invoice line, which matched the size of the gap.",
+   "Rewrote the dashboard query in two CTEs: one pre-aggregating revenue per appointment, then one counting appointments and summing revenue per clinic, so each step had a clear grain.",
+   "Changed a LEFT JOIN filter on cancelled appointments from WHERE into the ON clause, so clinics with no completed visits in a week still appeared with zero.",
+   "Added a reconciliation query that compares the dashboard's monthly total with a plain count from the appointments table, run automatically before each refresh."
+  ],
+  "artifact": {
+   "lang": "SQL",
+   "code": "WITH appt_revenue AS (           -- grain: one row per appointment\n  SELECT a.appointment_id, a.clinic_id, a.appt_date,\n         COALESCE(SUM(il.amount), 0) AS revenue\n  FROM appointments a\n  LEFT JOIN invoice_lines il ON il.appointment_id = a.appointment_id\n  WHERE a.status = 'completed'\n  GROUP BY a.appointment_id, a.clinic_id, a.appt_date\n)\nSELECT c.clinic_name,\n       COUNT(ar.appointment_id)     AS appointments,\n       COALESCE(SUM(ar.revenue), 0) AS revenue\nFROM clinics c\nLEFT JOIN appt_revenue ar\n  ON ar.clinic_id = c.clinic_id\n AND ar.appt_date >= '2025-03-01' AND ar.appt_date < '2025-04-01'\nGROUP BY c.clinic_id, c.clinic_name\nORDER BY appointments DESC;\n\n-- Reconciliation: must equal the plain count\nSELECT COUNT(*) FROM appointments\nWHERE status = 'completed'\n  AND appt_date >= '2025-03-01' AND appt_date < '2025-04-01';"
+  },
+  "outcome": "The corrected dashboard showed 5,210 completed appointments for March, matching the booking system, and revenue per clinic matched the finance report within rounding. The reconciliation check caught one later problem, a duplicated data load, before the dashboard refreshed. Clinic managers resumed using the weekly dashboard in their Monday meetings.",
+  "lessons": [
+   "Say the grain of every table and every intermediate result before trusting a number.",
+   "A one-to-many join repeats rows, so pre-aggregate the many side before joining.",
+   "Filters on the right side of a LEFT JOIN belong in the ON clause if you want to keep unmatched rows.",
+   "A simple reconciliation query against a trusted total catches errors before users do."
+  ],
+  "discuss": [
+   "Why is adding DISTINCT everywhere a risky fix, even when it makes the count right?",
+   "How would you explain the mismatch to the operations manager without using SQL terms?",
+   "What other automatic checks would you add before a dashboard refresh?"
+  ]
+ }
+}

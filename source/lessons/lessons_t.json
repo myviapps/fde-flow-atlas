@@ -1,0 +1,665 @@
+{
+ "mlworkflow": {
+  "plain": "Machine learning (ML) means a program learns a pattern from examples instead of following rules you write. The ML workflow is the routine that makes the result trustworthy: define the question, split the data, compare against a simple baseline, train and tune fairly, check whether the model is too simple or too complex, and measure it once on data it has never seen. A model that looks brilliant in a notebook but skipped these steps often fails the day it meets real customers. This topic goes deeper than the short intro in mlbasics and shows each step with scikit-learn, the standard Python ML library.",
+  "analogy": "It is like preparing a student for an exam. Practice questions are the training set, mock exams are the validation set, and the real exam is the test set. If the student sees the real exam paper while studying, their score says nothing about what they learned.",
+  "why": "Customers often show an FDE a model that 'already works' at 98 percent accuracy, or ask whether ML can solve a business problem at all. An FDE at an insurer, for example, must frame the claim-fraud question properly, find the leak that makes a result look too good, and give an honest number the customer can plan around.",
+  "subtopics": [
+   {
+    "title": "Framing the problem before the data",
+    "body": "Every ML project starts with a sentence you can say to the business: we predict X, for Y, at moment Z, so that someone can do W. X is the target, the thing the model outputs. The moment of prediction matters most, because any feature (input column) must be known at that moment. A churn model run on the first of each month can only use data up to the last day of the previous month.\n\nNext decide what kind of problem it is. Predicting a category (will this customer churn, yes or no) is classification. Predicting a number (next month's spend) is regression. Then agree on how success is measured and what a mistake costs. Missing a fraudulent claim may cost thousands; wrongly flagging an honest one costs a phone call. That choice shapes the metric you optimise, as the mlmetrics topic explains.\n\nFinally ask whether ML is needed at all. If a simple rule gets most of the value, ship the rule first.",
+    "example": "A regional energy supplier, Harlow Bay Power (made up), asks for 'an AI to reduce bad debt'. The FDE rewrites it as: predict, on the day a bill is issued, whether the customer will be more than 30 days late paying, so that collections can phone the top 500 each week. Target: late_30 (yes or no). Prediction moment: bill date. Action: a phone call. Cost: a wasted call is about 4 euros, a missed late payer about 180 euros. With that sentence agreed, the team knows which features are allowed and that recall on late payers matters more than accuracy.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Question",
+      "Harlow Bay answer"
+     ],
+     "rows": [
+      [
+       "What do we predict?",
+       "late_30: paid more than 30 days late"
+      ],
+      [
+       "For whom?",
+       "Every residential bill"
+      ],
+      [
+       "When?",
+       "On the day the bill is issued"
+      ],
+      [
+       "What action follows?",
+       "Collections phones the top 500 each week"
+      ],
+      [
+       "What does a miss cost?",
+       "About 180 euros of bad debt"
+      ],
+      [
+       "What does a false alarm cost?",
+       "About 4 euros of agent time"
+      ],
+      [
+       "What is the simple rule to beat?",
+       "Customers late last quarter are called first"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Train, validation and test splits",
+    "body": "You need to know how the model will do on data it has never seen. So before modelling, split the rows into three parts. The training set is what the model learns from. The validation set is used to compare models and pick settings (called hyperparameters, such as tree depth). The test set is locked away and used once, at the very end, to report the final number.\n\nA common split is 60/20/20. train_test_split from scikit-learn does one cut; call it twice to get three parts. Use stratify=y for classification so each part has the same share of each class, and random_state so the split is the same every run.\n\nThe split must copy how the model will be used. If you predict the future, split by time: train on older months and validate on newer ones. If one customer has many rows, keep all their rows in the same part (GroupKFold or GroupShuffleSplit), or the model will recognise the customer rather than learn the pattern.",
+    "example": "A clinic group has 1,000 labelled appointments and wants to predict no-shows. The FDE holds back 200 as the test set, then splits the remaining 800 into 600 training and 200 validation rows. About half of the rows are no-shows in each part because of stratify. Later, when the data turns out to cover two years, the FDE switches to a time split: train on year one, validate on the first half of year two, test on the second half.",
+    "code": "from sklearn.datasets import make_classification\nfrom sklearn.model_selection import train_test_split\n\nX, y = make_classification(n_samples=1000, n_features=8, random_state=42)\n\n# First cut: hold back 20% as the test set and do not touch it again\nX_rest, X_test, y_rest, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y)\n# Second cut: split the rest into train (75%) and validation (25%)\nX_train, X_val, y_train, y_val = train_test_split(\n    X_rest, y_rest, test_size=0.25, random_state=42, stratify=y_rest)\n\nprint(len(X_train), len(X_val), len(X_test))\n# 600 200 200\nprint(round(y_train.mean(), 3), round(y_val.mean(), 3), round(y_test.mean(), 3))\n# 0.502 0.505 0.5   <- same class balance in every part",
+    "lang": "Python",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "all",
+       90,
+       70,
+       "All rows",
+       "1,000 labelled"
+      ],
+      [
+       "cut",
+       265,
+       70,
+       "First cut",
+       "hold back 20%"
+      ],
+      [
+       "rest",
+       440,
+       70,
+       "Dev rows",
+       "800"
+      ],
+      [
+       "tr",
+       615,
+       70,
+       "Train",
+       "600: fit here"
+      ],
+      [
+       "val",
+       615,
+       220,
+       "Validation",
+       "200: compare, tune"
+      ],
+      [
+       "test",
+       265,
+       220,
+       "Test",
+       "200: use once"
+      ],
+      [
+       "rep",
+       90,
+       220,
+       "Report",
+       "honest number"
+      ]
+     ],
+     "edges": [
+      [
+       "all",
+       "cut"
+      ],
+      [
+       "cut",
+       "rest"
+      ],
+      [
+       "rest",
+       "tr"
+      ],
+      [
+       "rest",
+       "val"
+      ],
+      [
+       "cut",
+       "test"
+      ],
+      [
+       "test",
+       "rep"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Cross-validation for steadier scores",
+    "body": "One validation split can be lucky or unlucky, especially with a few hundred rows. k-fold cross-validation fixes this. Split the development data into k equal parts (folds), often 5. Train on four folds and score on the fifth, then rotate until every fold has been the scoring fold once. You get k scores; their mean is your estimate and their spread tells you how much to trust it.\n\nIn scikit-learn, cross_val_score does the loop for you. StratifiedKFold keeps the class balance in every fold, and shuffle=True with a random_state mixes rows first in a repeatable way. For time-ordered data use TimeSeriesSplit, which always trains on the past and scores on the future.\n\nCross-validation is also how you tune. GridSearchCV tries each candidate setting with k-fold CV and keeps the best mean. The test set still stays out of this loop entirely.",
+    "example": "An FDE compares two models for a hospital lab using 569 tumour records. A single split says model A scores 0.99 and model B 0.97, which looks decisive. Five-fold CV shows model A scores between 0.956 and 1.0 with a mean of 0.979 and a standard deviation of 0.014. A two point gap on one split is within that noise, so the FDE reports the mean plus or minus the spread and keeps the simpler model.",
+    "code": "from sklearn.datasets import load_breast_cancer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import StratifiedKFold, cross_val_score\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\n\nX, y = load_breast_cancer(return_X_y=True)   # 569 tumours, 30 measurements each\nmodel = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000))\n\ncv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)\nscores = cross_val_score(model, X, y, cv=cv, scoring=\"accuracy\")\n\nprint([float(round(s, 3)) for s in scores])\n# [0.956, 0.974, 0.982, 1.0, 0.982]\nprint(\"mean\", round(scores.mean(), 3), \"std\", round(scores.std(), 3))\n# mean 0.979 std 0.014",
+    "lang": "Python"
+   },
+   {
+    "title": "Overfitting, underfitting and bias-variance",
+    "body": "A model underfits when it is too simple to capture the pattern: it scores poorly on training and validation data alike. It overfits when it is so flexible that it memorises the training rows, including their random noise: training score is high, validation score is much lower.\n\nThe bias-variance trade-off names the two sources of error. Bias is error from wrong assumptions, like fitting a straight line to a curve; simple models have high bias. Variance is error from being too sensitive to the particular training rows; if you trained on a slightly different sample you would get a very different model. Flexible models have high variance. Total error is lowest somewhere in between.\n\nTo find that middle, change one complexity knob (tree depth, polynomial degree, regularization strength) and plot training and validation scores. Fixes for overfitting: a simpler model, more data, fewer features, stronger regularization. Fixes for underfitting: more flexible models or better features. The linreg widget lets you see this with a polynomial degree slider.",
+    "example": "An FDE tunes a decision tree for a telecom churn file with some noisy labels. Depth 1 scores 0.70 on training data and 0.76 on validation: underfit, and the higher validation number is just chance in a 180-row set. Depth 3 gives 0.85 and 0.83: a small gap and the best validation score. At depth 10 training jumps to 0.99 while validation drops to 0.78: the tree is memorising noise. The FDE ships depth 3 and explains the chart to the customer.",
+    "code": "from sklearn.datasets import make_classification\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.tree import DecisionTreeClassifier\n\nX, y = make_classification(n_samples=600, n_features=10, n_informative=4,\n                           flip_y=0.1, random_state=1)   # flip_y adds label noise\nX_tr, X_val, y_tr, y_val = train_test_split(X, y, test_size=0.3, random_state=1)\n\nfor depth in [1, 3, 5, 10, None]:        # None = grow until every leaf is pure\n    tree = DecisionTreeClassifier(max_depth=depth, random_state=0).fit(X_tr, y_tr)\n    print(f\"depth={str(depth):>4}  train={tree.score(X_tr, y_tr):.2f}  \"\n          f\"val={tree.score(X_val, y_val):.2f}\")\n# depth=   1  train=0.70  val=0.76   <- underfit\n# depth=   3  train=0.85  val=0.83   <- best balance\n# depth=   5  train=0.90  val=0.83\n# depth=  10  train=0.99  val=0.78   <- overfit\n# depth=None  train=1.00  val=0.78",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Symptom",
+      "Diagnosis",
+      "Try"
+     ],
+     "rows": [
+      [
+       "Train low, validation low",
+       "Underfitting (high bias)",
+       "More features, more flexible model"
+      ],
+      [
+       "Train high, validation much lower",
+       "Overfitting (high variance)",
+       "Simpler model, more data, regularize"
+      ],
+      [
+       "Train high, validation close",
+       "Good fit",
+       "Check the test set once"
+      ],
+      [
+       "Validation better than train by a lot",
+       "Leak or tiny validation set",
+       "Check the split and features"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Baselines: the number to beat",
+    "body": "A baseline is the simplest possible prediction. For classification, always predict the most common class. For regression, always predict the average. A slightly smarter baseline is the rule the customer already uses, such as 'call everyone who was late last quarter'.\n\nBaselines matter because metrics mislead without context. If 95 percent of transactions are legitimate, a model that says 'legitimate' every time scores 95 percent accuracy and catches no fraud. Reporting your model next to a baseline shows the real lift. scikit-learn has DummyClassifier and DummyRegressor for this.\n\nBuild the baseline first, on day one. It gives the customer a number to react to, tests your whole pipeline end to end, and sometimes shows that the business rule is already good enough, which saves weeks.",
+    "example": "A hospital lab asks whether a model can flag malignant samples. On the held-out 143 samples, predicting the most common class gives 0.629 accuracy. A scaled logistic regression gives 0.958. The FDE presents both numbers side by side, so the lab director sees the model is adding 33 points of accuracy, then adds recall on malignant cases, which is the number the doctors care about.",
+    "code": "from sklearn.datasets import load_breast_cancer\nfrom sklearn.dummy import DummyClassifier\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\n\nX, y = load_breast_cancer(return_X_y=True)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25,\n                                          random_state=0, stratify=y)\n\nbaseline = DummyClassifier(strategy=\"most_frequent\").fit(X_tr, y_tr)\nmodel = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000)).fit(X_tr, y_tr)\n\nprint(\"baseline accuracy:\", round(baseline.score(X_te, y_te), 3))   # 0.629\nprint(\"model accuracy:   \", round(model.score(X_te, y_te), 3))      # 0.958",
+    "lang": "Python"
+   },
+   {
+    "title": "Data leakage and reproducibility",
+    "body": "Data leakage is when information that will not be available at prediction time sneaks into training. It makes offline scores look great and live results collapse. Three common kinds: target leakage (a feature is caused by the outcome, such as 'cancellation_reason' in a churn model), train-test contamination (scaling, imputing or selecting features using all rows before splitting), and time leakage (random splits on data where the future should be unknown).\n\nThe code shows how strong contamination can be. With 5,000 columns of pure noise and random labels, choosing the 20 'best' columns on all rows and then cross-validating reports 85 percent accuracy. Doing the selection inside a Pipeline, so it is refitted on each training fold, gives 48 percent: the honest coin-flip answer.\n\nReproducibility means anyone can rerun your work and get the same number. Fix random seeds, keep every step in one Pipeline, pin library versions, and save the exact data snapshot. The dataformats and pytooling topics cover saving data and environments.",
+    "example": "A subscription box company's analyst reports a churn model at 97 percent. The FDE lists every feature with the date it becomes known and finds 'days_since_last_login', computed on the export date, weeks after many customers had already cancelled. Removing it and recomputing features as of each prediction date drops the score to 78 percent, which then holds up in a two-week live trial.",
+    "code": "import numpy as np\nfrom sklearn.feature_selection import SelectKBest, f_classif\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import cross_val_score\nfrom sklearn.pipeline import make_pipeline\n\nrng = np.random.default_rng(0)\nX = rng.normal(size=(100, 5000))      # 5,000 columns of pure noise\ny = rng.integers(0, 2, size=100)      # random labels: nothing to learn\n\n# LEAKY: pick the \"best\" columns using ALL rows, then cross-validate\nX_picked = SelectKBest(f_classif, k=20).fit_transform(X, y)\nleaky = cross_val_score(LogisticRegression(max_iter=1000), X_picked, y, cv=5)\n\n# CORRECT: selection happens inside the pipeline, on each training fold only\npipe = make_pipeline(SelectKBest(f_classif, k=20), LogisticRegression(max_iter=1000))\nhonest = cross_val_score(pipe, X, y, cv=5)\n\nprint(\"leaky  accuracy:\", round(leaky.mean(), 2))    # 0.85  <- a lie\nprint(\"honest accuracy:\", round(honest.mean(), 2))   # 0.48  <- a coin flip, correctly",
+    "lang": "Python",
+    "checklist": [
+     "For every feature, I wrote down when its value becomes known and confirmed it is before the prediction moment",
+     "The split copies real use: by time for forecasts, by customer when customers repeat",
+     "Scaling, imputing, encoding and feature selection live inside one Pipeline",
+     "The test set was used once, after all choices were made",
+     "Random seeds are fixed for splits and models",
+     "Library versions and the data snapshot are recorded with the results",
+     "A result far better than the baseline was questioned before it was celebrated"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Target",
+    "The value the model predicts, also called the label."
+   ],
+   [
+    "Feature",
+    "An input column the model uses to make a prediction."
+   ],
+   [
+    "Validation set",
+    "Rows used to compare models and choose settings, separate from training rows."
+   ],
+   [
+    "Test set",
+    "Rows locked away and used once at the end to estimate real-world performance."
+   ],
+   [
+    "Cross-validation",
+    "Training and scoring k times on rotating folds and averaging the scores."
+   ],
+   [
+    "Hyperparameter",
+    "A setting chosen before training, such as tree depth or regularization strength."
+   ],
+   [
+    "Overfitting",
+    "Learning noise in the training data so well that new data is predicted badly."
+   ],
+   [
+    "Bias-variance trade-off",
+    "Simple models err by wrong assumptions (bias), flexible ones by sensitivity to the sample (variance)."
+   ],
+   [
+    "Baseline",
+    "The simplest reasonable prediction, used as the number any model must beat."
+   ],
+   [
+    "Data leakage",
+    "Information unavailable at prediction time that slips into training and inflates scores."
+   ]
+  ],
+  "practice": [
+   "Write the one-sentence framing (predict X for Y at moment Z so that W) and the cost of each kind of mistake for three problems: late invoices, hospital no-shows and product returns.",
+   "On load_wine from scikit-learn, build a DummyClassifier baseline, then a scaled logistic regression, and report 5-fold cross-validation mean and standard deviation for both.",
+   "Stretch: recreate the leakage demo with 2,000 noise columns, then also leak by fitting a StandardScaler on all rows. Measure how much each leak inflates the score and write a three-line explanation for a customer."
+  ]
+ },
+ "featureeng": {
+  "plain": "Feature engineering is turning raw columns into inputs a model can learn from. Models only understand numbers, so text categories must be encoded, missing values filled, numbers put on similar scales, and useful signals pulled out of dates or free text. Good features often matter more than the choice of algorithm. In scikit-learn, a Pipeline chains these steps with the model, and a ColumnTransformer applies different steps to different columns, so the same recipe runs in training, in cross-validation and on live data.",
+  "analogy": "It is like preparing ingredients before cooking. You wash, peel, chop and weigh things so the recipe works, and you prepare tomorrow's delivery exactly the same way, or the dish comes out different.",
+  "why": "Customer tables are full of plan codes, blank cells, timestamps and free-text notes. An FDE building a late-payment model for a utility must turn those into clean features without leaking the answer, and must hand over a pipeline the customer's team can rerun every night.",
+  "subtopics": [
+   {
+    "title": "Scaling numeric features",
+    "body": "Columns often live on very different scales: income in tens of thousands, number of children from 0 to 3. Some models care. Linear and logistic regression with regularization penalise large weights, so a column's scale changes how hard it is pushed. Distance-based models such as k-nearest neighbours treat a 1,000 euro difference as far bigger than a 1 child difference. Gradient descent also converges faster when features are on similar scales.\n\nStandardScaler subtracts each column's mean and divides by its standard deviation, so values end up centred on 0 with most between about -2 and 2. MinMaxScaler squeezes each column into 0 to 1; it is sensitive to extreme values. RobustScaler uses the median and quartiles, which helps when outliers exist.\n\nA scaler is fitted: it learns means and spreads from data. Fit it on training rows only and reuse it for validation, test and live data. Tree models (see the trees and boosting topics) split on thresholds and do not need scaling.",
+    "example": "A lender's model uses yearly income (42,000 to 150,000) and number of dependants (0 to 3). Unscaled, a ridge regression barely uses dependants because its weight would need to be huge. After StandardScaler, both columns sit around 0 with a spread of 1. The 150,000 income becomes 1.71, meaning 1.71 standard deviations above the average of 77,750.",
+    "code": "import numpy as np\nfrom sklearn.preprocessing import MinMaxScaler, StandardScaler\n\n# Two columns on very different scales: yearly income and number of children\nX = np.array([[42_000, 0], [58_000, 2], [61_000, 1], [150_000, 3]], dtype=float)\n\nstd = StandardScaler().fit(X)          # learns mean and standard deviation per column\nprint(std.mean_)                        # [7.775e+04 1.500e+00]\nprint(std.transform(X).round(2))        # each column now has mean 0, std 1\n# [[-0.84 -1.34]\n#  [-0.47  0.45]\n#  [-0.4  -0.45]\n#  [ 1.71  1.34]]\n\nmm = MinMaxScaler().fit(X)              # learns min and max per column\nprint(mm.transform(X).round(2))         # each column now runs from 0 to 1\n# [[0.   0.  ]\n#  [0.15 0.67]\n#  [0.18 0.33]\n#  [1.   1.  ]]",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Scaler",
+      "What it does",
+      "Use when"
+     ],
+     "rows": [
+      [
+       "StandardScaler",
+       "Mean 0, standard deviation 1",
+       "Default for linear models and neural nets"
+      ],
+      [
+       "MinMaxScaler",
+       "Squeezes into 0 to 1",
+       "Bounded inputs, no big outliers"
+      ],
+      [
+       "RobustScaler",
+       "Median and quartile range",
+       "Columns with outliers"
+      ],
+      [
+       "None",
+       "Leave as is",
+       "Tree models: forests, boosting"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Encoding categories: one-hot and target encoding",
+    "body": "A category column holds labels such as basic, pro or team. You cannot feed text to a model, and replacing labels with 1, 2, 3 invents an order that does not exist. One-hot encoding makes one 0/1 column per category: plan_basic, plan_pro, plan_team. It is simple and safe for columns with a handful of values. Set handle_unknown=\"ignore\" so a category that appears only in live data becomes all zeros instead of crashing the service.\n\nWhen a column has hundreds or thousands of values (store ID, postcode), one-hot creates too many columns. Target encoding replaces each category with the average target for that category, such as the churn rate per city. Two safeguards are needed. Smoothing pulls small categories towards the overall average, so a city with two rows cannot claim a 100 percent churn rate. Cross fitting encodes each training row using averages computed without that row's fold, which prevents the encoding from memorising the answer. scikit-learn's TargetEncoder does both.",
+    "example": "A broadband provider has 20 customers in Arden (60 percent churned), 20 in Bexley (20 percent) and 2 in Corby (both churned). Raw target encoding would give Corby 1.0, the strongest signal in the table, from two people. With smoothing, Corby is pulled to 0.59, close to the overall rate of 0.43, while the large towns keep values near their real rates.",
+    "code": "import pandas as pd\nfrom sklearn.preprocessing import OneHotEncoder, TargetEncoder\n\ntrain = pd.DataFrame({\"plan\": [\"basic\", \"pro\", \"basic\", \"team\", \"pro\", \"basic\"]})\nnew = pd.DataFrame({\"plan\": [\"pro\", \"enterprise\"]})   # \"enterprise\" never seen\n\nohe = OneHotEncoder(handle_unknown=\"ignore\", sparse_output=False).fit(train)\nprint(ohe.get_feature_names_out())   # ['plan_basic' 'plan_pro' 'plan_team']\nprint(ohe.transform(new))            # unseen plan becomes all zeros, no crash\n# [[0. 1. 0.]\n#  [0. 0. 0.]]\n\n# Target encoding: replace each city by a smoothed churn rate for that city\ncity = pd.DataFrame({\"city\": [\"Arden\"] * 20 + [\"Bexley\"] * 20 + [\"Corby\"] * 2})\nchurned = [1] * 12 + [0] * 8 + [1] * 4 + [0] * 16 + [1, 1]\nte = TargetEncoder(target_type=\"binary\", smooth=5.0)   # smooth pulls small groups to the average\nencoded = te.fit_transform(city, churned)   # cross fitting: each row encoded without itself\nprint({c: round(float(v), 2) for c, v in zip(te.categories_[0], te.encodings_[0])})\n# {'Arden': 0.57, 'Bexley': 0.25, 'Corby': 0.59}\nprint(\"overall churn rate:\", round(sum(churned) / len(churned), 2))   # 0.43",
+    "lang": "Python"
+   },
+   {
+    "title": "Handling missing values",
+    "body": "Most scikit-learn models refuse to train on blank cells (NaN). You have three options. Drop rows, which is fine only if very few are missing and they are missing at random. Impute, meaning fill with a value such as the median for numbers or the most frequent value for categories. Or use a model that handles gaps natively, such as HistGradientBoosting.\n\nMissing is often information in itself. A blank income field may mean the applicant refused to say, which could predict default. So add a was_missing flag alongside the filled value. SimpleImputer(add_indicator=True) does this in one step.\n\nLike a scaler, an imputer learns: the median comes from training rows only. If you compute it on all rows first, validation data has influenced training. Always ask the customer why values are missing. 'Not recorded before 2024' calls for a different fix than 'the sensor was broken'.",
+    "example": "A gym chain's churn table has age missing for 18 percent of members. The FDE learns that members who joined through a corporate deal never filled in the form. Filling with the median age of 34 alone would hide that. Adding missingindicator_age lets the model learn that corporate-deal members behave differently, and the flag turns out to be one of the stronger features.",
+    "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.impute import SimpleImputer\n\ndf = pd.DataFrame({\n    \"age\":           [34, np.nan, 51, 29, np.nan],\n    \"monthly_spend\": [120.0, 80.0, np.nan, 45.0, 60.0],\n})\n\n# Fill with the median of the TRAINING data, and add a 0/1 \"was missing\" flag\nimp = SimpleImputer(strategy=\"median\", add_indicator=True).fit(df)\nprint(imp.statistics_)                 # [34. 70.]  medians learned from training rows\nprint(imp.get_feature_names_out())\n# ['age' 'monthly_spend' 'missingindicator_age' 'missingindicator_monthly_spend']\nprint(imp.transform(df))\n# [[ 34. 120.   0.   0.]\n#  [ 34.  80.   1.   0.]\n#  [ 51.  70.   0.   1.]\n#  [ 29.  45.   0.   0.]\n#  [ 34.  60.   1.   0.]]",
+    "lang": "Python"
+   },
+   {
+    "title": "Features from dates and text",
+    "body": "A raw timestamp is almost useless to a model: it is just a big number that only goes up. Pull out the parts that carry meaning: hour of day, day of week, month, whether it is a weekend or holiday, and durations such as days since signup or days since last purchase. Durations must be computed relative to the prediction moment, not to the day you ran the export, or you create leakage.\n\nFree text such as ticket descriptions can become numbers too. TfidfVectorizer turns each document into one column per word, weighted by how often the word appears in this document and how rare it is across all documents (TF-IDF means term frequency times inverse document frequency). Common filler words get low weight and distinctive words high weight. For richer meaning, the embeddings topic shows how to turn text into dense vectors.\n\nKeep a list of each derived feature and how it was computed, because the live system must compute it the same way.",
+    "example": "A software company wants to predict which support tickets will escalate. From the opened timestamp the FDE derives hour, weekday and is_weekend; a ticket opened at 22:40 on a Saturday gets hour 22, weekday 5, is_weekend 1. From the ticket text, TF-IDF produces columns such as refund and login. Weekend tickets mentioning refund turn out to escalate most, which matches what the support lead suspected.",
+    "code": "import pandas as pd\nfrom sklearn.feature_extraction.text import TfidfVectorizer\n\ntickets = pd.DataFrame({\n    \"opened\": pd.to_datetime([\"2026-03-02 09:15\", \"2026-03-07 22:40\", \"2026-03-09 14:05\"]),\n    \"text\": [\"cannot log in\", \"refund not received\", \"login page error\"],\n})\ntickets[\"hour\"] = tickets[\"opened\"].dt.hour\ntickets[\"weekday\"] = tickets[\"opened\"].dt.dayofweek        # Monday=0 ... Sunday=6\ntickets[\"is_weekend\"] = (tickets[\"weekday\"] >= 5).astype(int)\nprint(tickets[[\"hour\", \"weekday\", \"is_weekend\"]].values.tolist())\n# [[9, 0, 0], [22, 5, 1], [14, 0, 0]]\n\ntfidf = TfidfVectorizer()                   # words -> weighted counts\nM = tfidf.fit_transform(tickets[\"text\"])\nprint(tfidf.get_feature_names_out())\n# ['cannot' 'error' 'in' 'log' 'login' 'not' 'page' 'received' 'refund']\nprint(M.shape)                              # (3, 9): 3 tickets x vocabulary size",
+    "lang": "Python"
+   },
+   {
+    "title": "Interactions and ratios",
+    "body": "A linear model adds up the effect of each feature separately. It cannot, on its own, learn that two features matter together. An interaction feature is a new column made by combining two others, often by multiplying them. Ratios are the other common trick: debt divided by income, spend per visit, tickets per month of tenure. They often match how the business already thinks.\n\nIn the example, monthly spend really equals visits times basket size. A linear model on visits and basket alone gets R squared 0.914 (see the linreg topic for R squared). Adding visits times basket as a column lifts it to 0.995, because the model can now express the true relationship.\n\nPolynomialFeatures(interaction_only=True) generates all pairwise products automatically, but the number of columns grows fast, which invites overfitting. Prefer a few interactions that someone in the business can explain. Tree models find many interactions by themselves, which is one reason boosting is strong on tables.",
+    "example": "A grocery chain wants to predict each loyalty member's monthly spend. The FDE asks the category manager how she thinks about spend, and she says 'trips times basket'. Adding that single product column raises R squared from 0.91 to 0.99 and makes the model's behaviour easy to explain in the review meeting.",
+    "code": "import numpy as np\nfrom sklearn.linear_model import LinearRegression\n\nrng = np.random.default_rng(0)\nvisits = rng.uniform(1, 20, 200)            # store visits per month\nbasket = rng.uniform(10, 60, 200)           # average basket in euros\nspend = visits * basket + rng.normal(0, 20, 200)   # spend really is visits x basket\n\nX_plain = np.column_stack([visits, basket])\nX_inter = np.column_stack([visits, basket, visits * basket])  # add the interaction\n\nfor name, X in [(\"plain\", X_plain), (\"with interaction\", X_inter)]:\n    r2 = LinearRegression().fit(X, spend).score(X, spend)\n    print(f\"{name:>17}: R2 = {r2:.3f}\")\n#             plain: R2 = 0.914\n#  with interaction: R2 = 0.995",
+    "lang": "Python"
+   },
+   {
+    "title": "Pipeline, ColumnTransformer and leakage traps",
+    "body": "Real tables mix numeric and category columns, each needing different steps. A ColumnTransformer takes a list of (name, transformer, columns) and applies each transformer to its own columns, then joins the results side by side. A Pipeline chains that preprocessing with the model into one object with fit and predict.\n\nThis matters for three reasons. First, cross-validation refits every step on each training fold, so medians, means and categories never come from validation rows. Second, you save one object (for example with joblib) and the live service applies exactly the same transformations. Third, the code reads like a recipe that a customer's team can maintain.\n\nLeakage traps in feature engineering are easy to fall into: fitting any transformer before splitting, target encoding without cross fitting, durations measured to the export date, and aggregates such as 'customer's average order value' computed over all time, including orders after the prediction date. Use the checklist before any result leaves your laptop.",
+    "example": "Dunmere Energy (made up) needs a late-payment model over tenure, monthly fee (with gaps) and plan. The FDE builds one Pipeline: median imputation and scaling for the two numeric columns, one-hot for plan, then logistic regression. Five-fold cross-validation gives scores from 0.962 to 0.988, and the same saved pipeline is loaded by the nightly scoring job, so no one has to recreate the steps by hand.",
+    "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.compose import ColumnTransformer\nfrom sklearn.impute import SimpleImputer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import cross_val_score\nfrom sklearn.pipeline import Pipeline, make_pipeline\nfrom sklearn.preprocessing import OneHotEncoder, StandardScaler\n\nrng = np.random.default_rng(7)\nn = 400\ndf = pd.DataFrame({\n    \"tenure_months\": rng.integers(1, 60, n).astype(float),\n    \"monthly_fee\": rng.uniform(10, 90, n).round(2),\n    \"plan\": rng.choice([\"basic\", \"pro\", \"team\"], n),\n})\ndf.loc[rng.choice(n, 30, replace=False), \"monthly_fee\"] = np.nan   # some gaps\ny = ((df[\"tenure_months\"] < 12) & (df[\"plan\"] == \"basic\")).astype(int)\n\nprep = ColumnTransformer([\n    (\"num\", make_pipeline(SimpleImputer(strategy=\"median\"), StandardScaler()),\n     [\"tenure_months\", \"monthly_fee\"]),\n    (\"cat\", OneHotEncoder(handle_unknown=\"ignore\"), [\"plan\"]),\n])\nmodel = Pipeline([(\"prep\", prep), (\"clf\", LogisticRegression(max_iter=1000))])\n\n# Every step is re-fitted on each training fold, so nothing leaks from validation rows\nprint(cross_val_score(model, df, y, cv=5).round(3))\n# [0.988 0.988 0.988 0.988 0.962]",
+    "lang": "Python",
+    "checklist": [
+     "Every transformer (scaler, imputer, encoder, selector) is inside the Pipeline, none fitted beforehand",
+     "Target encoding uses cross fitting and smoothing",
+     "Durations and aggregates are computed as of the prediction moment",
+     "OneHotEncoder has handle_unknown=\"ignore\" for live data",
+     "The list of derived features and their formulas is written down",
+     "The saved pipeline was reloaded and scored a few rows to confirm it matches"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Feature engineering",
+    "Creating and transforming input columns so a model can learn from them."
+   ],
+   [
+    "Standardization",
+    "Rescaling a column to mean 0 and standard deviation 1."
+   ],
+   [
+    "One-hot encoding",
+    "Turning a category column into one 0/1 column per category."
+   ],
+   [
+    "Target encoding",
+    "Replacing a category with the smoothed average target value for that category."
+   ],
+   [
+    "Cardinality",
+    "The number of distinct values in a column."
+   ],
+   [
+    "Imputation",
+    "Filling missing values with an estimate such as the median."
+   ],
+   [
+    "Interaction feature",
+    "A new column combining two features, often by multiplying them."
+   ],
+   [
+    "TF-IDF",
+    "A way to weight words in a document by how frequent they are there and how rare across all documents."
+   ],
+   [
+    "ColumnTransformer",
+    "A scikit-learn tool that applies different preprocessing to different columns and joins the results."
+   ],
+   [
+    "Pipeline",
+    "A scikit-learn object that chains preprocessing steps and a model into one fit and predict."
+   ]
+  ],
+  "practice": [
+   "Take a small DataFrame with age (some NaN), city and signup date. Write the features you would derive and the transformer for each, then build them with pandas.",
+   "Build a ColumnTransformer plus LogisticRegression Pipeline for a synthetic churn table with numeric, category and missing values, and report 5-fold cross-validation.",
+   "Stretch: show leakage by fitting a StandardScaler and SimpleImputer on all rows before cross-validation, then inside the Pipeline, on a small noisy dataset. Explain any difference in a short note."
+  ]
+ },
+ "linreg": {
+  "plain": "Linear regression predicts a number, such as delivery time or monthly sales, as a weighted sum of input features plus a constant called the intercept. Each weight (also called a coefficient) says how much the prediction changes when that feature goes up by one unit. Training means finding the weights that make the predictions as close as possible to the real values, usually by minimising the average squared error. It is the simplest useful model, it is fast and explainable, and the ideas behind it (a loss, gradients, regularization) carry over to every bigger model, including neural networks.",
+  "analogy": "Imagine stretching a straight rubber band through a scatter of nails on a board. Each nail pulls on the band, and far-away nails pull hardest. The band settles where the total pull is balanced; that is the least squares line.",
+  "why": "Customers constantly ask for number predictions: how long will this job take, how much stock do we need, what will this claim cost. An FDE should be able to fit and explain a linear model in an hour, tell whether its errors are acceptable in the customer's units, and know when it will fail and a tree or time-series model is needed instead.",
+  "subtopics": [
+   {
+    "title": "Fitting a line: the intuition",
+    "body": "Start with one feature. A courier wants to predict delivery time from distance. Plot distance on the x axis and minutes on the y axis, and the points form a rough upward band. A straight line through them is y = w * x + b. The slope w is the extra minutes per extra kilometre. The intercept b is the predicted time at zero km, which you can read as fixed overhead like parking and finding the door.\n\nFor each point, the residual is actual minus predicted: the vertical gap between the point and the line. Good lines have small residuals. To score a whole line with one number, square every residual and add them up. Squaring stops positive and negative gaps cancelling out and makes big misses count much more than small ones.\n\nWith more features the idea is identical, only the line becomes a flat surface: y = w1 * x1 + w2 * x2 + ... + b.",
+    "example": "Six deliveries took 14, 17, 23, 25, 31 and 33 minutes for 1 to 6 km. A first guess, 3 minutes per km plus 10, leaves residuals 1, 1, 4, 3, 6 and 5 minutes, with a sum of squares of 88. A second guess, 4 minutes per km plus 10, leaves residuals of 0 and plus or minus 1, with a sum of squares of 5. The second line is much better, and least squares will find the best one exactly.",
+    "code": "import numpy as np\n\n# Delivery distance (km) and delivery time (minutes) for 6 orders\nkm = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])\nminutes = np.array([14.0, 17.0, 23.0, 25.0, 31.0, 33.0])\n\ndef predict(w, b, x):\n    return w * x + b                     # the line: slope w, intercept b\n\nfor w, b in [(3.0, 10.0), (4.0, 10.0)]:  # two guesses at the line\n    residuals = minutes - predict(w, b, km)   # actual minus predicted\n    print(f\"w={w}, b={b}: residuals={residuals}, sum of squares={np.sum(residuals**2):.1f}\")\n# w=3.0, b=10.0: residuals=[1. 1. 4. 3. 6. 5.], sum of squares=88.0\n# w=4.0, b=10.0: residuals=[ 0. -1.  1. -1.  1. -1.], sum of squares=5.0",
+    "lang": "Python"
+   },
+   {
+    "title": "Least squares: the best line in one formula",
+    "body": "Ordinary least squares (OLS) picks the w and b that make the sum of squared residuals as small as possible. For one feature there is a short formula. The slope is how x and y move together (their covariance) divided by how much x moves on its own (its variance): w = sum((x - mean_x) * (y - mean_y)) / sum((x - mean_x)^2). The intercept then makes the line pass through the point (mean_x, mean_y): b = mean_y - w * mean_x.\n\nWith many features the same idea is solved with linear algebra. numpy.linalg.lstsq solves it directly; add a column of ones to the inputs so the intercept is learned too. scikit-learn's LinearRegression does all of this for you and stores the answer in coef_ and intercept_.\n\nAll three routes give the same numbers. The closed form is exact and fast for small and medium data. For very large data, or for models with no closed form, we use gradient descent, which is next.",
+    "example": "For the six deliveries, the formula gives w = 3.971 and b = 9.933: about 4 minutes per km plus 10 minutes of fixed overhead. The courier's operations lead can check that against intuition: parking and handover really do take around 10 minutes. numpy's solver and scikit-learn return the same two numbers.",
+    "code": "import numpy as np\nfrom sklearn.linear_model import LinearRegression\n\nkm = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])\nminutes = np.array([14.0, 17.0, 23.0, 25.0, 31.0, 33.0])\n\n# Closed-form least squares for one feature\nw = np.sum((km - km.mean()) * (minutes - minutes.mean())) / np.sum((km - km.mean()) ** 2)\nb = minutes.mean() - w * km.mean()\nprint(round(w, 3), round(b, 3))                        # 3.971 9.933\n\n# The same answer from numpy's solver and from scikit-learn\nA = np.column_stack([km, np.ones_like(km)])           # columns: x and a column of 1s\nprint(np.linalg.lstsq(A, minutes, rcond=None)[0].round(3))   # [3.971 9.933]\nmodel = LinearRegression().fit(km.reshape(-1, 1), minutes)\nprint(model.coef_.round(3), round(model.intercept_, 3))     # [3.971] 9.933",
+    "lang": "Python"
+   },
+   {
+    "title": "Gradient descent step by step",
+    "body": "Gradient descent finds the best weights by walking downhill on the loss. Picture the loss (mean squared error) as a bowl-shaped valley over all possible values of w and b. Start anywhere, for example w = 0 and b = 0. At that spot, compute the gradient: the direction in which the loss rises fastest. For MSE it is grad_w = 2 * mean(error * x) and grad_b = 2 * mean(error), where error = prediction minus actual. Then take a small step the other way: w = w - lr * grad_w. Repeat.\n\nThe learning rate lr sets the step size and is the setting that matters most. Too small and training crawls. Too large and each step jumps over the bottom of the valley, so the loss zig-zags or even explodes. In the output, with lr = 0.05, w swings from 9.5 to 3.8 to 7.1 before settling: that is overshooting that still converges. Scaling features first makes the valley rounder and training much smoother.\n\nThis is exactly how neural networks are trained, just with millions of weights (see neuralnets). Try it in the widget: change the learning rate and press Step.",
+    "example": "Running 2,000 steps on the six deliveries: the loss falls from 614.8 at step 1 to 10.9 at step 10, 1.17 at step 100 and 0.80 at step 2,000, where w = 3.971 and b = 9.933. That is the least squares answer, found without any formula. Raising lr to 0.1 on this data makes the loss grow every step instead.",
+    "code": "import numpy as np\n\nkm = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])\nminutes = np.array([14.0, 17.0, 23.0, 25.0, 31.0, 33.0])\nn = len(km)\n\nw, b = 0.0, 0.0          # start with a flat line at zero\nlr = 0.05                # learning rate: how big each step is\n\nfor step in range(1, 2001):\n    pred = w * km + b\n    error = pred - minutes\n    loss = np.mean(error ** 2)            # mean squared error (MSE)\n    grad_w = 2 / n * np.sum(error * km)   # slope of the loss with respect to w\n    grad_b = 2 / n * np.sum(error)        # slope of the loss with respect to b\n    w -= lr * grad_w                      # step downhill\n    b -= lr * grad_b\n    if step in (1, 2, 3, 10, 100, 2000):\n        print(f\"step {step:>4}: loss={loss:8.2f}  w={w:.3f}  b={b:.3f}\")\n# step    1: loss=  614.83  w=9.500  b=2.383\n# step    2: loss=  229.19  w=3.758  b=1.203\n# step    3: loss=   90.78  w=7.137  b=2.151   <- overshooting back and forth\n# step   10: loss=   10.94  w=5.596  b=2.822\n# step  100: loss=    1.17  w=4.288  b=8.579\n# step 2000: loss=    0.80  w=3.971  b=9.933   <- same as least squares",
+    "lang": "Python"
+   },
+   {
+    "title": "Measuring fit: R squared, MAE and RMSE",
+    "body": "Three numbers describe a regression model. MAE (mean absolute error) is the average size of a miss, in the target's own units: 'we are typically 0.8 minutes off'. RMSE (root mean squared error) squares misses before averaging and then takes the square root, so it is also in the target's units but punishes large misses more. If RMSE is much larger than MAE, a few big misses dominate.\n\nR squared compares your model to always predicting the average. R squared = 1 - (sum of squared residuals) / (sum of squared differences from the mean). 1.0 is perfect, 0 means no better than the average, and it can go negative on new data if the model is worse than the average. It is unitless, which makes it easy to quote and easy to misuse.\n\nAlways compute these on validation or test data, never only on training data. The mlmetrics topic covers choosing between them; for customers, lead with MAE in their units.",
+    "example": "On the six deliveries the least squares line has MAE 0.82 minutes, RMSE 0.90 minutes and R squared 0.983. For the courier's dispatch team the useful sentence is: 'our estimate is typically within about a minute'. R squared of 0.98 sounds impressive but would be meaningless if measured on a different time of day with heavy traffic.",
+    "code": "import numpy as np\nfrom sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score\n\nminutes = np.array([14.0, 17.0, 23.0, 25.0, 31.0, 33.0])\nkm = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])\npred = 3.971 * km + 9.933            # the least squares line from before\n\nprint(\"MAE \", round(mean_absolute_error(minutes, pred), 2))                 # 0.82  typical miss\nprint(\"RMSE\", round(float(np.sqrt(mean_squared_error(minutes, pred))), 2))  # 0.9   punishes big misses\nprint(\"R2  \", round(r2_score(minutes, pred), 3))                            # 0.983 variance explained\n\n# R2 by hand: 1 - (error of the model) / (error of always guessing the mean)\nss_res = np.sum((minutes - pred) ** 2)\nss_tot = np.sum((minutes - minutes.mean()) ** 2)\nprint(\"R2 by hand\", round(1 - ss_res / ss_tot, 3))                          # 0.983",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Metric",
+      "Units",
+      "Read it as"
+     ],
+     "rows": [
+      [
+       "MAE",
+       "Target units",
+       "Typical size of a miss"
+      ],
+      [
+       "RMSE",
+       "Target units",
+       "Like MAE but big misses weigh more"
+      ],
+      [
+       "R squared",
+       "None, up to 1",
+       "Share of variation explained vs the mean"
+      ],
+      [
+       "MAPE",
+       "Percent",
+       "Average miss as a percent; breaks near zero"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Ridge and lasso regularization",
+    "body": "With many features, and especially with features that are near copies of each other, least squares can produce wild weights: a big positive weight on one column cancelled by a big negative weight on its twin. Such a model overfits and its coefficients cannot be explained. Regularization adds a penalty for large weights to the loss.\n\nRidge (L2) adds alpha times the sum of squared weights. It shrinks all weights towards zero and shares credit between correlated features. Lasso (L1) adds alpha times the sum of absolute weights. It can set weak weights to exactly zero, so it also selects features. alpha controls the strength: 0 is plain least squares, larger is simpler. Choose alpha with cross-validation (RidgeCV, LassoCV). ElasticNet mixes both.\n\nScale features first, otherwise the penalty hits columns unfairly depending on their units.",
+    "example": "An online retailer predicts basket value from six features, where column 1 is almost a copy of column 0 and only columns 0 and 2 truly matter. Plain least squares gives column 0 a weight of 3.59 and its twin -0.66, which is confusing. Ridge splits the credit evenly (1.42 and 1.38). Lasso keeps column 0 at 2.78 and column 2 at 1.85 and sets the twin and most noise columns to exactly 0, which is the story the merchandising team can use.",
+    "code": "import numpy as np\nfrom sklearn.linear_model import Lasso, LinearRegression, Ridge\nfrom sklearn.preprocessing import StandardScaler\n\nrng = np.random.default_rng(3)\nn = 40\nX = rng.normal(size=(n, 6))\nX[:, 1] = X[:, 0] + rng.normal(0, 0.05, n)          # column 1 is almost a copy of column 0\ny = 3 * X[:, 0] + 2 * X[:, 2] + rng.normal(0, 1, n)  # only columns 0 and 2 really matter\nX = StandardScaler().fit_transform(X)               # regularization needs same-scale features\n\nfor name, model in [(\"plain\", LinearRegression()),\n                    (\"ridge\", Ridge(alpha=5.0)),\n                    (\"lasso\", Lasso(alpha=0.2))]:\n    model.fit(X, y)\n    print(f\"{name:>5}:\", model.coef_.round(2))\n# plain: [ 3.59 -0.66  2.01 -0.04  0.17  0.22]\n# ridge: [ 1.42  1.38  1.82 -0.02  0.13  0.22]   <- twins share the credit\n# lasso: [ 2.78  0.    1.85 -0.    0.    0.04]   <- weak weights set to zero",
+    "lang": "Python"
+   },
+   {
+    "title": "Assumptions and when it fails",
+    "body": "Linear regression quietly assumes several things. The relationship is roughly a straight line (after any transformations you add). Errors are independent of each other, which breaks for time series where today's error predicts tomorrow's. The spread of errors is similar across the range. No single point dominates. For confidence intervals and p-values you also want errors roughly normal.\n\nThe best check is a residual plot: residuals on the y axis, predictions or a feature on the x axis. A healthy plot is a shapeless cloud around zero. A curve means the relationship is not linear (add a squared term or use a tree model). A funnel means errors grow with the value (try predicting the log of the target). A long tail of huge residuals means outliers.\n\nOutliers are dangerous because errors are squared. HuberRegressor uses squared loss for small errors and absolute loss for big ones, so one bad point cannot drag the whole line. Finally, a coefficient is an association, not a cause: correlated or missing features can flip its sign.",
+    "example": "One of the courier's deliveries took 120 minutes because the van broke down. With that single point in, the least squares slope jumps from 3.97 to 12.79 minutes per km, ruining every other estimate. The residuals show a clear pattern instead of a cloud. HuberRegressor gives 4.34, close to the clean answer, and the FDE also asks the operations team to tag breakdowns so they can be excluded properly.",
+    "code": "import numpy as np\nfrom sklearn.linear_model import HuberRegressor, LinearRegression\n\nkm = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])\nminutes = np.array([14.0, 17.0, 23.0, 25.0, 31.0, 33.0, 120.0])  # last order: van broke down\nX = km.reshape(-1, 1)\n\nols = LinearRegression().fit(X[:-1], minutes[:-1])\nols_out = LinearRegression().fit(X, minutes)\nhuber = HuberRegressor().fit(X, minutes)            # down-weights large residuals\n\nprint(\"slope without outlier:\", round(ols.coef_[0], 2))       # 3.97\nprint(\"slope with outlier:   \", round(ols_out.coef_[0], 2))   # 12.79\nprint(\"Huber with outlier:   \", round(huber.coef_[0], 2))     # 4.34\n\nresiduals = minutes - ols_out.predict(X)\nprint(\"residuals:\", residuals.round(1))   # a pattern here means the line is the wrong shape\n# residuals: [ 14.8   5.   -1.8 -12.6 -19.4 -30.1  44.1]",
+    "lang": "Python",
+    "checklist": [
+     "Plotted the target against each important feature: is it roughly straight?",
+     "Plotted residuals against predictions: a shapeless cloud, no curve or funnel",
+     "Looked for outliers and asked the customer what they are",
+     "Checked for time order: if rows are dated, errors may be correlated",
+     "Checked for near-duplicate features before reading coefficients",
+     "Measured MAE or RMSE on validation data in the customer's units"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Coefficient (weight)",
+    "How much the prediction changes when a feature rises by one unit, holding others fixed."
+   ],
+   [
+    "Intercept",
+    "The prediction when every feature is zero; the b in y = w * x + b."
+   ],
+   [
+    "Residual",
+    "Actual value minus predicted value for one row."
+   ],
+   [
+    "Least squares",
+    "Choosing weights that minimise the sum of squared residuals."
+   ],
+   [
+    "Loss function",
+    "A single number measuring how wrong the model is, which training tries to minimise."
+   ],
+   [
+    "Gradient",
+    "The direction and rate in which the loss increases fastest as the weights change."
+   ],
+   [
+    "Learning rate",
+    "The size of each gradient descent step."
+   ],
+   [
+    "R squared",
+    "Share of the target's variation explained by the model compared to always predicting the mean."
+   ],
+   [
+    "Ridge",
+    "Regression that penalises the sum of squared weights, shrinking them all."
+   ],
+   [
+    "Lasso",
+    "Regression that penalises the sum of absolute weights, setting some to exactly zero."
+   ]
+  ],
+  "practice": [
+   "By hand or in a spreadsheet, compute the least squares slope and intercept for five points of your choice, then check with numpy.",
+   "Write gradient descent in numpy for load_diabetes from scikit-learn (scale the features first). Plot loss per step for three learning rates and describe what happens.",
+   "Stretch: on the same data compare LinearRegression, RidgeCV and LassoCV with 5-fold cross-validation, report MAE, and list which features lasso drops."
+  ]
+ },
+ "logreg": {
+  "plain": "Logistic regression is a model for yes or no questions, such as will this customer churn or is this payment fraud. Despite its name it is a classification model. It computes a weighted sum of the features, like linear regression, then passes it through the sigmoid function, which squashes any number into a probability between 0 and 1. It is trained by minimising log loss, a score that punishes confident wrong answers heavily. You then choose a threshold to turn probabilities into decisions. It is fast, well understood and easy to explain, which makes it a common first model and a strong baseline.",
+  "analogy": "Think of a dimmer switch rather than an on-off switch. The weighted sum turns the dial, the sigmoid sets how bright the light is (the probability), and you decide how bright is bright enough to count as 'on' (the threshold).",
+  "why": "Most enterprise ML asks are yes or no: will this invoice be paid late, will this patient miss an appointment, is this claim suspicious. An FDE often starts with logistic regression because its probabilities can be ranked, its threshold can be tuned to the customer's costs, and its weights can be explained to a risk or compliance team.",
+  "subtopics": [
+   {
+    "title": "From a score to a probability: the sigmoid",
+    "body": "Start the way linear regression does: z = w1 * x1 + w2 * x2 + ... + b. z is called the score or logit, and it can be any number. To turn it into a probability, apply the sigmoid: p = 1 / (1 + e^-z), where e is about 2.718. Large positive z gives p close to 1, large negative z gives p close to 0, and z = 0 gives exactly 0.5.\n\nThe sigmoid is S-shaped: it changes fastest around z = 0 and flattens at both ends. That matches how evidence works. When a case is borderline, one more piece of evidence moves the probability a lot. When a case is already clear, extra evidence changes little.\n\nWhy not just use linear regression on 0/1 labels? A straight line happily predicts -0.3 or 1.4, which cannot be probabilities, and it is badly pulled by extreme points. The sigmoid keeps every output in the 0 to 1 range.",
+    "example": "A software company's churn score is z = -3 + 0.8 * support_tickets_last_month. A customer with no tickets has z = -3 and p = 0.05. Two tickets give p = 0.20, four give 0.55 and six give 0.86. The customer success lead sees that the jump from two to four tickets matters far more than the jump from zero to two.",
+    "code": "import numpy as np\n\ndef sigmoid(z):\n    return 1 / (1 + np.exp(-z))          # squashes any number into 0..1\n\n# A churn score: z = -3 + 0.8 * support_tickets_last_month\nfor tickets in [0, 2, 4, 6]:\n    z = -3 + 0.8 * tickets\n    print(f\"tickets={tickets}  z={z:5.1f}  p(churn)={sigmoid(z):.2f}\")\n# tickets=0  z= -3.0  p(churn)=0.05\n# tickets=2  z= -1.4  p(churn)=0.20\n# tickets=4  z=  0.2  p(churn)=0.55\n# tickets=6  z=  1.8  p(churn)=0.86",
+    "lang": "Python"
+   },
+   {
+    "title": "Log loss: how wrong, with how much confidence",
+    "body": "To train, we need a loss that says how bad the probabilities are. Log loss (also called binary cross-entropy) is -[y * log(p) + (1 - y) * log(1 - p)] for one example, averaged over all rows. When the truth y is 1, only -log(p) counts: if p is 0.9 the loss is 0.11, if p is 0.5 it is 0.69, and if p is 0.01 it is 4.61.\n\nSo log loss barely punishes confident correct answers, moderately punishes hesitant ones, and heavily punishes confident mistakes. This pushes the model to give honest probabilities. A model that says 0.99 must be right almost every time.\n\nLog loss is also smooth and bowl-shaped for logistic regression, so gradient descent works well, and its gradient has a simple form: for each weight, the average of (p - y) times that feature. Lower log loss is better; always guessing 0.5 gives 0.693, a useful baseline to beat. The logreg widget shows log loss updating as you move the weights.",
+    "example": "A lender's model scores five past applicants: truth 1, 0, 1, 1, 0 and predicted default probabilities 0.8, 0.3, 0.6, 0.9, 0.1. Average log loss is 0.26. If the model had said 0.01 for one of the applicants who did default, that one row alone would add 4.61 before averaging, which is why a single overconfident mistake stands out.",
+    "code": "import numpy as np\nfrom sklearn.metrics import log_loss\n\ndef one_loss(y, p):\n    return -(y * np.log(p) + (1 - y) * np.log(1 - p))   # log loss for one example\n\nfor p in [0.9, 0.6, 0.5, 0.2, 0.01]:     # predicted probability of \"yes\" when the truth is yes\n    print(f\"truth=1, p={p:<4}  loss={one_loss(1, p):.2f}\")\n# truth=1, p=0.9   loss=0.11\n# truth=1, p=0.6   loss=0.51\n# truth=1, p=0.5   loss=0.69\n# truth=1, p=0.2   loss=1.61\n# truth=1, p=0.01  loss=4.61\n\ny_true = [1, 0, 1, 1, 0]\np_yes = [0.8, 0.3, 0.6, 0.9, 0.1]\nprint(\"average log loss:\", round(log_loss(y_true, p_yes), 3))   # 0.26",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Truth",
+      "Predicted p(yes)",
+      "Log loss",
+      "Verdict"
+     ],
+     "rows": [
+      [
+       "yes",
+       "0.9",
+       "0.11",
+       "Confident and right"
+      ],
+      [
+       "yes",
+       "0.6",
+       "0.51",
+       "Hesitant and right"
+      ],
+      [
+       "yes",
+       "0.5",
+       "0.69",
+       "No idea"
+      ],
+      [
+       "yes",
+       "0.2",
+       "1.61",
+       "Wrong"
+      ],
+      [
+       "yes",
+       "0.01",
+       "4.61",
+       "Confident and wrong"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Training and the decision boundary",
+    "body": "Training finds the weights that minimise average log loss, using gradient descent or a faster relative. scikit-learn's LogisticRegression does this and, by default, adds a small ridge-style penalty (controlled by C, where smaller C means stronger regularization). After fitting, coef_ holds one weight per feature and intercept_ holds the bias.\n\nThe decision boundary is the set of points where the model is exactly undecided: p = 0.5, which is where z = w1 * x1 + w2 * x2 + b = 0. With two features that equation is a straight line; you can rearrange it to x2 = -(w1 / w2) * x1 - b / w2 and draw it. With more features it is a flat plane. Points on one side get p above 0.5, on the other side below.\n\nBecause the boundary is straight, logistic regression cannot separate classes arranged in a ring or a checkerboard unless you add features such as squares or interactions (see featureeng). Trees and kernels handle such shapes directly (see trees and knnsvm).",
+    "example": "A streaming service describes customers by logins per week and support tickets per month. Fitting on 200 customers gives weights -2.12 for logins and 1.26 for tickets: more logins lowers churn risk, more tickets raises it. The boundary line is tickets = 1.69 * logins - 4.07. A customer with 4 logins and 2.5 tickets sits near the line, at 0.44 probability of churn, a borderline case worth a human look.",
+    "code": "import numpy as np\nfrom sklearn.datasets import make_blobs\nfrom sklearn.linear_model import LogisticRegression\n\n# Two features per customer: logins per week and support tickets per month\nX, y = make_blobs(n_samples=200, centers=[[6, 1], [2, 4]], cluster_std=1.2, random_state=0)\nclf = LogisticRegression().fit(X, y)          # class 1 = churned\n\nw1, w2 = clf.coef_[0]\nb = clf.intercept_[0]\nprint(\"weights:\", round(w1, 2), round(w2, 2), \"bias:\", round(b, 2))  # -2.12 1.26 bias: 5.11\nprint(\"train accuracy:\", clf.score(X, y))                           # 0.98\n# The boundary is where w1*x1 + w2*x2 + b = 0, a straight line:\nprint(f\"x2 = {-w1 / w2:.2f} * x1 + ({-b / w2:.2f})\")               # x2 = 1.69 * x1 + (-4.07)\nprint(clf.predict_proba([[4, 2.5]]).round(2))   # [[0.56 0.44]]  a customer near the line",
+    "lang": "Python"
+   },
+   {
+    "title": "Probabilities and thresholds",
+    "body": "predict gives a class using a threshold of 0.5. predict_proba gives the probability, which is usually more useful. The threshold is a business decision, not a property of the model. Lowering it flags more cases: recall rises (you catch more real positives) and precision falls (more of the flags are false alarms). Raising it does the opposite. The mlmetrics topic explains these metrics and ROC curves in detail.\n\nTo choose, write down what each mistake costs and how much capacity the team has. If a fraud analyst can review 70 cases a day, pick the threshold that produces about 70 flags. If a missed fraud costs 50 times more than a review, a low threshold is worth it.\n\nProbabilities are only useful if they are calibrated, meaning that among cases scored 0.3, about 30 percent really are positive. Logistic regression is usually reasonably calibrated, but check with sklearn.calibration.calibration_curve, especially after using class weights, which shift probabilities upward.",
+    "example": "A payments company tests a fraud model on 600 held-out transactions, 10 percent fraud. At threshold 0.5 it flags 45 with precision 0.78 and recall 0.56. At 0.3 it flags 70, precision 0.61, recall 0.69. At 0.15 it flags 108, precision 0.46, recall 0.81. The review team can handle about 70 per batch, so the FDE recommends 0.3 and documents the trade-off.",
+    "code": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import precision_score, recall_score\nfrom sklearn.model_selection import train_test_split\n\nX, y = make_classification(n_samples=2000, n_features=6, weights=[0.9, 0.1],\n                           class_sep=0.8, random_state=4)   # 10% positives (fraud)\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, random_state=4, stratify=y)\np = LogisticRegression().fit(X_tr, y_tr).predict_proba(X_te)[:, 1]   # P(class 1)\n\nfor t in [0.5, 0.3, 0.15]:\n    pred = (p >= t).astype(int)\n    print(f\"threshold={t:<4}  flagged={pred.sum():>3}  \"\n          f\"precision={precision_score(y_te, pred):.2f}  recall={recall_score(y_te, pred):.2f}\")\n# threshold=0.5   flagged= 45  precision=0.78  recall=0.56\n# threshold=0.3   flagged= 70  precision=0.61  recall=0.69\n# threshold=0.15  flagged=108  precision=0.46  recall=0.81",
+    "lang": "Python"
+   },
+   {
+    "title": "More than two classes: softmax",
+    "body": "Many questions have more than two answers: which of five departments should get this ticket, which of three species is this flower. Multinomial logistic regression keeps one set of weights per class and computes one score per class. The softmax function turns those scores into probabilities that are all positive and add up to 1: p_k = e^(z_k) / sum over all classes of e^(z_j).\n\nSoftmax is the many-class version of the sigmoid. The class with the highest score gets the highest probability, but the others keep a share, which tells you how confident the model is. The loss is the multi-class version of log loss (cross-entropy). The same softmax sits at the output of large language models, choosing among tens of thousands of tokens (see transformer).\n\nIn scikit-learn, LogisticRegression uses the multinomial softmax approach by default when there are more than two classes; coef_ then has one row per class. The older alternative, one-vs-rest, trains one yes or no model per class.",
+    "example": "A plant nursery wants to identify iris species from four petal and sepal measurements. The fitted model has a 3 by 4 weight matrix. For three sample flowers it gives probabilities 0.982 / 0.018 / 0.0, then 0.056 / 0.938 / 0.007, then 0.0 / 0.024 / 0.976. The middle flower is clearly species two but with a little doubt, which the nursery can use to send borderline cases to an expert.",
+    "code": "import numpy as np\nfrom sklearn.datasets import load_iris\nfrom sklearn.linear_model import LogisticRegression\n\ndef softmax(z):\n    e = np.exp(z - z.max())               # subtract max for numerical safety\n    return e / e.sum()\n\nprint(softmax(np.array([2.0, 1.0, 0.1])).round(3))   # [0.659 0.242 0.099]\n\nX, y = load_iris(return_X_y=True)          # 3 flower species, 4 measurements\nclf = LogisticRegression(max_iter=1000).fit(X, y)   # multinomial (softmax) by default\nprint(clf.coef_.shape)                     # (3, 4): one row of weights per class\nprobs = clf.predict_proba(X[[0, 60, 120]])\nprint(probs.round(3))                      # each row sums to 1\n# [[0.982 0.018 0.   ]\n#  [0.056 0.938 0.007]\n#  [0.    0.024 0.976]]",
+    "lang": "Python"
+   },
+   {
+    "title": "Coefficients as odds, and class imbalance",
+    "body": "Odds are p / (1 - p): a probability of 0.2 is odds of 0.25, or 1 to 4. Logistic regression is linear in the log of the odds, so each coefficient has a clean meaning: when a feature rises by one unit, the odds are multiplied by exp(coefficient). exp(0.7) is about 2.0, so each extra support ticket doubles the odds of churn, holding other features fixed. A value below 1 lowers the odds. Compare coefficients only after scaling features, and remember these are associations in the data, not proof of cause.\n\nClass imbalance is when one class is rare, such as 2 percent churn or 0.1 percent fraud. The model can reach 98 percent accuracy by always saying no, and at the default threshold it may flag nothing. Two fixes: lower the threshold (previous subtopic), or train with class_weight=\"balanced\", which makes each rare example count more in the loss. Weighting raises recall and lowers precision, and it inflates the probabilities, so recalibrate if you need honest probabilities. Judge imbalanced models with precision, recall and PR-AUC, not accuracy.",
+    "example": "A web hosting company has 5,000 customers and a 2.2 percent churn rate. The fitted odds ratios are 1.93 per support ticket and 0.77 per year as a customer: each extra year cuts the odds of churn by about a quarter. At the default threshold the plain model catches none of the churners. With class_weight=\"balanced\" it catches 67 percent, at the cost of many more false alarms, which the retention team accepts because a check-in email is cheap.",
+    "code": "import numpy as np\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import recall_score\n\nrng = np.random.default_rng(5)\nn = 5000\ntickets = rng.poisson(1.0, n)                   # support tickets last month\nyears = rng.uniform(0, 6, n)                    # years as a customer\nz = -4.0 + 0.7 * tickets - 0.3 * years          # the true rule behind the data\ny = (rng.random(n) < 1 / (1 + np.exp(-z))).astype(int)\nX = np.column_stack([tickets, years])\nprint(\"churn rate:\", round(y.mean(), 3))        # 0.022  rare positives\n\nplain = LogisticRegression().fit(X, y)\nprint(\"odds ratios:\", np.exp(plain.coef_[0]).round(2))  # [1.93 0.77] per ticket, per year\n\nbalanced = LogisticRegression(class_weight=\"balanced\").fit(X, y)\nprint(\"recall plain:   \", round(recall_score(y, plain.predict(X)), 2))      # 0.0\nprint(\"recall balanced:\", round(recall_score(y, balanced.predict(X)), 2))   # 0.67",
+    "lang": "Python",
+    "checklist": [
+     "Checked the share of positives before looking at accuracy",
+     "Reported precision, recall and PR-AUC, not only accuracy",
+     "Chose the threshold from the cost of each mistake and team capacity",
+     "Scaled features before comparing coefficient sizes",
+     "Explained odds ratios as associations, not causes",
+     "Checked calibration if probabilities will be shown to people"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Logistic regression",
+    "A classification model that turns a weighted sum of features into a probability with the sigmoid."
+   ],
+   [
+    "Sigmoid",
+    "The S-shaped function 1 / (1 + e^-z) that maps any number into 0 to 1."
+   ],
+   [
+    "Logit",
+    "The raw score z before the sigmoid; the log of the odds."
+   ],
+   [
+    "Log loss",
+    "The average of -log of the probability given to the true class; punishes confident mistakes."
+   ],
+   [
+    "Decision boundary",
+    "Where the model is exactly undecided (p = 0.5); a straight line or plane for logistic regression."
+   ],
+   [
+    "Threshold",
+    "The probability above which a case is labelled positive."
+   ],
+   [
+    "Odds ratio",
+    "exp(coefficient): how the odds multiply when a feature rises by one unit."
+   ],
+   [
+    "Softmax",
+    "A function that turns several scores into probabilities that add up to 1."
+   ],
+   [
+    "Class imbalance",
+    "When one class is much rarer than the other in the data."
+   ],
+   [
+    "Calibration",
+    "How well predicted probabilities match observed frequencies."
+   ]
+  ],
+  "practice": [
+   "Compute the sigmoid by hand for z = -2, 0 and 2, then compute log loss for truth 1 at each of those probabilities.",
+   "Fit LogisticRegression on load_breast_cancer (scaled). Print precision and recall for thresholds 0.3, 0.5 and 0.7, and write one paragraph recommending a threshold for a screening clinic.",
+   "Stretch: implement logistic regression with gradient descent in numpy on a two-feature synthetic dataset, draw the decision boundary with matplotlib, and compare your weights with scikit-learn's (penalty=None)."
+  ]
+ }
+}

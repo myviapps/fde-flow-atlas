@@ -1,0 +1,304 @@
+[
+ {
+  "id": "sysdesign",
+  "mod": 2,
+  "sec": "2.5",
+  "name": "System design basics",
+  "title": "The building blocks of a web system, and how to put them together",
+  "thesis": "Most systems are the same dozen parts arranged differently: clients, a load balancer, stateless app servers, a database with replicas, a cache and a queue. Learn what each part is for and you can sketch, size and defend a design in an interview or a customer workshop.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "users",
+    90,
+    70,
+    "Employees",
+    "5,000 · browser"
+   ],
+   [
+    "lb",
+    265,
+    70,
+    "Load balancer",
+    "HTTPS · health"
+   ],
+   [
+    "app",
+    440,
+    70,
+    "App servers",
+    "stateless · x3"
+   ],
+   [
+    "cache",
+    615,
+    70,
+    "Cache",
+    "Redis · hot answers"
+   ],
+   [
+    "db",
+    615,
+    210,
+    "Postgres",
+    "primary + replica"
+   ],
+   [
+    "vector",
+    440,
+    210,
+    "Vector index",
+    "chunks · ACL tags"
+   ],
+   [
+    "queue",
+    265,
+    210,
+    "Queue",
+    "ingest jobs"
+   ],
+   [
+    "llm",
+    90,
+    210,
+    "LLM API",
+    "external model",
+    1
+   ],
+   [
+    "workers",
+    265,
+    350,
+    "Workers",
+    "parse · embed"
+   ]
+  ],
+  "edges": [
+   [
+    "users",
+    "lb",
+    0,
+    "HTTPS"
+   ],
+   [
+    "lb",
+    "app"
+   ],
+   [
+    "app",
+    "cache",
+    0,
+    "lookup"
+   ],
+   [
+    "app",
+    "db",
+    0,
+    "users · logs"
+   ],
+   [
+    "app",
+    "vector",
+    0,
+    "search"
+   ],
+   [
+    "app",
+    "queue",
+    0,
+    "new doc"
+   ],
+   [
+    "app",
+    "llm",
+    0,
+    "prompt"
+   ],
+   [
+    "queue",
+    "workers"
+   ],
+   [
+    "workers",
+    "vector",
+    0,
+    "embeddings"
+   ]
+  ],
+  "note": "Read the top row as the path of one question: browser, load balancer, any app server, then a cache check. The middle and bottom rows are the data the app server reads (database, vector index) and the background path that turns an uploaded document into searchable chunks through the queue and workers.",
+  "ideas": [
+   "Keep app servers stateless: sessions and files live in the database, cache or object storage, so any server can answer any request and you scale by adding copies.",
+   "Scale reads with caches and read replicas. Scale slow or bursty work with a queue and a pool of workers.",
+   "Vertical scaling means a bigger machine. Horizontal scaling means more machines. Start vertical because it is simpler, and design so horizontal is possible later.",
+   "Availability is the share of time the system answers. Remove single points of failure by running at least two of everything that matters.",
+   "CAP: during a network partition a distributed store must choose between answering with possibly stale data (availability) or refusing until it is sure (consistency)."
+  ],
+  "traps": [
+   "Drawing boxes before asking how many users, how much data and what latency the customer actually needs.",
+   "Adding Kafka, microservices and three databases for a system that serves two requests per second.",
+   "Forgetting permissions in an enterprise document search, so the AI can quote documents the user is not allowed to open."
+  ],
+  "qa": [
+   [
+    "Design a document Q&A assistant for 5,000 employees.",
+    "Clarify scope first: document sources, permissions, latency target, and usage. 5,000 users is roughly 3 questions per second at peak, so one region, three stateless app servers behind a load balancer, Postgres, a vector index and a queue with ingest workers is enough. Enforce document permissions at retrieval time, cache repeated answers, log every question and answer for evaluation, and add a fallback when the LLM API is slow."
+   ],
+   [
+    "Why make app servers stateless?",
+    "So any server can handle any request. That lets the load balancer spread traffic freely, lets you add or remove servers without losing user sessions, and means a crashed server loses nothing."
+   ],
+   [
+    "When would you add a queue?",
+    "When work is slow, bursty or can fail and be retried, such as parsing and embedding a 300 page PDF. The web request returns immediately with a job id, workers process at their own pace, and a spike of uploads waits in the queue instead of timing out."
+   ]
+  ]
+ },
+ {
+  "id": "warehouse",
+  "mod": 2,
+  "sec": "2.2",
+  "name": "Warehouses and dbt",
+  "title": "Analytics warehouses, star schemas and dbt",
+  "thesis": "Operational databases run the business one row at a time. Warehouses answer questions over millions of rows by storing data in columns. dbt turns the SQL that shapes that data into tested, versioned models with visible lineage.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "OLTP systems handle many small reads and writes. OLAP systems handle fewer, much larger queries that scan and aggregate.",
+   "Columnar storage reads only the columns a query uses and compresses well, which is why warehouses are fast at SUM and GROUP BY.",
+   "A star schema puts measurable events in a fact table and descriptive context in dimension tables joined by keys.",
+   "dbt models are SELECT statements. ref() links them, which gives dbt the dependency graph (lineage) and the run order.",
+   "Slowly changing dimensions record how attributes change over time. Type 1 overwrites, Type 2 keeps history with valid_from and valid_to."
+  ],
+  "traps": [
+   "Running heavy analytics on the production OLTP database and slowing down the customer's live application.",
+   "Writing SELECT * on a wide warehouse table, which scans every column and costs money on per-byte pricing.",
+   "Joining facts to a Type 2 dimension without a date condition, which duplicates every fact row once per historical version."
+  ],
+  "qa": [
+   [
+    "What is the difference between OLTP and OLAP?",
+    "OLTP runs the application: many small transactions touching a few rows, normalized tables, row storage, millisecond latency. OLAP serves analysis: large scans and aggregations over history, denormalized star schemas, columnar storage, seconds are acceptable."
+   ],
+   [
+    "What does dbt actually do?",
+    "It compiles SQL SELECT models with Jinja, resolves ref() and source() into a dependency graph, runs them in order inside the warehouse as views or tables, runs data tests such as unique and not_null, and generates documentation with lineage. It does not extract or load data."
+   ],
+   [
+    "How would you track a customer's changing sales region for historical reports?",
+    "Make it a Type 2 slowly changing dimension, for example with a dbt snapshot. Each change adds a new row with valid_from and valid_to, and facts join on the customer key where the fact date falls inside that range."
+   ]
+  ]
+ },
+ {
+  "id": "dsa",
+  "mod": 7,
+  "sec": "7.3",
+  "name": "DSA essentials",
+  "title": "The small set of data structures and algorithms FDE interviews still use",
+  "thesis": "FDE coding rounds rarely test obscure algorithms. They test whether you reach for a hash map, a sliding window, a heap or a BFS when the problem calls for it, and whether you can explain the time and memory cost out loud.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "A hash map (Python dict) turns 'search the whole list again' into an O(1) lookup. It solves a surprising share of interview problems.",
+   "Two pointers and sliding windows replace nested loops over arrays and strings, taking O(n squared) down to O(n).",
+   "Sorting first (O(n log n)) often makes the rest of the problem simple, and unlocks binary search.",
+   "Graphs appear as dependencies, org charts and networks. BFS finds shortest paths in unweighted graphs, DFS explores everything reachable.",
+   "A heap keeps the top k items in O(n log k) without sorting everything."
+  ],
+  "traps": [
+   "Coding before restating the problem, agreeing on inputs and outputs, and walking through one example.",
+   "Using list.pop(0) or 'x in list' inside a loop, which quietly adds an O(n) cost to every step.",
+   "Staying silent. Interviewers score your reasoning and communication as much as the final code."
+  ],
+  "qa": [
+   [
+    "Find the 10 most frequent error codes in a 5 GB log.",
+    "Stream the file line by line, count codes in a dict (Counter), then take the top 10 with heapq.nlargest. Time O(n + m log 10) for n lines and m distinct codes, memory O(m). If m is huge, count per chunk and merge, or push the job to a tool built for it."
+   ],
+   [
+    "How do you find the longest substring without repeating characters?",
+    "Sliding window with a dict of last-seen positions. Move the right edge one step at a time; when a character repeats inside the window, jump the left edge past its previous position. O(n) time."
+   ],
+   [
+    "When would you use BFS instead of DFS?",
+    "BFS when you need the shortest path or fewest steps in an unweighted graph, because it explores level by level. DFS when you just need to visit everything reachable, detect cycles or do a topological sort."
+   ]
+  ]
+ },
+ {
+  "id": "linux",
+  "mod": 0,
+  "sec": "0.9",
+  "name": "Linux, SSH and logs",
+  "title": "Finding your way around a Linux server",
+  "thesis": "Customer deployments usually end up on a Linux machine you reach over SSH. A handful of commands for files, permissions, processes, logs and HTTP lets you answer 'is it running, what did it say, and can it reach the API' in minutes.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Everything hangs off one tree starting at /. Config lives in /etc, logs in /var/log, your files in /home/you.",
+   "Permissions are read, write and execute for the owner, the group and everyone else. chmod changes them, chown changes the owner.",
+   "A process is a running program with a PID. ps and top show them, kill sends them a signal.",
+   "ssh opens a shell on a remote machine using a key pair. scp copies files over the same connection.",
+   "Logs are text: tail -f follows them live, grep filters them, less pages through them, journalctl reads the systemd journal."
+  ],
+  "traps": [
+   "Running chmod 777 to 'fix' a permission error, which lets every user on the machine change the file.",
+   "Using kill -9 first. It gives the program no chance to finish writes or clean up.",
+   "Pasting API keys directly into commands, which saves them to shell history in plain text."
+  ],
+  "qa": [
+   [
+    "The customer says the service is down. What do you run first?",
+    "Check the process (systemctl status app or ps aux | grep app), read the latest logs (journalctl -u app -n 100 or tail -n 100 on the log file), check the port is listening (ss -ltnp), then hit the health endpoint with curl. Also check disk space with df -h, since a full disk stops many services."
+   ],
+   [
+    "A script works when you run it but fails from cron. Why?",
+    "cron runs with a minimal environment: a short PATH, no variables from your shell profile, and a different working directory. Use absolute paths, set needed variables in the crontab or script, and redirect output to a log file so you can see the error."
+   ],
+   [
+    "What does -rw-r----- mean?",
+    "It is a regular file. The owner can read and write, the group can read, and everyone else has no access. In numbers that is 640."
+   ]
+  ]
+ },
+ {
+  "id": "frontend",
+  "mod": 0,
+  "sec": "0.10",
+  "name": "Front-end basics for demos",
+  "title": "Enough front-end to build a convincing demo",
+  "thesis": "An FDE often needs a simple screen on top of an API to show a customer what an AI system can do. HTML gives structure, CSS gives style, JavaScript gives behavior, and tools like React or Streamlit make a working UI a matter of hours.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "HTML describes what is on the page, CSS how it looks, JavaScript what it does when someone clicks or types.",
+   "TypeScript is JavaScript with type annotations checked before the code runs, which catches many mistakes early.",
+   "fetch() calls an API from the browser and returns a Promise; await waits for the result.",
+   "React builds a UI from components: functions that take props and state and return markup. When state changes, React re-renders.",
+   "Streamlit turns a Python script into a web app, which is often the fastest path from a notebook to a customer demo."
+  ],
+  "traps": [
+   "Putting an LLM API key in browser JavaScript. Anyone can open developer tools and copy it. Call the model from a backend.",
+   "Blaming the API when the browser blocks a call. A CORS error means the server did not allow requests from your page's origin.",
+   "Polishing pixels before the demo answers the customer's real question with their real data."
+  ],
+  "qa": [
+   [
+    "You have two days to demo a document Q&A tool to a bank. What do you build?",
+    "A Streamlit app, or a small React page on a FastAPI backend, with an upload box, a question box, the answer and the source passages it came from. Keys stay on the server. Load a sample of the bank's own documents, prepare five questions that show value and one that shows the system saying 'I do not know'."
+   ],
+   [
+    "What is CORS?",
+    "A browser rule that blocks a page from reading responses from another origin (scheme, host and port) unless that server sends headers allowing it. It is enforced by the browser, so the same call from curl or a backend works."
+   ],
+   [
+    "What does TypeScript add over JavaScript?",
+    "Static types: you declare the shape of data, and the compiler reports mismatches such as a missing field or a string passed where a number is expected, before the code runs. It compiles to plain JavaScript."
+   ]
+  ]
+ }
+]

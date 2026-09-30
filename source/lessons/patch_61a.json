@@ -1,0 +1,1165 @@
+{
+ "computers": {
+  "add_subtopics": [
+   {
+    "title": "Bits, bytes and how data is represented",
+    "body": "Inside a computer everything is stored as bits. A bit is a single 0 or 1, like a switch that is off or on. Counting with only 0 and 1 is called binary: 1, 10, 11, 100 in binary mean 1, 2, 3, 4.\n\nBits are grouped in eights. Eight bits make one byte, and one byte can hold 256 different values, 0 to 255. Every file on your disk and every value in RAM is a long row of bytes.\n\nWhat the bytes mean depends on an agreed rule. Text is bytes chosen by an encoding such as UTF-8, where the letter A is the byte 65 and an accented letter like é needs two bytes. Whole numbers are stored in a fixed number of bytes, often 4 or 8. Decimal numbers use a binary format that cannot hold 0.1 exactly, which is why 0.1 + 0.2 is not exactly 0.3. An image is bytes describing the colour of each dot, and a PNG file always starts with the same 8 bytes. The dataformats topic covers encodings and number precision in depth.\n\nSizes are counted in two ways, and this confuses everyone once. Disk makers and network speeds use powers of 1,000: 1 KB = 1,000 bytes, 1 MB = 1,000,000, 1 GB = 1,000,000,000. Operating systems and memory often use powers of 1,024: 1 KiB = 1,024 bytes, 1 MiB = 1,024 KiB, 1 GiB = 1,073,741,824 bytes, but many tools still print the label GB. That is why a new \"512 GB\" disk shows about 476 GB free on your laptop: nothing is missing, it is the same bytes divided by a bigger number.",
+    "example": "A customer at Fernhollow Surveys complains that their new 512 GB laptop \"only has 476 GB\" and that a 4-character name, Café, uses 5 bytes in their database. Both have simple answers. 512,000,000,000 bytes divided by 1,073,741,824 is about 476.8, so Windows is showing GiB with a GB label. And in UTF-8 the letters C, a and f take one byte each while é takes two, so the name really is 5 bytes. The code shows both calculations and how the same idea covers numbers and images.",
+    "code": "# Everything a computer stores is bytes: small whole numbers from 0 to 255.\nn = 77\nprint(bin(n), \"=\", n)                  # 0b1001101 = 77  (bits behind the number)\nprint(2 ** 8, \"values fit in one byte\")   # 256 values fit in one byte\n\n# Text is bytes: each character is stored as one or more byte values\nword = \"Café\"\ndata = word.encode(\"utf-8\")\nprint(list(data))                      # [67, 97, 102, 195, 169]\nprint(len(word), \"characters,\", len(data), \"bytes\")   # 4 characters, 5 bytes\n\n# Numbers are bytes too: a whole number stored in 4 bytes\nprint(list((1000).to_bytes(4, \"little\")))   # [232, 3, 0, 0]\n\n# An image is bytes: every PNG file starts with the same 8 bytes\npng_start = bytes([137, 80, 78, 71, 13, 10, 26, 10])\nprint(png_start[1:4])                  # b'PNG'\n\n# Why a \"512 GB\" disk shows about 476 GB\ndisk_bytes = 512 * 1000 ** 3           # makers count 1 GB = 1,000,000,000 bytes\nprint(round(disk_bytes / 1024 ** 3, 1), \"GiB\")   # 476.8 GiB, which many tools label \"GB\"\n",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Unit",
+      "Decimal (disks, networks)",
+      "Binary (RAM, many OS tools)"
+     ],
+     "rows": [
+      [
+       "Kilo",
+       "1 KB = 1,000 bytes",
+       "1 KiB = 1,024 bytes"
+      ],
+      [
+       "Mega",
+       "1 MB = 1,000,000 bytes",
+       "1 MiB = 1,048,576 bytes"
+      ],
+      [
+       "Giga",
+       "1 GB = 1,000,000,000 bytes",
+       "1 GiB = 1,073,741,824 bytes"
+      ],
+      [
+       "Tera",
+       "1 TB = 1,000 GB",
+       "1 TiB = 1,024 GiB"
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "The three core parts: CPU, RAM, storage",
+    "body": "Every computer has a CPU, memory and storage. The CPU does the work: adding numbers, comparing values, moving data around. It is very fast but only holds a tiny amount of data at once.\n\nRAM is where running programs keep their data. It is fast but temporary. When a program ends, or the computer turns off, what was in RAM is gone.\n\nStorage is slower but permanent. Your photos, documents and .py files live here. A laptop might have 16 GB of RAM and 512 GB of storage, which is why you can store far more than you can work on at the same moment.\n\nModern CPUs contain several cores, and each core can run its own stream of instructions. A laptop with 8 cores can truly run 8 processes at the same moment, which is how a slow data job can be split across cores to finish sooner. Python has a rule inside the standard interpreter, the GIL, that lets only one thread run Python code at a time within one process, so to use every core for heavy Python work you start several processes. The asyncpy topic returns to this with ProcessPoolExecutor.\n\nA GPU (graphics processing unit) is a second kind of processor with thousands of small, simple cores. It was built for drawing graphics, but the same trick, doing the same multiplication on huge grids of numbers at once, is exactly what neural networks need. A GPU has its own separate memory called VRAM, for example 24 GB or 80 GB, and a model's weights must fit in VRAM to run quickly. That is why serving or training an LLM needs GPUs with a lot of VRAM, and why running out of VRAM is a common error when a customer tries a bigger open model on their own hardware.",
+    "example": "A small bakery keeps five years of sales in a 2 GB file on its laptop. The laptop has 8 GB of RAM, so a program can load the whole file into memory and add it up. If the file grew to 20 GB, it would still fit on the 512 GB disk, but loading it all into RAM at once would fail. The program would need to read it a piece at a time. The same bakery later wants to rebuild a sales forecast every night. Its old laptop has 4 cores, so the FDE splits the work by shop into 4 processes and the job finishes in about a quarter of the time. For a question-answering assistant, the team compares a cloud LLM API with a model on their own server: the model's weights need about 16 GB, so the server needs a GPU with more than 16 GB of VRAM, not just more ordinary RAM.",
+    "code": "import os, shutil\nfrom concurrent.futures import ProcessPoolExecutor\n\ndef slow_square(n):\n    total = 0\n    for _ in range(2_000_000):          # busy work that keeps one core occupied\n        total += 1\n    return n * n\n\nif __name__ == \"__main__\":\n    # How many CPU cores does this machine have?\n    print(\"CPU cores:\", os.cpu_count())\n\n    # How big is the disk, and how much is free? (values are in bytes)\n    usage = shutil.disk_usage(\"/\")      # on Windows try \"C:\\\\\"\n    gib = 1024 ** 3                     # 1 GiB; many OS tools label this \"GB\"\n    print(\"Disk total GiB:\", round(usage.total / gib))\n    print(\"Disk free GiB:\", round(usage.free / gib))\n    # Disk makers use 1 GB = 1,000,000,000 bytes, so a \"512 GB\" disk shows about 476 here.\n\n    # Several cores let several processes run at the same moment\n    with ProcessPoolExecutor() as pool:  # one worker process per core by default\n        print(list(pool.map(slow_square, [1, 2, 3, 4])))   # [1, 4, 9, 16]\n\n# Is there an NVIDIA GPU, and how much VRAM does it have? (in a terminal)\n#   $ nvidia-smi\n#   It lists each GPU, its memory (for example 24576MiB = 24 GiB) and what is using it.\n#   \"command not found\" usually means there is no NVIDIA GPU or no driver installed.\n",
+    "lang": "Python"
+   },
+   {
+    "title": "The operating system",
+    "body": "The operating system (OS) is the first big program that starts when you switch on a computer. Windows, macOS and Linux are the common ones. Most servers that businesses run in data centres or the cloud use Linux.\n\nThe OS starts and stops programs, gives each one its own slice of RAM, lets them read and write files, and passes keyboard input and screen output back and forth. Programs ask the OS for these things instead of touching the hardware directly.\n\nBecause each OS does some things differently, such as how file paths are written, a program can behave slightly differently on each one.\n\nTwo ideas build on the OS and appear constantly in deployment work. A virtual machine (VM) is a whole pretend computer running as a program on a real one: it gets its own slice of CPU, RAM and disk, and runs its own full operating system. Cloud servers you rent are almost always VMs. A container, such as one run by Docker, is lighter: it shares the host's operating system kernel but gives a program its own private files, packages and settings, so it starts in a second and behaves the same on every machine. Both are \"a computer inside a computer\", and the deploy and cloud topics use them heavily.",
+    "example": "A hospital's reporting script was written on a Windows laptop and later copied to a Linux server. It failed because it looked for a file at C:\\reports\\beds.csv, a Windows path that does not exist on Linux. Printing the OS name at the start of the script, as below, is a quick way to see which system you are on. The hospital later packages the script in a container that carries its own Linux files and Python, so it runs the same on the analyst's laptop and on the server.",
+    "code": "import platform, os\n\nprint(\"Operating system:\", platform.system())   # Windows, Darwin (macOS) or Linux\nprint(\"OS version:\", platform.release())\nprint(\"This process id:\", os.getpid())           # the OS gives every running program a number\nprint(\"Current folder:\", os.getcwd())\n\n# A container is its own small Linux, even on a Mac or Windows laptop:\n#   $ docker run --rm python:3.12-slim python -c \"import platform; print(platform.system())\"\n#   Linux",
+    "lang": "Python"
+   },
+   {
+    "title": "Interpreted Python versus compiled languages",
+    "body": "The CPU only understands machine code, which is binary instructions specific to that type of chip. Humans write in higher-level languages, so something has to translate.\n\nIn a compiled language such as C, C++, Go or Rust, a program called a compiler translates the whole source file ahead of time into a separate executable file. You then run that file directly, and the source is not needed to run it.\n\nPython is usually called interpreted. The standard interpreter, CPython, translates your code into bytecode and runs that bytecode each time you start the program. You skip the build step and can try changes instantly, but the machine running your code must have Python installed, and pure Python loops run slower than compiled code. Libraries such as pandas get speed by doing heavy work in compiled code underneath.\n\nMachine code is specific to a CPU architecture, the family of chip it was built for. Most servers and older PCs use x86_64 (also called amd64). Apple Silicon Macs and cloud chips such as AWS Graviton use ARM64 (also called aarch64). A compiled program or a Docker image built for one will not run on the other: Linux refuses with the message exec format error. This bites FDEs who build an image on an Apple Silicon Mac and deploy it to an x86_64 customer server. Check the architecture with uname -m in a terminal or platform.machine() in Python, and build for the target with docker build --platform linux/amd64. Pure Python files are fine on both, but packages with compiled parts need the right version for the chip, which pip normally picks for you.",
+    "example": "A logistics company has a route-planning tool written in Go and a data-cleaning script written in Python. To ship the Go tool, they compile it once into a single file called routeplan and copy that file to servers. To ship the Python script, they copy clean.py and make sure each server has Python and the right packages installed. Later the logistics team builds the routeplan Docker image on a new Apple Silicon Mac. On the x86_64 server it stops at once with exec format error. uname -m prints arm64 on the Mac and x86_64 on the server, and rebuilding with --platform linux/amd64 fixes it.",
+    "code": "---- C: compile first, then run ----\n/* hello.c */\n#include <stdio.h>\nint main(void) {\n    printf(\"Hello\\n\");\n    return 0;\n}\n$ gcc hello.c -o hello      # compiler makes a machine-code file\n$ ./hello                   # the CPU runs that file directly\n\n---- Python: run the source directly ----\n# hello.py\nprint(\"Hello\")\n$ python hello.py           # interpreter reads and runs it each time\n\n---- Which CPU architecture is this? ----\n$ uname -m                  # x86_64 on most servers, arm64 on Apple Silicon, aarch64 on ARM Linux\n$ python -c \"import platform; print(platform.machine())\"   # same answer from Python\n\n$ ./routeplan               # an ARM64 binary copied to an x86_64 server\nexec format error\n$ docker build --platform linux/amd64 -t routeplan .   # build for the server's chip",
+    "lang": "Text"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Bit",
+    "The smallest unit of data, a single 0 or 1."
+   ],
+   [
+    "Byte",
+    "A group of 8 bits that can hold one of 256 values; the basic unit of file and memory size."
+   ],
+   [
+    "GiB versus GB",
+    "1 GiB is 1,073,741,824 bytes (powers of 1,024); 1 GB is 1,000,000,000 bytes (powers of 1,000)."
+   ],
+   [
+    "CPU core",
+    "One independent worker inside a CPU; several cores run several processes at the same moment."
+   ],
+   [
+    "GPU and VRAM",
+    "A processor with thousands of small cores for maths on large grids of numbers, with its own memory (VRAM) that must hold a model's weights."
+   ],
+   [
+    "CPU architecture",
+    "The chip family machine code is built for, such as x86_64 or ARM64."
+   ],
+   [
+    "Virtual machine",
+    "A complete simulated computer, with its own operating system, running on real hardware."
+   ],
+   [
+    "Container",
+    "A lightweight package that shares the host's OS kernel but carries its own files and packages, such as a Docker container."
+   ]
+  ],
+  "add_practice": [
+   "Run the bits and bytes code, then encode your own name and a word with an accent or emoji in UTF-8. Write down how many characters and how many bytes each has, and explain the difference.",
+   "Run uname -m (or print platform.machine() in Python) and os.cpu_count() on your computer. Write one sentence saying whether a Docker image built on your machine would run unchanged on an x86_64 server."
+  ]
+ },
+ "terminal": {
+  "add_subtopics": [
+   {
+    "title": "Working with files from the shell",
+    "body": "Most FDE work in a terminal is handling files: customer exports, logs and scripts. A small set of commands covers it.\n\ntouch name makes an empty file. cat name prints a whole file, which is fine for short files. head -n 5 shows the first 5 lines and tail -n 5 the last 5, perfect for peeking at a 2 GB CSV without opening it. tail -f follows a log as new lines arrive. less lets you scroll a big file with the arrow keys; press q to quit.\n\ncp copies, mv moves or renames, and rm deletes. rm -r deletes a folder and everything inside it. Be careful: the shell has no recycle bin, so a deleted file is gone for good. Read the command twice before pressing Enter, especially with rm -r.\n\nA wildcard lets one command match many files. *.csv means every name ending in .csv, so cp *.csv backup/ copies them all. The shell expands the pattern before running the command.\n\nSpaces split arguments. A folder called client files looks like two names, client and files, so wrap it in quotes: \"client files\". Pressing Tab adds the quoting or backslashes for you.\n\nOn Windows Command Prompt the names differ: type instead of cat, copy, move, del and rmdir /s. PowerShell accepts cat, cp, mv, rm and ls as aliases, so the Mac and Linux commands mostly work there too.",
+    "example": "A customer at Brightwell Logistics sends twelve monthly CSV files. The FDE uses head -n 2 on one file to see the column names, ls *.csv to confirm all twelve arrived, and cp *.csv into a folder called \"raw exports\" with quotes because of the space. When she deletes an old test file with rm, she knows it is not in any bin, so she checks the name with ls first.",
+    "code": "touch notes.txt                 # make an empty file (PowerShell: New-Item notes.txt)\ncat sales_jan.csv               # print a whole file (Windows cmd: type)\nhead -n 2 sales_jan.csv         # first 2 lines\n# order_id,amount\n# 1001,25.00\ntail -n 1 sales_jan.csv         # last line\n# 1003,12.75\nless sales_jan.csv              # scroll a big file; press q to quit\n\ncp sales_jan.csv sales_feb.csv  # copy          (cmd: copy)\nmv notes.txt readme.txt         # rename/move   (cmd: move)\nls *.csv                        # wildcard: every file ending in .csv\n# sales_feb.csv\n# sales_jan.csv\nrm sales_feb.csv                # delete a file (cmd: del). No recycle bin!\nrm -r old_exports               # delete a folder and everything inside it\n\nmkdir \"client files\"            # quotes keep a name with a space together\ncp sales_jan.csv \"client files/\"\nls client files                 # WRONG: the shell sees two names, client and files",
+    "lang": "bash",
+    "table": {
+     "headers": [
+      "Task",
+      "Mac / Linux",
+      "Windows cmd",
+      "PowerShell"
+     ],
+     "rows": [
+      [
+       "Show a file",
+       "cat f",
+       "type f",
+       "cat f (Get-Content)"
+      ],
+      [
+       "Copy",
+       "cp a b",
+       "copy a b",
+       "cp a b"
+      ],
+      [
+       "Move or rename",
+       "mv a b",
+       "move a b",
+       "mv a b"
+      ],
+      [
+       "Delete a file",
+       "rm f",
+       "del f",
+       "rm f"
+      ],
+      [
+       "Delete a folder",
+       "rm -r d",
+       "rmdir /s d",
+       "rm -r d"
+      ],
+      [
+       "First lines",
+       "head -n 5 f",
+       "(none)",
+       "Get-Content f -Head 5"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Output, redirection and exit codes",
+    "body": "Every command has two output streams. stdout (standard output) carries normal results. stderr (standard error) carries error messages. Both appear on screen, but you can send them to different places.\n\n> sends stdout into a file and overwrites whatever was there. >> appends to the end instead, which is what you want for a log. 2> redirects only stderr, and 2>&1 means \"send stderr to wherever stdout is going\", so command > run.log 2>&1 captures everything in one file. That is exactly the tail of a typical cron line. < does the reverse and feeds a file in as input.\n\nA pipe, written |, sends one command's output straight into the next command. cat file | grep 1002 shows only lines containing 1002. Pipes let small tools combine into powerful one-liners.\n\nEvery command also finishes with an exit code, a number the shell keeps in $? (PowerShell: $LASTEXITCODE). 0 means success and anything else means something failed. Scripts, cron and CI systems rely on this number to decide whether a step worked. Your own Python script can set it with sys.exit(1).\n\nYou can chain commands on the exit code. a && b runs b only if a succeeded, so a failed step stops the chain. a || b runs b only if a failed, which is handy for a fallback message.",
+    "example": "A nightly job at Harlow Dental runs python export.py > export.log 2>&1 && python upload.py. One night the database is down, export.py prints a traceback to stderr and exits with code 1. Because of 2>&1 the traceback is in export.log, and because of && the upload never runs with a half-finished file. The FDE reads the log the next morning and sees exactly what failed.",
+    "code": "ls sales_jan.csv > out.txt       # stdout goes into out.txt (overwrites it)\necho first > log.txt             # log.txt now holds: first\necho second >> log.txt           # >> appends; log.txt holds: first, second\ncat log.txt\n# first\n# second\n\nls nothere                       # an error goes to stderr\n# ls: cannot access 'nothere': No such file or directory\necho $?                          # exit code of the last command\n# 2                                (0 means success; PowerShell: $LASTEXITCODE)\nls nothere > err.txt 2>&1        # send stdout AND stderr into the file\n\ncat sales_jan.csv | grep 1002    # a pipe feeds one command's output to the next\n# 1002,40.50\nwc -l < sales_jan.csv            # < reads a file as input: counts the lines\n# 4\n\nmkdir backup && cp sales_jan.csv backup/ && echo \"backup done\"   # && runs next only on success\n# backup done\nls nothere 2>/dev/null || echo \"no such file\"                    # || runs only on failure\n# no such file",
+    "lang": "bash",
+    "table": {
+     "headers": [
+      "Symbol",
+      "Meaning"
+     ],
+     "rows": [
+      [
+       ">",
+       "Send stdout to a file, overwriting it"
+      ],
+      [
+       ">>",
+       "Append stdout to a file"
+      ],
+      [
+       "2>&1",
+       "Send stderr to the same place as stdout"
+      ],
+      [
+       "|",
+       "Pipe stdout into the next command"
+      ],
+      [
+       "$?",
+       "Exit code of the last command (0 = success)"
+      ],
+      [
+       "&& / ||",
+       "Run the next command only on success / only on failure"
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "What a terminal and shell are",
+    "body": "When you open Terminal on a Mac, a terminal app on Linux, or PowerShell on Windows, you see a prompt: a short line of text ending in something like $ or >. The prompt means the shell is waiting for you.\n\nYou type a command, which is usually a program name followed by extra words called arguments, then press Enter. The shell runs it and prints any output. Then it shows the prompt again.\n\nCommands are case sensitive on Mac and Linux. Typing Ls instead of ls will fail there.\n\nMany commands accept options, also called flags, that change what they do. A short flag is a dash and a letter, such as ls -l for a long listing with sizes and dates. A long flag uses two dashes, such as --help, which prints a summary of every option. On Mac and Linux, man ls opens the full manual page; press q to leave it.\n\nA few keys save a lot of time. Ctrl+C stops a command that is running too long or is stuck. The Up arrow brings back your previous commands, and Ctrl+R searches your history as you type. clear wipes the screen (cls in Command Prompt).\n\nIf you see command not found (Windows: is not recognized as the name of a cmdlet), the shell looked in every folder listed in PATH and did not find the program. Either it is not installed or its folder is not in PATH. which python3 on Mac and Linux, or where python on Windows, shows which file will run.",
+    "example": "A new analyst at an insurance company opens a terminal for the first time and types three commands. whoami prints her username, jsmith. echo hello prints hello back. date prints today's date and time. Each command runs, prints one line, and returns her to the prompt. Later she runs ls -l to see file sizes, and python3 --help to see Python's options. A script she starts loops forever, so she presses Ctrl+C to stop it. When she types jupyter and gets command not found, which jupyter prints nothing, which tells her it is not installed in the current environment.",
+    "code": "# Lines starting with # are comments; the shell ignores them.\n# Type each command after the prompt and press Enter.\nwhoami            # prints your username\necho hello        # prints the word hello\ndate              # prints the current date and time (Mac/Linux)\nGet-Date          # the PowerShell version of date on Windows\n\nls -l             # a flag: long listing with sizes and dates\nls --help         # list every option (Mac: man ls)\nman ls            # full manual; press q to quit\nwhich python3     # which program runs (Windows: where python)\n# /usr/bin/python3\nclear             # clear the screen (cmd: cls)\n# Ctrl+C stops a running command, Up arrow repeats, Ctrl+R searches history",
+    "lang": "bash"
+   },
+   {
+    "title": "Folders, paths and where you are",
+    "body": "Files live in folders, and folders sit inside other folders like a tree. A path is the address of a file or folder.\n\nAn absolute path starts from the very top. On Mac and Linux the top is written /, and folders are separated by forward slashes: /Users/asha/projects/report.csv. On Windows each drive has its own top, such as C:\\, and folders are separated by backslashes: C:\\Users\\asha\\projects\\report.csv.\n\nThe shell is always standing in one folder called the current working directory. A relative path starts from there. If you are in /Users/asha, the relative path projects/report.csv points to the same file. Two dots, .., mean the folder one level up, and a single dot means the current folder. The symbol ~ is a shortcut for your home folder on Mac and Linux, and works in PowerShell too.\n\nWindows backslashes cause a classic bug inside Python code. In a normal Python string a backslash starts an escape: \\n means newline and \\t means tab. So \"C:\\new\\data.csv\" silently turns \\n into a line break. Put an r in front to make a raw string, r\"C:\\new\\data.csv\", or use forward slashes, which Windows Python also accepts. Better still, use pathlib, which joins folder names with the right separator on every system.",
+    "example": "A retail analyst is in /Users/asha. The weekly file is at /Users/asha/projects/sales/week1.csv. From /Users/asha she can refer to it as projects/sales/week1.csv. If she moves into /Users/asha/projects/sales, she can just type week1.csv. If she moves into a sibling folder /Users/asha/projects/stock, the same file is ../sales/week1.csv. Her Windows colleague writes open(\"C:\\new\\data.csv\") and gets a confusing error, because Python read \\n as a newline. Changing it to r\"C:\\new\\data.csv\" fixes it.",
+    "code": "Mac / Linux                          Windows\n-----------                          -------\n/                                    C:\\\n/Users/asha                          C:\\Users\\asha\n/Users/asha/projects/sales           C:\\Users\\asha\\projects\\sales\n\nAbsolute: /Users/asha/projects/sales/week1.csv\nRelative from /Users/asha:        projects/sales/week1.csv\nRelative from .../projects/stock: ../sales/week1.csv\n.   = this folder\n..  = one folder up\n~   = your home folder\n\n# In Python:\nfrom pathlib import Path\nprint(\"C:\\new\\data.csv\")     # \\n became a newline!\n# C:\n# ew\\data.csv\nprint(r\"C:\\new\\data.csv\")    # raw string keeps the backslashes\n# C:\\new\\data.csv\nprint(Path(\"reports\") / \"2026\" / \"sales.csv\")   # right separator on any OS\n# reports/2026/sales.csv   (Windows prints reports\\2026\\sales.csv)",
+    "lang": "Text"
+   },
+   {
+    "title": "pip and virtual environments",
+    "body": "A package (or library) is ready-made code someone else wrote, such as requests for talking to websites or pandas for tables. pip is the tool that downloads and installs packages, usually from PyPI, the Python Package Index.\n\nIf you install everything into one shared Python, different projects start to clash: one needs pandas 1.5, another needs pandas 2.2. A virtual environment solves this. It is a folder, commonly named .venv, containing its own Python and its own packages for one project.\n\nYou create it once, activate it each time you open a new terminal, and then pip installs into it. The prompt usually shows (.venv) when it is active. pip freeze > requirements.txt records the exact versions so someone else can recreate the same setup with pip install -r requirements.txt.\n\nAlways check that the venv is really active before installing. which python (Mac and Linux) or where python (Windows) should print a path inside your project's .venv folder. If it shows a system path, pip will install into the wrong Python.\n\nOn Windows PowerShell, activation can fail with running scripts is disabled on this system. That is a safety setting, not a broken venv. Run Set-ExecutionPolicy -Scope CurrentUser RemoteSigned once, then activate again with .venv\\Scripts\\Activate.ps1. Windows users who want the same commands as Mac and Linux can install WSL (Windows Subsystem for Linux), which gives a real Linux shell inside Windows.",
+    "example": "An FDE starts work for a grocery chain. In the project folder she creates .venv, activates it, installs requests and pandas, and saves requirements.txt. A colleague clones the project on Windows, creates his own .venv, activates it with the Windows command and runs pip install -r requirements.txt. Both now have identical package versions. Her Windows colleague first sees running scripts is disabled when activating. He runs the Set-ExecutionPolicy line once, activates again, and where python now lists the .venv path first.",
+    "code": "cd grocery-project\npython3 -m venv .venv              # create the virtual environment (once)\n\nsource .venv/bin/activate          # Mac/Linux: activate it\n# .venv\\Scripts\\activate           # Windows equivalent\n\npython -m pip install requests pandas   # installs into .venv only\npip freeze > requirements.txt      # record exact versions\n\npip install -r requirements.txt    # a colleague recreates the same set\ndeactivate                         # leave the venv when done\n\nwhich python                       # Mac/Linux: should end in .venv/bin/python\n# where python                     # Windows: first line should be ...\\.venv\\Scripts\\python.exe\n\n# PowerShell error: \"running scripts is disabled on this system\"\n# Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   (run once)\n# .venv\\Scripts\\Activate.ps1",
+    "lang": "bash"
+   },
+   {
+    "title": "Environment variables",
+    "body": "An environment variable is a named piece of text that the shell passes to every program it starts. PATH is one you already rely on: it lists the folders the shell searches when you type a command such as python.\n\nYou can set your own. This is the standard place for settings that change between machines and for secrets like API keys (a password-like string that lets a program use an online service). Keeping them out of the code means you can share the code safely.\n\nA variable set with export or $env: lasts only for that terminal window. Close the window and it is gone, which is often what you want for secrets.\n\nTo make a variable permanent on Mac or Linux, add the export line to your shell's startup file: ~/.zshrc for zsh (the Mac default) or ~/.bashrc for bash, then open a new terminal. On Windows, setx NAME value saves it for future windows, or add the line to your PowerShell profile.\n\nFor project settings, most Python projects use a .env file instead: a plain text file of NAME=value lines in the project folder. The python-dotenv package (pip install python-dotenv) loads it with load_dotenv(), and os.environ then sees the values. A .env file usually holds secrets, so add .env to .gitignore before your first commit so it never reaches Git.",
+    "example": "A payments startup's script needs a key to call a currency API. Instead of writing the key into convert.py, the FDE sets CURRENCY_KEY in the terminal. The script reads it with os.environ.get. On the customer's server, their admin sets their own key the same way and the code does not change. Later the FDE moves the key into a .env file containing CURRENCY_KEY=test-123, calls load_dotenv() at the top of convert.py, and adds .env to .gitignore so the key is never committed.",
+    "code": "# In the shell (Mac/Linux):\nexport CURRENCY_KEY=\"test-123\"\n# In PowerShell (Windows):\n# $env:CURRENCY_KEY=\"test-123\"\necho $CURRENCY_KEY            # check it is set (PowerShell: echo $env:CURRENCY_KEY)\n\n# convert.py\nimport os\nkey = os.environ.get(\"CURRENCY_KEY\")   # None if it was never set\nif key is None:\n    print(\"Please set CURRENCY_KEY first\")\nelse:\n    print(\"Using a key that starts with\", key[:4])\n\n# Make it permanent (Mac zsh):\n# echo 'export CURRENCY_KEY=\"test-123\"' >> ~/.zshrc\n# Windows: setx CURRENCY_KEY \"test-123\"\n\n# .env file in the project folder:\n#   CURRENCY_KEY=test-123\n# .gitignore:\n#   .env\n\n# convert.py with python-dotenv\nimport os\nfrom dotenv import load_dotenv\n\nload_dotenv()                          # reads .env in the current folder\nkey = os.environ.get(\"CURRENCY_KEY\")\nprint(\"Using a key that starts with\", key[:4])\n# Using a key that starts with test",
+    "lang": "bash"
+   }
+  ],
+  "fix": [
+   [
+    "acme-pharmacy",
+    "fern-pharmacy"
+   ]
+  ],
+  "add_glossary": [
+   [
+    "Flag",
+    "An option added to a command to change what it does, such as -l or --help."
+   ],
+   [
+    "Wildcard",
+    "A pattern such as *.csv that the shell expands into every matching file name."
+   ],
+   [
+    "stdout and stderr",
+    "The two output streams of a command: normal results and error messages."
+   ],
+   [
+    "Redirection",
+    "Sending a command's output to a file with > (overwrite) or >> (append), or reading input with <."
+   ],
+   [
+    "Pipe",
+    "The | symbol, which feeds one command's output into the next command."
+   ],
+   [
+    "Exit code",
+    "A number a command returns when it finishes; 0 means success."
+   ],
+   [
+    "PATH",
+    "The environment variable listing folders the shell searches for commands."
+   ],
+   [
+    ".env file",
+    "A text file of NAME=value settings loaded by tools such as python-dotenv; never committed to Git."
+   ],
+   [
+    "Raw string",
+    "A Python string written r\"...\" in which backslashes are kept as plain characters."
+   ],
+   [
+    "WSL",
+    "Windows Subsystem for Linux: a real Linux shell running inside Windows."
+   ]
+  ],
+  "add_practice": [
+   "In your practice folder, create three files with touch, copy one to a folder whose name contains a space, rename another with mv, and list only the .txt files with a wildcard.",
+   "Run a command that fails, then print its exit code with echo $?. Then run python3 -c \"print('ok')\" > out.txt 2>&1 && echo saved and explain each symbol.",
+   "Create a .env file with USER_NAME=Asha, load it with python-dotenv in greet.py, and add .env to a .gitignore file."
+  ]
+ },
+ "python1": {
+  "add_subtopics": [
+   {
+    "title": "Working with strings",
+    "body": "A huge share of FDE work is cleaning text: names, emails, product codes, free-text notes. Python strings come with many built-in tools.\n\nIndexing picks one character by position, counting from 0: name[0] is the first character and name[-1] the last. Slicing takes a range: name[0:5] gives characters 0 up to, but not including, 5. len(name) gives the length.\n\nMethods are functions attached to the string, called with a dot. lower() and upper() change case, and title() capitalises each word. strip() removes spaces and line breaks from both ends, which fixes many messy exports. split(\",\") breaks a string into a list at each comma, and \" \".join(list) does the reverse. replace(old, new) swaps text, and startswith and endswith test the ends. The in operator checks whether one string appears inside another: \"@\" in email. Strings never change in place; each method returns a new string, so you must assign the result.\n\nf-strings accept a format spec after a colon: {x:.2f} shows two decimal places, {n:,} adds thousands separators, and {r:.1%} shows a percentage.\n\nA backslash starts an escape character: \\n is a new line, \\t a tab, and \\\\ a real backslash. The pandas .str methods you meet later are these same string methods applied to a whole column.",
+    "example": "A customer record from Larkspur Travel arrives as \"  Maria GARCIA , maria@Example.com  \". split(\",\") separates name and email, strip() removes the stray spaces, title() fixes the name's capitals and lower() makes the email comparable. A report line then shows revenue of 1234567.891 as 1,234,567.89 with {total:,.2f}.",
+    "code": "raw = \"  Maria GARCIA , maria@Example.com  \"\nname, email = raw.split(\",\")          # split on the comma -> two strings\nname = name.strip().title()           # remove outer spaces, capitalise words\nemail = email.strip().lower()\nprint(name, \"|\", email)               # Maria Garcia | maria@example.com\nprint(len(name), name[0], name[-1], name[0:5])   # 12 M a Maria\n\nprint(email.endswith(\".com\"), \"@\" in email)       # True True\nprint(email.replace(\"example.com\", \"example.org\"))  # maria@example.org\nprint(\" \".join([\"Hello\", name]))      # Hello Maria Garcia\n\ntotal, orders = 1234567.891, 1520\nprint(f\"Revenue: {total:,.2f}  Orders: {orders:,}  Share: {0.4567:.1%}\")\n# Revenue: 1,234,567.89  Orders: 1,520  Share: 45.7%\nprint(\"Name:\\tMaria\\nCity:\\tLagos\")   # \\t is a tab, \\n starts a new line\n# Name:   Maria\n# City:   Lagos\nprint(\"Folder: C:\\\\data\")             # Folder: C:\\data   (\\\\ prints one backslash)\n",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Tool",
+      "Example",
+      "Result"
+     ],
+     "rows": [
+      [
+       "Index",
+       "\"Maria\"[0]",
+       "\"M\""
+      ],
+      [
+       "Slice",
+       "\"Maria\"[1:3]",
+       "\"ar\""
+      ],
+      [
+       "strip",
+       "\"  hi \".strip()",
+       "\"hi\""
+      ],
+      [
+       "split",
+       "\"a,b\".split(\",\")",
+       "[\"a\", \"b\"]"
+      ],
+      [
+       "join",
+       "\"-\".join([\"a\", \"b\"])",
+       "\"a-b\""
+      ],
+      [
+       "Format",
+       "f\"{1234.5:,.2f}\"",
+       "\"1,234.50\""
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Variables and the four basic types",
+    "body": "A variable is a name that points to a value. You create one with a single equals sign: price = 4. From then on, price means 4 until you change it. Names can use letters, digits and underscores, but cannot start with a digit.\n\nEvery value has a type that decides what you can do with it. int is a whole number such as 42. float is a number with a decimal point such as 3.99. str (string) is text in quotes such as \"Lagos\". bool is either True or False.\n\nThe type matters. 2 + 3 gives 5, but \"2\" + \"3\" gives \"23\" because adding strings joins them. type(x) tells you what type a value has.\n\nOne more special value is None, which means \"no value yet\" or \"nothing here\". Test for it with x is None, not x == None.\n\nEvery value also counts as true or false inside an if. This is called truthiness. 0, 0.0, an empty string \"\", an empty list [] and None all count as False; almost everything else counts as True. So if name: means \"if name is not empty\".\n\nThree more arithmetic operators are worth knowing. // is floor division, which drops the remainder: 17 // 5 is 3. % gives the remainder: 17 % 5 is 2, handy for \"every 5th row\". ** is power: 2 ** 10 is 1024.\n\nFloats are stored in binary and cannot hold most decimals exactly, so 0.1 + 0.2 prints 0.30000000000000004 and 0.1 + 0.2 == 0.3 is False. round() also surprises people: round(2.5) is 2 and round(3.5) is 4, because Python rounds exact halves to the nearest even number (banker's rounding). round(2.675, 2) gives 2.67 because 2.675 is really stored as slightly less. For money, use the Decimal type, covered in the dataformats topic.",
+    "example": "A coffee shop records one order. cups is an int, 2. price is a float, 3.50. customer is a str, \"Maria\". paid is a bool, False. The total is cups times price, 7.0. Joining customer with \" owes \" and the total needs str(total), because you cannot add a string and a float directly. The shop also stores discount = None until a manager sets one, and checks it with is None. Splitting 17 cups into boxes of 5 gives 17 // 5 = 3 full boxes and 17 % 5 = 2 left over.",
+    "code": "cups = 2              # int\nprice = 3.50          # float\ncustomer = \"Maria\"    # str\npaid = False          # bool\n\ntotal = cups * price  # 7.0\nprint(type(cups), type(price), type(customer), type(paid))\nprint(customer + \" owes \" + str(total))   # Maria owes 7.0\nprint(\"2\" + \"3\")      # 23  (joining text)\nprint(2 + 3)          # 5   (adding numbers)\n\ndiscount = None                  # None means \"no value yet\"\nif discount is None:             # use 'is None', not '== None'\n    print(\"No discount set\")     # No discount set\n\nfor value in [0, \"\", [], None, 5, \"hi\"]:\n    print(repr(value), bool(value))\n# 0 False / '' False / [] False / None False / 5 True / 'hi' True\n\nprint(17 // 5, 17 % 5, 2 ** 10)  # 3 2 1024  (floor division, remainder, power)\nprint(0.1 + 0.2, 0.1 + 0.2 == 0.3)       # 0.30000000000000004 False\nprint(round(2.5), round(3.5), round(2.675, 2))   # 2 4 2.67\n",
+    "lang": "Python"
+   },
+   {
+    "title": "Functions: parameters and return values",
+    "body": "A function is a named block of code you can run whenever you need it. You define one with def, a name, parameters in brackets and a colon. Parameters are the named inputs the function expects.\n\nWhen you call the function, you pass arguments, the actual values for those parameters. The body runs, and return sends a result back to the caller, ending the function at that point. A function with no return gives back the special value None.\n\nGood functions do one clear job and have a name that says what it is. They save you copying the same lines in several places, and they are easy to test on their own.\n\nA parameter can have a default value: def price_with_tax(nightly_rate, nights=1) lets callers leave nights out. When calling, you can name arguments, price_with_tax(100, nights=2), which makes the call easier to read and lets you give them in any order.\n\nVariables created inside a function are local: they exist only while it runs, and code outside cannot see them. Variables defined at the top of the file are global and can be read inside functions. Pass values in as parameters rather than relying on globals.\n\nA docstring is a string on the first line of the function body that says what it does; help() prints it. Type hints such as nightly_rate: float and -> float note the expected types. Python does not enforce them, but editors and checkers use them to catch mistakes.\n\nPython also ships with a standard library of ready modules. import math gives you math.ceil and math.sqrt, and from datetime import date imports one name directly. These need no installing. pip install is only for third-party packages such as requests or pandas.",
+    "example": "A hotel adds 12 percent tax to room prices and gives a 10 dollar discount on stays of three nights or more. The function price_with_tax takes nightly_rate and nights. For 100 dollars and 3 nights it computes 300, subtracts 10 to get 290, adds tax and returns 324.8. The same function is then reused for a second booking of 80 dollars for 1 night, which returns 89.6. The hotel function gains a default of one night and a docstring, and the booking code calls it with nights=2 so the meaning is obvious. It also imports math and datetime from the standard library without installing anything.",
+    "code": "def price_with_tax(nightly_rate, nights):   # two parameters\n    subtotal = nightly_rate * nights\n    if nights >= 3:\n        subtotal = subtotal - 10            # long-stay discount\n    return round(subtotal * 1.12, 2)        # send the answer back\n\nbooking1 = price_with_tax(100, 3)           # arguments 100 and 3\nbooking2 = price_with_tax(80, 1)\nprint(booking1, booking2)                   # 324.8 89.6\n\nimport math                       # standard library: comes with Python\nfrom datetime import date         # import one name from a module\n\nTAX_RATE = 0.12                   # global: defined outside any function\n\ndef price_with_tax(nightly_rate: float, nights: int = 1) -> float:\n    \"\"\"Return the total price for a stay, including tax.\"\"\"\n    subtotal = nightly_rate * nights             # subtotal is local to this function\n    return round(subtotal * (1 + TAX_RATE), 2)\n\nprint(price_with_tax(80))                        # 89.6   (nights defaults to 1)\nprint(price_with_tax(100, nights=2))             # 224.0  (keyword argument)\nprint(price_with_tax(nights=2, nightly_rate=100))  # 224.0 (order does not matter)\nprint(math.ceil(7 / 3), date(2026, 3, 1).isoformat())   # 3 2026-03-01\n# print(subtotal)  -> NameError: subtotal only exists inside the function\nhelp(price_with_tax)              # prints the signature and the docstring\n",
+    "lang": "Python"
+   },
+   {
+    "title": "Errors and reading a traceback",
+    "body": "When Python hits a problem it cannot handle, it raises an exception and stops. It prints a traceback, a report of what happened.\n\nRead it from the bottom up. The last line gives the error type and a message, such as ValueError: invalid literal for int() with base 10: 'thirty'. The line just above shows the code that failed, and above that is the file name and line number. If functions called other functions, each call appears as a pair of lines, oldest at the top.\n\nCommon types are SyntaxError (the code breaks Python's grammar), NameError (a name that was never defined, often a typo), TypeError (wrong type for the operation), ValueError (right type, bad value) and ZeroDivisionError. You can catch an expected error with try and except so the program can respond instead of crashing.\n\nYou can raise your own errors when a value makes no sense: raise ValueError(\"quantity cannot be negative\"). This stops bad data early with a clear message.\n\nCatch specific exceptions, such as except ValueError, rather than a bare except:. A bare except also hides typos and even Ctrl+C, so real bugs go unnoticed. Write except ValueError as e: and print(e) to show the error's message. A finally block runs whether or not an error happened, which is where clean-up such as closing a file goes.",
+    "example": "A pharmacy's stock script asks for a quantity. A user types thirty. The traceback's last line says ValueError and quotes 'thirty', and the line above points to line 3 of stock.py. The fix wraps the conversion in try/except and asks the user to type digits. Later the stock script raises its own ValueError for a negative quantity, catches it with except ValueError as e, and prints the message, while finally logs every input it checked.",
+    "code": "# What the crash looks like:\n# Traceback (most recent call last):\n#   File \"/home/asha/stock.py\", line 3, in <module>\n#     qty = int(input(\"Quantity: \"))\n# ValueError: invalid literal for int() with base 10: 'thirty'\n\n# The fix: expect the error and handle it\nwhile True:\n    try:\n        qty = int(input(\"Quantity: \"))\n        break                                 # leave the loop on success\n    except ValueError:\n        print(\"Please type a whole number, like 30\")\nprint(\"Recorded\", qty, \"boxes\")\n\ndef set_quantity(qty):\n    if qty < 0:\n        raise ValueError(f\"quantity cannot be negative, got {qty}\")\n    return qty\n\nfor text in [\"30\", \"thirty\", \"-5\"]:\n    try:\n        qty = set_quantity(int(text))\n        print(\"Recorded\", qty)\n    except ValueError as e:              # catch only the error you expect\n        print(\"Rejected:\", e)\n    finally:\n        print(\"checked\", repr(text))     # runs whether or not there was an error\n# Recorded 30\n# checked '30'\n# Rejected: invalid literal for int() with base 10: 'thirty'\n# checked 'thirty'\n# Rejected: quantity cannot be negative, got -5\n# checked '-5'\n",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "None",
+    "Python's value for \"nothing here\"; test it with is None."
+   ],
+   [
+    "Truthiness",
+    "How a value behaves in an if: 0, empty strings, empty lists and None count as False."
+   ],
+   [
+    "Floor division",
+    "The // operator, which divides and drops the remainder."
+   ],
+   [
+    "Modulo",
+    "The % operator, which gives the remainder of a division."
+   ],
+   [
+    "Slice",
+    "A range of positions taken from a string or list, such as s[0:5]."
+   ],
+   [
+    "Default argument",
+    "A parameter value used when the caller leaves that argument out."
+   ],
+   [
+    "Local variable",
+    "A variable created inside a function that exists only while the function runs."
+   ],
+   [
+    "Docstring",
+    "A string at the top of a function that describes what it does."
+   ],
+   [
+    "Type hint",
+    "A note such as x: int that says what type a value should be; not enforced at run time."
+   ],
+   [
+    "Standard library",
+    "The modules that come with Python, such as math and datetime, needing no install."
+   ]
+  ],
+  "add_practice": [
+   "Take the string \"  ORD-2026-0042 ; Tomas Reyes ; 149.5  \" and use split, strip and title to print: Order ORD-2026-0042 for Tomas Reyes: 149.50.",
+   "Print round(0.5), round(1.5), round(2.5) and 0.1 + 0.2, and explain in one sentence each why the results are not what a calculator shows.",
+   "Write a function add_vat(amount, rate=0.2) with a docstring and type hints that raises ValueError for a negative amount. Call it with a keyword argument and catch the error with except ValueError as e."
+  ]
+ },
+ "python2": {
+  "add_subtopics": [
+   {
+    "title": "Nested data from APIs",
+    "body": "Real data is rarely one flat list or one flat dict. Almost every API response an FDE handles is nested: a dict that holds a list, where each item is another dict, which may hold more dicts and lists.\n\nYou reach inside by chaining lookups, reading left to right. data[\"items\"] is the list of orders, data[\"items\"][0] is the first order (a dict), and data[\"items\"][0][\"price\"] is its price. Print one level at a time when you are unsure of the shape.\n\nReal responses are inconsistent: one order has a city, the next does not. A direct lookup on a missing key raises KeyError and stops the script. Chaining .get with a sensible default avoids that: item.get(\"customer\", {}).get(\"city\", \"unknown\"). The empty dict {} as the first default means the second .get still works when the whole customer block is missing.\n\nThe two common shapes are a list of dicts (one dict per record, the usual API shape) and a dict of lists (a key such as a city pointing to many values). To load API data into a spreadsheet or a DataFrame you flatten it into rows: loop over the list and build one flat dict per record, or call pd.json_normalize, which turns nested keys into columns such as customer.name. Lists inside a record, such as tags, need a decision: join them into one string or give each value its own row.",
+    "example": "An orders API used by Tidewater Outfitters returns a page with an items list. The FDE reads the first price with data[\"items\"][0][\"price\"], finds that one customer has no city, and switches to chained .get calls. She flattens each order into a row with id, price, name, city and a comma-joined tags field, and checks the same result with pd.json_normalize before saving the rows to CSV.",
+    "code": "import pandas as pd\n\n# The shape a typical orders API returns (response.json() gives you this)\ndata = {\n    \"page\": 1,\n    \"items\": [\n        {\"id\": \"A-100\", \"price\": 25.0, \"customer\": {\"name\": \"Lena\", \"city\": \"Porto\"},\n         \"tags\": [\"gift\", \"express\"]},\n        {\"id\": \"A-101\", \"price\": 40.5, \"customer\": {\"name\": \"Omar\"}, \"tags\": []},\n    ],\n}\n\nprint(data[\"items\"][0][\"price\"])                   # 25.0\nprint(data[\"items\"][0][\"customer\"][\"city\"])        # Porto\n# data[\"items\"][1][\"customer\"][\"city\"]  -> KeyError: 'city'\nprint(data[\"items\"][1].get(\"customer\", {}).get(\"city\", \"unknown\"))   # unknown\n\nrows = []                                          # flatten by hand: one dict per row\nfor item in data.get(\"items\", []):\n    cust = item.get(\"customer\", {})\n    rows.append({\"id\": item[\"id\"], \"price\": item[\"price\"],\n                 \"name\": cust.get(\"name\"), \"city\": cust.get(\"city\"),\n                 \"tags\": \",\".join(item.get(\"tags\", []))})\nprint(rows[1])\n# {'id': 'A-101', 'price': 40.5, 'name': 'Omar', 'city': None, 'tags': ''}\n\ndf = pd.json_normalize(data[\"items\"])              # or let pandas flatten it\nprint(df.columns.tolist())\n# ['id', 'price', 'tags', 'customer.name', 'customer.city']\n\nby_city = {\"Porto\": [\"A-100\", \"A-107\"], \"Lyon\": [\"A-101\"]}   # a dict of lists\nprint(len(by_city[\"Porto\"]))                       # 2\n",
+    "lang": "Python"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Lists and tuples",
+    "body": "A list holds items in order inside square brackets: [\"tea\", \"coffee\", \"juice\"]. Each item has a position called an index, counting from 0, so the first item is at index 0. Negative indexes count from the end, so -1 is the last item.\n\nLists can change. append adds an item at the end, remove deletes one by value, and you can replace an item by assigning to its index. len(list) gives the number of items. A slice such as items[0:2] gives a new list of the items at indexes 0 and 1.\n\nA tuple uses round brackets: (51.5, -0.12). It is ordered like a list but cannot be changed after it is made. Use it for small fixed groups of values, such as a latitude and longitude pair.\n\nTo put items in order, sorted(items) returns a new sorted list and leaves the original alone, while items.sort() sorts the list in place and returns None (so never write x = items.sort()). Both take key=, a function that picks what to sort by: key=lambda r: r[\"amount\"] sorts a list of dicts by amount. A lambda is a tiny unnamed function written on one line. reverse=True sorts from largest to smallest.\n\nenumerate(items) gives the position and the item together, and zip(a, b) walks two lists side by side.\n\nLists are mutable, and a variable only points at a list. b = a does not copy anything: a and b are two names for one list, so changing b changes a. This is called aliasing. Use a.copy() or list(a) for a new list. If the list holds dicts or other lists, a normal copy still shares those inner items, so use copy.deepcopy for a fully independent copy.",
+    "example": "A bakery tracks today's orders in a list. It starts with three: croissant, bagel, muffin. A fourth order, scone, is appended. The bagel is cancelled and removed. The list now has three items, and the last one is scone. The shop's location is stored as a tuple so no code can change it by accident. Later the bakery sorts its orders by amount, largest first, with sorted and a lambda. A helper that did b = orders and then appended a test order accidentally changed the real list, which orders.copy() fixes.",
+    "code": "orders = [\"croissant\", \"bagel\", \"muffin\"]\norders.append(\"scone\")        # add to the end\norders.remove(\"bagel\")        # remove by value\nprint(orders)                 # ['croissant', 'muffin', 'scone']\nprint(orders[0], orders[-1])  # croissant scone\nprint(len(orders))            # 3\nprint(orders[0:2])            # ['croissant', 'muffin']\n\nshop_location = (51.5074, -0.1278)   # a tuple: latitude, longitude\nlat, lon = shop_location             # unpack into two variables\n# shop_location[0] = 0  would raise TypeError: tuples cannot change\n\norders = [{\"id\": 1, \"amount\": 40}, {\"id\": 2, \"amount\": 15}, {\"id\": 3, \"amount\": 90}]\n\nbiggest = sorted(orders, key=lambda r: r[\"amount\"], reverse=True)   # new list\nprint([r[\"id\"] for r in biggest])        # [3, 1, 2]\nnums = [5, 2, 9]\nnums.sort()                              # sorts in place, returns None\nprint(nums)                              # [2, 5, 9]\n\nfor pos, r in enumerate(orders, start=1):\n    print(pos, r[\"id\"])                  # 1 1 / 2 2 / 3 3\nnames = [\"tea\", \"cake\"]\nprices = [4.5, 12.0]\nfor n, p in zip(names, prices):\n    print(n, p)                          # tea 4.5 / cake 12.0\n\na = [\"croissant\", \"bagel\"]\nb = a                    # b is the SAME list, not a copy\nb.append(\"scone\")\nprint(a)                 # ['croissant', 'bagel', 'scone']  a changed too!\nc = a.copy()             # a real (shallow) copy\nc.append(\"muffin\")\nprint(len(a), len(c))    # 3 4\n\nimport copy\nnested = [{\"qty\": 1}]\nshallow = nested.copy()\ndeep = copy.deepcopy(nested)\nshallow[0][\"qty\"] = 99   # the inner dict is still shared by a shallow copy\nprint(nested[0][\"qty\"], deep[0][\"qty\"])   # 99 1\n",
+    "lang": "Python"
+   },
+   {
+    "title": "Dicts and sets",
+    "body": "A dict (dictionary) stores pairs of key and value inside curly braces: {\"name\": \"Ravi\", \"age\": 34}. You look a value up by its key: person[\"name\"]. Keys are usually strings or numbers and must be unique. Assigning to a key adds it or replaces its value.\n\nIf you ask for a key that is missing, Python raises KeyError. The get method returns a default instead: person.get(\"email\", \"none\"). Looping over a dict with .items() gives you each key and value together.\n\nA set holds unique values with no order: {\"North\", \"South\"}. Adding a value that is already there does nothing. Sets are the quickest way to remove duplicates or check whether something is present.\n\nThe collections module in the standard library has two dict helpers FDEs use constantly. Counter counts things for you: Counter(visits) gives how many times each value appears, and most_common(3) gives the top three. defaultdict(list) creates an empty list the first time a key is used, so grouping records needs no \"is the key there yet?\" check.\n\nSets support maths-style operations that answer business questions directly. a & b is the intersection, the values in both. a | b is the union, the values in either. a - b is the difference, the values in a but not in b, such as customers who bought last month but not this month.",
+    "example": "A clinic keeps one patient's details in a dict with keys name, age and ward. A nurse updates the ward from B to C. Asking for email with get returns the default \"not recorded\" instead of crashing. Separately, the list of wards visited today, [\"A\", \"C\", \"A\", \"B\", \"C\"], becomes the set {\"A\", \"B\", \"C\"}, so the clinic knows three wards were involved. The clinic counts visits per ward with Counter and finds ward A busiest. A retailer groups orders by store with defaultdict(list), and uses last_month - this_month to list customers who did not come back.",
+    "code": "patient = {\"name\": \"Ravi\", \"age\": 34, \"ward\": \"B\"}\npatient[\"ward\"] = \"C\"                       # update a value\nprint(patient[\"name\"])                      # Ravi\nprint(patient.get(\"email\", \"not recorded\")) # safe lookup with a default\n\nfor key, value in patient.items():          # loop over pairs\n    print(key, \"=\", value)\n\nvisits = [\"A\", \"C\", \"A\", \"B\", \"C\"]\nwards = set(visits)                         # duplicates disappear\nprint(len(wards), \"wards\")                  # 3 wards\nprint(\"B\" in wards)                         # True\n\nfrom collections import Counter, defaultdict\n\nvisits = [\"A\", \"C\", \"A\", \"B\", \"C\", \"A\"]\ncounts = Counter(visits)\nprint(counts)                    # Counter({'A': 3, 'C': 2, 'B': 1})\nprint(counts.most_common(1))     # [('A', 3)]\n\norders = [(\"North\", \"tea\"), (\"South\", \"cake\"), (\"North\", \"bun\")]\nby_store = defaultdict(list)     # missing keys start as an empty list\nfor store, item in orders:\n    by_store[store].append(item)\nprint(dict(by_store))            # {'North': ['tea', 'bun'], 'South': ['cake']}\n\nlast_month = {\"ana\", \"ben\", \"cai\"}\nthis_month = {\"ben\", \"cai\", \"dev\"}\nprint(sorted(last_month & this_month))   # both months:    ['ben', 'cai']\nprint(sorted(last_month | this_month))   # either month:   ['ana', 'ben', 'cai', 'dev']\nprint(sorted(last_month - this_month))   # lost customers: ['ana']\n",
+    "lang": "Python"
+   },
+   {
+    "title": "Reading and writing files, and JSON",
+    "body": "open(path, mode) connects your program to a file. Mode \"r\" reads (the default), \"w\" writes and replaces any existing contents, and \"a\" appends to the end. Always use it inside a with block, which closes the file automatically when the block ends, even if an error happens.\n\nf.read() returns the whole file as one string. Looping with for line in f gives one line at a time, which is better for large files because it does not load everything into RAM at once. Each line ends with a newline character, which strip() removes.\n\nJSON (JavaScript Object Notation) is a text format that looks almost like Python dicts and lists and is used by most web APIs. The json module converts in both directions: json.dump writes a Python value to a file, json.load reads it back, and json.dumps and json.loads do the same with strings.\n\nAlways pass encoding=\"utf-8\" when opening text files. Without it, Python uses the system default, which on many Windows machines is cp1252, so names like Café break or crash. The dataformats topic explains encodings in depth.\n\npathlib.Path builds file paths that work on every operating system: Path(\"data\") / \"jan.csv\" uses the right separator. Path(\"data\").glob(\"*.csv\") loops over every CSV in a folder, which is how you process a folder of monthly exports.\n\njson.dumps only understands basic types: dicts, lists, strings, numbers, True, False and None. A datetime or Decimal raises TypeError: Object of type datetime is not JSON serializable. Either pass default=str so unknown objects are turned into strings, or convert them yourself first, for example with .isoformat() for dates and str() for Decimal amounts.",
+    "example": "A small hotel logs guest check-ins to checkins.txt, one name per line, using append mode so earlier names are kept. At night a script reads the file and counts 3 guests. It saves a summary dict, date and count, to summary.json. The next morning another script loads summary.json and gets the same dict back. Later the hotel stores check-in times as datetime values. json.dumps raises TypeError until the script converts them with isoformat(). It also reads a folder of monthly CSV exports with Path(\"data\").glob(\"*.csv\"), always with encoding=\"utf-8\".",
+    "code": "import json\n\nwith open(\"checkins.txt\", \"a\") as f:          # \"a\" adds to the end\n    for name in [\"Lee\", \"Okafor\", \"Silva\"]:\n        f.write(name + \"\\n\")                   # \\n starts a new line\n\nwith open(\"checkins.txt\") as f:\n    names = [line.strip() for line in f]       # one line at a time\n\nsummary = {\"date\": \"2026-03-14\", \"guests\": len(names)}\nwith open(\"summary.json\", \"w\") as f:\n    json.dump(summary, f, indent=2)            # Python dict -> JSON text\n\nwith open(\"summary.json\") as f:\n    loaded = json.load(f)                      # JSON text -> Python dict\nprint(loaded[\"guests\"])\n\nimport json\nfrom datetime import datetime\nfrom decimal import Decimal\nfrom pathlib import Path\n\nfolder = Path(\"data\")\nfor path in sorted(folder.glob(\"*.csv\")):           # every CSV export in the folder\n    with open(path, encoding=\"utf-8\", newline=\"\") as f:\n        print(path.name, len(f.readlines()) - 1, \"rows\")\n# feb.csv 1 rows\n# jan.csv 1 rows\n\n(folder / \"note.txt\").write_text(\"Café Lumière\", encoding=\"utf-8\")\nprint((folder / \"note.txt\").read_text(encoding=\"utf-8\"))   # Café Lumière\n\nrecord = {\"when\": datetime(2026, 3, 14, 9, 30), \"total\": Decimal(\"19.99\")}\ntry:\n    json.dumps(record)\nexcept TypeError as e:\n    print(\"TypeError:\", e)\n# TypeError: Object of type datetime is not JSON serializable\n\nprint(json.dumps(record, default=str))\n# {\"when\": \"2026-03-14 09:30:00\", \"total\": \"19.99\"}\nsafe = {\"when\": record[\"when\"].isoformat(), \"total\": str(record[\"total\"])}\nprint(json.dumps(safe))\n# {\"when\": \"2026-03-14T09:30:00\", \"total\": \"19.99\"}\n",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Nested data",
+    "Data where dicts and lists sit inside other dicts and lists, as in most API responses."
+   ],
+   [
+    "json_normalize",
+    "A pandas function that flattens nested JSON records into a table, naming columns like customer.name."
+   ],
+   [
+    "Lambda",
+    "A small unnamed function written on one line, such as lambda r: r[\"amount\"]."
+   ],
+   [
+    "Aliasing",
+    "Two variable names pointing at the same list or dict, so changing one changes the other."
+   ],
+   [
+    "Deep copy",
+    "A copy that also copies every inner list and dict, made with copy.deepcopy."
+   ],
+   [
+    "Counter",
+    "A dict from the collections module that counts how often each value appears."
+   ],
+   [
+    "defaultdict",
+    "A dict that creates a default value, such as an empty list, for a missing key."
+   ],
+   [
+    "pathlib",
+    "The standard-library module for building and looping over file paths on any operating system."
+   ]
+  ],
+  "add_practice": [
+   "Write a nested dict for two invoices, each with a customer dict and a list of line items. Print the second invoice's first line-item price, then flatten the invoices into one row per invoice with the item count.",
+   "Given a list of order dicts, print the three largest by amount using sorted with key= and reverse=True, then use Counter to find the most common product.",
+   "Put three small CSV files in a folder and use Path(...).glob(\"*.csv\") with encoding=\"utf-8\" to print each file name and its number of data rows."
+  ]
+ },
+ "pandas": {
+  "add_subtopics": [
+   {
+    "title": "Sorting, reshaping and stacking",
+    "body": "After cleaning, most work is rearranging a table into the shape a question needs.\n\nsort_values(\"amount\", ascending=False) orders rows, largest first. value_counts() counts how often each value appears in a column, which is the fastest way to see categories and spot typos. nlargest(5, \"amount\") gives the top five rows directly. rename(columns={\"amount\": \"revenue\"}) gives columns business-friendly names.\n\nEvery DataFrame has an index, the labels on the left. groupby puts the group key into the index, so after df.groupby(\"region\")[\"amount\"].sum() region is no longer a normal column. reset_index() turns the index back into a column, which you need before a merge or saving a clean file, and set_index(\"region\") does the reverse so you can look rows up by label with .loc.\n\nExcel exports are often wide: one row per store and one column per month (Jan, Feb, Mar). That is easy to read but hard to analyse, because you cannot group by month. melt turns wide into long: one row per store and month, with a month column and a value column. Long tables are what groupby, charts and databases expect. pivot_table does the reverse when the customer wants the wide view back.\n\nWhen the data comes as twelve monthly files with the same columns, pd.concat stacks them into one table. Add a column saying which file each row came from, and pass ignore_index=True so the row numbers restart cleanly.",
+    "example": "Tidewater Outfitters sends a budget sheet with one column per month and twelve monthly order files. The FDE melts the budget into store, month and sales columns so it can be grouped. She stacks the order files with pd.concat after tagging each with its month, then uses value_counts on region and finds \"Nrth\" three times, a typo to fix before any totals.",
+    "code": "import io\nimport pandas as pd\n\norders = pd.read_csv(io.StringIO(\"\"\"order_id,region,amount\n1001,North,120.50\n1002,South,60.00\n1003,North,1250.00\n1004,East,80.00\n1005,North,45.00\n\"\"\"))\nprint(orders.sort_values(\"amount\", ascending=False)[\"order_id\"].tolist())\n# [1003, 1001, 1004, 1002, 1005]\nprint(orders[\"region\"].value_counts().to_dict())    # {'North': 3, 'South': 1, 'East': 1}\nprint(orders.nlargest(2, \"amount\")[\"order_id\"].tolist())   # [1003, 1001]\n\ntotals = orders.groupby(\"region\")[\"amount\"].sum()    # region is now the INDEX\nprint(totals.index.name)                             # region\nflat = totals.reset_index().rename(columns={\"amount\": \"revenue\"})\nprint(flat.columns.tolist())                         # ['region', 'revenue']\nprint(flat.set_index(\"region\").loc[\"East\", \"revenue\"])   # 80.0\n\n# A wide Excel-style export: one column per month\nwide = pd.DataFrame({\"store\": [\"North\", \"South\"],\n                     \"Jan\": [100, 80], \"Feb\": [120, 90], \"Mar\": [130, 70]})\nlong = wide.melt(id_vars=\"store\", var_name=\"month\", value_name=\"sales\")\nprint(long.head(3))\n#    store month  sales\n# 0  North   Jan    100\n# 1  South   Jan     80\n# 2  North   Feb    120\nprint(long.groupby(\"store\")[\"sales\"].sum().to_dict())   # {'North': 350, 'South': 240}\n\n# Stack monthly files that share the same columns\njan = pd.DataFrame({\"order_id\": [1, 2], \"amount\": [10.0, 20.0]})\nfeb = pd.DataFrame({\"order_id\": [3], \"amount\": [15.0]})\nyear = pd.concat([jan.assign(month=\"Jan\"), feb.assign(month=\"Feb\")], ignore_index=True)\nprint(len(year), year[\"amount\"].sum())               # 3 45.0\n\n\n# Real life: every file in a folder\n# from pathlib import Path\n# year = pd.concat([pd.read_csv(p).assign(source=p.name)\n#                   for p in sorted(Path(\"exports\").glob(\"orders_*.csv\"))], ignore_index=True)",
+    "lang": "Python"
+   },
+   {
+    "title": "Excel in and out for business users",
+    "body": "Business users live in Excel, so many files arrive as .xlsx and many answers must go back as .xlsx. pandas reads and writes them with the openpyxl package (pip install openpyxl).\n\nCustomer workbooks are rarely clean tables. pd.read_excel(path, sheet_name=None) reads every sheet at once and returns a dict of sheet name to DataFrame; sheet_name=\"North\" reads one. Reports often start with a title row and blank rows, so skiprows=2 skips them, or header=2 says the column names are on the third row (counting from 0). Merged header cells arrive as a name followed by Unnamed: 3 columns, so rename those by hand. usecols=\"A:D\" reads only some columns.\n\nDates can arrive as serial numbers such as 46083, because Excel stores a date as the number of days since 30 December 1899. Convert them with pd.to_datetime(col, unit=\"D\", origin=\"1899-12-30\"). Check a few dates against the file by eye.\n\nTo hand results back, write with to_excel(path, index=False) so there is no stray index column. To write several sheets into one workbook, open a pd.ExcelWriter in a with block and call to_excel once per sheet. Put a short summary on the first sheet and the detail after it. Keep money as numbers, not text, so the finance team can still sum them, and never overwrite the customer's original file.",
+    "example": "Tidewater's finance team sends sales_q1.xlsx with one sheet per region, a title row and a blank row on top, and dates showing as numbers like 46083. The FDE reads all sheets with sheet_name=None and skiprows=2, converts the serial dates, and returns for_finance.xlsx with a Summary sheet and an Orders sheet that they open in Excel straight away.",
+    "code": "import pandas as pd   # reading and writing .xlsx needs: pip install openpyxl\n\n# The workbook has one sheet per region. Each sheet starts with a title row\n# and a blank row, so the real header is on row 3: skip the first 2 rows.\nsheets = pd.read_excel(\"sales_q1.xlsx\", sheet_name=None, skiprows=2)\nprint(list(sheets))                        # ['North', 'South']  (dict of DataFrames)\nprint(sheets[\"North\"].columns.tolist())    # ['order_id', 'order_date', 'amount']\n\ndf = pd.concat(sheets, names=[\"region\", \"row\"]).reset_index(level=\"region\")\nprint(df[\"order_date\"].tolist())           # [46083, 46087, 46085]  serial numbers!\n\n# Excel stores dates as days since 30 December 1899\ndf[\"order_date\"] = pd.to_datetime(df[\"order_date\"], unit=\"D\", origin=\"1899-12-30\")\nprint(df[\"order_date\"].dt.strftime(\"%Y-%m-%d\").tolist())\n# ['2026-03-02', '2026-03-06', '2026-03-04']\n\nsummary = df.groupby(\"region\", as_index=False)[\"amount\"].sum()\nwith pd.ExcelWriter(\"for_finance.xlsx\") as writer:      # one file, several sheets\n    summary.to_excel(writer, sheet_name=\"Summary\", index=False)\n    df.to_excel(writer, sheet_name=\"Orders\", index=False)\nprint(pd.ExcelFile(\"for_finance.xlsx\").sheet_names)     # ['Summary', 'Orders']\n",
+    "lang": "Python"
+   },
+   {
+    "title": "Working in Jupyter notebooks",
+    "body": "A Jupyter notebook (.ipynb file) mixes code cells, their output and notes in one page that runs in the browser. It is the most common way to explore a customer's data: load a file in one cell, look at it, try a fix in the next cell, and keep the tables and charts right beside the code. VS Code opens notebooks too.\n\nMake the notebook use your project's virtual environment. Install ipykernel in the venv and register it as a kernel, then pick that kernel in the notebook. Otherwise import pandas may load a different version, or fail.\n\nThe big trap is hidden state. Cells can run in any order, and variables stay in memory after you delete or edit the cell that made them. A notebook can look correct and still depend on a cell that no longer exists. Before you trust or share a result, use Restart Kernel and Run All: if it runs top to bottom without errors, the result is real.\n\nOutputs are saved inside the file. A notebook that printed df.head() on customer data now contains that data, and committing it to Git leaks it. Clear outputs before committing, or install nbstripout so Git strips them automatically.\n\nNotebooks are for exploring and explaining. When code must run every night, be tested or be reviewed, move it into a .py module (for example src/cleaning.py) and have the notebook import it, or convert the notebook to a script with nbconvert. A good rule is: once you copy a cell into a second notebook, it belongs in a module.",
+    "example": "An FDE exploring Tidewater's orders in a notebook gets a total of 1,450.50 and pastes it into an email. Before sending, she runs Restart Kernel and Run All, and a cell fails: it used a variable from a cell she had deleted. She fixes the order, moves the cleaning steps into src/cleaning.py, and sets up nbstripout so no customer rows are committed with the notebook.",
+    "code": "# Use the project's own venv inside Jupyter (run once, with the venv active)\npython -m pip install jupyterlab ipykernel\npython -m ipykernel install --user --name tidewater --display-name \"Python (tidewater)\"\njupyter lab                      # opens in the browser; pick the \"Python (tidewater)\" kernel\n# with uv instead:  uv run --with jupyter jupyter lab\n\n# Strip outputs (and any customer data in them) from notebooks before every commit\npython -m pip install nbstripout\nnbstripout --install             # adds a Git filter for this repository\n\n# Move stable code out of the notebook into src/cleaning.py, then in a cell:\n#   %load_ext autoreload\n#   %autoreload 2                # re-import src/ files automatically after you edit them\n#   from src.cleaning import clean_orders\n#   df = clean_orders(pd.read_csv(\"data/orders.csv\"))\n\njupyter nbconvert --to script analysis.ipynb    # turn a notebook into analysis.py",
+    "lang": "bash",
+    "checklist": [
+     "Notebook uses the project venv kernel",
+     "Restart Kernel and Run All succeeds before sharing results",
+     "Outputs cleared or nbstripout installed before committing",
+     "Reused or scheduled code lives in a .py module, imported by the notebook"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Selecting, filtering and assigning",
+    "body": "To read one column use df[\"amount\"], which gives a Series. A list of names, df[[\"order_id\", \"amount\"]], gives a smaller DataFrame. To choose rows, build a mask: a Series of True and False, one per row, such as df[\"region\"] == \"North\". Putting a mask inside df[...] keeps only the True rows. Combine masks with & (and), | (or) and ~ (not), and wrap each condition in brackets, because Python's operator order would otherwise mix them up.\n\n.loc selects by labels: df.loc[rows, columns], where rows can be a mask. .iloc selects by position number, like the first row or the third column. Use .loc when you also want to change values: df.loc[mask, \"region\"] = \"West\" updates only the matching rows. Chained indexing such as df[mask][\"region\"] = \"West\" never updates df in pandas 3 (Copy-on-Write): it only shows a ChainedAssignmentError warning. Always use df.loc[mask, \"region\"] = \"West\".\n\nNew columns are made by assigning to a new name. Keep the rule readable, for example a needs_review flag for large orders.\n\nA few more filters cover most real requests. .isin([\"North\", \"West\"]) keeps rows whose value is in a list, much shorter than several == checks joined with |. .between(50, 150) keeps a range, including both ends. For text, .str.contains(r\"INV-\\d{4}\", na=False) matches a regular expression (a text pattern) and treats missing values as no match; without na=False, empty cells produce NaN and the filter fails. .str.extract(r\"INV-(?P<year>\\d{4})-(?P<num>\\d{5})\") pulls pieces of text into new columns, one per named group. The dataformats topic teaches the regex patterns themselves.\n\ndf.query(\"region == 'North' and amount > 100\") writes the same filter as readable text, which is handy for long conditions.",
+    "example": "Brambleton's finance lead wants every order of 1,000 or more checked by hand. The FDE adds needs_review = amount >= 1000, which flags order 1003. The sales team also says Chen Wei moved to the West region, so df.loc[df[\"customer\"] == \"Chen Wei\", \"region\"] = \"West\" updates just his rows. Filtering North orders over 100 returns orders 1001 and 1003, and the North total is 1,370.50. Brambleton also wants every order whose note quotes an invoice number. str.contains with na=False finds them, and str.extract puts the invoice numbers in their own column.",
+    "code": "import io\nimport pandas as pd\n\nraw = \"\"\"order_id,customer,region,amount\n1001,Ana Ruiz,North,120.50\n1002,Ben Okafor,South,60.00\n1003,Ana Ruiz,North,1250.00\n1004,Chen Wei,East,80.00\n\"\"\"\ndf = pd.read_csv(io.StringIO(raw))\n\nprint(df[\"customer\"].tolist())             # one column is a Series\n# ['Ana Ruiz', 'Ben Okafor', 'Ana Ruiz', 'Chen Wei']\nprint(df[[\"order_id\", \"amount\"]].shape)    # a list of columns is a DataFrame: (4, 2)\nprint(df.iloc[0][\"customer\"])              # iloc: by position -> Ana Ruiz\nprint(df.loc[df[\"region\"] == \"North\", \"amount\"].sum())   # loc: mask + column -> 1370.5\n\nbig_north = df[(df[\"region\"] == \"North\") & (df[\"amount\"] > 100)]   # & needs brackets\nprint(big_north[\"order_id\"].tolist())      # [1001, 1003]\n\ndf[\"needs_review\"] = df[\"amount\"] >= 1000          # new column from a rule\ndf.loc[df[\"customer\"] == \"Chen Wei\", \"region\"] = \"West\"   # fix matching rows only\nprint(df[[\"order_id\", \"region\", \"needs_review\"]])\n#    order_id region  needs_review\n# 0      1001  North         False\n# 1      1002  South         False\n# 2      1003  North          True\n# 3      1004   West         False\n\n# More filters\nnotes = pd.DataFrame({\n    \"order_id\": [1001, 1002, 1003, 1004],\n    \"region\": [\"North\", \"South\", \"North\", \"West\"],\n    \"amount\": [120.5, 60.0, 1250.0, 80.0],\n    \"note\": [\"ref INV-2026-00042\", None, \"urgent, ref INV-2026-00077\", \"call back\"],\n})\nprint(notes[notes[\"region\"].isin([\"North\", \"West\"])][\"order_id\"].tolist())  # [1001, 1003, 1004]\nprint(notes[notes[\"amount\"].between(50, 150)][\"order_id\"].tolist())        # [1001, 1002, 1004]\nhas_inv = notes[\"note\"].str.contains(r\"INV-\\d{4}\", na=False)   # na=False: None counts as no match\nprint(has_inv.tolist())                                        # [True, False, True, False]\nprint(notes[\"note\"].str.extract(r\"INV-(?P<year>\\d{4})-(?P<num>\\d{5})\")[\"num\"].tolist())\n# ['00042', nan, '00077', nan]\nprint(notes.query(\"region == 'North' and amount > 100\")[\"order_id\"].tolist())   # [1001, 1003]\n\nnotes[notes[\"region\"] == \"West\"][\"region\"] = \"East\"   # chained: pandas 3 warns\n# ChainedAssignmentError: A value is being set on a copy of a DataFrame ...\nprint(notes[\"region\"].tolist())            # ['North', 'South', 'North', 'West']  unchanged!\nnotes.loc[notes[\"region\"] == \"West\", \"region\"] = \"East\"      # the right way\nprint(notes[\"region\"].tolist())            # ['North', 'South', 'North', 'East']\n",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "You want",
+      "Write",
+      "Returns"
+     ],
+     "rows": [
+      [
+       "One column",
+       "df[\"amount\"]",
+       "Series"
+      ],
+      [
+       "Several columns",
+       "df[[\"a\", \"b\"]]",
+       "DataFrame"
+      ],
+      [
+       "Rows matching a rule",
+       "df[df[\"amount\"] > 100]",
+       "DataFrame"
+      ],
+      [
+       "Rows and columns by name",
+       "df.loc[mask, \"amount\"]",
+       "Series or DataFrame"
+      ],
+      [
+       "By position",
+       "df.iloc[0, 2]",
+       "Single value"
+      ],
+      [
+       "Change some rows",
+       "df.loc[mask, \"col\"] = value",
+       "Updates df"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Missing data, dtypes and dates",
+    "body": "Missing values show as NaN (not a number) for numbers and NaT (not a time) for dates. df.isna() marks them. You have three honest options: leave them and report them, drop the rows with dropna, or fill them with fillna. Filling a missing amount with 0 changes totals and averages, so only do it when the customer agrees that blank really means zero. A safe habit is to add a flag column first, so the gap stays visible.\n\nFix dtypes on purpose. Tidy text with .str methods such as str.strip() (remove spaces) and str.title(). Turn text into numbers with pd.to_numeric; errors=\"coerce\" turns anything unreadable into NaN instead of crashing, so count the NaN values afterwards to see what failed.\n\nDates need an explicit format. 03/04/2026 is 4 March in the US and 3 April in the UK, and pandas cannot know which one the customer meant. Ask, then parse with format=\"%m/%d/%Y\" or \"%d/%m/%Y\". If a column mixes formats, parse each format separately with errors=\"coerce\" and combine the results. Once a column is a datetime, .dt gives parts such as month and day name.\n\nBig files need a few extra habits. usecols=[...] reads only the columns you need. dtype={\"order_id\": \"int32\"} sets smaller types up front. The category dtype stores a column with few distinct values, such as region, as small codes plus one list of labels, often using a fraction of the memory. For a file larger than RAM, chunksize=100_000 returns the file in pieces you process one at a time, for example adding up totals.\n\nOnce a big file is clean, save it as Parquet with to_parquet (needs pyarrow). Parquet is compressed, reads much faster than CSV, and keeps dtypes, so dates and categories come back correct without re-parsing. The dataformats topic compares Parquet and CSV.",
+    "example": "Brambleton confirms their store system writes US dates. The FDE strips spaces from \" North \", title-cases \"south\", removes commas and converts amount to float64, then flags the one missing amount instead of filling it. Dates are parsed twice (ISO format and US format) and combined. The row that says \"not recorded\" stays NaT, and the FDE asks the store manager whether that order date can be recovered. Later Brambleton sends a 5 GB export with 60 columns. Reading three columns with usecols, a category region and smaller number types makes the table fit in memory, and the FDE saves the clean result as Parquet for the next run.",
+    "code": "import io\nimport pandas as pd\n\nraw = \"\"\"order_id,customer,order_date,region,amount\n1001,Ana Ruiz,2026-03-02,North,120.50\n1002,Ben Okafor,03/04/2026,south,\n1003,Ana Ruiz,2026-03-05, North ,\"1,250.00\"\n1005,Dara Singh,not recorded,North,45.00\n\"\"\"\ndf = pd.read_csv(io.StringIO(raw))\n\nprint(df.isna().sum()[\"amount\"])                     # 1 missing amount\ndf[\"region\"] = df[\"region\"].str.strip().str.title()  # \" North \" and \"south\" -> tidy\ndf[\"amount\"] = pd.to_numeric(df[\"amount\"].str.replace(\",\", \"\"), errors=\"coerce\")\ndf[\"amount_missing\"] = df[\"amount\"].isna()           # flag it; do not guess a value\n\n# Two date formats in one column: parse each, then combine\niso = pd.to_datetime(df[\"order_date\"], format=\"%Y-%m-%d\", errors=\"coerce\")\nus = pd.to_datetime(df[\"order_date\"], format=\"%m/%d/%Y\", errors=\"coerce\")\ndf[\"order_date\"] = iso.fillna(us)                    # \"not recorded\" stays NaT\n\nprint(df.dtypes[\"amount\"], df.dtypes[\"order_date\"])  # float64 datetime64[us] (pandas 2: [ns])\nprint(df[[\"region\", \"amount\", \"amount_missing\", \"order_date\"]])\n#   region  amount  amount_missing order_date\n# 0  North   120.5           False 2026-03-02\n# 1  South     NaN            True 2026-03-04\n# 2  North  1250.0           False 2026-03-05\n# 3  North    45.0           False        NaT\nprint(df[\"order_date\"].dt.day_name().tolist())      # .dt gives date parts\n# ['Monday', 'Wednesday', 'Thursday', nan]\n\n\n# ---- Big files ----\n# Pretend this is a 5 GB export with many columns; we need only three of them\ncsv_text = \"order_id,region,amount,notes\\n\" + \"\".join(\n    f\"{i},{['North', 'South', 'East'][i % 3]},{i % 50}.5,long free text here\\n\" for i in range(9000))\n\nfull = pd.read_csv(io.StringIO(csv_text))\nprint(full.memory_usage(deep=True).sum())      # 501132 bytes: every column, default types\n\ndf = pd.read_csv(io.StringIO(csv_text), usecols=[\"order_id\", \"region\", \"amount\"],\n                 dtype={\"order_id\": \"int32\", \"amount\": \"float32\"})\ndf[\"region\"] = df[\"region\"].astype(\"category\")   # 3 repeated labels -> category\nprint(df.memory_usage(deep=True).sum())        # 81171 bytes: about 6 times smaller\n\n# chunksize reads the file in pieces, so it never has to fit in RAM at once\ntotal = 0.0\nfor chunk in pd.read_csv(io.StringIO(csv_text), usecols=[\"amount\"], chunksize=2000):\n    total += chunk[\"amount\"].sum()\nprint(round(total, 1))                          # 225000.0\n\ndf.to_parquet(\"orders.parquet\")                 # needs: pip install pyarrow\nback = pd.read_parquet(\"orders.parquet\")\nprint(back[\"order_id\"].dtype, back[\"region\"].dtype, back[\"amount\"].dtype)\n# int32 category float32   <- types survive, unlike a CSV\n",
+    "lang": "Python"
+   },
+   {
+    "title": "groupby, aggregation and pivot tables",
+    "body": "Most customer questions are summaries: revenue by region, orders per month, average basket by channel. groupby does this in three steps, often called split, apply, combine. It splits rows into groups by a column, applies a calculation such as sum or mean to each group, and combines the results into a new table with one row per group.\n\nNamed aggregation, as in .agg(revenue=(\"amount\", \"sum\")), lets you compute several summaries at once and choose clear column names. A pivot table (pivot_table) spreads one grouping down the side and another across the top, which is what business users know from Excel.\n\nTwo details matter. sum and mean skip NaN values silently, so a group whose amounts are all missing shows 0.0 revenue, which looks like a real zero. And to group by month, convert a datetime with .dt.to_period(\"M\") so 2 March and 29 March land in the same group.\n\nSometimes you need the group result on every row instead of one row per group. transform does that: df.groupby(\"region\")[\"revenue\"].transform(\"sum\") returns the region total next to each store, so revenue / region_total gives each store's share of its region.\n\nWeek-over-week questions use a few time tools. resample(\"W\") groups a table indexed by dates into weeks (\"M\" or \"ME\" months, \"D\" days). shift(1) moves values down one row, so each week sits next to last week's value. pct_change() gives the percentage change from the previous row. cumsum() gives a running total. rolling(7).mean() gives a moving average over the last 7 rows, which smooths out daily noise.",
+    "example": "Brambleton's operations director asks: which region brings the most revenue, and is web growing against stores? groupby on region shows North with 3 orders and 1,415.50 in revenue, but an average order of 471.83 driven by one large order. The pivot shows web at 120.50 in March and 1,250.00 in April. The FDE points out that April web is one order, so it is too early to call a trend. Brambleton's director then asks for each store's share of its region and weekly revenue with the change from last week. transform gives the shares, and resample(\"W\") with pct_change shows growth slowing from 30.4 to 18.9 percent.",
+    "code": "import io\nimport pandas as pd\n\nraw = \"\"\"order_id,customer,order_date,region,channel,amount\n1001,Ana Ruiz,2026-03-02,North,web,120.50\n1002,Ben Okafor,2026-03-04,South,store,60.00\n1003,Ana Ruiz,2026-04-05,North,web,1250.00\n1004,Chen Wei,2026-04-05,East,store,80.00\n1005,Dara Singh,2026-04-09,North,store,45.00\n\"\"\"\ndf = pd.read_csv(io.StringIO(raw), parse_dates=[\"order_date\"])\n\n# One row per region, several summaries at once (named aggregation)\nby_region = df.groupby(\"region\").agg(\n    orders=(\"order_id\", \"count\"),\n    revenue=(\"amount\", \"sum\"),\n    avg_order=(\"amount\", \"mean\"),\n).round(2)\nprint(by_region)\n#         orders  revenue  avg_order\n# region\n# East         1     80.0      80.00\n# North        3   1415.5     471.83\n# South        1     60.0      60.00\n\n# Months down the side, channels across the top\ndf[\"month\"] = df[\"order_date\"].dt.to_period(\"M\")\npivot = df.pivot_table(index=\"month\", columns=\"channel\", values=\"amount\",\n                       aggfunc=\"sum\", fill_value=0)\nprint(pivot)\n# channel  store     web\n# month\n# 2026-03   60.0   120.5\n# 2026-04  125.0  1250.0\n\n\n# ---- transform and time series ----\nsales = pd.DataFrame({\n    \"region\": [\"North\", \"North\", \"South\", \"South\"],\n    \"store\": [\"N1\", \"N2\", \"S1\", \"S2\"],\n    \"revenue\": [300.0, 100.0, 50.0, 150.0],\n})\n# transform returns one value PER ROW (the group total), so it lines up with the table\nsales[\"region_total\"] = sales.groupby(\"region\")[\"revenue\"].transform(\"sum\")\nsales[\"share\"] = (sales[\"revenue\"] / sales[\"region_total\"]).round(2)\nprint(sales[[\"store\", \"region_total\", \"share\"]].to_string(index=False))\n# store  region_total  share\n#    N1         400.0   0.75\n#    N2         400.0   0.25\n#    S1         200.0   0.25\n#    S2         200.0   0.75\n\n# Daily orders for four weeks, then weekly totals\ndays = pd.date_range(\"2026-03-02\", periods=28, freq=\"D\")        # starts on a Monday\ndaily = pd.Series([100 + 5 * i for i in range(28)], index=days)\nweekly = daily.resample(\"W\").sum()          # \"W\" weeks end on Sunday\nprint(weekly.tolist())                      # [805, 1050, 1295, 1540]\nprint(weekly.shift(1).tolist())             # [nan, 805.0, 1050.0, 1295.0]  last week's value\nprint((weekly.pct_change() * 100).round(1).tolist())   # [nan, 30.4, 23.3, 18.9]  % change\nprint(weekly.cumsum().tolist())             # [805, 1855, 3150, 4690]  running total\nprint(daily.rolling(7).mean().iloc[6:9].tolist())      # [115.0, 120.0, 125.0]  7-day average\n",
+    "lang": "Python"
+   },
+   {
+    "title": "Validating before you hand data over",
+    "body": "Cleaned data leaves your laptop and becomes someone else's truth: a dashboard, a model's training set, a finance report. Before handing it over, run checks in code, so they run again every time the data is refreshed.\n\nGood checks are simple rules the business agrees with. Keys are unique. Required columns have no missing values, or the missing ones are counted and explained. Numbers sit in a sensible range (no negative prices). Categories come from a known list. Row counts and totals reconcile with the source system, for example the export's row count and the finance ledger's monthly total. A small function that returns a list of problems is enough to start; libraries such as pandera or Great Expectations do the same at larger scale.\n\nFinish with a short handoff note: what you changed, how many rows were dropped or flagged and why, and the totals the receiver should see. That note is what lets the customer trust the file.\n\ndrop_duplicates() with no arguments removes only rows that are identical in every column. Real feeds more often send the same key twice with different values, such as an order first marked pending and later paid. drop_duplicates(subset=[\"order_id\"], keep=\"last\") keeps one row per order, the most recent one, so sort by an update time first if the file is not already in order. Agree with the customer which copy wins.\n\nPrefer vectorised operations, which work on a whole column at once, such as df[\"qty\"] * df[\"price\"]. Looping with iterrows builds a Python object for every row and is often hundreds of times slower; avoid it on anything big. .map(dict) swaps values using a lookup table, and .apply(func) runs your own function on each value. Both are fine for small or awkward logic, but a vectorised version with .loc, np.where or .str methods is usually faster.",
+    "example": "Before sending Brambleton's cleaned orders to their BI analyst, the FDE runs check(). It finds duplicate order 1004 and one missing amount. drop_duplicates removes the exact duplicate row, and the missing amount stays flagged because the store manager is still looking it up. The handoff note says: 5 rows in, 4 out, 1 duplicate removed, 1 amount missing (order 1002), total 1,450.50 excluding order 1002. Brambleton's order feed later sends order 1001 twice, pending then paid. drop_duplicates() keeps both rows because they differ, so the FDE uses subset=[\"order_id\"], keep=\"last\" to keep only the paid version.",
+    "code": "import io\nimport pandas as pd\n\nclean = pd.read_csv(io.StringIO(\"\"\"order_id,order_date,region,amount\n1001,2026-03-02,North,120.50\n1002,2026-03-04,South,\n1003,2026-03-05,North,1250.00\n1004,2026-03-05,East,80.00\n1004,2026-03-05,East,80.00\n\"\"\"), parse_dates=[\"order_date\"])\n\ndef check(df):\n    problems = []\n    dup = df[\"order_id\"].duplicated()\n    if dup.any():\n        problems.append(f\"duplicate order_id: {df.loc[dup, 'order_id'].tolist()}\")\n    if df[\"amount\"].isna().any():\n        problems.append(f\"missing amount: {int(df['amount'].isna().sum())} row(s)\")\n    if (df[\"amount\"] < 0).any():\n        problems.append(\"negative amount\")\n    if not df[\"region\"].isin([\"North\", \"South\", \"East\", \"West\"]).all():\n        problems.append(\"unknown region\")\n    return problems\n\nprint(check(clean))   # ['duplicate order_id: [1004]', 'missing amount: 1 row(s)']\nfixed = clean.drop_duplicates()             # exact duplicate rows only\nprint(len(clean), \"->\", len(fixed), check(fixed))   # 5 -> 4 ['missing amount: 1 row(s)']\nprint(f\"rows={len(fixed)} total={fixed['amount'].sum():.2f}\")   # rows=4 total=1450.50\n\n\n# ---- Key-level duplicates and vectorised code ----\nimport time\nimport pandas as pd\n\n# The same order sent twice: once \"pending\", later \"paid\". Not an exact duplicate row.\nupdates = pd.DataFrame({\n    \"order_id\": [1001, 1002, 1001],\n    \"status\": [\"pending\", \"paid\", \"paid\"],\n    \"amount\": [120.5, 60.0, 120.5],\n})\nprint(len(updates.drop_duplicates()))                     # 3  (rows differ, nothing removed)\nlatest = updates.drop_duplicates(subset=[\"order_id\"], keep=\"last\")   # one row per key\nprint(latest.to_dict(\"records\"))\n# [{'order_id': 1002, 'status': 'paid', 'amount': 60.0}, {'order_id': 1001, 'status': 'paid', 'amount': 120.5}]\n\n# Vectorised maths versus a Python loop over rows\nbig = pd.DataFrame({\"qty\": range(200_000), \"price\": 2.5})\nt = time.perf_counter()\nbig[\"total\"] = big[\"qty\"] * big[\"price\"]                 # vectorised: whole column at once\nfast = time.perf_counter() - t\nt = time.perf_counter()\ntotals = [row[\"qty\"] * row[\"price\"] for _, row in big.iterrows()]   # one row at a time\nslow = time.perf_counter() - t\nprint(slow > 50 * fast)                                  # True: iterrows is far slower\n\n# map swaps values using a dict; apply runs your own function per value\nbig[\"size\"] = big[\"qty\"].map(lambda q: \"bulk\" if q >= 100 else \"small\")   # fine, but slower\nbig[\"size2\"] = \"small\"\nbig.loc[big[\"qty\"] >= 100, \"size2\"] = \"bulk\"             # same result, vectorised\nprint((big[\"size\"] == big[\"size2\"]).all())               # True\nprint(pd.Series([\"N\", \"S\"]).map({\"N\": \"North\", \"S\": \"South\"}).tolist())   # ['North', 'South']\n",
+    "lang": "Python",
+    "checklist": [
+     "Row count in equals the source export (or every difference is explained)",
+     "Key column is unique (no duplicate IDs)",
+     "Every column has the dtype you expect (numbers, dates, text)",
+     "Missing values are counted, and each fill or drop is agreed with the customer",
+     "Dates were parsed with an explicit format the customer confirmed",
+     "Row count did not change after each merge (or you know why)",
+     "Totals reconcile with a number the customer already trusts",
+     "A short handoff note lists every change and the final totals"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Index",
+    "The row labels of a DataFrame; groupby moves the group key into it."
+   ],
+   [
+    "reset_index",
+    "Turns the index back into an ordinary column."
+   ],
+   [
+    "melt",
+    "Reshapes a wide table (one column per month) into a long one (one row per month)."
+   ],
+   [
+    "concat",
+    "Stacks tables with the same columns on top of each other."
+   ],
+   [
+    "ExcelWriter",
+    "A pandas object for writing several sheets into one .xlsx file."
+   ],
+   [
+    "Excel serial date",
+    "A date stored as the number of days since 30 December 1899."
+   ],
+   [
+    "Jupyter notebook",
+    "An .ipynb file mixing code cells, their output and notes, run in the browser."
+   ],
+   [
+    "Kernel",
+    "The Python process behind a notebook; it keeps variables in memory between cells."
+   ],
+   [
+    "Hidden state",
+    "Variables left in a notebook's memory by cells that were edited, deleted or run out of order."
+   ],
+   [
+    "category dtype",
+    "A memory-saving type for columns with few distinct values."
+   ],
+   [
+    "Parquet",
+    "A compressed, column-based file format that keeps data types and loads fast."
+   ],
+   [
+    "transform",
+    "A groupby operation that returns one result per row, aligned with the original table."
+   ],
+   [
+    "resample",
+    "Groups rows by a time period, such as weeks, when the index is dates."
+   ],
+   [
+    "Vectorised",
+    "Working on a whole column at once instead of looping row by row."
+   ]
+  ],
+  "add_practice": [
+   "Make a wide table with three stores and columns Jan to Jun, melt it to long form, and find each store's best month. Deliverable: the script and the printed answer.",
+   "Build a workbook with two sheets that each start with a title row, read both with sheet_name=None and skiprows, and write a two-sheet summary with pd.ExcelWriter. Open it in Excel or LibreOffice to check.",
+   "Create 60 days of fake daily sales, then print weekly totals, week-over-week percent change and a 7-day rolling average.",
+   "Open a notebook with your venv kernel, run cells out of order until a result is wrong, then use Restart Kernel and Run All to catch it. Write two sentences on what happened."
+  ]
+ },
+ "dataformats": {
+  "replace_subtopics": [
+   {
+    "title": "Text encodings and UTF-8 bugs",
+    "body": "Computers store text as bytes, numbers from 0 to 255. An encoding is the rule that says which bytes mean which characters. ASCII covers only 128 basic English characters. UTF-8 covers every language by using one to four bytes per character, and it is the standard on the web and in most modern tools. Windows-1252 (often called cp1252) and Latin-1 are older one-byte encodings for Western European languages that are still common in exports from Excel and older business systems.\n\nWhen bytes are decoded with the wrong rule you get mojibake, garbled text such as 'CafÃ©' instead of 'Café'. That exact pattern, a capital A with a mark followed by another symbol, almost always means UTF-8 bytes were read as Windows-1252.\n\nTwo more traps. Excel's 'CSV UTF-8' option adds a byte order mark (BOM), three invisible bytes at the start, so your first column name becomes '\\ufeffid' and a lookup for 'id' fails. Decode with 'utf-8-sig' to remove it. And Latin-1 never raises an error, because every byte maps to some character, so a wrong guess passes silently. Always pass encoding= explicitly and prefer errors that fail loudly over errors='replace'.\n\nEven correctly decoded text can hide traps. Unicode can write 'ë' two ways: as one code point (called NFC, what most keyboards produce) or as a plain 'e' followed by a combining accent mark (called NFD, common in files from macOS). Both look identical on screen, but Python's == says they are different, so a name lookup or a join on customer names fails for no visible reason. unicodedata.normalize(\"NFC\", s) turns both into the same form. For matching, also use casefold(), a stronger version of lower() that handles letters such as the German ß.\n\nInvisible characters cause the same kind of silent miss. A non-breaking space (\\u00a0) looks like a normal space but is a different character; it arrives from web pages, Word and Excel. A zero-width space (\\u200b) has no width at all. Print suspicious values with repr() to see them, and clean them in one normalise function you use on both sides of every comparison.",
+    "example": "Brindlecombe Clinics sends a patient-contact export. The FDE's script opens it with the default encoding and the reminder letters print 'Zoë' as 'ZoÃ«'. Looking at the raw bytes shows 0xC3 0xAB for 'ë', which is UTF-8. The source was right; a spreadsheet step in between had re-saved it as Windows-1252 and then the pipeline read it as UTF-8 again. The fix is to read the original file once, explicitly as UTF-8, and to drop the manual spreadsheet step. Brindlecombe's clinic list and the booking system then disagree on 40 names such as 'Zoë Hart' that look identical. repr() shows one side uses NFD accents and some rows end in a non-breaking space. Normalising both sides with NFC, replacing the invisible characters and using casefold() makes all 40 match.",
+    "code": "text = \"Café Müller, 12 €\"\ndata = text.encode(\"utf-8\")          # characters -> bytes\nprint(data)\n# b'Caf\\xc3\\xa9 M\\xc3\\xbcller, 12 \\xe2\\x82\\xac'\n\nprint(data.decode(\"cp1252\"))         # wrong guess: classic mojibake\n# CafÃ© MÃ¼ller, 12 â‚¬\n\n# Excel's \"CSV UTF-8\" adds a byte order mark (BOM) at the start\nbom_file = \"\\ufeffid;name\\n7;Zoë\\n\".encode(\"utf-8\")\nprint(repr(bom_file.decode(\"utf-8\").splitlines()[0]))      # '\\ufeffid;name'\nprint(repr(bom_file.decode(\"utf-8-sig\").splitlines()[0]))  # 'id;name'\n\n# Always name the encoding when you open a file\nwith open(\"export.csv\", \"w\", encoding=\"cp1252\") as f:\n    f.write(\"name\\nZoë\\n\")\nwith open(\"export.csv\", encoding=\"utf-8\", errors=\"strict\") as f:\n    try:\n        f.read()\n    except UnicodeDecodeError as e:\n        print(\"Not UTF-8:\", e.reason)                         # Not UTF-8: invalid continuation byte\n\nimport unicodedata\n\n# ---- Unicode normalisation and invisible characters ----\na = \"Zoë\"             # 'ë' as one code point (NFC, what most keyboards type)\nb = \"Zoë\"            # 'e' plus a combining diaeresis (NFD, common from macOS)\nprint(a, b, a == b, len(a), len(b))     # Zoë Zoë False 3 4\n\ndef norm(s: str) -> str:\n    s = unicodedata.normalize(\"NFC\", s)                 # one form for accents\n    s = s.replace(\" \", \" \").replace(\"​\", \"\")  # no-break space, zero-width space\n    return \" \".join(s.split()).casefold()               # tidy spaces, ignore case\n\nprint(norm(a) == norm(b))                            # True\nname = \"Müller GmbH​\"                   # looks like 'Müller GmbH'\nprint(name == \"Müller GmbH\", repr(name))             # False 'Müller\\xa0GmbH​'\nprint(norm(name) == norm(\"MÜLLER GMBH\"))             # True\n",
+    "lang": "Python"
+   },
+   {
+    "title": "Dates, times, time zones and UTC",
+    "body": "A timestamp without a time zone is ambiguous. Python calls it a naive datetime; one with a zone attached is aware. Store aware timestamps in UTC and convert to local time only when showing them to a person. Use IANA zone names such as Europe/London or America/New_York, because abbreviations like CST can mean several different zones.\n\nDaylight saving time (DST) creates two awkward cases. When clocks go forward, a local time such as 01:30 does not exist that night. When clocks go back, 01:30 happens twice. Python's zoneinfo module handles this with a fold attribute that says whether you mean the first or the second occurrence. The honest answer is often to ask the source system for UTC or an offset.\n\nYou will also meet numbers that are really dates. Unix time counts seconds since 1 January 1970 UTC; a 13-digit value is usually milliseconds. Excel stores dates as a serial number of days, so 46115 is 3 April 2026 in the default 1900 date system. The table below lists the formats you will see most often.\n\nBeware: Python does not warn you about a time that never happened. On 29 March 2026 UK clocks jump from 01:00 straight to 02:00, yet datetime(2026, 3, 29, 1, 30, tzinfo=ZoneInfo(\"Europe/London\")) is accepted without any error, and the result is quietly an hour off. To detect it, do a round trip: convert to UTC and back to the same zone. If the wall-clock time changed, it did not exist. Send such rows to a review list rather than guessing.\n\npandas makes the choice explicit. When you attach a zone with Series.dt.tz_localize(\"Europe/London\"), a missing time raises an error unless you pass nonexistent= (\"NaT\" to blank it, \"shift_forward\" to move it to 02:00). A repeated autumn time raises unless you pass ambiguous=, such as a list saying which rows are the first (True) or second (False) occurrence, or \"NaT\". Raising an error is a good default: it forces a person to decide.",
+    "example": "Pembury Parcel Lockers logs pickups in each site's local time with no offset. On 1 November 2026 its New York sites record two different pickups at 01:30, an hour apart. A report that treats the column as naive sorts them as simultaneous and shows the night's pickups an hour short. Converting at ingestion with the site's IANA zone, and flagging repeated local hours for review, gives the right order and totals. Pembury's London lockers also log a pickup at 01:30 on 29 March 2026. The round-trip check flags it, because that time never existed, and the site confirms its clock had not yet changed, so the row is stored as 01:30 GMT on purpose rather than by accident.",
+    "code": "from datetime import datetime, timedelta\nfrom zoneinfo import ZoneInfo\n\nUTC = ZoneInfo(\"UTC\")\nNY = ZoneInfo(\"America/New_York\")\n\n# A store system logs local time with no offset. US clocks go back at 2:00\n# on 1 November 2026, so 1:30 happens twice that night.\nfirst = datetime(2026, 11, 1, 1, 30, tzinfo=NY)          # fold=0: first 1:30\nsecond = first.replace(fold=1)                            # fold=1: second 1:30\nprint(first.astimezone(UTC))    # 2026-11-01 05:30:00+00:00\nprint(second.astimezone(UTC))   # 2026-11-01 06:30:00+00:00\n\n# Unix time: 10 digits usually means seconds, 13 digits milliseconds\nprint(datetime.fromtimestamp(1775174400, UTC))         # 2026-04-03 00:00:00+00:00\nprint(datetime.fromtimestamp(1775174400000 / 1000, UTC))  # same moment\n\n# Excel serial date (1900 system): count days from 1899-12-30\nprint((datetime(1899, 12, 30) + timedelta(days=46115)).date())   # 2026-04-03\n\n# Parse an ISO 8601 string that carries its own offset\nprint(datetime.fromisoformat(\"2026-04-03T09:15:00+02:00\").astimezone(UTC))\n# 2026-04-03 07:15:00+00:00\n\nfrom datetime import datetime\nfrom zoneinfo import ZoneInfo\nimport pandas as pd\n\n# ---- Local times that never happened ----\nUTC, LONDON = ZoneInfo(\"UTC\"), ZoneInfo(\"Europe/London\")\n# UK clocks jump from 01:00 to 02:00 on 29 March 2026, so 01:30 never happened.\nt = datetime(2026, 3, 29, 1, 30, tzinfo=LONDON)       # no error!\nback = t.astimezone(UTC).astimezone(LONDON)\nprint(t, \"->\", back)       # 2026-03-29 01:30:00+00:00 -> 2026-03-29 02:30:00+01:00\n\ndef exists(local: datetime) -> bool:\n    \"\"\"True if this wall-clock time really happened in its zone.\"\"\"\n    trip = local.astimezone(UTC).astimezone(local.tzinfo)\n    return trip.replace(tzinfo=None) == local.replace(tzinfo=None)\n\nprint(exists(t), exists(datetime(2026, 3, 29, 2, 30, tzinfo=LONDON)))   # False True\n\n# pandas makes you choose what happens to missing and repeated hours\ns = pd.Series(pd.to_datetime([\"2026-03-29 00:30\", \"2026-03-29 01:30\", \"2026-03-29 02:30\"]))\nprint(s.dt.tz_localize(\"Europe/London\", nonexistent=\"NaT\").tolist())\n# [Timestamp('2026-03-29 00:30:00+0000', tz='Europe/London'), NaT, Timestamp('2026-03-29 02:30:00+0100', tz='Europe/London')]\nautumn = pd.Series(pd.to_datetime([\"2026-10-25 01:30\", \"2026-10-25 01:30\"]))\nprint(autumn.dt.tz_localize(\"Europe/London\", ambiguous=[True, False]).dt.tz_convert(\"UTC\").tolist())\n# [Timestamp('2026-10-25 00:30:00+0000', tz='UTC'), Timestamp('2026-10-25 01:30:00+0000', tz='UTC')]\n",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Format",
+      "Example",
+      "Watch out for"
+     ],
+     "rows": [
+      [
+       "ISO 8601 with offset",
+       "2026-04-03T09:15:00+02:00",
+       "Best choice; offset is not the same as a zone"
+      ],
+      [
+       "Day first (UK, EU)",
+       "03/04/2026",
+       "3 April; the US reads it as 4 March"
+      ],
+      [
+       "Month first (US)",
+       "04/03/2026",
+       "3 April in the US; the UK reads it as 4 March"
+      ],
+      [
+       "Unix seconds",
+       "1775174400",
+       "Always UTC; 13 digits means milliseconds"
+      ],
+      [
+       "Excel serial",
+       "46115",
+       "Days since 1899-12-30; 1904 system on some old Macs"
+      ],
+      [
+       "Local, no zone",
+       "2026-11-01 01:30",
+       "Ambiguous during DST changes"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Regular expressions for messy fields",
+    "body": "A regular expression is a pattern that describes text. \\d means any digit, {4} means exactly four of the previous item, + means one or more, \\b marks a word boundary, and parentheses capture a part you want to keep. Named groups, written (?P<year>...), make the code easier to read.\n\nUse regexes to find or extract short patterns: an invoice number inside a free-text reference, a date inside a sentence, a postcode in an address line. Always write patterns as raw strings (r\"...\") in Python so backslashes are passed through untouched.\n\nThree habits keep regexes safe. First, collect twenty real examples, including ugly ones, and test the pattern against all of them before trusting it. Second, decide whether you need search (anywhere in the text) or fullmatch (the whole field must match). Third, do not use a regex to parse nested or quoted formats like JSON, XML, HTML or CSV; a proper parser handles escaping and nesting that a pattern will miss. For emails, use a simple pattern to find them and send a confirmation to verify them; a perfect email regex does not exist.\n\nA regex can also clean and collect. re.sub(pattern, replacement, text) replaces every match, for example re.sub(r\"\\D\", \"\", phone) removes everything that is not a digit, and re.sub(r\"\\s+\", \" \", text) squashes runs of spaces and line breaks into one space. re.findall returns every match in a list instead of only the first.\n\nWatch out for greedy matching. .* grabs as much text as possible, so r\"<b>(.*)</b>\" on '<b>Paid</b> and <b>Late</b>' captures everything from the first <b> to the last </b>. Add a question mark, .*?, to make it lazy, matching as little as possible. In pandas, df[\"ref\"].str.extract(pattern) with named groups creates one new column per group, named after the group, so you can clean a whole column in one line.",
+    "example": "Thornquist Facilities receives supplier payments whose reference field is typed by hand: 'Invoice INV-2026-00042 due 14/05/2026', 'inv-2026-417 (paid)', 'INV 2026 00043'. A pattern with IGNORECASE finds the first and third forms once the separator is made flexible, and the remaining misses go to a review queue. Automatic matching rises from 71 percent to 93 percent of payments, and the finance team reviews the rest.",
+    "code": "import re\n\nlines = [\n    \"Invoice INV-2026-00042 due 14/05/2026\",\n    \"inv-2026-417 (paid)\",                      # too few digits\n    \"INV 2026 00043\",                           # spaces instead of hyphens\n    \"Ref: INV-2025-10077, contact ap@brindle-clinics.co.uk\",\n]\n\n# \\b word boundary, \\d digit, {4} exactly four, (?P<name>...) a named group,\n# [-\\s]? means \"an optional hyphen or space\" so all separators match\nINVOICE = re.compile(r\"\\bINV[-\\s]?(?P<year>\\d{4})[-\\s]?(?P<num>\\d{5})\\b\", re.IGNORECASE)\nDATE_DMY = re.compile(r\"\\b(\\d{2})/(\\d{2})/(\\d{4})\\b\")\nEMAIL = re.compile(r\"[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+\")      # good enough to FIND emails\n\nfor line in lines:\n    m = INVOICE.search(line)\n    print(m.group(\"year\"), m.group(\"num\")) if m else print(\"no invoice id:\", line)\n    if d := DATE_DMY.search(line):\n        day, month, year = d.groups()\n        print(\"  date\", f\"{year}-{month}-{day}\")        # rewrite as ISO 8601\n    if e := EMAIL.search(line):\n        print(\"  email\", e.group())\n# 2026 00042\n#   date 2026-05-14\n# no invoice id: inv-2026-417 (paid)\n# 2026 00043\n# 2025 10077\n#   email ap@brindle-clinics.co.uk\n\n# ---- Cleaning, finding all, greedy versus lazy ----\nphone = \"Tel: +44 (0)20 7946-0018\"\nprint(re.sub(r\"\\D\", \"\", phone))                   # 4402079460018 (digits only)\nprint(re.sub(r\"\\s+\", \" \", \"  Unit   4,\\n Mill  Lane \").strip())   # Unit 4, Mill Lane\nprint(re.findall(r\"INV-\\d{4}-\\d{5}\", \"Paid INV-2026-00042 and INV-2026-00043\"))\n# ['INV-2026-00042', 'INV-2026-00043']\n\nhtml = \"<b>Paid</b> and <b>Late</b>\"\nprint(re.findall(r\"<b>(.*)</b>\", html))    # greedy: ['Paid</b> and <b>Late']\nprint(re.findall(r\"<b>(.*?)</b>\", html))   # lazy:   ['Paid', 'Late']\n\n# The same named groups work in pandas, one new column per group\nimport pandas as pd\nrefs = pd.Series(lines)\nprint(refs.str.extract(INVOICE.pattern, flags=re.IGNORECASE))\n#    year    num\n# 0  2026  00042\n# 1   NaN    NaN\n# 2  2026  00043\n# 3  2025  10077\n",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Token",
+      "Meaning",
+      "Example match"
+     ],
+     "rows": [
+      [
+       "\\d",
+       "one digit",
+       "7"
+      ],
+      [
+       "\\w",
+       "letter, digit or underscore",
+       "a, 9, _"
+      ],
+      [
+       "{4} / {2,5}",
+       "exactly 4 / between 2 and 5",
+       "2026"
+      ],
+      [
+       "+ / * / ?",
+       "1 or more / 0 or more / optional",
+       "INV-?\\d+"
+      ],
+      [
+       "^ and $",
+       "start and end of the text",
+       "^CLM-\\d{7}$"
+      ],
+      [
+       "\\b",
+       "word boundary",
+       "\\bINV\\b"
+      ],
+      [
+       "(?P<name>...)",
+       "named capture group",
+       "(?P<year>\\d{4})"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "CSV, JSON and XML quirks, and Parquet",
+    "body": "CSV looks simple and is not. Fields containing commas or line breaks must be quoted. Many European systems use a semicolon as the delimiter because the comma is the decimal mark. Opening a CSV in Excel and saving it again can drop leading zeros (000417 becomes 417), turn long IDs into scientific notation, and reformat dates. Read CSVs with a parser and tell it to keep columns as text until you decide their types.\n\nJSON has strings, numbers, true, false, null, arrays and objects. It has no date type and no comments. Very large integers can lose precision in JavaScript tools, so IDs are safer as strings. JSON Lines puts one JSON object per line, which suits logs and large exports.\n\nXML is still common in banking, insurance and government systems. It uses namespaces, prefixes like inv: that stand for long URIs, and values can live in attributes or elements. Use a parser such as ElementTree, and defusedxml for files from outside your organisation, since crafted XML can attack a naive parser.\n\nParquet is a columnar file format: it stores each column together, with its type, compressed. It is much smaller and faster for analytics than CSV, and it removes type guessing for the next reader.\n\nSettings and small lookup tables often arrive as YAML or TOML files. YAML uses indentation instead of brackets, so a wrong number of spaces changes the structure, and tabs are not allowed. It also guesses types: with PyYAML (which follows the older YAML 1.1 rules), no, yes, on and off become booleans, so a country code no for Norway turns into False, and 1.10 becomes the number 1.1. Quote any value that must stay text, and load YAML with yaml.safe_load, never yaml.load on files from outside. TOML is stricter: strings are always quoted, so there is no guessing, and Python 3.11+ reads it with the built-in tomllib (pyproject.toml is TOML).\n\nJSON has no way to carry raw bytes. When an API needs an image or a PDF inside a JSON body, as LLM APIs do, the bytes are encoded as base64: plain ASCII text about a third larger than the original. base64.b64encode(data).decode(\"ascii\") makes the text and base64.b64decode turns it back. Base64 is not encryption; anyone can decode it.",
+    "example": "Harlow Vale Pharmacy exports stock levels as a semicolon CSV. Account numbers such as 000417 and product codes such as 0042 lose their zeros when a colleague opens the file in Excel before sending it on. The FDE asks for the untouched export over SFTP, reads it with dtype=str, converts only the quantity column to integers, and writes Parquet for the dashboard. Mismatched stock lines drop from about 300 a week to under 10. Harlow Vale's store config is a YAML file with country: no for its Norwegian shops, which loads as False and breaks the tax rules. Quoting it as \"no\" fixes it. Later the FDE sends scanned delivery notes to an LLM API, each PDF base64-encoded inside the JSON request.",
+    "code": "import io\nimport pandas as pd\nimport xml.etree.ElementTree as ET   # use defusedxml for files from outside\n\ncsv_text = \"account;postcode;amount\\n000417;01234;1250,50\\n\"\ndf = pd.read_csv(io.StringIO(csv_text), sep=\";\", dtype=str)   # keep text as text\nprint(df.loc[0, \"account\"])          # 000417  (leading zeros kept)\n\nxml_text = \"\"\"<inv:Invoice xmlns:inv=\"urn:example:invoice\">\n  <inv:Line sku=\"KB-7\" qty=\"3\"><inv:Price>19.99</inv:Price></inv:Line>\n</inv:Invoice>\"\"\"\nns = {\"inv\": \"urn:example:invoice\"}  # prefixes must be mapped to namespace URIs\nroot = ET.fromstring(xml_text)\nfor line in root.findall(\"inv:Line\", ns):\n    print(line.get(\"sku\"), line.get(\"qty\"), line.find(\"inv:Price\", ns).text)\n# KB-7 3 19.99\n\n# Parquet keeps column types; needs the pyarrow package\ntyped = pd.DataFrame({\"sku\": [\"KB-7\"], \"qty\": [3], \"price\": [19.99]})\ntyped.to_parquet(\"lines.parquet\")\nback = pd.read_parquet(\"lines.parquet\")\nprint(back[\"qty\"].dtype, back[\"price\"].dtype)   # int64 float64\n\n\n# ---- YAML and TOML config files, base64 inside JSON ----\nimport base64, json, tomllib\nimport yaml                                   # pip install pyyaml\n\nyaml_text = \"\"\"\nsite: Harlow Vale\ncountry: no          # meant Norway!\nversion: 1.10        # meant the text \"1.10\"\nstores:\n  - id: \"000417\"     # quoted, so it stays text\n    open: true\n\"\"\"\nprint(yaml.safe_load(yaml_text))\n# {'site': 'Harlow Vale', 'country': False, 'version': 1.1, 'stores': [{'id': '000417', 'open': True}]}\n\ntoml_text = '''\nsite = \"Harlow Vale\"\ncountry = \"no\"\n[export]\ndelimiter = \";\"\ndays = 7\n'''\nprint(tomllib.loads(toml_text))              # tomllib is built in from Python 3.11\n# {'site': 'Harlow Vale', 'country': 'no', 'export': {'delimiter': ';', 'days': 7}}\n\n# JSON cannot hold raw bytes, so binary files travel as base64 text\npdf_bytes = b\"%PDF-1.7 tiny example\"\npayload = {\"type\": \"document\", \"media_type\": \"application/pdf\",\n           \"data\": base64.b64encode(pdf_bytes).decode(\"ascii\")}\nprint(json.dumps(payload)[:80])\n# {\"type\": \"document\", \"media_type\": \"application/pdf\", \"data\": \"JVBERi0xLjcgdGlue\nprint(base64.b64decode(payload[\"data\"]) == pdf_bytes)   # True\n",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Unicode normalisation",
+    "Converting text to one standard form (usually NFC) so identical-looking characters compare equal."
+   ],
+   [
+    "NFC and NFD",
+    "Two Unicode forms: an accented letter as one code point (NFC) or a letter plus a combining mark (NFD)."
+   ],
+   [
+    "casefold",
+    "A stronger lower() used for case-insensitive matching."
+   ],
+   [
+    "Non-breaking space",
+    "The invisible character \\u00a0 that looks like a space but is not equal to one."
+   ],
+   [
+    "Zero-width space",
+    "The invisible character \\u200b with no width, often pasted in from web pages."
+   ],
+   [
+    "Non-existent local time",
+    "A wall-clock time skipped when clocks go forward, such as 01:30 on 29 March 2026 in London."
+   ],
+   [
+    "Greedy and lazy matching",
+    "In a regex, .* matches as much as possible (greedy) and .*? as little as possible (lazy)."
+   ],
+   [
+    "re.sub",
+    "Replaces every match of a pattern in a string."
+   ],
+   [
+    "YAML",
+    "An indentation-based config format that guesses types, so no can become false."
+   ],
+   [
+    "TOML",
+    "A stricter config format with quoted strings, read in Python with tomllib."
+   ],
+   [
+    "base64",
+    "A way to write bytes as plain ASCII text so they can travel inside JSON."
+   ]
+  ],
+  "add_practice": [
+   "Build two lists of 10 names where some use NFD accents, non-breaking spaces or different case. Count exact matches, then count again after an NFC plus casefold normalise function, and explain the difference.",
+   "Write a function that flags local times that never existed or happened twice in Europe/London for the 2026 clock changes, and test it on five times around 29 March and 25 October.",
+   "Load a YAML file containing country: no, version: 1.10 and id: 000417 with yaml.safe_load, write down what each became, then fix the file with quotes. Rewrite it as TOML and read it with tomllib."
+  ],
+  "concept_fix": [
+   [
+    "The file says 29/03/2026 01:30 with no zone. You must know it is day-first and London time, attach that zone, then convert to UTC for storage.",
+    "The file says 29/03/2026 01:30 with no zone. You must know it is day-first and London time, attach that zone, then convert to UTC for storage. Careful: London clocks jumped from 01:00 to 02:00 that night, so 01:30 never happened. Python accepts it silently, so check each time with a round trip to UTC and back, and send times that change to review."
+   ]
+  ]
+ },
+ "internet": {
+  "replace_subtopics": [
+   {
+    "title": "Clients, servers and requests",
+    "body": "A computer program that asks for something is a client. A program that listens and answers is a server. The same machine can be both: your laptop runs a browser (a client) and could also run a small server.\n\nThe question the client sends is called a request. The answer is called a response. Every web page you open is at least one request and one response, and usually many: one for the page, and more for each picture, font and script it uses.\n\nWhen programs talk to other programs this way, without a person clicking, it is called an API (Application Programming Interface). An API is just a server that answers requests with data, often in a format called JSON, instead of web pages.\n\nEvery request starts with a URL (web address), and each part of it has a job. Take https://api.fernhill-foods.example:8443/v2/orders?store=12&status=open#top. The scheme (https) says which protocol to use. The host (api.fernhill-foods.example) says which machine, found through DNS. The port (8443) says which program on that machine; when it is missing, https means 443 and http means 80. The path (/v2/orders) says which thing on the server you want. The query string, everything after the question mark, passes extra settings as name=value pairs joined by &. The fragment, after #, points to a spot inside a page; the browser keeps it and never sends it to the server.\n\nURLs may only contain a limited set of characters, so others are percent-encoded: a space becomes %20 (or + inside a query string), a slash inside a value becomes %2F and é becomes %C3%A9 (its UTF-8 bytes). Never glue query strings together by hand. Use urllib.parse.urlencode in Python, or pass params= to requests, and it encodes everything for you.",
+    "example": "A pharmacy chain has a stock system. A shop's till is the client. When a cashier scans a box of paracetamol, the till sends a request 'how many of product 4471 are left at store 12?' to the stock server. The server looks it up and responds '37'. Nobody sees a web page, but it is the same client and server pattern as your browser. An FDE's call to Fernhill Foods' order API returns the wrong store. The URL was built as \"...?store=\" + name, and the name 'Bath & Wells' contained an &, which split it into two parameters. Building the query with urlencode turns it into store=Bath+%26+Wells and the right orders come back.",
+    "code": "# A request and its response are plain text. This is roughly what\n# a browser sends when you open https://shop.example.com/cart\n\nGET /cart HTTP/1.1              # method, path, protocol version\nHost: shop.example.com          # which site on this server\nUser-Agent: Mozilla/5.0         # who is asking\nAccept: text/html               # what format I want back\n\n# ...and roughly what comes back:\n\nHTTP/1.1 200 OK                 # status code 200 = success\nContent-Type: text/html         # the body is a web page\nContent-Length: 1532            # the body is 1532 bytes long\n\n<html> ... the cart page ... </html>\n\n# ---- The parts of a URL, in Python ----\nfrom urllib.parse import urlsplit, parse_qs, quote, urlencode\n\nurl = \"https://api.fernhill-foods.example:8443/v2/orders?store=12&status=open%20late#top\"\nu = urlsplit(url)\nprint(u.scheme)      # https\nprint(u.hostname)    # api.fernhill-foods.example\nprint(u.port)        # 8443\nprint(u.path)        # /v2/orders\nprint(u.query)       # store=12&status=open%20late\nprint(u.fragment)    # top   (stays in the browser, never sent to the server)\nprint(parse_qs(u.query))   # {'store': ['12'], 'status': ['open late']}\n\n# Build query strings safely instead of gluing text together\nprint(quote(\"open late/urgent\", safe=\"\"))          # open%20late%2Furgent\nprint(urlencode({\"q\": \"café & bar\", \"page\": 2}))    # q=caf%C3%A9+%26+bar&page=2\n",
+    "lang": "Text"
+   },
+   {
+    "title": "IP addresses and DNS lookups",
+    "body": "Every machine on a network has an IP address, a number that says where it is. The common kind (IPv4) looks like four numbers from 0 to 255 separated by dots, such as 203.0.113.10. A newer kind (IPv6) is longer and uses letters and colons.\n\nPeople remember names, not numbers. DNS, the Domain Name System, is a worldwide directory that maps names like shop.example.com to IP addresses. Your computer asks a DNS resolver (usually run by your internet provider or company) and gets the number back.\n\nAnswers are cached, which means saved for a while, so repeated lookups are instant. This is also why a DNS change can take minutes or hours to reach everyone: old answers linger until they expire.\n\nSome address ranges are private: 10.0.0.0 to 10.255.255.255, 172.16.0.0 to 172.31.255.255, and 192.168.0.0 to 192.168.255.255. They are reused inside millions of homes and companies and are not reachable across the internet. So when a customer says their database is at 10.2.3.4, your laptop cannot reach it: you need a VPN, a bastion host or a connector running inside their network. 127.0.0.1 is loopback, always your own machine.\n\nDNS stores several record types. An A record maps a name to an IPv4 address, an AAAA record to an IPv6 address, and a CNAME record says a name is an alias for another name, which is then looked up in turn. Each answer carries a TTL (time to live), the number of seconds resolvers may cache it. That is why changes are slow: an old answer with a TTL of 3600 can linger for up to an hour.\n\nYour computer checks the hosts file first (/etc/hosts on Mac and Linux, C:\\Windows\\System32\\drivers\\etc\\hosts on Windows). A line there overrides DNS for that machine only, useful for testing and a classic cause of 'works on my laptop only'.",
+    "example": "An insurer moves its claims API to a new server with a new IP address and updates DNS. For the next hour some offices can reach it and some cannot. The offices that fail still have the old address cached. Running nslookup claims.insurer.example on a failing laptop shows the old number, which proves it is a DNS caching issue and not a broken server. The insurer's team could have lowered the TTL to 60 seconds a day before the move, so old answers would expire in a minute. Their network team also confirms claims.insurer.example is a CNAME to a cloud load balancer name, whose A records change often.",
+    "code": "# Ask DNS for the address of a name\nnslookup example.com\n\n# A more detailed tool, common on Mac and Linux\ndig example.com +short        # prints just the IP address(es)\n\n# Check whether the machine answers at all.\n# ping sends small test messages and times the replies.\nping -c 4 example.com         # -c 4 = send 4 and stop (Mac/Linux)\n# On Windows use: ping -n 4 example.com\n\n# Note: many servers ignore ping for security reasons,\n# so no reply does not always mean the server is down.\n\n# Ask for specific record types; the second column of the answer is the TTL in seconds\ndig example.com A          # IPv4 address\ndig example.com AAAA       # IPv6 address\ndig www.github.com CNAME +short   # an alias for another name\n\n# Local override, checked before DNS (needs sudo to edit)\ncat /etc/hosts\n# 127.0.0.1   localhost\n# 10.2.3.4    db.customer.internal   # added by hand for a test\n\n# Is an address private or public? (Python)\n# python3 ips.py\n# import ipaddress, socket\n#\n# for ip in [\"10.2.3.4\", \"172.20.0.5\", \"192.168.1.20\", \"8.8.8.8\", \"1.1.1.1\", \"127.0.0.1\"]:\n#     a = ipaddress.ip_address(ip)\n#     kind = \"loopback\" if a.is_loopback else \"private\" if a.is_private else \"public\"\n#     print(f\"{ip:<14} {kind}\")\n# # 10.2.3.4       private\n# # 172.20.0.5     private\n# # 192.168.1.20   private\n# # 8.8.8.8        public\n# # 1.1.1.1        public\n# # 127.0.0.1      loopback\n#\n# print(ipaddress.ip_address(\"172.32.0.1\") in ipaddress.ip_network(\"172.16.0.0/12\"))  # False\n# print(socket.gethostbyname(\"localhost\"))   # 127.0.0.1  (answered from /etc/hosts)",
+    "lang": "bash"
+   },
+   {
+    "title": "Ports and TCP connections",
+    "body": "One machine can run many server programs at once: a web server, a database, an email server. A port is a number from 0 to 65535 that picks which program you want. Some are standard: 80 for HTTP, 443 for HTTPS, 22 for SSH (remote login), 5432 for the PostgreSQL database.\n\nThe full destination is therefore an IP address plus a port, written like 203.0.113.10:443.\n\nTCP, the Transmission Control Protocol, is the set of rules for a reliable conversation. Data is chopped into small packets. TCP numbers them, resends any that get lost, and puts them back in order at the other end. Before any data flows, the two sides do a short 'handshake' to agree they are both ready.\n\nA firewall is a filter that allows or blocks traffic by address and port. Many 'it does not connect' problems at customers are a firewall blocking a port.\n\nThe two most common failures look alike but mean different things. Connection refused comes back instantly: the machine is reachable and answered, but no program is listening on that port. Check the service is running and the port number is right. Timed out means nothing answered at all after several seconds. Usually a firewall is silently dropping the packets, or the address is private and not routable from where you are. The first is often your fix; the second usually needs the customer's network team.\n\nTCP is not the only transport. UDP (User Datagram Protocol) just sends packets with no handshake, no numbering and no resending. It is faster but does not guarantee delivery or order, which is fine for DNS lookups, video calls and games, where a late packet is useless anyway. Firewall rules name TCP or UDP, so say which one when you ask for a port to be opened.",
+    "example": "A logistics company wants your product to read from their PostgreSQL database. DNS works and ping works, but your connection hangs and then times out. Testing port 5432 shows it is closed from outside. Their network team had only opened port 443. Asking them to allow port 5432 from your server's IP address fixes it. Two days later the logistics customer's test database gives a different error: connection refused on 10.40.1.8:5432, immediately. The firewall is now open; this time the database service had been stopped for maintenance. Starting it fixes the problem without another network ticket.",
+    "code": "# From a Mac/Linux terminal, netcat (nc) tests a TCP port:\n#   nc -vz example.com 443    'succeeded' means port 443 is open\n#   nc -vz example.com 5432   'timed out' usually means a firewall\n\n# The same test in Python, works everywhere\nimport socket\ns = socket.socket()           # a TCP socket\ns.settimeout(3)               # give up after 3 seconds\ntry:\n    s.connect((\"example.com\", 443))\n    print(\"port 443 is open\")\nexcept OSError as e:\n    print(\"cannot connect:\", e)\nfinally:\n    s.close()\n\n\n# ---- Refused versus timed out ----\nimport socket\n\ndef probe(host, port, timeout=3):\n    s = socket.socket()                  # TCP\n    s.settimeout(timeout)\n    try:\n        s.connect((host, port))\n        return \"open\"\n    except ConnectionRefusedError:\n        return \"refused: host answered, nothing listening on that port\"\n    except socket.timeout:\n        return \"timed out: no answer, often a firewall dropping packets\"\n    except OSError as e:\n        return f\"other error: {e}\"\n    finally:\n        s.close()\n\nprint(probe(\"127.0.0.1\", 5999))   # refused: host answered, nothing listening on that port\n# A private address that nothing answers usually gives the other result:\n# print(probe(\"10.255.255.1\", 5432))  # timed out: no answer, often a firewall dropping packets\n",
+    "lang": "Python"
+   },
+   {
+    "title": "Running your own tiny web server",
+    "body": "The best way to feel the client and server pattern is to be the server. Python can run a small web server with only its standard library, meaning nothing extra to install.\n\nThe server below listens on port 8000 on your own computer. Your computer's own address is called localhost, or 127.0.0.1. When you open http://localhost:8000/hello in a browser, the browser is the client and your script is the server.\n\nEach request calls do_GET. You choose the status code, add headers and write the body. That is all a web server really does; frameworks like FastAPI or Flask add convenience on top of this.\n\nThe address you bind to decides who can connect. Binding to 127.0.0.1 means only programs on this same machine can reach the server, which is the safe default on a laptop. Binding to 0.0.0.0 means listen on every network interface, so other machines on the network can connect too. This causes a classic bug: a server that works on your laptop but cannot be reached from another machine, or from outside a Docker container, because it listens only on 127.0.0.1. Inside a container, 127.0.0.1 is the container itself, so the app must bind to 0.0.0.0 and the port must be published (docker run -p 8000:8000). Only bind to 0.0.0.0 when you mean it, since it exposes the server to your whole network.",
+    "example": "Run the script, then in a second terminal type curl -v http://localhost:8000/hello. You will see the request line GET /hello, the response 200 OK and the JSON body {\"message\": \"hello\", \"path\": \"/hello\"}. Try /anything and the path in the reply changes. Stop the server with Ctrl+C. Then start it with HOST=0.0.0.0 and open http://<your laptop's IP>:8000/hello from a phone on the same Wi-Fi; with the default 127.0.0.1 the phone cannot connect.",
+    "code": "# server.py  (run: python server.py)\nimport json, os\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\n\nclass Handler(BaseHTTPRequestHandler):\n    def do_GET(self):                         # called for each GET request\n        body = json.dumps({\"message\": \"hello\", \"path\": self.path})\n        self.send_response(200)               # status code\n        self.send_header(\"Content-Type\", \"application/json\")\n        self.end_headers()\n        self.wfile.write(body.encode())       # the response body\n\n# 127.0.0.1 = only this machine can connect (safe default on a laptop)\n# 0.0.0.0   = listen on every network interface, needed inside Docker\n#             or when another machine must reach you\nHOST = os.environ.get(\"HOST\", \"127.0.0.1\")    # run: HOST=0.0.0.0 python server.py\nprint(f\"listening on {HOST}:8000\")\nHTTPServer((HOST, 8000), Handler).serve_forever()\n\n# Check what is listening and on which address (Mac/Linux):\n#   lsof -iTCP:8000 -sTCP:LISTEN     or     ss -ltnp | grep 8000\n#   127.0.0.1:8000  -> local only      0.0.0.0:8000 (or *:8000) -> all interfaces\n",
+    "lang": "Python"
+   }
+  ],
+  "fix": [
+   [
+    "Certificates expire, often after about 90 days to a year.",
+    "Certificates expire. Since 15 March 2026, publicly trusted certificates last at most 200 days, falling to 100 days in 2027 and 47 days in 2029, and many (such as Let's Encrypt) last 90 days or less. So renewal must be automatic, usually with the ACME protocol. Internal company certificate authorities set their own terms."
+   ]
+  ],
+  "add_glossary": [
+   [
+    "URL",
+    "A web address made of scheme, host, port, path, query string and fragment."
+   ],
+   [
+    "Query string",
+    "The part of a URL after ?, holding name=value pairs joined by &."
+   ],
+   [
+    "Percent-encoding",
+    "Writing unsafe characters in a URL as % plus hex bytes, such as %20 for a space."
+   ],
+   [
+    "Private IP range",
+    "Addresses such as 10.x, 172.16-31.x and 192.168.x that are not reachable from the internet."
+   ],
+   [
+    "A / AAAA / CNAME record",
+    "DNS records mapping a name to an IPv4 address, an IPv6 address, or another name."
+   ],
+   [
+    "TTL",
+    "Time to live: how many seconds a DNS answer may be cached."
+   ],
+   [
+    "Hosts file",
+    "A local file (/etc/hosts) that overrides DNS for one machine."
+   ],
+   [
+    "Connection refused",
+    "The host answered but no program listens on that port."
+   ],
+   [
+    "UDP",
+    "A transport with no handshake or resending, used for DNS and video, that does not guarantee delivery."
+   ],
+   [
+    "Bind address",
+    "The address a server listens on: 127.0.0.1 for this machine only, 0.0.0.0 for all interfaces."
+   ],
+   [
+    "ACME",
+    "The protocol used to renew TLS certificates automatically."
+   ]
+  ],
+  "add_practice": [
+   "Split five real URLs into scheme, host, port, path, query and fragment with urllib.parse.urlsplit, then build one query string containing a space, an & and an é with urlencode.",
+   "Run dig for A, AAAA and CNAME records on three sites and note each TTL. Add a test line to your hosts file, show that ping uses it, then remove it.",
+   "Run the tiny server bound to 127.0.0.1 and try to reach it from another device, then bind to 0.0.0.0 and try again. Also probe a closed port and an unreachable private address and write down refused versus timed out."
+  ]
+ },
+ "dbbasics": {
+  "add_subtopics": [
+   {
+    "title": "Exploring a customer's database on day one",
+    "body": "On your first day with a customer's data you usually get a database you have never seen. Explore it in a fixed order before writing any real query.\n\nFirst, get safe access. Ask for a read-only user, so nothing you run can change or delete their data, and if possible a replica or copy rather than the live production database. Keep the connection string (a URL holding user, password, host, port and database name) in an environment variable, never in your code or notebook.\n\nThen map what is there. List the tables: in SQLite query sqlite_master; in PostgreSQL and most other databases query information_schema.tables, or type \\dt in the psql client. List each table's columns and types (PRAGMA table_info in SQLite, information_schema.columns or \\d orders in psql). Count the rows in each table so you know which are big.\n\nNext, look at samples with SELECT * FROM orders LIMIT 20, never an unlimited SELECT on a large table. Check what values a column really holds with SELECT DISTINCT status, and how many different ones with COUNT(DISTINCT customer_id). This is where you find surprises such as 'paid' and 'PAID' meaning the same thing.\n\nFrom Python, sqlite3 or psycopg (the usual PostgreSQL driver) runs the queries, and pd.read_sql turns a result straight into a DataFrame. Write down what you learn in a short data dictionary: table, meaning, key columns, row count and open questions for the customer.",
+    "example": "Fernhill Foods gives an FDE a read-only login to its orders database. In an hour she lists 14 tables, counts rows, samples each one and finds the status column holds both 'paid' and 'PAID'. Her one-page data dictionary ends with three questions for their data team, and every later query builds on those answers.",
+    "code": "import sqlite3\nimport pandas as pd\n\n# A stand-in for the customer's database (in real life you connect to theirs)\ncon = sqlite3.connect(\":memory:\")\ncon.executescript(\"\"\"\nCREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, city TEXT);\nCREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status TEXT, total REAL);\nINSERT INTO customers VALUES (1,'Asha','Pune'),(2,'Ben','Leeds'),(3,'Chen',NULL);\nINSERT INTO orders VALUES (101,1,'paid',42.5),(102,2,'paid',9.99),\n                          (103,1,'PAID',15.0),(104,1,'refunded',8.0);\n\"\"\")\n\n# 1. Which tables exist?\ntables = [r[0] for r in con.execute(\n    \"SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name\")]\nprint(tables)                                   # ['customers', 'orders']\n\n# 2. Columns and row counts for each table\nfor t in tables:\n    cols = [(r[1], r[2]) for r in con.execute(f\"PRAGMA table_info({t})\")]\n    n = con.execute(f\"SELECT COUNT(*) FROM {t}\").fetchone()[0]\n    print(t, n, cols)\n# customers 3 [('id', 'INTEGER'), ('name', 'TEXT'), ('city', 'TEXT')]\n# orders 4 [('id', 'INTEGER'), ('customer_id', 'INTEGER'), ('status', 'TEXT'), ('total', 'REAL')]\n\n# 3. Look at a small sample, never the whole table\nprint(pd.read_sql(\"SELECT * FROM orders LIMIT 20\", con).head(3))\n#     id  customer_id status  total\n# 0  101            1   paid  42.50\n# 1  102            2   paid   9.99\n# 2  103            1   PAID  15.00\n\n# 4. What values does a column really hold?\nprint(con.execute(\"SELECT DISTINCT status FROM orders\").fetchall())\n# [('paid',), ('PAID',), ('refunded',)]   <- 'paid' and 'PAID': ask which is right\nprint(con.execute(\"SELECT COUNT(DISTINCT customer_id) FROM orders\").fetchone()[0])  # 2\n\n# ---- PostgreSQL at the customer (needs: pip install \"psycopg[binary]\") ----\n# Keep the connection string out of your code, in an environment variable:\n#   export CUSTOMER_DB_URL=\"postgresql://fde_readonly:SECRET@db.internal:5432/sales\"\n# import os, psycopg\n# with psycopg.connect(os.environ[\"CUSTOMER_DB_URL\"]) as pg:\n#     rows = pg.execute(\"\"\"SELECT table_name FROM information_schema.tables\n#                          WHERE table_schema = 'public'\"\"\").fetchall()\n#     cols = pg.execute(\"\"\"SELECT column_name, data_type FROM information_schema.columns\n#                          WHERE table_name = %s\"\"\", (\"orders\",)).fetchall()\n#     df = pd.read_sql(\"SELECT * FROM orders LIMIT 20\", pg)  # works, with a warning\n#     # pandas prefers a SQLAlchemy engine: create_engine(\"postgresql+psycopg://...\")\n#\n# In the psql terminal client:  \\dt  lists tables,  \\d orders  describes one\n",
+    "lang": "Python",
+    "checklist": [
+     "Read-only user, ideally on a replica or copy",
+     "Connection string kept in an environment variable",
+     "Tables listed and row counts noted",
+     "Columns and types listed for each table",
+     "Samples read with LIMIT, never the whole table",
+     "DISTINCT values checked on status and category columns",
+     "Data dictionary written with open questions for the customer"
+    ]
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Reading data: SELECT, WHERE, ORDER BY",
+    "body": "SELECT is how you read. You list the columns you want after SELECT, name the table after FROM, and the database returns matching rows. SELECT * means all columns, which is fine for a quick look and wasteful in real code.\n\nWHERE filters rows. You can compare with =, <>, >, <, combine conditions with AND and OR, and match text patterns with LIKE, where % means 'any characters'.\n\nORDER BY sorts the result, ASC for smallest first (the default) and DESC for largest first. LIMIT keeps only the first few rows. Aggregate functions like COUNT, SUM and AVG summarise many rows into one number, and GROUP BY does that per group.\n\nA few more words cover most everyday questions. DISTINCT removes repeated rows, so SELECT DISTINCT city lists each city once. IN (1, 2) checks a value against a list, and BETWEEN 10 AND 50 checks a range that includes both ends. AS gives a column in the result a readable name, such as SUM(total) AS spent.\n\nMissing values are written NULL, and they need care. NULL means unknown, so city = NULL is never true, not even for rows with no city, and returns nothing. Always write city IS NULL or city IS NOT NULL.\n\nWHERE filters rows before grouping, so it cannot use a total that does not exist yet. HAVING filters groups after GROUP BY, so 'customers who spent more than 20' is GROUP BY customer_id HAVING SUM(total) > 20.",
+    "example": "Using the bookshop tables: 'Show orders over 10, biggest first' returns order 101 (42.50) then 103 (15.00). Order 102 (9.99) is filtered out by WHERE. 'Total spent per customer' groups by customer_id and gives customer 1: 57.50 and customer 2: 9.99. Suppose Chen's city is unknown (NULL). WHERE city = NULL finds nobody, while WHERE city IS NULL finds Chen. HAVING SUM(total) > 20 keeps only customer 1 with 57.50.",
+    "code": "-- All orders over 10, largest first\nSELECT id, customer_id, total\nFROM orders\nWHERE total > 10\nORDER BY total DESC;\n\n-- Customers whose name starts with A\nSELECT name, city FROM customers WHERE name LIKE 'A%';\n\n-- How much each customer spent in total\nSELECT customer_id, COUNT(*) AS n_orders, SUM(total) AS spent\nFROM orders\nGROUP BY customer_id\nORDER BY spent DESC\nLIMIT 10;               -- top 10 only\n\n-- Each city once (DISTINCT removes repeated rows)\nSELECT DISTINCT city FROM customers;           -- Pune, Leeds, NULL\n\n-- IN: value is in a list.  BETWEEN: a range, both ends included\nSELECT id, total FROM orders WHERE customer_id IN (1, 2) AND total BETWEEN 10 AND 50;\n-- 101 42.50, 103 15.00\n\n-- Missing values: use IS NULL, never = NULL (= NULL matches nothing)\nSELECT name FROM customers WHERE city IS NULL;        -- Chen\nSELECT COUNT(*) AS wrong FROM customers WHERE city = NULL;   -- 0\n\n-- AS renames a column in the result.  HAVING filters groups AFTER GROUP BY\nSELECT customer_id, SUM(total) AS spent\nFROM orders\nGROUP BY customer_id\nHAVING SUM(total) > 20;     -- customer 1, 57.50\n",
+    "lang": "SQL"
+   },
+   {
+    "title": "Tables, rows, columns and keys",
+    "body": "A table holds one kind of thing: customers, orders, products. A column is one property of that thing, with a name and a type such as INTEGER (whole number), REAL (decimal number) or TEXT. A row is one actual thing, like the customer Asha from Pune.\n\nThe primary key is a column whose value is different for every row and never empty. It is usually a number called id. Names are bad keys, because two customers can share a name and people change names.\n\nA foreign key is a column in one table that holds the primary key of a row in another table. The orders table has customer_id, which says which customer placed the order. This is how tables are linked without copying the customer's details into every order.\n\nAn index is a sorted lookup structure the database keeps next to a table, like the index at the back of a book. Without one, finding orders for customer 1 means reading every row (a scan). With CREATE INDEX idx_orders_customer ON orders (customer_id) the database jumps straight to the matching rows, which matters once a table has millions of rows. Add indexes on columns you often filter or join on. Primary keys get one automatically. Indexes are not free: each one takes disk space and slows every INSERT, UPDATE and DELETE a little, because the index must be updated too.\n\nTwo SQLite traps. First, SQLite does not check REFERENCES unless you run PRAGMA foreign_keys = ON, and you must run it for every new connection. Without it, the schema above accepts an order for customer 99 who does not exist. PostgreSQL always checks. Second, REAL is binary floating point, so it cannot hold 0.10 exactly and money totals drift by a cent. Store money as INTEGER cents (4250 for 42.50) with a separate currency column, or use NUMERIC(12, 2) in PostgreSQL, the same advice as in the data formats topic.",
+    "example": "An online bookshop has customers (id, name, city) and orders (id, customer_id, total). Customer 1 is Asha, customer 2 is Ben. Order 101 has customer_id 1 and total 42.50. To know who placed order 101 you look up id 1 in customers and find Asha. If Asha changes city, you change one row, and all her orders stay linked to her. Later the shop has 5 million orders and the 'orders for customer 1' page takes 4 seconds. An index on orders.customer_id brings it under 10 milliseconds.",
+    "code": "-- customers                     orders\n-- +----+-------+--------+        +-----+-------------+-------+\n-- | id | name  | city   |        | id  | customer_id | total |\n-- +----+-------+--------+        +-----+-------------+-------+\n-- |  1 | Asha  | Pune   | <----- | 101 |      1      | 42.50 |\n-- |  2 | Ben   | Leeds  | <----- | 102 |      2      |  9.99 |\n-- +----+-------+--------+   \\--- | 103 |      1      | 15.00 |\n--                                +-----+-------------+-------+\nCREATE TABLE customers (\n  id   INTEGER PRIMARY KEY,\n  name TEXT NOT NULL,\n  city TEXT\n);\nCREATE TABLE orders (\n  id          INTEGER PRIMARY KEY,\n  customer_id INTEGER REFERENCES customers(id),  -- foreign key\n  total       REAL          -- fine for practice; real money: INTEGER cents\n);\n\n-- SQLite ignores REFERENCES unless you switch the check on,\n-- once for EVERY new connection:\nPRAGMA foreign_keys = ON;\nINSERT INTO customers (id, name, city) VALUES (1, 'Asha', 'Pune');\nINSERT INTO orders (id, customer_id, total) VALUES (104, 99, 5.00);\n-- Error: FOREIGN KEY constraint failed  (there is no customer 99)\n-- Without the PRAGMA, that order is silently accepted.\n\n-- An index makes filters and joins on a column fast, like a book's index\nCREATE INDEX idx_orders_customer ON orders (customer_id);\nEXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 1;\n-- SEARCH orders USING INDEX idx_orders_customer (customer_id=?)\n-- (without the index it says SCAN orders: every row is read)\n\n-- Money: REAL is binary floating point, so store whole cents instead\nSELECT 0.1 + 0.2 = 0.3;                -- 0 (false!)\nCREATE TABLE payments (\n  id          INTEGER PRIMARY KEY,\n  order_id    INTEGER NOT NULL REFERENCES orders(id),\n  amount_cents INTEGER NOT NULL,       -- 4250 means 42.50\n  currency    TEXT NOT NULL DEFAULT 'GBP'\n);\n-- PostgreSQL has an exact decimal type: amount NUMERIC(12, 2)\n",
+    "lang": "SQL"
+   },
+   {
+    "title": "Your first JOIN",
+    "body": "A JOIN combines rows from two tables that belong together. You tell the database how they match using ON, usually 'the foreign key equals the primary key'.\n\nAn INNER JOIN, written as plain JOIN, keeps only rows that have a match on both sides. A LEFT JOIN keeps every row from the left table even if there is no match, and fills the missing columns with NULL, which means 'no value'.\n\nShort names after a table, like orders o, are called aliases. They save typing: o.total means the total column of orders.\n\nThe SQL in this topic is standard and works in SQLite and PostgreSQL, but every customer's database speaks a slightly different dialect. The first difference you will hit is keeping the first few rows: LIMIT 10 in SQLite, PostgreSQL and MySQL, SELECT TOP 10 in SQL Server, and FETCH FIRST 10 ROWS ONLY in Oracle (also standard SQL, accepted by PostgreSQL). Text values always go in single quotes, 'Leeds'. Double quotes are for names of tables and columns, such as \"Order Date\" with a space; MySQL uses backticks and SQL Server square brackets for the same job. Date functions differ the most, as the table shows. When a query fails at a customer, check the dialect first and search for the equivalent function.",
+    "example": "'Show each order with the customer's name' joins orders to customers on customer_id = id, giving (101, Asha, 42.50), (102, Ben, 9.99), (103, Asha, 15.00). Now add customer 3, Chen, who has no orders. An inner join leaves Chen out. A LEFT JOIN from customers to orders shows Chen with a NULL total, which is how you find customers who never bought anything. At a customer on SQL Server, the same top-orders query fails on LIMIT until it is rewritten as SELECT TOP 3.",
+    "code": "-- Each order with the name of the customer who placed it\nSELECT o.id, c.name, o.total\nFROM orders o\nJOIN customers c ON c.id = o.customer_id\nORDER BY o.id;\n\n-- Every customer and how much they spent, including zero\nSELECT c.name, COALESCE(SUM(o.total), 0) AS spent  -- NULL becomes 0\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nGROUP BY c.id, c.name;\n\n-- Customers who never ordered\nSELECT c.name\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nWHERE o.id IS NULL;\n\n-- The same 'top 3 orders' in different dialects\n-- SQLite, PostgreSQL, MySQL:\nSELECT id, total FROM orders ORDER BY total DESC LIMIT 3;\n-- SQL Server:\n--   SELECT TOP 3 id, total FROM orders ORDER BY total DESC;\n-- Oracle, and standard SQL:\n--   SELECT id, total FROM orders ORDER BY total DESC FETCH FIRST 3 ROWS ONLY;",
+    "lang": "SQL",
+    "table": {
+     "headers": [
+      "Task",
+      "SQLite",
+      "PostgreSQL",
+      "SQL Server",
+      "Oracle"
+     ],
+     "rows": [
+      [
+       "First 10 rows",
+       "LIMIT 10",
+       "LIMIT 10",
+       "SELECT TOP 10",
+       "FETCH FIRST 10 ROWS ONLY"
+      ],
+      [
+       "Today's date",
+       "date('now')",
+       "CURRENT_DATE",
+       "CAST(GETDATE() AS date)",
+       "TRUNC(SYSDATE)"
+      ],
+      [
+       "30 days ago",
+       "date('now', '-30 days')",
+       "CURRENT_DATE - 30",
+       "DATEADD(day, -30, GETDATE())",
+       "SYSDATE - 30"
+      ],
+      [
+       "Join text",
+       "a || b",
+       "a || b",
+       "a + b or CONCAT(a, b)",
+       "a || b"
+      ],
+      [
+       "Quote a column name",
+       "\"Order Date\"",
+       "\"Order Date\"",
+       "[Order Date]",
+       "\"Order Date\""
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Read-only user",
+    "A database login that can read data but cannot change or delete it."
+   ],
+   [
+    "Connection string",
+    "A URL holding the user, password, host, port and database name for a connection."
+   ],
+   [
+    "information_schema",
+    "Standard tables that describe a database's own tables and columns."
+   ],
+   [
+    "DISTINCT",
+    "Removes repeated rows from a result."
+   ],
+   [
+    "HAVING",
+    "Filters groups after GROUP BY, for example on a SUM."
+   ],
+   [
+    "NULL",
+    "A missing or unknown value; test it with IS NULL, never = NULL."
+   ],
+   [
+    "Index",
+    "A lookup structure that makes filtering and joining on a column fast, at a small cost on writes."
+   ],
+   [
+    "PRAGMA foreign_keys",
+    "The SQLite setting that must be ON per connection for foreign keys to be checked."
+   ],
+   [
+    "SQL dialect",
+    "One database's variation of SQL, such as LIMIT versus TOP."
+   ],
+   [
+    "Data dictionary",
+    "A short document describing each table, its columns and what they mean."
+   ]
+  ],
+  "add_practice": [
+   "Using the bookshop tables, write queries with DISTINCT, IN, BETWEEN, IS NULL and HAVING, and write the expected result next to each before running it.",
+   "In SQLite, insert an order for a customer that does not exist with and without PRAGMA foreign_keys = ON. Then load 200,000 orders, time a query on customer_id, add an index, time it again and read EXPLAIN QUERY PLAN both times.",
+   "Pick any SQLite database (or build one from a CSV) and write a one-page data dictionary using only the day-one steps: tables, columns, row counts, samples and DISTINCT values, ending with three questions."
+  ]
+ },
+ "mlbasics": {
+  "add_subtopics": [
+   {
+    "title": "Rules, classic ML or an LLM?",
+    "body": "Customers often ask for 'AI' when a simpler tool would do better. Before building anything, pick the cheapest approach that can do the job.\n\nUse rules (plain code, or a regular expression) when a person can write the logic down and it rarely changes: an invoice is overdue after 30 days, an order ID looks like INV-2026-00042. Rules are free to run, instant, easy to explain and easy to test.\n\nUse classic machine learning when the data is a table and you have plenty of labelled history: churn from customer records, demand from past sales, fraud from past transactions. You need thousands of examples with the right answer. Once trained, each prediction costs almost nothing and takes milliseconds, and simple models can show which features mattered.\n\nUse an LLM when the input is unstructured text (emails, tickets, contracts, notes) or the task needs judgement, and you have few or no labels. It works from a written instruction, so you can start today. The price is paid on every call: a few tenths of a cent to a few cents, often a second or more of waiting, and answers that are harder to explain and can vary.\n\nMany real systems mix them: rules to catch the clear cases, an LLM for messy text, and classic ML for the numbers. Whatever you pick, measure it against real examples before promising results.",
+    "example": "Fernhill Foods asks for 'an AI' for three jobs. Flagging overdue invoices is a rule: one line of code. Predicting which shops will stop ordering next month uses five years of order history with known outcomes, so it is a classic ML model. Sorting 2,000 free-text complaints a week into billing, delivery or quality has no labels yet, so it starts with an LLM, and the sorted complaints can later become labels.",
+    "code": "import os, re\nfrom sklearn.linear_model import LogisticRegression\n\n# 1. RULES: the logic is clear and fixed, so write it down\ndef is_overdue(days_since_invoice: int, paid: bool) -> bool:\n    return not paid and days_since_invoice > 30\n\nINVOICE = re.compile(r\"\\bINV-\\d{4}-\\d{5}\\b\")\nprint(is_overdue(45, False), INVOICE.findall(\"Paid INV-2026-00042\"))\n# True ['INV-2026-00042']\n\n# 2. CLASSIC ML: a table of past customers with a known outcome (label)\nX = [[24, 40.0, 0], [3, 75.0, 4], [12, 55.0, 1], [5, 80.0, 3],\n     [30, 35.0, 0], [2, 90.0, 5], [18, 45.0, 1], [4, 70.0, 2]]\ny = [0, 1, 0, 1, 0, 1, 0, 1]            # 1 = cancelled\nchurn = LogisticRegression().fit(X, y)\nprint(churn.predict([[6, 72.0, 3]]))     # [1]  costs almost nothing per call\n\n# 3. LLM: free text, judgement, no labelled history yet\nMODEL = \"MODEL\"                          # placeholder model name\ndef classify_complaint(text: str) -> str:\n    import anthropic                     # pip install anthropic\n    client = anthropic.Anthropic()       # reads ANTHROPIC_API_KEY\n    msg = client.messages.create(\n        model=MODEL, max_tokens=20,\n        messages=[{\"role\": \"user\", \"content\":\n            \"Answer with one word, billing, delivery or quality.\\n\"\n            f\"Complaint: {text}\"}])\n    return \"\".join(b.text for b in msg.content if b.type == \"text\").strip()\n\nif os.environ.get(\"ANTHROPIC_API_KEY\"):\n    print(classify_complaint(\"The box arrived crushed and two jars were broken.\"))\n    # delivery   (slower and costs money per call, but needs no training data)\n",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "",
+      "Rules or regex",
+      "Classic ML",
+      "LLM"
+     ],
+     "rows": [
+      [
+       "Best for",
+       "Clear, stable logic",
+       "Tables with labelled history",
+       "Free text and judgement"
+      ],
+      [
+       "Data needed",
+       "None",
+       "Thousands of labelled rows",
+       "A prompt and a few examples"
+      ],
+      [
+       "Cost per call",
+       "About zero",
+       "About zero",
+       "Tenths of a cent to cents"
+      ],
+      [
+       "Speed",
+       "Microseconds",
+       "Milliseconds",
+       "About a second or more"
+      ],
+      [
+       "Explainable",
+       "Fully",
+       "Partly (feature weights)",
+       "Hard; ask for reasons, then check them"
+      ],
+      [
+       "Example",
+       "Invoice overdue after 30 days",
+       "Churn, demand, fraud",
+       "Sort complaints, pull fields from emails"
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Features, labels and examples",
+    "body": "Each example is one row of data, like one past flat sale. The features are the input columns you will know at prediction time: size, number of rooms, area. The label is the answer you want the model to predict: the sale price.\n\nBy convention the table of features is called X (capital, because it has many columns) and the list of labels is called y. Learning from examples that have labels is called supervised learning.\n\nWhen the label is a number, like a price, the task is regression. When the label is a category, like spam or not spam, the task is classification. Choosing good features, and making sure no feature secretly contains the answer, matters more than choosing a fancy algorithm.\n\nMachine learning comes in three main kinds. Supervised learning, used in this lesson, learns from examples that have labels: past flats with their prices, past customers with whether they cancelled. Unsupervised learning has no labels at all. It looks for structure by itself, for example clustering customers into groups that behave alike, and a person then decides what each group means. Reinforcement learning learns by trial and error from a reward signal: the system tries actions, gets a score for how good the result was, and shifts towards actions that score higher. RLHF, reinforcement learning from human feedback, used to make chat assistants helpful, gets its name from this: the reward comes from people's ratings of answers.",
+    "example": "A telecom company wants to predict which customers will cancel next month. Features: months as a customer, monthly bill, number of support calls. Label: cancelled (yes or no), so this is classification. A feature like 'date of cancellation' would be a mistake, because it is only known after the fact. That mistake is called leakage. If the company had no cancellation records, it could still cluster customers by usage (unsupervised) and look at each group, but it could not predict cancellation directly.",
+    "code": "# Each row is one past customer\n#  months  bill  support_calls | cancelled\n#    24    40.0        0       |    0\n#     3    75.0        4       |    1\n#    12    55.0        1       |    0\n#     5    80.0        3       |    1\n\nX = [[24, 40.0, 0],     # features: what we know in advance\n     [3,  75.0, 4],\n     [12, 55.0, 1],\n     [5,  80.0, 3]]\ny = [0, 1, 0, 1]        # labels: the answer (1 = cancelled)\n\n# y holds categories, so this is classification.\n# If y held numbers like 251.0 it would be regression.",
+    "lang": "Python"
+   },
+   {
+    "title": "Training and inference with scikit-learn",
+    "body": "Training is the learning step. The algorithm starts with some numbers inside the model, measures how wrong its guesses are on the training examples, and nudges the numbers to reduce that error. The numbers it learns are called parameters.\n\nLinear regression is the simplest model. For one feature it learns a straight line: prediction = slope x feature + intercept. The slope says how much the label rises for each unit of the feature, and the intercept is where the line starts.\n\nInference is using the trained model to predict for new inputs. Training can be slow and happens occasionally. Inference is usually fast and happens every time someone uses the model. scikit-learn, a popular Python library, uses fit for training and predict for inference.\n\nClassification works the same way in scikit-learn. LogisticRegression, despite its name, is a simple classification model. fit learns from the churn table, predict returns a category (0 stays, 1 cancels) and predict_proba returns the probability of each category, which is often more useful: you can call only the customers with a cancel probability above 0.6. Score it on a held-out test split with accuracy, the share of test examples it got right. Accuracy can mislead when one class is rare, which the next subtopic shows.",
+    "example": "Ten flats between 50 and 140 m2 sold for between 155 and 421 thousand. After fit, the model's slope is about 2.98 and its intercept about 2.4, so it has learned 'roughly 3 thousand per m2'. For a new 95 m2 flat, predict gives about 285.2 thousand. You can check that by hand: 2.98 x 95 + 2.4 is about 285.5, and the small gap is only rounding. For the telecom churn table, a LogisticRegression trained on 15 customers predicts that a customer with 10 months, a 70 bill and 3 support calls will cancel, with probability 0.66, and gets 4 of 5 test customers right (accuracy 0.8).",
+    "code": "# pip install scikit-learn\nfrom sklearn.linear_model import LinearRegression\n\nX = [[50], [60], [70], [80], [90], [100], [110], [120], [130], [140]]\ny = [155, 178, 212, 236, 274, 298, 327, 365, 386, 421]\n\nmodel = LinearRegression()\nmodel.fit(X, y)                                  # training\n\nprint(\"slope:\", round(model.coef_[0], 2))       # about 2.98\nprint(\"intercept:\", round(model.intercept_, 1)) # about 2.4\n\nprint(model.predict([[95]]))                    # inference, about 285.2\n\n# ---- Classification ----\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score\n\n# Classification: the churn table from the previous subtopic, with more rows\n# features: months as customer, monthly bill, support calls   label: 1 = cancelled\nX = [[24, 40, 0], [3, 75, 4], [12, 55, 1], [5, 80, 3], [30, 35, 0],\n     [2, 90, 5], [18, 45, 1], [4, 70, 2], [36, 50, 0], [6, 85, 3],\n     [15, 60, 2], [1, 95, 4], [28, 42, 1], [7, 65, 3], [20, 48, 0],\n     [3, 88, 2], [26, 39, 1], [9, 72, 4], [33, 44, 0], [4, 79, 5]]\ny = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1]\n\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25,\n                                          random_state=3, stratify=y)\nclf = LogisticRegression(max_iter=1000).fit(X_tr, y_tr)   # training\n\nnew = [[10, 70, 3]]                   # a customer we have not seen\nprint(clf.predict(new))               # [1]  a category: 1 means \"will cancel\"\nprint(clf.predict_proba(new).round(2))  # [[0.34 0.66]]  P(stay), P(cancel)\nprint(\"test accuracy:\", accuracy_score(y_te, clf.predict(X_te)))  # test accuracy: 0.8\n# 0.8 = 4 of the 5 test customers right. Tiny test sets make scores jumpy.\n",
+    "lang": "Python"
+   },
+   {
+    "title": "Overfitting and the train/test split",
+    "body": "A model can do well on its training examples for two reasons: it learned the real pattern, or it memorised the examples, including their random noise. Memorising is called overfitting, and it means the model does badly on new data.\n\nThe defence is simple: before training, set aside part of the data as a test set, often 20%. Train only on the rest. Then score the model on the test set. That score estimates how the model will do in real life.\n\nA very flexible model, like a high-degree curve or a huge decision tree, can fit training data perfectly and still fail the test. If the training score is much better than the test score, suspect overfitting. Fixes include simpler models, more data, and fewer or better features.\n\nA test score means little on its own; compare it with a baseline, the score of a model that does not learn anything. For regression, always predict the average of the training labels. For classification, always predict the most common class. If 90% of customers stay, 'nobody cancels' is 90% accurate while catching zero cancellations. Your model must clearly beat the baseline before you claim it works, and for rare classes look at precision and recall instead of accuracy. The mlworkflow topic covers these metrics, cross-validation and the full training process.",
+    "example": "A hospital builds a model to predict how long patients stay. On training data it is right to within half a day. On the held-out test patients it is off by four days. The model had learned quirks of specific past patients. A simpler model scores slightly worse in training but much better on test, so it is the one to deploy. A churn model reporting 90% accuracy sounds good until the team sees that 90% of customers never cancel, so predicting 'stays' for everyone scores the same.",
+    "code": "from sklearn.model_selection import train_test_split\nfrom sklearn.tree import DecisionTreeRegressor\nfrom sklearn.linear_model import LinearRegression\n\nX = [[50], [60], [70], [80], [90], [100], [110], [120], [130], [140]]\ny = [155, 178, 212, 236, 274, 298, 327, 365, 386, 421]\nX_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2,\n                                          random_state=0)\n\nfor m in [LinearRegression(), DecisionTreeRegressor()]:\n    m.fit(X_tr, y_tr)                      # train on 80%\n    print(type(m).__name__,\n          \"train R2:\", round(m.score(X_tr, y_tr), 3),   # R2: 1.0 is perfect\n          \"test R2:\", round(m.score(X_te, y_te), 3))    # the honest score\n# The tree scores a perfect 1.0 on training data because it memorises\n# every example. Compare its test score with the straight line's.\n\n# ---- Always compare with a baseline ----\nfrom sklearn.dummy import DummyRegressor, DummyClassifier\n\n# A baseline ignores the features and always predicts the training mean\nbase = DummyRegressor(strategy=\"mean\").fit(X_tr, y_tr)\nprint(\"baseline test R2:\", round(base.score(X_te, y_te), 3))   # -0.039\n# LinearRegression scored 0.998 on the same test set, so it clearly beats this\n\n# For classification, always predict the most common class\nlabels = [0] * 90 + [1] * 10          # only 10% of customers cancel\ndummy = DummyClassifier(strategy=\"most_frequent\").fit([[0]] * 100, labels)\nprint(\"always 'stays' accuracy:\", dummy.score([[0]] * 100, labels))   # 0.9\n# So a churn model with 90% accuracy here has learned nothing yet\n",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Supervised learning",
+    "Learning from examples that include the correct answer (label)."
+   ],
+   [
+    "Unsupervised learning",
+    "Finding structure, such as clusters, in data with no labels."
+   ],
+   [
+    "Reinforcement learning",
+    "Learning by trial and error from a reward signal; RLHF uses human ratings as the reward."
+   ],
+   [
+    "Classification",
+    "Predicting a category, such as cancel or stay."
+   ],
+   [
+    "Logistic regression",
+    "A simple classification model that outputs a probability for each class."
+   ],
+   [
+    "predict_proba",
+    "The scikit-learn method that returns class probabilities instead of one category."
+   ],
+   [
+    "Accuracy",
+    "The share of test examples a classifier gets right."
+   ],
+   [
+    "Baseline",
+    "A model that learns nothing, such as always predicting the average or most common class, used as the bar to beat."
+   ]
+  ],
+  "add_practice": [
+   "For five problems from your own work or life, decide whether rules, classic ML or an LLM fits best, and justify each choice in two sentences using data, cost and explainability.",
+   "Train a LogisticRegression on the 20-row churn table, print predict_proba for three new customers, and compare its test accuracy with a DummyClassifier(strategy=\"most_frequent\").",
+   "Make a churn dataset where only 5% cancel. Show that a model predicting 'stays' for everyone gets 95% accuracy, then write two sentences on why accuracy misleads here."
+  ]
+ }
+}

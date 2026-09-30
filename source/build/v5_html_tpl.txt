@@ -1,0 +1,14 @@
+    <section class="syl" id="templatesView" aria-label="Templates" hidden>
+      <div class="syl-head">
+        <div class="eyebrow">DOCUMENTS YOU WILL WRITE AS AN FDE</div>
+        <h2>Templates library</h2>
+        <p>Fill-in templates for real engagement documents. Each one says when to use it, gives the template with guidance, a filled example for one invented customer, and common mistakes. Copy it or download it as a Markdown file.</p>
+      </div>
+      <div class="tplwrap">
+        <div class="tpllist" id="tpllist"></div>
+        <article class="tpldoc" id="tpldoc">
+          <div class="tplbar"><button class="btn" id="tplcopy" type="button">Copy markdown</button><button class="btn" id="tpldl" type="button">Download .md</button><span id="tplmsg" class="tplmsg" aria-live="polite"></span></div>
+          <div class="md" id="tplbody"></div>
+        </article>
+      </div>
+    </section>

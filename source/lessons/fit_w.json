@@ -1,0 +1,23 @@
+{
+ "neuralnets": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Training a tiny network and watching its boundary and loss change builds intuition; the maths needs worked explanation."
+ },
+ "dlarch": {
+  "best": [
+   "reading",
+   "flowchart"
+  ],
+  "why": "Architectures are ideas and trade-offs best explained in prose, with a map of how each one led to the next."
+ },
+ "rlhf": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Playing a bandit makes exploration versus exploitation obvious; the RLHF pipeline and FDE levers need explanation."
+ }
+}

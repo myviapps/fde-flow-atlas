@@ -1,0 +1,962 @@
+[
+ {
+  "id": "internet",
+  "mod": 0,
+  "sec": "0.5",
+  "name": "How the internet works",
+  "title": "What happens when you type a URL",
+  "thesis": "Every web page and every API call is a conversation between a client and a server. A name is turned into an address by DNS, a connection is opened to a port with TCP, TLS encrypts it, and then HTTP carries the request and the reply.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "bash: watch the steps yourself",
+  "code": "# 1. Ask DNS: which IP address has this name?\nnslookup example.com\n#    Name:    example.com\n#    Address: <an IP address>\n\n# 2. Can my computer reach that machine at all?\nping -c 3 example.com\n\n# 3. Make a full HTTPS request and show each step\ncurl -v https://example.com/\n#  * Trying <IP address>:443...\n#  * Connected to example.com port 443\n#  * SSL connection using TLSv1.3\n#  > GET / HTTP/2\n#  > Host: example.com\n#  < HTTP/2 200\n#  < content-type: text/html\n#  <!doctype html> ... the page itself",
+  "nodes": [
+   [
+    "you",
+    90,
+    70,
+    "You type a URL",
+    "shop.example.com"
+   ],
+   [
+    "browser",
+    265,
+    70,
+    "Browser",
+    "the client"
+   ],
+   [
+    "dns",
+    440,
+    70,
+    "DNS resolver",
+    "name to number",
+    1
+   ],
+   [
+    "ip",
+    615,
+    70,
+    "IP address",
+    "203.0.113.10"
+   ],
+   [
+    "tcp",
+    615,
+    220,
+    "TCP connection",
+    "to port 443"
+   ],
+   [
+    "tls",
+    440,
+    220,
+    "TLS handshake",
+    "lock + ID check"
+   ],
+   [
+    "server",
+    265,
+    220,
+    "Web server",
+    "the server",
+    1
+   ],
+   [
+    "page",
+    90,
+    220,
+    "Page shown",
+    "HTML drawn"
+   ]
+  ],
+  "edges": [
+   [
+    "you",
+    "browser"
+   ],
+   [
+    "browser",
+    "dns",
+    0,
+    "lookup"
+   ],
+   [
+    "dns",
+    "ip"
+   ],
+   [
+    "ip",
+    "tcp"
+   ],
+   [
+    "tcp",
+    "tls"
+   ],
+   [
+    "tls",
+    "server",
+    0,
+    "GET /"
+   ],
+   [
+    "server",
+    "page",
+    0,
+    "200 OK"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "You type an address",
+    "n": [
+     "you"
+    ],
+    "d": "A URL (Uniform Resource Locator) like https://shop.example.com/cart names a site and a page on it. Computers cannot use the name directly. They need a number."
+   },
+   {
+    "t": "The browser is the client",
+    "n": [
+     "browser"
+    ],
+    "e": [
+     "you>browser"
+    ],
+    "d": "A client is the program that asks for something. A server is the program that answers. Your browser is the client here, and it starts working through the steps below."
+   },
+   {
+    "t": "DNS turns the name into a number",
+    "n": [
+     "dns"
+    ],
+    "e": [
+     "browser>dns"
+    ],
+    "d": "DNS (Domain Name System) is the internet's phone book. The browser asks a DNS resolver which address belongs to shop.example.com. The nslookup command shows this step.",
+    "l": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   {
+    "t": "An IP address comes back",
+    "n": [
+     "ip"
+    ],
+    "e": [
+     "dns>ip"
+    ],
+    "d": "An IP (Internet Protocol) address is the number of a machine on the network, like a street address. The answer is cached for a while so the next lookup is instant.",
+    "l": [
+     3
+    ]
+   },
+   {
+    "t": "TCP opens a connection to a port",
+    "n": [
+     "tcp"
+    ],
+    "e": [
+     "ip>tcp"
+    ],
+    "d": "A port is a numbered door on the machine: 443 for HTTPS, 80 for plain HTTP. TCP (Transmission Control Protocol) opens a reliable connection through that door, so bytes arrive complete and in order.",
+    "l": [
+     9,
+     10,
+     11
+    ]
+   },
+   {
+    "t": "TLS locks the connection",
+    "n": [
+     "tls"
+    ],
+    "e": [
+     "tcp>tls"
+    ],
+    "d": "TLS (Transport Layer Security) checks the server's certificate to prove it really is shop.example.com, then agrees on keys to encrypt everything. HTTPS is simply HTTP sent inside TLS.",
+    "l": [
+     12
+    ]
+   },
+   {
+    "t": "The HTTP request reaches the server",
+    "n": [
+     "server"
+    ],
+    "e": [
+     "tls>server"
+    ],
+    "d": "HTTP is the language of the request itself: a method like GET, a path like /cart, and headers. The server program runs code, maybe reads a database, and builds a reply.",
+    "l": [
+     13,
+     14
+    ]
+   },
+   {
+    "t": "The response and the page",
+    "n": [
+     "page"
+    ],
+    "e": [
+     "server>page"
+    ],
+    "d": "The reply starts with a status code (200 means OK, 404 means not found, 500 means the server broke) and then the content. The browser draws the HTML and fetches any images or scripts it mentions, repeating these steps for each.",
+    "l": [
+     15,
+     16,
+     17
+    ]
+   }
+  ],
+  "ideas": [
+   "Client asks, server answers. The same pattern powers web pages, mobile apps and API calls.",
+   "DNS maps names to IP addresses. If DNS is wrong, nothing else works, even though the server is fine.",
+   "IP finds the machine, the port finds the program on it, TCP makes delivery reliable.",
+   "HTTPS = HTTP inside TLS. TLS gives encryption and proof of the server's identity.",
+   "Status codes: 2xx success, 3xx redirect, 4xx the client asked wrongly, 5xx the server failed."
+  ],
+  "traps": [
+   "Thinking the URL itself travels to the server machine by name. The name is resolved to an IP address first.",
+   "Assuming 'the site is down' when the real problem is DNS, a firewall blocking a port, or an expired certificate.",
+   "Believing HTTPS hides which site you visit. It encrypts the content, but the network can still see the IP address and usually the site name."
+  ],
+  "qa": [
+   [
+    "Walk me through what happens when you type a URL and press Enter.",
+    "The browser parses the URL, asks DNS for the IP address of the host, opens a TCP connection to that IP on port 443, runs a TLS handshake to verify the certificate and set up encryption, sends an HTTP GET request with headers, and the server returns a status code, headers and a body. The browser renders the HTML and makes more requests for images, CSS and scripts."
+   ],
+   [
+    "A customer says your API 'doesn't work' from their network. How do you narrow it down?",
+    "Go layer by layer. nslookup to check DNS resolves. ping or a TCP check to the port to see if a firewall blocks it. curl -v to see whether the TLS handshake succeeds and which HTTP status comes back. The first layer that fails is where the problem lives."
+   ],
+   [
+    "What is the difference between HTTP and HTTPS?",
+    "HTTPS is HTTP carried inside a TLS connection. TLS encrypts the traffic and uses a certificate to prove the server's identity, so nobody in between can read or quietly change the data."
+   ]
+  ]
+ },
+ {
+  "id": "dbbasics",
+  "mod": 0,
+  "sec": "0.6",
+  "name": "Databases and SQL basics",
+  "title": "Tables, keys and your first SQL queries",
+  "thesis": "A database stores data in tables that many programs can read and change safely at the same time. SQL is the short, readable language you use to ask it questions and make changes.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python + SQLite: a tiny shop",
+  "code": "import sqlite3\ncon = sqlite3.connect(\"shop.db\")        # opens (or creates) the file\ncon.execute(\"\"\"CREATE TABLE IF NOT EXISTS customers (\n  id INTEGER PRIMARY KEY, name TEXT, city TEXT)\"\"\")\ncon.execute(\"\"\"CREATE TABLE IF NOT EXISTS orders (\n  id INTEGER PRIMARY KEY, customer_id INTEGER, total REAL)\"\"\")\ncon.execute(\"INSERT INTO customers (name, city) VALUES (?, ?)\",\n            (\"Asha\", \"Pune\"))\ncon.execute(\"INSERT INTO orders (customer_id, total) VALUES (1, 42.5)\")\ncon.commit()                             # make the changes permanent\n\nrows = con.execute(\"\"\"\n  SELECT c.name, o.total\n  FROM orders o JOIN customers c ON c.id = o.customer_id\n  WHERE o.total > 10\n  ORDER BY o.total DESC\"\"\").fetchall()\nprint(rows)    # [('Asha', 42.5)]",
+  "nodes": [
+   [
+    "app",
+    90,
+    70,
+    "Your program",
+    "a Python script"
+   ],
+   [
+    "conn",
+    265,
+    70,
+    "Connection",
+    "sqlite3.connect"
+   ],
+   [
+    "sql",
+    440,
+    70,
+    "SQL statement",
+    "SELECT ... WHERE"
+   ],
+   [
+    "engine",
+    615,
+    70,
+    "Database engine",
+    "plans the work"
+   ],
+   [
+    "tables",
+    615,
+    220,
+    "Tables",
+    "rows and columns"
+   ],
+   [
+    "pk",
+    440,
+    220,
+    "Primary key",
+    "one id per row"
+   ],
+   [
+    "join",
+    265,
+    220,
+    "JOIN",
+    "match two tables"
+   ],
+   [
+    "result",
+    90,
+    220,
+    "Result rows",
+    "back to Python"
+   ]
+  ],
+  "edges": [
+   [
+    "app",
+    "conn"
+   ],
+   [
+    "conn",
+    "sql"
+   ],
+   [
+    "sql",
+    "engine"
+   ],
+   [
+    "engine",
+    "tables"
+   ],
+   [
+    "tables",
+    "pk"
+   ],
+   [
+    "pk",
+    "join"
+   ],
+   [
+    "join",
+    "result"
+   ],
+   [
+    "result",
+    "app",
+    0,
+    "fetchall"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A program needs data",
+    "n": [
+     "app"
+    ],
+    "d": "Your program wants to store customers and orders and look them up later. Keeping them in a database, instead of loose files, means many users can read and write safely at once."
+   },
+   {
+    "t": "Open a connection",
+    "n": [
+     "conn"
+    ],
+    "e": [
+     "app>conn"
+    ],
+    "d": "A connection is an open line to the database. SQLite is a small database that lives in one file, and Python ships with it, so connect just opens shop.db.",
+    "l": [
+     0,
+     1
+    ]
+   },
+   {
+    "t": "Create tables",
+    "n": [
+     "tables"
+    ],
+    "d": "A table is like one sheet in a spreadsheet with strict rules. Each column has a name and a type. Each row is one record, for example one customer.",
+    "l": [
+     2,
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "t": "Every row gets a primary key",
+    "n": [
+     "pk"
+    ],
+    "d": "A primary key is a column whose value is unique for each row, usually id. It lets you point at exactly one customer, even if two customers share a name.",
+    "l": [
+     3,
+     5
+    ]
+   },
+   {
+    "t": "Change data with INSERT and commit",
+    "n": [
+     "sql",
+     "conn"
+    ],
+    "e": [
+     "conn>sql"
+    ],
+    "d": "INSERT adds a row, UPDATE changes rows, DELETE removes rows. The ? marks are placeholders that pass values safely. commit makes the changes permanent.",
+    "l": [
+     6,
+     7,
+     8,
+     9
+    ]
+   },
+   {
+    "t": "Ask a question with SELECT",
+    "n": [
+     "sql",
+     "engine"
+    ],
+    "e": [
+     "sql>engine"
+    ],
+    "d": "SELECT picks columns, FROM names the table, WHERE keeps only matching rows, ORDER BY sorts. The engine decides how to find the rows fastest.",
+    "l": [
+     11,
+     12,
+     13,
+     14,
+     15
+    ]
+   },
+   {
+    "t": "JOIN two tables",
+    "n": [
+     "engine",
+     "tables",
+     "pk",
+     "join"
+    ],
+    "e": [
+     "engine>tables",
+     "tables>pk",
+     "pk>join"
+    ],
+    "d": "The orders table stores customer_id, a copy of the customer's primary key. This is called a foreign key. JOIN ... ON c.id = o.customer_id glues each order to its customer.",
+    "l": [
+     13
+    ]
+   },
+   {
+    "t": "Rows come back",
+    "n": [
+     "result",
+     "app"
+    ],
+    "e": [
+     "join>result",
+     "result>app"
+    ],
+    "d": "fetchall returns a list of rows as Python tuples. Your program can now print them, put them in a report or send them to a web page.",
+    "l": [
+     16
+    ]
+   }
+  ],
+  "ideas": [
+   "Database vs spreadsheet: strict column types, many users at once, rules that stop bad data, and fast search over millions of rows.",
+   "Table = rows (records) and columns (fields). Primary key = the unique id of each row.",
+   "Foreign key = a column that stores another table's primary key. JOIN uses it to combine tables.",
+   "Core SQL: SELECT, WHERE, ORDER BY to read. INSERT, UPDATE, DELETE to change.",
+   "Always pass values with placeholders (?) and never glue user text into SQL strings."
+  ],
+  "traps": [
+   "Running UPDATE or DELETE without WHERE. It changes every row in the table.",
+   "Forgetting commit, then wondering why the data vanished.",
+   "Building SQL with string formatting from user input, which allows SQL injection."
+  ],
+  "qa": [
+   [
+    "What is a primary key and why does every table need one?",
+    "It is a column, or set of columns, whose value is unique and never empty for every row. It gives each record a stable identity, so updates, deletes and joins hit exactly the right row."
+   ],
+   [
+    "Explain a JOIN to someone who has only used Excel.",
+    "It is like VLOOKUP done by the database. For every row in orders, it finds the row in customers whose id equals the order's customer_id and puts the columns side by side."
+   ],
+   [
+    "Why use a database instead of CSV files?",
+    "A database enforces types and keys, handles many readers and writers at once without corrupting data, can undo half-finished changes, and uses indexes to search large tables quickly."
+   ]
+  ]
+ },
+ {
+  "id": "mlbasics",
+  "mod": 0,
+  "sec": "0.7",
+  "name": "What AI and ML are",
+  "title": "From hand-written rules to learning from data",
+  "thesis": "Machine learning replaces hand-written rules with a model that learns a pattern from examples. You train it on labelled data, test it on data it has never seen, and then use it to make predictions.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: scikit-learn linear regression",
+  "code": "from sklearn.linear_model import LinearRegression\nfrom sklearn.model_selection import train_test_split\n\n# Features (X): flat size in m2. Labels (y): price in thousands.\nX = [[50], [60], [70], [80], [90], [100], [110], [120], [130], [140]]\ny = [155, 178, 212, 236, 274, 298, 327, 365, 386, 421]\n\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=0)   # keep 20% hidden\n\nmodel = LinearRegression()\nmodel.fit(X_train, y_train)               # training\nprint(model.coef_, model.intercept_)      # about 3.0 and 0.4\n\nprint(model.score(X_test, y_test))        # R2 on unseen data: ~0.998\nprint(model.predict([[95]]))              # inference: ~285.5",
+  "nodes": [
+   [
+    "rules",
+    90,
+    70,
+    "Hand rules",
+    "if size > 100 ...",
+    1
+   ],
+   [
+    "data",
+    265,
+    70,
+    "Examples",
+    "past flat sales"
+   ],
+   [
+    "xy",
+    440,
+    70,
+    "Features, labels",
+    "X and y"
+   ],
+   [
+    "split",
+    615,
+    70,
+    "Train/test split",
+    "80% / 20%"
+   ],
+   [
+    "train",
+    615,
+    220,
+    "Training",
+    "model.fit(X, y)"
+   ],
+   [
+    "model",
+    440,
+    220,
+    "Model",
+    "slope + intercept"
+   ],
+   [
+    "test",
+    265,
+    220,
+    "Test check",
+    "score on unseen"
+   ],
+   [
+    "infer",
+    90,
+    220,
+    "Inference",
+    "price a new flat"
+   ]
+  ],
+  "edges": [
+   [
+    "rules",
+    "data",
+    0,
+    "instead"
+   ],
+   [
+    "data",
+    "xy"
+   ],
+   [
+    "xy",
+    "split"
+   ],
+   [
+    "split",
+    "train"
+   ],
+   [
+    "train",
+    "model"
+   ],
+   [
+    "model",
+    "test"
+   ],
+   [
+    "test",
+    "infer"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "The old way: rules",
+    "n": [
+     "rules"
+    ],
+    "d": "Traditional software follows rules a person wrote, like 'if size is over 100 m2, price is high'. Rules break when the pattern is fuzzy or has too many cases to write down."
+   },
+   {
+    "t": "The ML way: examples",
+    "n": [
+     "data"
+    ],
+    "e": [
+     "rules>data"
+    ],
+    "d": "Machine learning (ML) starts from past examples instead, such as 10 flats that sold, and lets the computer find the pattern. AI is the wider goal of making computers do tasks that seem to need intelligence; ML is the main way it is done today."
+   },
+   {
+    "t": "Features and labels",
+    "n": [
+     "xy"
+    ],
+    "e": [
+     "data>xy"
+    ],
+    "d": "Features are the inputs you know (size in m2). The label is the answer you want to predict (price). By convention features are called X and labels y.",
+    "l": [
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "t": "Hide some data for later",
+    "n": [
+     "split"
+    ],
+    "e": [
+     "xy>split"
+    ],
+    "d": "Keep about 20% of the examples aside as a test set. The model never sees them during training, so they give an honest score later.",
+    "l": [
+     7,
+     8
+    ]
+   },
+   {
+    "t": "Training",
+    "n": [
+     "train"
+    ],
+    "e": [
+     "split>train"
+    ],
+    "d": "Training means adjusting the model's numbers until its guesses on the training examples are as close as possible to the true labels. In scikit-learn that is one call: fit.",
+    "l": [
+     10,
+     11
+    ]
+   },
+   {
+    "t": "The model is just numbers",
+    "n": [
+     "model"
+    ],
+    "e": [
+     "train>model"
+    ],
+    "d": "Linear regression learns a straight line: price = slope x size + intercept. Here it learns roughly 3.0 thousand per m2. A neural network is the same idea with millions or billions of numbers.",
+    "l": [
+     12
+    ]
+   },
+   {
+    "t": "Test on unseen data",
+    "n": [
+     "test"
+    ],
+    "e": [
+     "model>test"
+    ],
+    "d": "Score the model on the hidden test set. A model that is great on training data but bad on test data has overfitted: it memorised instead of learning the pattern.",
+    "l": [
+     14
+    ]
+   },
+   {
+    "t": "Inference",
+    "n": [
+     "infer"
+    ],
+    "e": [
+     "test>infer"
+    ],
+    "d": "Inference means using the trained model on new input. A 95 m2 flat gets a predicted price of about 285.5 thousand. Large language models (LLMs) do inference too: they predict the next word.",
+    "l": [
+     15
+    ]
+   }
+  ],
+  "ideas": [
+   "Rules are written by people. ML models learn their rules from example data.",
+   "Features (X) are the inputs, labels (y) are the answers. Supervised learning needs both.",
+   "Training is slow and done once or occasionally. Inference is fast and done every time you use the model.",
+   "Always judge a model on data it did not train on. Overfitting is the most common beginner mistake.",
+   "LLMs are very large neural networks trained on text to predict the next token. They are one kind of ML model."
+  ],
+  "traps": [
+   "Reporting accuracy on the training data. It will look far better than real life.",
+   "Thinking more complex models are always better. On small data, simple models often win.",
+   "Treating the model as understanding the world. It learned a pattern in the data it was given, including that data's gaps and biases."
+  ],
+  "qa": [
+   [
+    "What is the difference between training and inference?",
+    "Training fits the model's parameters to labelled examples, which is compute-heavy and happens once or periodically. Inference runs the fixed, trained model on new inputs to get predictions, which happens on every request and is what users experience."
+   ],
+   [
+    "What is overfitting and how do you detect it?",
+    "The model memorises noise in the training data, so it scores well there and badly on new data. You detect it by holding out a test set, or by cross-validation, and comparing the two scores."
+   ],
+   [
+    "Where do LLMs fit in AI and ML?",
+    "AI is the broad field. ML is the approach of learning from data. Deep learning uses neural networks with many layers. LLMs are deep neural networks, usually transformers, trained on huge text collections to predict the next token."
+   ]
+  ]
+ },
+ {
+  "id": "mathbasics",
+  "mod": 0,
+  "sec": "0.8",
+  "name": "Math you need for AI",
+  "title": "Vectors, matrices, softmax and percentiles",
+  "thesis": "Four ideas cover most of the math an FDE meets: vectors and dot products measure similarity, matrices transform vectors, softmax turns scores into probabilities, and percentiles describe how fast a system really is.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: numpy, with hand-checked numbers",
+  "code": "import numpy as np\n\na = np.array([2, 1, 3])\nb = np.array([1, 0, 2])\nprint(a @ b)            # dot: 2*1 + 1*0 + 3*2 = 8\n\nW = np.array([[1, 0, 1],\n              [0, 2, 0]])\nprint(W @ a)            # [2+0+3, 0+2+0] = [5 2]\n\nscores = np.array([2.0, 1.0, 0.1])\nprobs = np.exp(scores) / np.exp(scores).sum()\nprint(probs.round(2))   # [0.66 0.24 0.1 ]  sums to 1\n\nms = np.array([120, 95, 110, 130, 105, 98, 101, 115, 900, 125])\nprint(ms.mean())                 # 189.9  (dragged up by 900)\nprint(np.percentile(ms, 50))     # 112.5  p50, the typical call\nprint(np.percentile(ms, 95))     # ~553   p95, the slow tail",
+  "nodes": [
+   [
+    "vec",
+    90,
+    70,
+    "Vector",
+    "[2, 1, 3]"
+   ],
+   [
+    "dot",
+    265,
+    70,
+    "Dot product",
+    "a . b = 8"
+   ],
+   [
+    "matvec",
+    440,
+    70,
+    "Matrix x vector",
+    "one dot per row"
+   ],
+   [
+    "scores",
+    615,
+    70,
+    "Raw scores",
+    "[2.0, 1.0, 0.1]"
+   ],
+   [
+    "softmax",
+    615,
+    220,
+    "Softmax",
+    "exp, then divide"
+   ],
+   [
+    "probs",
+    440,
+    220,
+    "Probabilities",
+    "[0.66, 0.24, 0.1]"
+   ],
+   [
+    "times",
+    265,
+    220,
+    "Response times",
+    "10 calls in ms"
+   ],
+   [
+    "pct",
+    90,
+    220,
+    "p50 and p95",
+    "typical vs slow"
+   ]
+  ],
+  "edges": [
+   [
+    "vec",
+    "dot"
+   ],
+   [
+    "dot",
+    "matvec"
+   ],
+   [
+    "matvec",
+    "scores"
+   ],
+   [
+    "scores",
+    "softmax"
+   ],
+   [
+    "softmax",
+    "probs"
+   ],
+   [
+    "probs",
+    "times",
+    0,
+    "serve + measure"
+   ],
+   [
+    "times",
+    "pct"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A vector is a list of numbers",
+    "n": [
+     "vec"
+    ],
+    "d": "A vector is an ordered list of numbers, like [2, 1, 3]. In AI, a word, an image or a customer can each be described by a vector. Each position means something.",
+    "l": [
+     2,
+     3
+    ]
+   },
+   {
+    "t": "The dot product",
+    "n": [
+     "dot"
+    ],
+    "e": [
+     "vec>dot"
+    ],
+    "d": "Multiply matching positions and add them up: 2x1 + 1x0 + 3x2 = 8. A large dot product means the two vectors point the same way, which is how search engines measure similarity.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "A matrix transforms a vector",
+    "n": [
+     "matvec"
+    ],
+    "e": [
+     "dot>matvec"
+    ],
+    "d": "A matrix is a grid of numbers. Multiplying it by a vector means taking the dot product of each row with the vector. Row one gives 5, row two gives 2. Neural network layers are mostly this.",
+    "l": [
+     6,
+     7,
+     8
+    ]
+   },
+   {
+    "t": "Raw scores come out",
+    "n": [
+     "scores"
+    ],
+    "e": [
+     "matvec>scores"
+    ],
+    "d": "The last layer of a model gives one raw score per possible answer, for example per next word. Raw scores, also called logits, can be any size and can be negative.",
+    "l": [
+     10
+    ]
+   },
+   {
+    "t": "Softmax",
+    "n": [
+     "softmax"
+    ],
+    "e": [
+     "scores>softmax"
+    ],
+    "d": "Softmax raises e (about 2.718) to the power of each score, which makes them all positive, then divides each by the total. Bigger scores get a bigger share.",
+    "l": [
+     11
+    ]
+   },
+   {
+    "t": "Probabilities",
+    "n": [
+     "probs"
+    ],
+    "e": [
+     "softmax>probs"
+    ],
+    "d": "The result is between 0 and 1 and sums to 1: 0.66, 0.24 and 0.10. An LLM picks its next word from a list like this.",
+    "l": [
+     12
+    ]
+   },
+   {
+    "t": "Measure the system",
+    "n": [
+     "times"
+    ],
+    "e": [
+     "probs>times"
+    ],
+    "d": "Once a model is serving users, you record how long each call takes. Nine calls take about 100 ms and one takes 900 ms. The mean is 189.9 ms, which describes no real call.",
+    "l": [
+     14,
+     15
+    ]
+   },
+   {
+    "t": "Percentiles tell the truth",
+    "n": [
+     "pct"
+    ],
+    "e": [
+     "times>pct"
+    ],
+    "d": "p50, the median, is the middle value when sorted: 112.5 ms. p95 is the value 95% of calls are faster than, here about 553 ms. Customers feel the p95.",
+    "l": [
+     16,
+     17
+    ]
+   }
+  ],
+  "ideas": [
+   "Vector = list of numbers. Dot product = multiply pairwise and sum. It measures how aligned two vectors are.",
+   "Matrix x vector = one dot product per row. This is the core operation inside neural networks.",
+   "Softmax turns any scores into probabilities that are positive and sum to 1.",
+   "Mean is pulled by outliers. p50 shows the typical case, p95 and p99 show the slow tail.",
+   "numpy does all of this in one line each: a @ b, W @ a, np.exp, np.percentile."
+  ],
+  "traps": [
+   "Reporting average latency to a customer. One slow call hides behind it, or distorts it.",
+   "Mixing up matrix shapes. A matrix with 3 columns can only multiply a vector of length 3.",
+   "Reading softmax output as certainty. 0.66 is the model's score share, and it is often badly calibrated."
+  ],
+  "qa": [
+   [
+    "Why do we report p95 latency instead of the average?",
+    "Latency data is skewed: most calls are fast and a few are very slow. The average hides that tail or is distorted by it. p95 says that 95% of requests finish within this time, which matches what users actually notice."
+   ],
+   [
+    "What does softmax do and why is it used?",
+    "It exponentiates each raw score and divides by the sum, giving positive values that add to 1. It turns a model's arbitrary scores into a probability distribution you can sample from or threshold."
+   ],
+   [
+    "How is a dot product used in retrieval for LLM apps?",
+    "Documents and the query are turned into embedding vectors. The dot product, or cosine similarity, between the query vector and each document vector scores how related they are, and the top scores are retrieved."
+   ]
+  ]
+ }
+]

@@ -1,0 +1,29 @@
+.lesson{display:flex;flex-direction:column;gap:26px}
+.lesson[hidden]{display:none!important}
+.intro{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px 22px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px 28px}
+.intro h4,.lesson-h{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600}
+.intro .plain p{margin:0;font-size:16.5px;max-width:65ch}
+.intro .side{display:flex;flex-direction:column;gap:14px}
+.intro .side p{margin:0}
+.toc{display:flex;flex-wrap:wrap;gap:8px}
+.toc button{font:inherit;font-size:13.5px;border:1px solid var(--line-strong);background:transparent;color:var(--ink);border-radius:999px;padding:5px 12px;cursor:pointer}
+.toc button:hover{border-color:var(--accent);color:var(--accent)}
+.toc button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sub{border-top:1px solid var(--line);padding-top:22px;display:flex;flex-direction:column;gap:12px;scroll-margin-top:16px}
+.sub h3{margin:0;font-family:var(--display);font-size:23px;font-weight:600;letter-spacing:-.01em;display:flex;gap:12px;align-items:baseline;text-wrap:balance}
+.sub h3 .snum{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:500;flex:0 0 auto}
+.sub .body p{margin:0 0 10px;max-width:70ch}
+.example{background:var(--accent-soft);border-radius:8px;padding:14px 16px;max-width:78ch}
+.example .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:600;display:block;margin-bottom:6px}
+.example p{margin:0 0 8px}
+.example p:last-child{margin:0}
+.codeblock{margin:0;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.codeblock figcaption{display:flex;justify-content:space-between;align-items:center;padding:6px 10px 6px 14px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.codeblock button{font:inherit;font-size:12px;letter-spacing:0;text-transform:none;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:5px;padding:2px 9px;cursor:pointer}
+.codeblock pre{margin:0;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:12.8px;line-height:1.65;color:var(--ink)}
+.gloss{margin:0;display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:8px 16px}
+.gloss dt{font-weight:600}
+.gloss dd{margin:0;color:var(--ink)}
+.practice ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px}
+.practice li::marker{color:var(--accent);font-family:var(--mono)}
+@media (max-width:760px){.intro{grid-template-columns:minmax(0,1fr)}.gloss{grid-template-columns:minmax(0,1fr)}.gloss dd{margin-bottom:6px}}

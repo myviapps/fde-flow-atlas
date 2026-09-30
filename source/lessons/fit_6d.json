@@ -1,0 +1,30 @@
+{
+ "dataquality": {
+  "best": [
+   "practice",
+   "interactive"
+  ],
+  "why": "Quality checks and matching are learned by running them on messy data; a threshold slider shows true and false matches directly."
+ },
+ "spreadsheets": {
+  "best": [
+   "practice",
+   "project"
+  ],
+  "why": "Excel skills stick by reading and writing real messy workbooks; automating one weekly report makes a natural small project."
+ },
+ "webauto": {
+  "best": [
+   "practice",
+   "flowchart"
+  ],
+  "why": "You learn automation by scripting real pages; a decision flow keeps API first and legal checks before any clicking."
+ },
+ "typescript": {
+  "best": [
+   "practice",
+   "reading"
+  ],
+  "why": "You learn a language by writing and running small programs; short explanations of types, async and validation make the drills make sense."
+ }
+}

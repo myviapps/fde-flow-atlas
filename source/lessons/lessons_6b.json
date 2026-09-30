@@ -1,0 +1,1054 @@
+{
+ "aireadiness": {
+  "plain": "AI readiness is how prepared a company is to use AI well: whether it has usable data, people with time to own the work, a stable process to improve, a platform to run it on, and a way to manage the risks. Use-case prioritisation is the job of choosing which AI ideas to build first. A use case is one specific task AI could help with, such as 'sort incoming claims emails into 12 queues', with a named user, a volume and a pain. You collect many use cases, score them all the same way, and pick one or two for a first pilot. The result is a short AI roadmap: a plan of what gets built, in what order, by whom, and how success is measured.",
+  "analogy": "It is like a builder visiting a house before a renovation. First they check the foundations, wiring and budget (readiness). Then they list everything the owners want, from a new kitchen to a hot tub, price each wish and pick the job that adds the most value without the house falling down (prioritisation).",
+  "why": "Many customers arrive saying 'we need to do AI' without a specific problem. If an FDE starts building the most exciting idea, the pilot often stalls in week three because the data is locked away, no one owns the result, or legal will never approve it. A clear readiness check and a scored list let the FDE steer the customer to a first win, which is what keeps the engagement and the budget alive.",
+  "subtopics": [
+   {
+    "title": "Assessing readiness: five dimensions",
+    "body": "Readiness is not one number. Check five dimensions, each with a few plain questions.\n\nData: does the information the AI needs exist, is it digital, and can you get access to it within weeks, not months? A company may have ten years of claims records, but if they sit in scanned PDFs on a file share with no index, that is a data gap. People: is there an executive sponsor (the senior person who pays for and defends the project), a product owner who makes day-to-day decisions, and users who have time to test? Process: is the workflow stable and understood? If every branch handles claims differently, the AI will learn a mess. Platform: where would the AI run? Some customers allow only one cloud, some ban sending data to outside model providers, some have no way to deploy new services without a six-month approval. Risk: what could go wrong for customers, staff, the law or the brand, and who signs off on that risk?\n\nScore each dimension red, amber or green, and write one sentence of evidence for each. Evidence matters more than the colour: 'Green: claims system has a read-only API, IT confirmed access on 3 March' is useful, while 'Green: data is fine' is not.\n\nA readiness check is not a reason to say no. Its job is to find gaps early so you can plan them: an amber data rating becomes a task on the roadmap with an owner and a date. This work overlaps with Discovery and with Compliance; link to those topics for interview technique and privacy law.",
+    "example": "Quillmoor Insurance (made up, 1,800 staff) asks for 'an AI strategy'. In a one-week check the FDE rates data amber (claims emails are archived, but attachments are scanned images), people green (the claims director will sponsor, a team lead will own it), process amber (three regional teams triage differently), platform green (approved cloud tenant, model provider under contract) and risk amber (emails contain health details). The summary goes to the sponsor with three gap actions, each owned.",
+    "table": {
+     "headers": [
+      "Dimension",
+      "Ask",
+      "Red flag"
+     ],
+     "rows": [
+      [
+       "Data",
+       "Does it exist, digitally, and can we reach it?",
+       "Access needs a 6-month approval"
+      ],
+      [
+       "People",
+       "Who sponsors, who owns, who tests?",
+       "No named owner, users too busy"
+      ],
+      [
+       "Process",
+       "Is the workflow stable and written down?",
+       "Every team does it differently"
+      ],
+      [
+       "Platform",
+       "Where will it run and be approved?",
+       "No path to deploy a new service"
+      ],
+      [
+       "Risk",
+       "Who could be harmed and who signs off?",
+       "Nobody will accept the risk"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Running a use-case discovery workshop",
+    "body": "A use-case workshop turns vague interest into a list of specific, comparable ideas. It usually takes two to three hours with six to twelve people.\n\nInvite the people who do the work, not only managers. A claims handler knows which emails take the most time; a director may not. Also invite someone from IT and, if possible, someone from risk or legal, so bad ideas are caught in the room.\n\nA simple agenda has four parts. First, ten minutes on what AI is good and bad at, with two examples from the customer's industry, so ideas are realistic. Second, map the work: ask each team to list their most repetitive, text-heavy or judgement-light tasks and the hours they take. Third, generate ideas: each person writes ideas on cards, one per card, in the form 'Help [user] do [task] so that [outcome]'. Fourth, cluster duplicates and fill in the facts for each card: who uses it, how often (volume), how long it takes today (baseline), and where the data lives.\n\nEdge cases: if one senior person dominates, collect cards silently first, then discuss. If people suggest vague ideas ('use AI for customer service'), ask 'what exactly would the user do differently on Monday?'. If the room has no ideas, bring three examples from similar companies as starters. End by explaining what happens next: you will score the ideas and come back in a week with a recommendation.",
+    "example": "At Quillmoor the workshop has 9 people from claims, underwriting, IT and compliance. They produce 31 cards, which cluster into 14 ideas. The top card reads: 'Help claims handlers sort incoming emails into the right queue so that urgent claims are seen the same day.' Facts added: 2,600 emails a day, about 90 seconds each to read and route, data in the shared mailbox.",
+    "code": "USE-CASE WORKSHOP  (2.5 hours, 6 to 12 people)\n\n0:00  What AI can and cannot do here   (10 min, 2 industry examples)\n0:10  Map the work                      (30 min)\n      - list repetitive, text-heavy tasks and hours per week\n0:40  Silent idea cards                 (20 min)\n      - 'Help [user] do [task] so that [outcome]', one per card\n1:00  Cluster and remove duplicates     (20 min)\n1:20  Fill in facts for each idea       (40 min)\n      - user, volume per week, minutes today, data source, owner\n2:00  Quick risk check with legal / IT  (20 min)\n2:20  Next steps                        (10 min)\n      - we score all ideas and return with a recommendation in 1 week",
+    "lang": "Text"
+   },
+   {
+    "title": "Scoring use cases on the same scale",
+    "body": "Once you have a list, score every idea with the same criteria so the choice is fair and defensible. Four criteria cover most cases.\n\nValue: how much time, money or risk does it save, and for how many people? Use the workshop facts: volume times minutes saved gives hours per year. Feasibility: how hard is it to build with today's tools? Reading and sorting text is feasible; making final legal decisions is not. Data availability: can you get enough real, representative examples, with permission? Risk: what happens when the AI is wrong, and how bad is it? A wrong email route is cheap to fix; a wrong fraud accusation is not.\n\nUse a 1 to 5 scale with a written meaning for each number, for example value 5 means 'more than 5,000 hours a year saved'. Without anchors, people score by feeling. Then combine the scores with weights. Value often gets the biggest weight, but data and risk act as gates: an idea with data scored 1 cannot be first, however valuable it looks.\n\nKeep the scoring sheet visible to the customer. When the loudest executive's favourite idea lands in fourth place, the sheet explains why in a way that is about facts, not people. Invite the sponsor to change a weight if they disagree; this often starts a useful conversation about what the company really cares about.\n\nEdge case: ties. When two ideas score almost the same, prefer the one with a clearer baseline number, because you will need to prove improvement later.",
+    "example": "The code scores five Quillmoor ideas. Claims email triage wins at 4.20. Broker quote extraction scores well but is flagged because its data (quotes in many broker formats) is rated 2. Fraud flagging has the highest value but high risk and low feasibility, so it is not a first pilot.",
+    "code": "# Score candidate use cases the same way (1 = poor, 5 = great)\n# risk is 1 (low) to 5 (high), so we flip it: safety = 6 - risk\nWEIGHTS = {\"value\": 0.40, \"feasibility\": 0.25, \"data\": 0.20, \"safety\": 0.15}\n\nideas = [\n    # name,                       value, feasibility, data, risk\n    (\"Claims email triage\",           4, 4, 5, 2),\n    (\"Adjuster note summaries\",       3, 5, 4, 2),\n    (\"Fraud flagging\",                5, 2, 3, 5),\n    (\"Policy Q&A chatbot for public\", 4, 3, 3, 4),\n    (\"Broker quote extraction\",       4, 3, 2, 2),\n]\n\ndef score(value, feas, data, risk):\n    parts = {\"value\": value, \"feasibility\": feas, \"data\": data, \"safety\": 6 - risk}\n    return round(sum(WEIGHTS[k] * v for k, v in parts.items()), 2)\n\nranked = sorted(ideas, key=lambda i: score(*i[1:]), reverse=True)\nfor name, *s in ranked:\n    gate = \"\" if s[2] >= 3 else \"  (blocked: data)\"   # data below 3 = not ready yet\n    print(f\"{score(*s):.2f}  {name}{gate}\")\n\n# Output:\n# -> 4.20  Claims email triage\n# -> 3.85  Adjuster note summaries\n# -> 3.35  Broker quote extraction  (blocked: data)\n# -> 3.25  Fraud flagging\n# -> 3.25  Policy Q&A chatbot for public",
+    "lang": "Python"
+   },
+   {
+    "title": "The 2x2 matrix and choosing a first pilot",
+    "body": "A 2x2 matrix is a simple picture that puts every idea on two axes, usually value (up) and effort (right). It splits ideas into four boxes. Quick wins: high value, low effort. Big bets: high value, high effort. Fillers: low value, low effort. Avoid: low value, high effort. Executives like the picture because they can see the whole list at once.\n\nThe first pilot should almost always be a quick win. A pilot is a small, time-boxed build with real users that proves value, usually 6 to 12 weeks. For a first pilot, you want a result that arrives fast and is easy to measure, so the customer trusts the team and funds the next step. A big bet is better as the second or third project, once the platform, access and trust exist.\n\nBefore you commit, run a final checklist on the chosen idea. Many ideas look like quick wins on paper but fail one of these checks, so treat each item as a must.\n\nEdge cases: sometimes the sponsor insists on a big bet first. You can agree to it while proposing a quick win in parallel, or you can cut the big bet into a first slice (for example, 'flag suspicious claims for review' instead of 'detect fraud'). The Proof of concept topic covers how to run the pilot once it is chosen.",
+    "example": "On Quillmoor's matrix, claims email triage and adjuster note summaries are quick wins. The FDE recommends email triage first because it has a clean baseline (90 seconds per email, 2,600 a day) and a willing team lead, and keeps note summaries as the second pilot.",
+    "checklist": [
+     "The idea is in the quick-win box",
+     "A named product owner has time each week",
+     "Real data is accessible within 2 weeks",
+     "There is a baseline number to beat",
+     "A wrong answer is cheap to catch and fix",
+     "Legal or risk has no blocking objection",
+     "Success can be measured within 8 weeks"
+    ],
+    "code": "# Place each idea on a value / effort 2x2 (scores 1 to 5, midline at 3)\nideas = {\n    \"Claims email triage\":      (4, 2),   # (value, effort)\n    \"Adjuster note summaries\":  (3, 1),\n    \"Fraud flagging\":           (5, 4),\n    \"Public policy chatbot\":    (4, 3),\n    \"Office party planner\":     (1, 1),\n}\n\ndef quadrant(value, effort):\n    high_value = value >= 3\n    low_effort = effort < 3          # an effort of exactly 3 counts as high\n    if high_value and low_effort:  return \"Quick win: pilot first\"\n    if high_value:                 return \"Big bet: plan for later\"\n    if low_effort:                 return \"Filler: only if spare time\"\n    return \"Avoid\"\n\nfor name, (v, e) in ideas.items():\n    print(f\"{name:25} {quadrant(v, e)}\")\n\n# Output:\n# -> Claims email triage       Quick win: pilot first\n# -> Adjuster note summaries   Quick win: pilot first\n# -> Fraud flagging            Big bet: plan for later\n# -> Public policy chatbot     Big bet: plan for later\n# -> Office party planner      Filler: only if spare time",
+    "lang": "Python"
+   },
+   {
+    "title": "Build, buy or configure for each use case",
+    "body": "For every idea on the list, decide how it should be delivered. There are three options.\n\nConfigure means turning on or setting up a feature in a tool the customer already owns. Many office suites, CRMs and help-desk tools now include AI features such as summaries or drafting. Configuring is fast and cheap, but you get only what the vendor offers. Buy means purchasing a specialised product, such as a dedicated document-extraction tool. It is quicker than building and comes with support, but it adds a vendor, a contract and a security review. Build means writing a custom system, for example calling a model API with the customer's own data, prompts and rules. It fits unique workflows and deep integrations, but the customer must run and maintain it after you leave.\n\nA useful rule: configure if a good-enough feature already exists, buy if the problem is common across companies, build if the workflow is unique or the integration is the hard part. An honest FDE recommends configure or buy when they fit, even if their own company sells build work. This honesty earns trust for the ideas that truly need building.\n\nEdge case: 'configure' can hide costs. Licences for AI add-ons are often per user per month, which adds up for thousands of staff, and data may leave the region. Check pricing and data handling before you call it the cheap option.",
+    "example": "At Quillmoor, meeting summaries for managers are served by configuring the AI feature in their existing office suite. Broker quote extraction is a common problem, so they evaluate two document-AI products. Claims email triage needs rules tied to Quillmoor's own 12 queues and its claims system, so it is a build.",
+    "table": {
+     "headers": [
+      "Option",
+      "Choose when",
+      "Watch out for"
+     ],
+     "rows": [
+      [
+       "Configure",
+       "A good-enough feature exists in owned tools",
+       "Per-user licence cost, limited control"
+      ],
+      [
+       "Buy",
+       "Problem is common across companies",
+       "New vendor, contract and security review"
+      ],
+      [
+       "Build",
+       "Workflow or integration is unique",
+       "Customer must run and maintain it"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Writing the AI roadmap the sponsor signs",
+    "body": "The roadmap is the short document that turns all this work into a decision. The sponsor signs it, which means they agree to fund the first pilot, provide people and access, and accept the stated risks.\n\nKeep it to two or three pages. It should contain: the goal in business terms (for example 'reduce claims backlog by half'), the readiness summary with gaps and owners, the ranked use-case list with scores, the first pilot with its success criteria and baseline, the next two or three ideas with rough timing, and what is explicitly out of scope. Add a decision section at the end with the sponsor's name and date.\n\nSuccess criteria must be measurable. 'Better triage' is not a criterion. 'At least 85% of emails routed to the correct queue, measured on 500 emails labelled by team leads, and average handling time under 30 seconds' is. Link each criterion to the baseline you collected in the workshop.\n\nPlan in stages, not in a big list. A typical first year has one pilot in the first quarter, a production rollout and a second pilot in the second quarter, and scaling in the second half. Tie later stages to results: 'Start pilot 2 only if pilot 1 meets its criteria.' This protects both sides from committing to ten projects at once. Review the roadmap every quarter, since data access, tools and priorities change.",
+    "example": "Quillmoor's roadmap, two pages, is signed by the claims director on 28 March. Pilot 1 is claims email triage, 8 weeks, success at 85% correct routing on a 500-email test set. Pilot 2, adjuster note summaries, starts in Q3 if pilot 1 passes. Fraud flagging is listed as 'explore in 2027 after data work'. The ai-readiness template in this atlas has the full layout.",
+    "code": "AI ROADMAP  Quillmoor Insurance   v1.0   signed 28 March\n\nGoal: same-day handling of urgent claims; backlog down 50% in 12 months\n\nReadiness: data AMBER (scanned attachments), people GREEN,\n           process AMBER (3 regional triage rules), platform GREEN, risk AMBER\n\nPhase 1  Apr-May   Pilot: claims email triage (build)\n         Success: >= 85% correct queue on 500 labelled emails;\n                  handling time 90 s -> under 30 s\nPhase 2  Jun-Jul   Production rollout to 3 regions, if Phase 1 passes\nPhase 3  Q3        Pilot: adjuster note summaries, if Phase 2 is stable\nLater    2027      Fraud flagging, after claims data clean-up\n\nOut of scope: public chatbot; any automated claim decisions\nSponsor: [signature], Claims Director",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "AI readiness",
+    "How prepared an organisation is to use AI, judged on data, people, process, platform and risk."
+   ],
+   [
+    "Use case",
+    "One specific task AI could help with, with a named user, volume and pain."
+   ],
+   [
+    "Executive sponsor",
+    "The senior person who funds the project, removes blockers and signs key decisions."
+   ],
+   [
+    "Product owner",
+    "The customer person who makes day-to-day decisions about what the system should do."
+   ],
+   [
+    "Baseline",
+    "The measured performance today, such as minutes per email, that the pilot must beat."
+   ],
+   [
+    "Scoring rubric",
+    "A written scale that says what each score means, so different people score the same way."
+   ],
+   [
+    "2x2 matrix",
+    "A chart that places ideas on two axes, such as value and effort, to show quick wins."
+   ],
+   [
+    "Quick win",
+    "An idea with high value and low effort, usually the best first pilot."
+   ],
+   [
+    "Pilot",
+    "A small, time-boxed build with real users that proves an idea works before full rollout."
+   ],
+   [
+    "Build, buy or configure",
+    "The choice between custom software, a purchased product, or a feature in a tool already owned."
+   ],
+   [
+    "AI roadmap",
+    "A short staged plan of which AI projects happen in what order, with success criteria, signed by the sponsor."
+   ]
+  ],
+  "practice": [
+   "Pick an organisation you know (a school, shop or club). Rate it red, amber or green on the five readiness dimensions and write one sentence of evidence for each.",
+   "Write eight use-case cards in the form 'Help [user] do [task] so that [outcome]' for that organisation, each with a volume and minutes per task.",
+   "Copy the scoring code, change the weights so risk counts double, and explain in two sentences how the ranking changes and whether that makes sense.",
+   "Draw a 2x2 of your eight ideas and pick a first pilot. Run it through the pilot checklist and note any item it fails.",
+   "Stretch: write a two-page roadmap with goal, readiness summary, pilot success criteria with a baseline, two later phases with conditions, and an out-of-scope list."
+  ]
+ },
+ "golive": {
+  "plain": "Going live means moving a system from testing into daily use by real people on real data. Implementation is the set of steps that gets you there. User acceptance testing (UAT) is when the customer's own users try the system on realistic tasks and formally agree it is fit to use. Cutover is the planned moment you switch from the old way of working to the new system, often over a weekend or evening. A go/no-go meeting is the short decision meeting just before cutover where named people say yes or no based on agreed criteria. Hypercare is the first weeks after go-live when the team watches closely and fixes problems fast.",
+  "analogy": "It is like opening a new restaurant. You do test dinners for friends (UAT), move the stock from the old kitchen on a quiet night (migration and cutover), have a final check the afternoon before opening (go/no-go), and keep the head chef on the floor every night for the first two weeks (hypercare).",
+  "why": "Many AI projects work in a demo and then fail in the last mile because nobody planned the data move, the customer's change approval, or what to do if things break on day one. FDEs are often the person who writes the cutover plan and chairs the go/no-go meeting. A calm, well-planned go-live is one of the strongest signals of trust a customer will remember.",
+  "subtopics": [
+   {
+    "title": "Environments and who owns each",
+    "body": "An environment is a separate copy of the system with its own servers, settings and data. Most customers have at least four. Development (dev) is where engineers build and break things. Test, sometimes called QA, is where features are checked against test cases. Staging, also called pre-production, is meant to be a close copy of production, with the same settings, network rules and integrations, so a release that works there should work in production. Production (prod) is the live system real users depend on.\n\nFor each environment, find out three things early: who owns it (who can grant access and approve changes), what data it may hold, and how code gets there. Customers often allow only masked or synthetic data outside production, meaning names and account numbers are replaced with fake values. That rule matters for AI projects, because evaluating a model on fake data can hide real problems. Agree a plan for how you will test on realistic data, for example a masked copy of 2,000 real records approved by the privacy team.\n\nCommon edge cases: staging is not really like production (a different identity provider, a smaller database, no connection to the real email server), so tests pass in staging and fail on go-live day. Or the vendor team has admin rights in dev but no access at all to production, which is normal and healthy; plan for someone on the customer side to run the production steps while you guide them. Write all of this in a one-page environment map at the start of the project.",
+    "example": "Castlemere Water (made up, a regional utility) is going live with an AI assistant that routes customer emails. Dev is in the FDE team's own cloud account with synthetic emails. Test and staging sit in Castlemere's cloud tenant, owned by their platform team, with masked emails. Production is owned by IT operations; only two Castlemere engineers can deploy there, during agreed windows.",
+    "table": {
+     "headers": [
+      "Environment",
+      "Purpose",
+      "Typical owner",
+      "Data allowed"
+     ],
+     "rows": [
+      [
+       "Dev",
+       "Build and experiment",
+       "Vendor or FDE team",
+       "Synthetic or sample"
+      ],
+      [
+       "Test / QA",
+       "Check features against test cases",
+       "Shared, customer IT",
+       "Masked"
+      ],
+      [
+       "Staging",
+       "Rehearse releases like production",
+       "Customer platform team",
+       "Masked, prod-like volume"
+      ],
+      [
+       "Production",
+       "Real users, real data",
+       "Customer IT operations",
+       "Real, access restricted"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Data migration, backfill and reconciliation",
+    "body": "Data migration means moving existing records from an old system into the new one. Backfill means processing historical data so the new system has a useful history on day one, for example classifying the last six months of emails so dashboards are not empty. Both can go wrong silently: rows get dropped, dates shift time zone, text loses accents, or a status value changes case.\n\nThe defence is the dry run and reconciliation. A dry run is a full practice migration into staging, timed and repeated until it is boring. Reconciliation means proving the target matches the source with numbers, not by looking at a few rows. Compare the row count per category (for example per status), sums of important numbers (totals of amounts), and a list of IDs that are missing on either side. Then pick 20 random records and check them field by field with a customer user.\n\nTime the dry run. If the migration takes nine hours and the cutover window is six, you need to change the plan (migrate history the week before and only the last day's changes during cutover, called a delta load). Write the reconciliation queries once and run them after every dry run and during the real cutover, so everyone knows what 'good' looks like.\n\nEdge cases: records that change while you migrate, duplicates in the source that the new system rejects, and fields with no clear mapping. Log every rejected row in a file with a reason; never let rows disappear quietly.",
+    "example": "In Castlemere's second dry run, the code below shows one closed case missing and a status whose case changed from 'pending' to 'Pending'. Comparing case-insensitively makes the pending counts match, and the missing ID 4 leads to a rejected-row log: the record had a blank customer ID, which the new system requires. The fix goes into the mapping rules before dry run three.",
+    "code": "# Reconcile a dry-run migration: compare counts and totals per status\nsource = [  # rows exported from the old case system\n    {\"id\": 1, \"status\": \"open\", \"amount\": 120.0},\n    {\"id\": 2, \"status\": \"open\", \"amount\": 80.5},\n    {\"id\": 3, \"status\": \"closed\", \"amount\": 42.0},\n    {\"id\": 4, \"status\": \"closed\", \"amount\": 10.0},\n    {\"id\": 5, \"status\": \"pending\", \"amount\": 300.0},\n]\ntarget = [  # the same rows after loading into the new system\n    {\"id\": 1, \"status\": \"open\", \"amount\": 120.0},\n    {\"id\": 2, \"status\": \"open\", \"amount\": 80.5},\n    {\"id\": 3, \"status\": \"closed\", \"amount\": 42.0},\n    {\"id\": 5, \"status\": \"Pending\", \"amount\": 300.0},  # case changed on load\n]\n\ndef summary(rows):\n    out = {}\n    for r in rows:\n        key = r[\"status\"].lower()          # compare case-insensitively\n        cnt, tot = out.get(key, (0, 0.0))\n        out[key] = (cnt + 1, tot + r[\"amount\"])\n    return out\n\ns, t = summary(source), summary(target)\nfor key in sorted(s):\n    ok = \"OK\" if s[key] == t.get(key) else \"MISMATCH\"\n    print(key, s[key], t.get(key), ok)\nmissing = {r[\"id\"] for r in source} - {r[\"id\"] for r in target}\nprint(\"missing ids:\", sorted(missing))\n\n# Output:\n# -> closed (2, 52.0) (1, 42.0) MISMATCH\n# -> open (2, 200.5) (2, 200.5) OK\n# -> pending (1, 300.0) (1, 300.0) OK\n# -> missing ids: [4]",
+    "lang": "Python"
+   },
+   {
+    "title": "User acceptance testing: scripts, sign-off, defects",
+    "body": "User acceptance testing (UAT) is when business users, not engineers, test the system on realistic tasks and decide whether it is acceptable. It checks that the system does the job people need, which unit tests and evals cannot fully prove.\n\nStart with UAT scripts. Each script is a short scenario with numbered steps, the data to use and the expected result, written in the user's language: 'Open email 17 (a burst pipe report). Expected: routed to Emergencies within 1 minute, with priority High.' Cover the common cases, the important rare cases and the failure paths, such as what the user sees when the AI is unsure. For an AI system, add a batch test: users review 200 real items and mark each output right or wrong, because single scripted examples do not show accuracy.\n\nTesters record pass or fail and raise a defect for each failure. A defect is a logged problem with steps to reproduce, severity and an owner. Triage defects daily: decide severity, who fixes it, and whether it blocks go-live. Agree the exit criteria before UAT starts, for example: all critical scripts pass, no open critical or high defects, medium defects have a workaround and a fix date, batch accuracy at least 90%.\n\nSign-off is a named business owner stating in writing that the system meets the criteria. Without it, go-live becomes a matter of opinion. Edge case: testers who are too busy. Book their time in their managers' calendars two weeks ahead.",
+    "example": "Castlemere runs UAT for five days with six customer-service agents. They run 24 scripts and review 250 real emails. Two high defects appear (outage emails mentioning 'no water' routed to Billing) and are fixed and retested by day four. Batch accuracy is 93%. The customer-service manager signs the UAT sheet on Friday.",
+    "table": {
+     "headers": [
+      "Severity",
+      "Meaning",
+      "Blocks go-live?"
+     ],
+     "rows": [
+      [
+       "Critical",
+       "Wrong or unsafe result, no workaround",
+       "Yes"
+      ],
+      [
+       "High",
+       "Key task fails, poor workaround",
+       "Yes, unless the owner accepts it"
+      ],
+      [
+       "Medium",
+       "Task works with a reasonable workaround",
+       "No, needs a fix date"
+      ],
+      [
+       "Low",
+       "Cosmetic or wording issue",
+       "No"
+      ]
+     ]
+    },
+    "code": "UAT SCRIPT  UAT-07   Emergency routing\nTester: ____________   Date: ________   Environment: staging\n\nData: email 'EM-0417' (customer reports water gushing in street)\nSteps:\n  1. Place EM-0417 in the test inbox\n  2. Wait up to 60 seconds\n  3. Open the Emergencies queue\nExpected: email is in Emergencies, priority = High,\n          reason text mentions 'burst' or 'flooding'\nActual:   _____________________________________\nResult:   [ ] Pass   [ ] Fail -> defect ID: ______",
+    "lang": "Text"
+   },
+   {
+    "title": "Change control: the CAB and release windows",
+    "body": "Large customers do not let anyone change production whenever they like. Change control is the process for proposing, approving and recording changes to live systems. Many organisations follow ITIL, a widely used set of IT service practices, which groups changes into three kinds. Standard changes are low-risk, pre-approved and repeatable, such as restarting a service. Normal changes need review and approval. Emergency changes fix urgent problems and use a fast approval path.\n\nNormal changes usually go to a Change Advisory Board (CAB), a regular meeting (often weekly) where IT, security and business representatives review upcoming changes. You submit a change request, sometimes called an RFC, with what is changing, why, the risk, the test evidence, the implementation steps, the rollback plan and who will be on hand. The CAB may approve, reject or ask for more detail.\n\nRelease windows are the agreed times when production changes may happen, for example Tuesday and Thursday evenings. Freeze periods are times when no changes are allowed, such as month-end for finance teams or the holiday season for retailers. Ask for the change calendar in week one. Many go-live dates slip because the team learns about a freeze or a CAB deadline too late.\n\nTreat the CAB as an ally. Its questions (what if it fails, who can undo it) are the same ones you should be asking. A clear, short change request with tested rollback steps gets approved quickly and builds your reputation.",
+    "example": "Castlemere's CAB meets on Wednesdays and needs requests by Monday noon. Their freeze runs through the last three working days of each quarter, when bills are issued. The FDE learns this in week two and books go-live for Saturday 14 June, with the change request submitted on 2 June and approved on 4 June.",
+    "code": "CHANGE REQUEST  CHG-2291   Type: Normal\nTitle: Go-live of AI email routing for customer service\nWindow: Sat 14 June 07:00-12:00 (outside quarter-end freeze)\nReason: reduce email handling time; UAT signed 6 June\nRisk: Medium. Wrong routing delays replies; no data is deleted\nTest evidence: UAT-01..24 passed; batch accuracy 93% (250 emails)\nImplementation: steps 1-14 in cutover plan v3\nRollback: switch mailbox rule back to manual queue (10 min),\n          tested in staging on 10 June\nOn hand: 2 Castlemere IT engineers, FDE, service manager\nApprovals: IT ops [ ]  Security [ ]  Customer service [ ]",
+    "lang": "Text"
+   },
+   {
+    "title": "Cutover plan, go/no-go and rollback",
+    "body": "The cutover plan is a timed, step-by-step script for the switch. Each step has a number, a start time, an owner, the exact action, how to check it worked, and what to do if it fails. It is rehearsed at least once in staging. A good plan also names a decision point: the latest time you can still roll back without hurting the business.\n\nRollback means returning to the old way of working. Decide the rollback method before cutover and test it: switch a routing rule back, turn off a feature flag, or point users back to the old system. A rollback that has never been tested is a hope, not a plan. Some changes, such as a data migration that users start editing, get harder to reverse over time; that is why the decision point matters.\n\nThe go/no-go meeting happens shortly before cutover, often the day before and again at the start of the window. Each owner answers against the agreed criteria: UAT signed, change approved, dry run reconciled, rollback tested, runbook ready, support people named for the first week, users trained. The result is go, go with named risks accepted by the sponsor, or no-go with reasons and a new date. A no-go is not a failure; it is the process working.\n\nDuring cutover, keep a live log with times and a single bridge call or chat channel. After the final checks pass, announce go-live to users with where to get help.",
+    "example": "At Castlemere, the go/no-go on Friday afternoon finds one open item: the runbook's escalation phone number is wrong. It is fixed in 20 minutes and the call ends with 'go'. Cutover runs from 07:00 to 10:40 on Saturday, reconciliation matches, and the decision point (11:00) passes without a rollback.",
+    "flow": {
+     "vb": [
+      710,
+      420
+     ],
+     "nodes": [
+      [
+       "plan",
+       90,
+       70,
+       "Cutover plan",
+       "timed, rehearsed"
+      ],
+      [
+       "cab",
+       265,
+       70,
+       "Change approved",
+       "CAB and window"
+      ],
+      [
+       "mig",
+       440,
+       70,
+       "Final migration",
+       "delta load"
+      ],
+      [
+       "rec",
+       615,
+       70,
+       "Reconcile",
+       "counts and smoke"
+      ],
+      [
+       "gng",
+       615,
+       210,
+       "Go / no-go call",
+       "criteria check"
+      ],
+      [
+       "live",
+       440,
+       210,
+       "Go live",
+       "users told"
+      ],
+      [
+       "hyp",
+       265,
+       210,
+       "Hypercare",
+       "watch closely"
+      ],
+      [
+       "rb",
+       615,
+       350,
+       "Roll back",
+       "tested method",
+       1
+      ]
+     ],
+     "edges": [
+      [
+       "plan",
+       "cab"
+      ],
+      [
+       "cab",
+       "mig"
+      ],
+      [
+       "mig",
+       "rec"
+      ],
+      [
+       "rec",
+       "gng"
+      ],
+      [
+       "gng",
+       "live",
+       0,
+       "go"
+      ],
+      [
+       "live",
+       "hyp"
+      ],
+      [
+       "gng",
+       "rb",
+       0,
+       "no-go"
+      ]
+     ]
+    },
+    "code": "CUTOVER PLAN v3  (extract)          Decision point: 11:00\n#   Time   Owner      Action                          Check\n1   07:00  IT ops     Pause inbound mailbox rule       queue count stops\n2   07:10  FDE        Run delta migration (last 7 d)   log: 0 rejected\n3   08:30  FDE        Run reconciliation queries       all counts OK\n4   09:00  IT ops     Enable AI routing flag           test email routed\n5   09:15  Service    5 agents run smoke scripts       5/5 pass\n6   09:45  All        Go/no-go check at the window     'go' in log\nROLLBACK: disable flag, restore manual rule (10 min), notify agents",
+    "lang": "Text"
+   },
+   {
+    "title": "The first week live: parallel run and hypercare",
+    "body": "The first week after go-live is when real volume, real edge cases and real user habits appear. Two techniques reduce the risk.\n\nA parallel run means the old process and the new system both run for a period, and you compare the results. For an AI router, agents might still triage manually while the AI's choice is recorded but not used, or the AI routes and a supervisor checks a sample against what they would have chosen. You agree an exit target in advance, for example 95% agreement over five working days, and review every difference. Parallel running costs effort, so keep it short and focused.\n\nHypercare is a period of extra support, usually two to six weeks, with the build team on hand, faster response targets, and a daily check-in with the customer. Define hypercare entry criteria before go-live: who is on call each day, which dashboards and alerts are live, where users report problems, how issues are triaged and how often you report status. Also define exit criteria (covered in the Support model topic): stable error rates, no open critical issues, and a support team trained to take over.\n\nWatch for signals beyond errors. Are people using it, or quietly going back to the old way? Are some teams or types of item worse than others? A daily 15-minute review of a few numbers and ten random items catches most problems while they are still small.",
+    "example": "In Castlemere's first week, supervisors check the AI's choice on a sample of emails. On day two, agreement is 87.5% on the sample below; the difference is a billing email about a smart meter. The team adds three examples to the prompt and a rule for 'meter reading' wording. By day five agreement is 96%, and the service manager agrees to stop the parallel check.",
+    "checklist": [
+     "On-call rota for every day of week one, with phone numbers",
+     "Dashboards and alerts live and tested",
+     "One place for users to report issues",
+     "Daily 15-minute review booked with the customer",
+     "Parallel-run exit target agreed in writing",
+     "Rollback still possible and owner named",
+     "Hypercare exit criteria written down"
+    ],
+    "code": "# Parallel run: the old process and the new system handle the same week\nold = {\"T-101\": \"billing\", \"T-102\": \"outage\", \"T-103\": \"billing\",\n       \"T-104\": \"meter\", \"T-105\": \"outage\", \"T-106\": \"moving\",\n       \"T-107\": \"billing\", \"T-108\": \"meter\"}\nnew = {\"T-101\": \"billing\", \"T-102\": \"outage\", \"T-103\": \"meter\",\n       \"T-104\": \"meter\", \"T-105\": \"outage\", \"T-106\": \"moving\",\n       \"T-107\": \"billing\", \"T-108\": \"meter\"}\n\ndiffs = [t for t in old if old[t] != new.get(t)]\nagree = 1 - len(diffs) / len(old)\nprint(f\"agreement: {agree:.1%}\")\nfor t in diffs:                      # every difference gets a human review\n    print(t, \"old:\", old[t], \"new:\", new[t])\n\nEXIT_TARGET = 0.95                   # agreed in the cutover plan\nprint(\"ready to stop the old process\" if agree >= EXIT_TARGET\n      else \"keep running both; review the differences\")\n\n# Output:\n# -> agreement: 87.5%\n# -> T-103 old: billing new: meter\n# -> keep running both; review the differences",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Environment",
+    "A separate copy of a system (dev, test, staging or production) with its own servers, settings and data."
+   ],
+   [
+    "Staging",
+    "A pre-production environment set up like production, used to rehearse releases."
+   ],
+   [
+    "Data migration",
+    "Moving existing records from an old system to a new one."
+   ],
+   [
+    "Backfill",
+    "Processing historical data so a new system has useful history from day one."
+   ],
+   [
+    "Reconciliation",
+    "Proving with counts, totals and ID lists that migrated data matches the source."
+   ],
+   [
+    "User acceptance testing (UAT)",
+    "Business users testing the system on realistic tasks and formally accepting it."
+   ],
+   [
+    "Defect triage",
+    "Regularly reviewing reported problems to set severity, owner and whether they block go-live."
+   ],
+   [
+    "Change Advisory Board (CAB)",
+    "A regular meeting that reviews and approves changes to production systems."
+   ],
+   [
+    "Release window",
+    "Agreed times when production changes are allowed."
+   ],
+   [
+    "Cutover",
+    "The planned switch from the old way of working to the new system."
+   ],
+   [
+    "Go/no-go meeting",
+    "A short decision meeting before cutover where owners confirm agreed criteria are met."
+   ],
+   [
+    "Rollback",
+    "Returning to the previous working state when a change goes wrong."
+   ],
+   [
+    "Parallel run",
+    "Running old and new processes side by side for a period and comparing results."
+   ],
+   [
+    "Hypercare",
+    "A short period of extra, fast support right after go-live."
+   ]
+  ],
+  "practice": [
+   "Draw an environment map for a small web app you know: list dev, test, staging and production, and for each write an owner, the data allowed and how code gets there.",
+   "Change the migration code so the target also has one duplicate row. Extend the reconciliation to detect duplicates and print them.",
+   "Write three UAT scripts for an AI tool that sorts support emails: one common case, one rare but important case, and one where the AI should say it is unsure.",
+   "Write a one-page change request for a go-live, including a rollback you could test in under 15 minutes.",
+   "Stretch: write a full cutover plan with at least 10 timed steps, owners, checks, a decision point and go/no-go criteria, then ask a friend to find three things that could go wrong."
+  ]
+ },
+ "supportops": {
+  "plain": "A support model is the agreed way a customer gets help once a system is live: who they contact, how problems are sorted by how serious they are, how fast each kind gets an answer, and who fixes what. Support is usually split into tiers. Level 1 (L1) answers common questions, Level 2 (L2) digs into harder problems such as configuration or data, and Level 3 (L3) is the engineering team that changes code. Escalation means passing a problem up to a tier or team that can solve it. Hypercare is the short period of extra support right after go-live, before the normal support model takes over.",
+  "analogy": "It is like a hospital. The front desk answers simple questions and books you in (L1), a nurse examines you and handles most cases (L2), and a specialist surgeon is called only when needed (L3). A triage nurse decides how urgent each patient is, so a heart attack is not waiting behind a sprained ankle.",
+  "why": "Job postings for FDEs often say 'own customer escalations'. After go-live, the FDE is frequently the person the customer calls first, and a messy support model burns the FDE's time and the customer's trust. Setting up tiers, severities and a clean handover lets the FDE move to the next project while the customer still gets fast, reliable help.",
+  "subtopics": [
+   {
+    "title": "Support tiers and where the FDE sits",
+    "body": "Most software companies organise support into tiers so that simple questions are answered quickly and expensive engineers work only on problems that need them.\n\nL1, first line, receives every request through a portal, email, chat or phone. L1 staff answer known questions from the knowledge base (password resets, 'how do I export'), collect the facts (who, what, when, screenshots, IDs) and log the ticket. They solve many tickets, often around half or more in mature teams. L2, second line, handles problems that need investigation: reading logs, checking configuration, reproducing the issue, fixing data. L3, third line, is usually the product engineering team; they fix bugs in code and ship patches. Some companies add L0, meaning self-service such as help articles and chatbots.\n\nThe customer often has its own help desk too. A common pattern is that the customer's IT service desk is L1 for their users, and your company provides L2 and L3. Write down this boundary clearly: which tickets the customer's help desk solves alone, and when they pass them to you.\n\nWhere does the FDE sit? During a deployment and hypercare, the FDE often acts as L2 and sometimes L3, because they know the customer's setup best. The goal is to move out of that role. Every ticket the FDE handles personally should result in a runbook entry or knowledge article so that L1 or L2 can handle the next one.",
+    "example": "Orrin Bay Pharmacy (made up, 220 stores) goes live with an AI assistant that answers staff questions about stock and policies. The pharmacy's own IT service desk is L1 for store staff. The vendor's support team is L2. The vendor's engineers are L3. For the first four weeks, the FDE joins L2 and reviews every ticket escalated past the service desk.",
+    "table": {
+     "headers": [
+      "Tier",
+      "Who",
+      "Typical work",
+      "Example"
+     ],
+     "rows": [
+      [
+       "L0",
+       "Self-service",
+       "Help articles, in-app tips",
+       "How to reset a password"
+      ],
+      [
+       "L1",
+       "Service desk",
+       "Known answers, collect facts, log",
+       "'The assistant is slow today'"
+      ],
+      [
+       "L2",
+       "Support engineers, FDE",
+       "Logs, config, data, reproduce",
+       "Answers use an old policy file"
+      ],
+      [
+       "L3",
+       "Product engineering",
+       "Code fixes and patches",
+       "Parser drops tables in PDFs"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Severity levels and response SLAs",
+    "body": "Severity describes how badly a problem hurts the customer. Priority is how soon you will work on it; the two are usually linked but not always the same. A typical scale has four levels. Severity 1: the system is down or producing harmful results for many users, and there is no workaround. Severity 2: a major feature is broken or badly degraded, or a workaround is painful. Severity 3: a minor feature is broken or a reasonable workaround exists. Severity 4: a question, cosmetic issue or feature request.\n\nA service level agreement (SLA) is a promise in the contract about response. The most common promises are first response time (how quickly a person acknowledges the ticket and starts work) and update frequency (how often the customer hears progress). Some contracts add resolution or workaround targets. Severity 1 is often covered 24 hours a day, 7 days a week, while lower severities count only business hours. Always read the actual contract; SLAs vary a lot.\n\nAgree clear examples of each severity with the customer, specific to their system, because 'major' means different things to different people. For an AI system, include cases like 'answers are confidently wrong for a whole category' as severity 1 or 2, even though nothing is technically down.\n\nEdge cases: customers who mark everything severity 1. Handle this politely by re-classifying against the agreed examples and explaining why, while still responding quickly. Also watch for tickets that start as severity 3 and grow; severity can go up as well as down.",
+    "example": "The code checks four Orrin Bay tickets against example first-response targets. The severity 2 ticket was answered after 2 hours 30 minutes against a 2-hour target, so it is breached. The open severity 3 ticket is past its due time and needs attention now. A weekly SLA report like this shows the team where it is slipping.",
+    "code": "from datetime import datetime, timedelta\n\n# First-response targets per severity (example SLA, check your contract)\nFIRST_RESPONSE = {1: timedelta(minutes=30), 2: timedelta(hours=2),\n                  3: timedelta(hours=8), 4: timedelta(days=2)}\n\ntickets = [  # id, severity, opened, first reply (None = no reply yet)\n    (\"T-311\", 1, \"2026-03-10 09:05\", \"2026-03-10 09:20\"),\n    (\"T-312\", 2, \"2026-03-10 09:40\", \"2026-03-10 12:10\"),\n    (\"T-313\", 3, \"2026-03-10 10:00\", None),\n    (\"T-314\", 4, \"2026-03-09 16:00\", \"2026-03-10 11:00\"),\n]\nnow = datetime(2026, 3, 10, 19, 0)\nfmt = \"%Y-%m-%d %H:%M\"\n\nfor tid, sev, opened, replied in tickets:\n    due = datetime.strptime(opened, fmt) + FIRST_RESPONSE[sev]\n    done = datetime.strptime(replied, fmt) if replied else None\n    if done:\n        state = \"met\" if done <= due else \"BREACHED\"\n    else:\n        state = \"open, overdue\" if now > due else \"open, on time\"\n    print(tid, f\"Sev{sev}\", \"due\", due.strftime(\"%a %H:%M\"), state)\n\n# Output:\n# -> T-311 Sev1 due Tue 09:35 met\n# -> T-312 Sev2 due Tue 11:40 BREACHED\n# -> T-313 Sev3 due Tue 18:00 open, overdue\n# -> T-314 Sev4 due Wed 16:00 met",
+    "lang": "Python"
+   },
+   {
+    "title": "Triage: reproducing a customer ticket fast",
+    "body": "Triage is the first look at a ticket to decide severity, owner and next step. The fastest way to solve most tickets is to reproduce them: make the same problem happen yourself, on purpose. Once you can reproduce it, you can test a fix.\n\nStart by collecting the facts, ideally through a ticket form so users do not have to guess. You need: who is affected (one user, one team, everyone), what they did step by step, what they expected, what happened instead, when it started, and identifiers such as the request ID, conversation ID or document name. For an AI system, the exact input, the output, and the version of the prompt or model are essential. Without a request ID you are searching logs blindly.\n\nThen narrow it down. Did something change recently (a release, a new data file, a model version)? Is it every user or one? Every input or one type? Try the same input in staging. Check logs and traces for that request ID. For AI answers, check which documents were retrieved: many 'wrong answer' tickets are really 'wrong or old document' tickets.\n\nIf you cannot reproduce it, say so and ask one precise question rather than a long list. Keep the customer updated at the promised frequency even when you have nothing new; silence feels like being ignored. Write what you found in the ticket as you go, so if it escalates the next person does not start from zero.",
+    "example": "A store manager at Orrin Bay reports 'the assistant gave the wrong return policy'. The FDE asks for the conversation ID, finds it in the trace, and sees the retriever returned the 2025 policy file. The 2026 file was uploaded but not re-indexed. Reproduced in staging in 12 minutes, fixed by re-running the index job, and the ticket gets a knowledge article on 'answer uses old document'.",
+    "checklist": [
+     "Who is affected: one user, a team, or everyone?",
+     "Exact steps, expected result and actual result",
+     "When did it start, and did anything change then?",
+     "Request, conversation or document ID",
+     "For AI: exact input, output, prompt and model version",
+     "Reproduced in staging? Yes or no, with notes",
+     "Severity set against the agreed examples",
+     "Next update time promised to the customer"
+    ],
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Escalating into your own engineering and product",
+    "body": "Some problems need your company's engineers (L3) or product managers to change the product. How you escalate decides whether they act quickly or ignore it.\n\nA good escalation is short and complete. It states the customer impact in numbers (how many users, what business effect), the severity, clear reproduction steps, what you already ruled out, the evidence (IDs, logs, screenshots) and what you need, by when. 'Customer X is unhappy, please look' gets ignored. 'Severity 2: 220 stores get the wrong return policy for 1 in 6 questions; reproduced in staging with steps below; root cause is the index job skipping files over 10 MB; need a fix or guidance by Thursday' gets attention.\n\nSeparate bugs from feature requests. A bug is the product not doing what it is documented to do. A feature request is something it was never built to do. Engineers handle bugs through the bug process; product managers weigh feature requests against other customers' needs. Mixing them makes both slower. When several customers hit the same gap, collect the evidence in one place so product can see the pattern; this is one of the most valuable things an FDE does for their own company.\n\nFollow your company's escalation path and use it every time, even when you know an engineer personally. Side-channel requests hide work, skip priorities and fail when that person is on holiday. Finally, close the loop: tell the customer what was decided and when, even if the answer is 'not this quarter'.",
+    "example": "The FDE finds that Orrin Bay's index job skips files over 10 MB. She files an L3 bug with steps, logs and impact, and separately logs a feature request for 'automatic re-index on upload', noting two other customers asked for it. Engineering fixes the size limit in the next patch; the feature goes on the product roadmap.",
+    "code": "ESCALATION TO L3   ESC-0482\nCustomer: Orrin Bay Pharmacy      Severity: 2\nImpact: ~1 in 6 policy questions in 220 stores use outdated files\nSince: 3 March, after the policy file upload (14 MB PDF)\nReproduce (staging):\n  1. Upload a PDF over 10 MB to the policy library\n  2. Run the index job; job log shows 'skipped: size'\n  3. Ask 'what is the return policy' -> answer cites old file\nRuled out: prompt change (none since Feb), model version (same)\nEvidence: trace IDs tr-88a1, tr-91c4; index log attached\nWorkaround: split the PDF into parts under 10 MB (in place)\nNeed: fix or guidance by Thu 12 March\nOwner (field): FDE, reachable in #orrinbay-support",
+    "lang": "Text"
+   },
+   {
+    "title": "Knowledge base and ticket deflection",
+    "body": "A knowledge base (KB) is a searchable set of short articles that answer common questions and describe known problems with their fixes. Deflection means a user finds the answer themselves, or L1 solves the ticket with a KB article, so it never reaches L2 or L3. Deflection is the cheapest way to improve support, because the fastest ticket is one that never has to be escalated.\n\nFind what to write by counting. Tag every closed ticket with a root-cause category, then each month list the top categories. The top two or three usually make up a large share of tickets. Write one article for each, in the user's words: a title that matches what people type ('The assistant cites an old policy'), the symptom, the cause in one sentence, the fix steps, and when to raise a ticket instead. Keep articles short and date them.\n\nPut the articles where people look: in the ticket form (suggest articles as the user types), in the product's help menu, and in the L1 team's scripts. For an AI assistant, you can also add the top answers to the assistant's own help responses.\n\nMeasure it. Track ticket volume per category before and after the article, and the share of tickets solved at L1. If a category does not drop, the article is either hard to find or wrong. Also watch for repeat tickets that point to a product problem; an article is a workaround, while the real fix may belong in the escalation queue.",
+    "example": "Orrin Bay's first month has 150 tickets. Password resets and export questions are 70% of them. The FDE writes two KB articles and adds them to the service desk script and the ticket form. The code estimates that if half of those two categories are deflected, 52 tickets (35%) are avoided next month.",
+    "code": "from collections import Counter\n\n# One month of closed tickets, tagged with a root-cause category\ntickets = ([\"password reset\"] * 64 + [\"how do I export\"] * 41 +\n           [\"wrong summary\"] * 18 + [\"slow response\"] * 9 +\n           [\"integration error\"] * 7 + [\"other\"] * 11)\n\ncounts = Counter(tickets)\ntotal = len(tickets)\nprint(\"tickets this month:\", total)\nfor cat, n in counts.most_common(3):          # the top 3 are KB candidates\n    print(f\"{cat:16} {n:3}  {n / total:.0%}\")\n\n# If a KB article deflects half of the top two categories next month:\ndeflected = (counts[\"password reset\"] + counts[\"how do I export\"]) // 2\nprint(\"tickets avoided:\", deflected, f\"({deflected / total:.0%})\")\n\n# Output:\n# -> tickets this month: 150\n# -> password reset    64  43%\n# -> how do I export   41  27%\n# -> wrong summary     18  12%\n# -> tickets avoided: 52 (35%)",
+    "lang": "Python"
+   },
+   {
+    "title": "Exiting hypercare and handing to support",
+    "body": "Hypercare should end on purpose, not fade out. Without clear exit criteria, the FDE stays the customer's personal help desk for months, which is expensive and prevents the support team from learning the system.\n\nAgree exit criteria at go-live, in writing. Typical criteria: no open severity 1 or 2 tickets; ticket volume stable or falling for two weeks; SLA targets met for two weeks; the top ticket categories have KB articles; the runbook covers every alert; the support team (yours and the customer's) has handled real tickets on its own, with the FDE only watching; and the customer's product owner agrees.\n\nPlan the handover as a series of steps. First, the support team shadows the FDE on tickets. Then they handle tickets while the FDE reviews. Finally the FDE steps back to an escalation contact only. Transfer knowledge in writing: the environment map, integration details, known issues with workarounds, contacts on both sides, and the history of important decisions. Hold a short handover meeting with the customer where the support lead is introduced by name, so the customer knows who to call.\n\nEdge case: the customer wants the FDE to stay. Explain that support will be faster and more reliable with a team than with one person who travels and takes holidays. Offer a scheduled check-in, for example monthly for a quarter, so the relationship continues without the FDE being the help desk.",
+    "example": "Orrin Bay's hypercare was planned for four weeks. By week four, ticket volume has fallen from 150 to 61 a month, there are no open severity 1 or 2 tickets, and support has handled two weeks of tickets with the FDE only reviewing. The service manager signs off, and the FDE moves to monthly check-ins.",
+    "table": {
+     "headers": [
+      "Exit criterion",
+      "Target",
+      "Status in week 4"
+     ],
+     "rows": [
+      [
+       "Open Sev 1 or 2 tickets",
+       "0",
+       "0"
+      ],
+      [
+       "First-response SLA met",
+       "95% for 2 weeks",
+       "97%"
+      ],
+      [
+       "Top 5 categories have KB articles",
+       "5 of 5",
+       "5 of 5"
+      ],
+      [
+       "Support handled tickets alone",
+       "2 weeks",
+       "2 weeks"
+      ],
+      [
+       "Runbook covers every alert",
+       "All alerts",
+       "All alerts"
+      ],
+      [
+       "Customer product owner signs off",
+       "Signed",
+       "Signed"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   }
+  ],
+  "glossary": [
+   [
+    "Support model",
+    "The agreed way customers get help: channels, tiers, severities, response targets and owners."
+   ],
+   [
+    "L1, L2, L3",
+    "Support tiers: first line answers known questions, second line investigates, third line changes code."
+   ],
+   [
+    "Service desk",
+    "The team, often the customer's own IT, that receives user requests first."
+   ],
+   [
+    "Severity",
+    "How badly a problem affects the customer, usually on a scale of 1 (worst) to 4."
+   ],
+   [
+    "SLA",
+    "Service level agreement: contract promises such as first-response time and update frequency."
+   ],
+   [
+    "First response time",
+    "How long until a person acknowledges a ticket and starts work on it."
+   ],
+   [
+    "Triage",
+    "The first look at a ticket to set severity, owner and next step."
+   ],
+   [
+    "Reproduce",
+    "Make a reported problem happen again on purpose so you can study and fix it."
+   ],
+   [
+    "Escalation",
+    "Passing a problem to a higher tier or another team that can solve it."
+   ],
+   [
+    "Knowledge base (KB)",
+    "A searchable set of short help articles on common questions and known issues."
+   ],
+   [
+    "Deflection",
+    "A request solved by self-service or L1 so it never reaches higher tiers."
+   ],
+   [
+    "Hypercare exit criteria",
+    "Agreed conditions that must be met before normal support takes over from the build team."
+   ]
+  ],
+  "practice": [
+   "Write a four-level severity table for an AI assistant you might deploy, with one concrete example of each level specific to that assistant.",
+   "Change the SLA code so severity 3 and 4 targets count only business hours (09:00 to 17:00, Monday to Friday). Test it with a ticket opened on Friday at 16:00.",
+   "Take a vague ticket ('the bot is broken') and write the single message you would send the user to collect everything you need to reproduce it.",
+   "Write one KB article (under 200 words) for 'the assistant cites an old document': symptom, cause, fix steps, when to raise a ticket.",
+   "Stretch: draft a one-page support model for a customer: channels, tiers with owners on both sides, severity table with SLAs, escalation path, and hypercare exit criteria."
+  ]
+ },
+ "incidents": {
+  "plain": "An incident is an unplanned event that is hurting real users now, or will soon: the system is down, very slow, or producing wrong or harmful results. Running an incident means organising people so the harm stops quickly, the customer is kept informed, the cause is found and fixed, and the team learns from it afterwards. In the field, the FDE is often the person closest to the customer when this happens, so they need to know the roles, the order of work and how to talk to the customer under pressure.",
+  "analogy": "It is like a fire in a building. First someone raises the alarm and a fire chief takes charge. Everyone gets out safely before anyone studies why the fire started. Someone keeps the people outside informed. Only when the fire is out does an investigator find the cause, and the report focuses on fixing wiring and exits, not on blaming the person who plugged in the heater.",
+  "why": "Customers judge a vendor less by whether something breaks (everything breaks sometimes) and more by how the vendor behaves when it does. A calm, well-run incident with clear, regular updates can actually increase trust. A chaotic one, where the customer learns about the problem from their own users and hears nothing for hours, can end the relationship. FDEs are expected to lead or support these moments at customer sites.",
+  "subtopics": [
+   {
+    "title": "Declaring an incident and naming roles",
+    "body": "The first decision is whether something is an incident at all. A useful rule: if real users are affected now, or will be soon, and the normal ticket process is too slow, declare an incident. Declaring is cheap. You can downgrade the severity later or close it as a false alarm, but a late declaration wastes the most valuable minutes.\n\nDeclaring means a few concrete things: set a severity (using the same scale as your support model, for example Sev 1 to Sev 4), open a dedicated channel or call, start a written timeline, and tell the right people. Many teams use a short command in their chat tool that creates the channel automatically.\n\nNext, name roles out loud. The incident commander (IC) coordinates: they decide what happens next, assign work and keep everyone focused. The IC does not debug; if the IC is buried in logs, nobody is watching the whole picture. The scribe writes the timeline with times: what was seen, what was tried, what was decided. The communications lead writes updates for the customer and internal leaders. Subject matter experts (engineers, the FDE, the customer's IT staff) investigate and fix.\n\nIn a small team one person may hold two roles, but say who holds each one. At a customer, agree who is the IC on each side. Often the customer's major incident manager runs their process and you are the lead for your product.\n\nEdge case: if nobody is sure who is IC, the first person to declare is IC until they hand over explicitly: 'Priya, you now have command.'",
+    "example": "At Tollbury Mutual Insurance (made up), a claims handler phones at 09:45 to say the claims assistant shows errors. The FDE checks the dashboard: 30% of summaries are failing. She declares a Sev 2 at 09:48, opens a channel, names herself IC, asks a vendor engineer to investigate, and asks her colleague to act as scribe and comms lead.",
+    "table": {
+     "headers": [
+      "Role",
+      "Main job",
+      "Does not"
+     ],
+     "rows": [
+      [
+       "Incident commander",
+       "Coordinates, decides, assigns",
+       "Debug personally"
+      ],
+      [
+       "Scribe",
+       "Keeps the timed timeline",
+       "Filter what is recorded"
+      ],
+      [
+       "Comms lead",
+       "Writes customer and leader updates",
+       "Guess at causes"
+      ],
+      [
+       "Subject experts",
+       "Investigate and fix",
+       "Change things without telling the IC"
+      ],
+      [
+       "Customer incident manager",
+       "Runs the customer's process",
+       "Replace your IC for your product"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Stabilise first: rollback, kill switch, feature flag",
+    "body": "During an incident the first goal is to stop the harm, not to understand it. This is called mitigation or stabilising. Diagnosis can wait until users are safe, and it is much easier without pressure.\n\nThe main tools are prepared in advance. A rollback returns to the last version that worked, for example redeploying yesterday's release or restoring the previous prompt. A feature flag is a setting that turns one feature on or off without a new release, so you can switch off just the broken part. A kill switch is a flag that turns the whole AI path off and sends users to a safe fallback, often the manual process they used before. Other options are scaling up servers, blocking one bad input source, or pausing a batch job.\n\nAsk three questions: what changed recently (a release, a prompt, a data feed, a config)? Can we undo it? What is the safest fallback for users? If a change happened just before the problem started, rolling it back is usually the fastest test and fix at once.\n\nEdge cases matter. Rolling back code does not undo bad data already written; you may need to find and correct those records. Some changes cannot be rolled back, such as a database migration, which is why the cutover plan should include a rollback method (see the golive topic). And a kill switch that nobody has ever tested may itself fail, so test it in staging on a schedule.\n\nWhen you mitigate, record the exact time in the timeline, then watch the metrics to confirm the harm has stopped.",
+    "example": "The code shows a simple kill switch. With the flag on, one claim containing a scanned PDF errors because the document service times out. When the IC flips the flag off, every claim goes to the manual queue users had before, so nobody sees an error while the team investigates.",
+    "code": "# A kill switch: one setting that sends every request to the old manual path\nFLAGS = {\"ai_summaries\": True}      # in real life this lives in a flag service or config table\n\ndef summarise(claim_text):\n    if not FLAGS[\"ai_summaries\"]:\n        return \"QUEUED for manual summary\"      # the safe fallback users had before\n    if \"scan.pdf\" in claim_text:\n        raise RuntimeError(\"document service timeout\")\n    return \"summary ok\"\n\ndef handle(claim_text):\n    try:\n        return summarise(claim_text)\n    except RuntimeError:\n        return \"ERROR shown to user\"\n\nclaims = [\"Water damage, kitchen\", \"Car scan.pdf attached\", \"Hail on roof\"]\nprint([handle(c) for c in claims])\n\nFLAGS[\"ai_summaries\"] = False       # the incident commander flips the switch\nprint([handle(c) for c in claims])\n\n# Output:\n# -> ['summary ok', 'ERROR shown to user', 'summary ok']\n# -> ['QUEUED for manual summary', 'QUEUED for manual summary', 'QUEUED for manual summary']",
+    "lang": "Python"
+   },
+   {
+    "title": "Customer communication cadence",
+    "body": "Cadence means the rhythm of updates. Customers can accept a lot of bad news; what they cannot accept is silence. Good incident communication has three kinds of message.\n\nThe first notice goes out quickly, often within 15 to 30 minutes of declaring a Sev 1 or Sev 2. It says what you see, who is affected, what you are doing now, any workaround, who is leading, and when the next update will come. Do not guess at the cause in the first notice; say 'investigating'.\n\nUpdates go out on the promised timer, for example every 30 minutes for Sev 1 and every hour for Sev 2. Always include the time of the next update, and keep that promise even when nothing has changed: 'No change. We are testing a fix in staging. Next update 11:15.' An update that arrives on time with no news builds more trust than a perfect update an hour late.\n\nThe resolved notice confirms the end: start and end times, the impact, what fixed it, anything users need to do (such as resubmit failed items), and when the written review will arrive.\n\nWrite in plain language, avoid internal jargon, and use the customer's words for their systems. Use one channel the customer chose, such as their incident ticket, a status page or an email list, so updates are not scattered. Separate audiences if needed: an executive wants impact and time to recovery, while the IT team wants technical detail.\n\nEdge case: if you miss an update, send one immediately and acknowledge it.",
+    "example": "Tollbury's IC promised updates every 30 minutes. The code checks the log of sent updates and finds one gap of 53 minutes, while the team was busy testing a fix. The review later adds a rule: the comms lead, not the engineers, owns the timer and sets a phone alarm.",
+    "code": "from datetime import datetime, timedelta\n\n# Updates promised every 30 minutes for a Sev 1 (check your own contract)\nCADENCE = timedelta(minutes=30)\nfmt = \"%H:%M\"\nsent = [\"09:52\", \"10:20\", \"10:48\", \"11:41\", \"12:05\"]   # times each customer update went out\nresolved = \"12:30\"\n\ntimes = [datetime.strptime(t, fmt) for t in sent] + [datetime.strptime(resolved, fmt)]\nfor before, after in zip(times, times[1:]):\n    gap = after - before\n    flag = \"  MISSED (promised by \" + (before + CADENCE).strftime(fmt) + \")\" if gap > CADENCE else \"\"\n    print(before.strftime(fmt), \"->\", after.strftime(fmt), int(gap.total_seconds() // 60), \"min\" + flag)\n\n# Output:\n# -> 09:52 -> 10:20 28 min\n# -> 10:20 -> 10:48 28 min\n# -> 10:48 -> 11:41 53 min  MISSED (promised by 11:18)\n# -> 11:41 -> 12:05 24 min\n# -> 12:05 -> 12:30 25 min",
+    "lang": "Python"
+   },
+   {
+    "title": "Working in the customer's war room and ITSM process",
+    "body": "Large customers have their own incident process, usually run in an IT service management (ITSM) tool such as a ticketing system with incident and change records. For a big outage they open a bridge: a conference call, sometimes a physical war room, run by their major incident manager. Your product is one part of their incident, and you are a guest in their process.\n\nTo work well inside it, learn the process before anything breaks. Find out during onboarding how they declare incidents, what their severity scale is (and how it maps to yours), who their major incident managers are, and how to join the bridge. Get access to their ITSM tool or agree who will update the ticket for you.\n\nOn the bridge, be short and structured. When asked for status, give: current impact, what you have done, what you are doing next, and when you will know more. Use their incident number in every message alongside your own ticket number, so both sides can find the records later. Do not argue about cause on the bridge; offer evidence and next steps.\n\nKeep two tracks running. On their bridge you speak for your product. In your own internal channel your engineers debug, and your IC decides what to share. Someone must carry information between the two, often the FDE.\n\nEdge case: during a customer incident, emergency changes may still need approval from their change process. Ask their incident manager how emergency changes are approved before you deploy a fix, even a rollback.",
+    "example": "At Tollbury, the customer's major incident manager opens bridge INC-40721 at 10:05. The FDE joins, gives a 30-second status, and adds the vendor ticket number to their record. She asks how an emergency rollback is approved and gets a verbal approval that the incident manager records in the ITSM tool.",
+    "checklist": [
+     "Know their incident process and severity mapping before go-live",
+     "Names and numbers of their major incident managers",
+     "Access to their ITSM tool, or a named person who updates it",
+     "How to join their bridge, saved where on-call staff can find it",
+     "Emergency change approval route agreed",
+     "Both ticket numbers in every message",
+     "Status format: impact, done, next, next update time"
+    ],
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "When the root cause is theirs, not yours",
+    "body": "In the field, a large share of incidents are caused by something outside your product: an expired certificate on the customer's side, a firewall rule change, a new format in a data feed, a password rotated without notice, or a quota limit reached on a service they pay for. Your product broke, but the cause was theirs.\n\nThis is delicate. The customer's users see your product failing, so the customer may assume it is your fault. Their IT team may be defensive. Your job is to find the truth quickly and help fix it, without blame.\n\nFirst, gather evidence before you speak: error messages, timestamps, and a clear line from their change to your failure. For example: 'Our calls to the document service started failing at 09:31 with a certificate error. Your change log shows a firewall update at 09:30.' Present it as a shared problem: 'It looks like the firewall change may be blocking our calls. Could your network team check rule 14?'\n\nSecond, help them fix it even though it is not your code. Offer the exact settings your product needs, test with them, and confirm recovery on your side.\n\nThird, ask what you could do better too. Could your product have failed more gracefully, alerted earlier, or shown a clearer error? Almost every incident has contributing factors on both sides.\n\nEdge case: sometimes you cannot prove the cause. Say what you know and do not know, and propose a test that would settle it.",
+    "example": "Tollbury's errors start one minute after a firewall update by their network team. The FDE shares the log line and the change time, their network engineer corrects the rule at 11:55, and summaries recover. The vendor's own action from this is to show a clear 'document service unreachable' message instead of a generic error.",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "sym",
+       90,
+       70,
+       "Product fails",
+       "users see errors"
+      ],
+      [
+       "ev",
+       265,
+       70,
+       "Gather evidence",
+       "logs, times"
+      ],
+      [
+       "link",
+       440,
+       70,
+       "Match a change",
+       "their change log"
+      ],
+      [
+       "share",
+       615,
+       70,
+       "Share, no blame",
+       "shared problem"
+      ],
+      [
+       "help",
+       615,
+       220,
+       "Help them fix",
+       "settings, test"
+      ],
+      [
+       "ours",
+       440,
+       220,
+       "Our part too",
+       "fail better"
+      ]
+     ],
+     "edges": [
+      [
+       "sym",
+       "ev"
+      ],
+      [
+       "ev",
+       "link"
+      ],
+      [
+       "link",
+       "share"
+      ],
+      [
+       "share",
+       "help"
+      ],
+      [
+       "help",
+       "ours"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Running the blameless review and tracking actions",
+    "body": "After the incident is resolved, the team writes a review, often called a post-incident review or post-mortem. The atlas has a post-mortem template; this subtopic is about running it well with a customer.\n\nBlameless means the review assumes people acted reasonably with the information they had, and asks how the system let the failure happen. 'Raj changed the firewall' is blame. 'Firewall changes had no step to check dependent services' is a fixable cause. People who fear blame hide facts, and hidden facts cause the next incident.\n\nA good review has: a summary in plain language, impact (who, how many, how long), a timeline from the scribe's notes, the root cause and contributing factors, what went well, and a short list of actions. Hold the meeting within a week while memories are fresh, and invite both sides when the customer was involved.\n\nActions are where most reviews fail. Each action needs one owner (a person, not a team), a due date and a way to check it is done. Prefer fewer, stronger actions: an alert, a test, a process step. 'Be more careful' is not an action. Put actions in a tracker and review them weekly until closed.\n\nShare a customer version of the review. It is usually shorter, focuses on impact, cause and actions, and leaves out internal detail. Customers are often reassured by a clear, honest review.\n\nEdge case: when an action belongs to the customer, you cannot force it. Record it, explain the risk, and follow up in your regular meetings.",
+    "example": "Tollbury's review lists four actions. Two weeks later the code shows only one is done and the customer's dashboard action is overdue. The FDE raises it in the weekly meeting with the IT manager rather than letting it quietly slip.",
+    "code": "from datetime import date\n\n# Actions from the blameless review, tracked until they are done\nactions = [\n    # action,                                        owner,          due,              done\n    (\"Alert when summary errors pass 5% for 5 min\",   \"Sam (vendor)\",  date(2026, 4, 3),  True),\n    (\"Add document service health to the dashboard\",  \"Mia (customer)\", date(2026, 4, 10), False),\n    (\"Test the kill switch in staging each month\",     \"Sam (vendor)\",  date(2026, 4, 17), False),\n    (\"Tell the vendor before firewall changes\",       \"Raj (customer)\", date(2026, 4, 24), False),\n]\ntoday = date(2026, 4, 14)\n\nopen_items = [a for a in actions if not a[3]]\nprint(f\"{len(actions) - len(open_items)} of {len(actions)} actions done\")\nfor text, owner, due, done in open_items:\n    status = \"OVERDUE\" if due < today else f\"due in {(due - today).days} days\"\n    print(f\"- {text} | {owner} | {status}\")\n\n# Output:\n# -> 1 of 4 actions done\n# -> - Add document service health to the dashboard | Mia (customer) | OVERDUE\n# -> - Test the kill switch in staging each month | Sam (vendor) | due in 3 days\n# -> - Tell the vendor before firewall changes | Raj (customer) | due in 10 days",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Incident",
+    "An unplanned event that is hurting users now, or soon will, and needs urgent coordinated work."
+   ],
+   [
+    "Declare",
+    "Formally start an incident: set severity, open a channel, start a timeline, name roles."
+   ],
+   [
+    "Incident commander (IC)",
+    "The person who coordinates the response and makes decisions, without debugging personally."
+   ],
+   [
+    "Scribe",
+    "The person who records a timed timeline of what was seen, tried and decided."
+   ],
+   [
+    "Mitigation",
+    "Actions that stop or reduce the harm quickly, before the cause is fully understood."
+   ],
+   [
+    "Rollback",
+    "Returning to the last known good version of code, configuration or prompt."
+   ],
+   [
+    "Feature flag",
+    "A setting that turns one feature on or off without a new release."
+   ],
+   [
+    "Kill switch",
+    "A flag that turns an entire feature off and sends users to a safe fallback."
+   ],
+   [
+    "Bridge or war room",
+    "A call or room where everyone working on a major incident meets."
+   ],
+   [
+    "ITSM",
+    "IT service management: the customer's processes and tool for incidents, changes and requests."
+   ],
+   [
+    "Status page",
+    "A web page where a vendor posts the current state of its service and incident updates."
+   ],
+   [
+    "Blameless review",
+    "A post-incident review that looks for system causes rather than people to blame."
+   ],
+   [
+    "Contributing factor",
+    "Something that did not cause the incident alone but made it worse or more likely."
+   ]
+  ],
+  "practice": [
+   "Write the first customer notice for this situation: since 14:10, your AI search tool returns no results for about half of a customer's staff. Include every part a first notice needs.",
+   "Change the cadence code so the promised gap depends on severity (30 minutes for Sev 1, 60 for Sev 2) and test it on a Sev 2 log with one 70-minute gap.",
+   "List three mitigations you could prepare in advance for an AI assistant you might deploy, and how you would test each one.",
+   "Rewrite these review actions so each has one owner, a date and a check: 'be more careful with releases', 'improve monitoring', 'talk to the customer more'.",
+   "Stretch: role-play a 20-minute incident with two friends (IC, comms lead, customer). Use a timer for updates and write the timeline as you go."
+  ]
+ },
+ "enablement": {
+  "plain": "Enablement means making the customer's people able to use, run and grow an AI system well on their own, long after the FDE leaves. It is broader than training: it includes the right skills for each group, materials based on their real work, help channels, internal champions, and a way to measure whether people can actually do their tasks better. An AI Center of Excellence (CoE) is a small internal team at the customer that owns AI standards, takes in new ideas and spreads what works across the organisation.",
+  "analogy": "Think of teaching a town to swim rather than giving one swimming lesson. You train lifeguards (admins), swimming teachers (champions and builders) and ordinary swimmers (end users). You put up signs about where the water is deep (when to trust the output). You run weekly open sessions (office hours). And the town sets up a small pool committee (the CoE) that decides on new pools and safety rules.",
+  "why": "Many AI deployments work technically but fail commercially because usage drops a few weeks after launch. The renewal, the next use case and the FDE's reputation all depend on adoption. The FDE is often the only person who knows both the system and the customer's daily work, so they are best placed to design enablement that sticks. This topic builds on the change topic (general change management and training plans) and focuses on what is specific to AI tools.",
+  "subtopics": [
+   {
+    "title": "Enablement versus training: admins, builders, end users",
+    "body": "Training is one activity: a session where someone teaches. Enablement is the whole system that makes people capable: role-specific skills, materials, practice on real tasks, places to get help, and measurement of what people can do afterwards. You judge training by attendance; you judge enablement by behaviour weeks later.\n\nStart by splitting the audience into groups, because each needs different things.\n\nAdmins run the system: they manage users and permissions, watch dashboards, update knowledge sources, handle first-line issues and follow the runbook. They need deep, hands-on sessions and the runbook itself.\n\nBuilders extend the system: they write and test new prompts, add documents, build small workflows or new use cases using approved patterns. They need to understand how the system works inside, how to evaluate changes before releasing them, and the CoE's standards.\n\nEnd users use the tool in daily work. They need short, task-based learning: how to do their three most common tasks with the tool, how to check the output, and where to get help. Most of them do not need to know how the model works.\n\nAlso consider leaders, who need to know what good use looks like so they can encourage it and set expectations.\n\nFor each group, write the goal as a task they can do, not a topic they heard about. 'Can update the policy documents and confirm the assistant uses the new version' is a goal. 'Attended admin training' is not. Plan enablement early, alongside the build, not in the last week before go-live.",
+    "example": "Quillon Hart LLP (a made-up law firm with 600 staff) is rolling out a document assistant. The FDE plans for 3 admins in IT, 12 builders in the knowledge team, 480 end users (lawyers and assistants), and 20 partners who lead practice groups.",
+    "table": {
+     "headers": [
+      "Group",
+      "They need to",
+      "Format",
+      "Done when"
+     ],
+     "rows": [
+      [
+       "Admins",
+       "Run, monitor, update sources",
+       "Hands-on workshop, runbook",
+       "Handle a mock issue alone"
+      ],
+      [
+       "Builders",
+       "Add prompts and use cases safely",
+       "Build sessions, standards",
+       "Ship one tested prompt"
+      ],
+      [
+       "End users",
+       "Do top 3 tasks and check output",
+       "30-min task sessions, guides",
+       "Use it weekly on real work"
+      ],
+      [
+       "Leaders",
+       "Set expectations, model use",
+       "Short briefing",
+       "Mention it in team goals"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Teaching users when to trust the output",
+    "body": "The most important skill for an AI end user is calibrated trust: trusting the output as much as it deserves, no more and no less. Two failures are common. Over-trust (sometimes called automation bias) is accepting whatever the tool says, so errors slip into real work. Under-trust is refusing to use the tool or re-doing everything by hand, so there is no benefit.\n\nTeach calibration with real examples from their work, not generic warnings. Show three cases where the tool is excellent and three where it fails, and explain the pattern. For example: summaries of long documents are good; exact numbers, dates and names must always be checked; questions about documents the tool has not been given will get confident but invented answers.\n\nThen give each type of output a quick check that users can actually do in their workflow. The table below shows examples. Make checking easy by design: show sources and quotes next to answers, highlight numbers, and make 'report a bad answer' one click.\n\nSet clear rules about where the tool must not be used, such as final legal advice without review, or decisions about individual people. Write these in the guide and repeat them in training.\n\nFinally, make it normal to reject a bad answer. Users often think a wrong output is their fault. Tell them wrong outputs are expected sometimes, reporting them helps, and nobody will be blamed for spotting one.\n\nEdge case: trust drifts over time. After weeks without errors, users stop checking. Short refreshers with fresh failure examples help.",
+    "example": "In Quillon Hart's end-user session, the FDE shows a lease summary where the assistant got the rent review date wrong by a year. Lawyers learn the rule 'every date gets checked against the clause' and the interface now shows the clause number next to each date.",
+    "table": {
+     "headers": [
+      "Output type",
+      "Trust level",
+      "Quick check"
+     ],
+     "rows": [
+      [
+       "Summary of a given document",
+       "Usually good",
+       "Skim the source headings"
+      ],
+      [
+       "Dates, amounts, names",
+       "Always check",
+       "Match each against the source"
+      ],
+      [
+       "Answer with cited sources",
+       "Good if cited",
+       "Open one or two citations"
+      ],
+      [
+       "Answer with no source",
+       "Low",
+       "Do not use for client work"
+      ],
+      [
+       "First draft of an email",
+       "Good start",
+       "Read fully before sending"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Prompt libraries and worked examples from their own work",
+    "body": "A prompt library is a shared, searchable collection of tested prompts for the organisation's real tasks. Each entry is more than the prompt text. A useful entry has: an ID, the task in plain words, the team, the prompt with clear placeholders (for example {text}), an example input and a good output, how to check the output, and who owns the entry. The prompting topic covers how to write good prompts; the library is how you share and maintain them.\n\nWhy build from their own work? Generic tips ('be specific', 'give context') are forgotten quickly. A worked example that shows a real (anonymised) lease, the exact prompt, and the output next to what a senior lawyer would write is memorable and immediately useful.\n\nHow to build one. First, collect the ten most common tasks from interviews and usage logs. Second, write and test a prompt for each on several real examples, fixing failures. Third, have a respected user from the team review each entry. Fourth, publish in the place people already work, such as a shared page, the tool's built-in templates or the intranet. Fifth, assign an owner and a review date, because models and tasks change.\n\nEdge cases: many near-duplicate prompts (merge them and keep the best), prompts that include confidential example text (anonymise before publishing), and prompts that break after a model update (re-test the library when the model changes, using the evals approach from the evals topic).\n\nThe atlas includes a prompt-library template you can copy.",
+    "example": "The code stores two Quillon Hart library entries as simple records, finds the lease entry for the property team, fills in the placeholder and shows the check step. In practice this would live in the tool or on an intranet page, but the fields are the same.",
+    "code": "# A tiny prompt library: each entry is a tested prompt for one real task\nLIBRARY = [\n    {\"id\": \"LEASE-01\", \"task\": \"Summarise a lease for a client email\", \"team\": \"property\",\n     \"prompt\": \"Summarise this lease in 5 bullet points for a client who is not a lawyer. \"\n               \"Quote the clause number for each point. Lease: {text}\",\n     \"check\": \"Open each quoted clause and confirm the bullet matches it\"},\n    {\"id\": \"EMP-03\", \"task\": \"List dates and deadlines in a contract\", \"team\": \"employment\",\n     \"prompt\": \"List every date and deadline in this contract as a table with clause numbers. {text}\",\n     \"check\": \"Compare every date against the source; never trust a date you have not seen\"},\n]\n\ndef find(team, word):\n    return [e for e in LIBRARY if e[\"team\"] == team and word in e[\"task\"].lower()]\n\nentry = find(\"property\", \"lease\")[0]\nfilled = entry[\"prompt\"].format(text=\"[paste lease here]\")\nprint(entry[\"id\"], \"|\", entry[\"task\"])\nprint(filled[:60] + \"...\")\nprint(\"Before you send:\", entry[\"check\"])\n\n# Output:\n# -> LEASE-01 | Summarise a lease for a client email\n# -> Summarise this lease in 5 bullet points for a client who is ...\n# -> Before you send: Open each quoted clause and confirm the bullet matches it",
+    "lang": "Python"
+   },
+   {
+    "title": "Train-the-trainer and champions",
+    "body": "An FDE cannot personally train 500 people, and even if they could, the knowledge would leave with them. Train-the-trainer solves this: the FDE trains a small group deeply, and they train everyone else. Champions are enthusiastic users inside each team who help colleagues, collect feedback and share tips. Often the same people are both trainers and champions.\n\nChoosing champions. Look for people who are respected by their peers, curious about the tool, and good at explaining, not only the most senior or the most technical. Aim for roughly one champion per 15 to 30 users, with at least one in every team or site. Ask their managers to protect some of their time, for example two hours a week for the first two months, and recognise the role in their goals.\n\nPreparing them. Give champions more than users get: deeper sessions, early access, the prompt library, known issues and workarounds, the escalation route for bugs, and a ready-made training kit (slides, exercises from their team's work, a facilitator guide). Have each champion co-teach one session with the FDE before they teach alone.\n\nKeeping them going. Run a champions channel and a short monthly call to share questions and tips. Feed their feedback into fixes and new library entries, and tell them what changed because of it. Champions who see no effect stop contributing.\n\nEdge cases: a champion leaves (keep at least two per large team), or a champion spreads a bad habit (review their materials and correct gently in the monthly call).",
+    "example": "Quillon Hart picks 24 champions across 8 practice groups. The FDE runs three deep sessions, then each champion co-teaches with her once. Within six weeks, champions have run 31 sessions for 430 users, and the FDE has taught only 4 herself.",
+    "checklist": [
+     "One champion per 15 to 30 users, at least one per team",
+     "Manager agrees protected time in writing",
+     "Deeper training plus early access",
+     "Training kit with exercises from their own team",
+     "Co-teach one session before teaching alone",
+     "Champions channel and monthly call",
+     "Show champions what changed from their feedback",
+     "Backup champion for each large team"
+    ],
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Standing up the Center of Excellence: roles and intake",
+    "body": "A Center of Excellence (CoE) for AI is a small, cross-functional group inside the customer that owns how AI is used across the organisation. The arc topic mentions the CoE as a phase goal; this subtopic is about how to set one up.\n\nWhat it does. A CoE usually has four jobs: intake (collecting and reviewing new AI ideas), standards (approved tools, data rules, review and evaluation steps, the prompt library), enablement (training, champions, office hours), and reporting (what was approved, what value it delivered, what was learned).\n\nWho is in it. Keep it small: a lead with real protected time (ideally at least half their week), a technical owner from IT or data, a representative from security or risk, and two or three people from the business. Legal and privacy join for reviews that need them. The FDE often helps design the CoE and attends its first meetings, then steps back.\n\nIntake. Make it easy to submit an idea with a short form: the problem, who benefits, what data it uses, and who sponsors it. Review ideas on a regular schedule, for example every two weeks, using a simple, published scoring rubric (the aireadiness topic covers use-case scoring). Routing rules keep reviews fast: ideas that reuse an approved pattern and use no sensitive data get a fast track; ideas that affect individual people get a full review.\n\nEdge cases: a CoE with a charter but no owner, budget or intake process becomes a monthly meeting with no output. A CoE that only says no drives people to use tools secretly. Publish decisions and reasons.",
+    "example": "Quillon Hart's CoE uses these routing rules. The code shows four submitted ideas: two go to the fast track, the staff-resignation prediction goes to full review because it makes decisions about individual people, and the canteen chatbot has no sponsor yet.",
+    "code": "# CoE intake: route each new idea by a few simple rules\nideas = [\n    {\"name\": \"Draft replies to billing emails\", \"personal_data\": True,  \"approved_pattern\": True,  \"sponsor\": True},\n    {\"name\": \"Summarise board papers\",          \"personal_data\": False, \"approved_pattern\": True,  \"sponsor\": True},\n    {\"name\": \"Predict which staff will resign\", \"personal_data\": True,  \"approved_pattern\": False, \"sponsor\": True},\n    {\"name\": \"Chatbot for the canteen menu\",    \"personal_data\": False, \"approved_pattern\": False, \"sponsor\": False},\n]\n\ndef route(i):\n    if not i[\"sponsor\"]:\n        return \"Return: find a business sponsor first\"\n    if i[\"personal_data\"] and not i[\"approved_pattern\"]:\n        return \"Full review: security, legal and ethics\"\n    if i[\"personal_data\"]:\n        return \"Fast track + privacy check\"\n    return \"Fast track: use approved pattern\"\n\nfor i in ideas:\n    print(f'{i[\"name\"]:32} {route(i)}')\n\n# Output:\n# -> Draft replies to billing emails  Fast track + privacy check\n# -> Summarise board papers           Fast track: use approved pattern\n# -> Predict which staff will resign  Full review: security, legal and ethics\n# -> Chatbot for the canteen menu     Return: find a business sponsor first",
+    "lang": "Python"
+   },
+   {
+    "title": "Office hours, communities and measuring skill growth",
+    "body": "After launch, people need easy, ongoing help. Office hours are regular open sessions, often 30 to 60 minutes weekly, where anyone can drop in with questions or bring real work to try with an expert. A community is a shared space, such as a chat channel, where users ask questions, share prompts and see what others do. Both lower the cost of asking for help, which is the main barrier after the first training.\n\nKeep them useful: announce a topic each week but welcome any question, have a champion or CoE member answer channel questions within a day, and turn repeated questions into library entries or help articles.\n\nMeasuring skill growth. Attendance and satisfaction scores are easy to collect but do not show whether people got better. Use a mix of measures. A task check: the same short practical exercise before training and some weeks after, scored against a rubric. Usage: the share of people using the tool at least weekly, per team, and whether they use it for the target tasks. Quality: the rate of reported bad answers that were caught before reaching clients, or reviewer scores on outputs. Outcome: time saved or turnaround on the target tasks, linked to the business case.\n\nLook at results per team, not only in total, because averages hide teams that are stuck. A team with low usage and little score growth needs a conversation, not more of the same training. Often the cause is a task mismatch or a manager who does not support it.\n\nEdge case: usage can be high while quality is poor. Always pair usage with a quality check.",
+    "example": "Six weeks after Quillon Hart's training, the code compares task-check scores and weekly use per team. Litigation barely improved and only 20% use the tool weekly. The FDE learns in office hours that litigation's main task, reviewing large evidence bundles, is not supported well, and brings the gap to the CoE.",
+    "code": "# Skill growth: same 10-question task check before training and 6 weeks later,\n# plus the share of each team using the tool at least weekly\nteams = {\n    # team:        (score before, score after, weekly users, team size)\n    \"Property\":    (4.1, 7.8, 34, 40),\n    \"Employment\":  (3.8, 7.2, 22, 30),\n    \"Litigation\":  (4.3, 4.9,  9, 45),\n}\nfor name, (before, after, users, size) in teams.items():\n    active = users / size\n    note = \"  <- follow up\" if after - before < 1 or active < 0.5 else \"\"\n    print(f\"{name:11} score {before} -> {after} (+{after - before:.1f})  weekly use {active:.0%}{note}\")\n\n# Output:\n# -> Property    score 4.1 -> 7.8 (+3.7)  weekly use 85%\n# -> Employment  score 3.8 -> 7.2 (+3.4)  weekly use 73%\n# -> Litigation  score 4.3 -> 4.9 (+0.6)  weekly use 20%  <- follow up",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Enablement",
+    "The whole system that makes people capable of using a tool well: skills, materials, help, measurement."
+   ],
+   [
+    "End user",
+    "A person who uses the tool in their daily work without changing how it works."
+   ],
+   [
+    "Builder",
+    "A customer staff member who extends the system, for example by adding prompts or use cases."
+   ],
+   [
+    "Calibrated trust",
+    "Trusting an AI output as much as it deserves, checking the parts that are often wrong."
+   ],
+   [
+    "Automation bias",
+    "The tendency to accept a computer's output without checking it."
+   ],
+   [
+    "Prompt library",
+    "A shared collection of tested prompts for real tasks, each with an example, a check and an owner."
+   ],
+   [
+    "Train-the-trainer",
+    "Training a small group deeply so they can train everyone else."
+   ],
+   [
+    "Champion",
+    "A respected user in a team who helps colleagues, collects feedback and shares good practice."
+   ],
+   [
+    "Center of Excellence (CoE)",
+    "A small cross-functional group that owns AI intake, standards, enablement and reporting."
+   ],
+   [
+    "Intake",
+    "The process for submitting and reviewing new ideas for AI use."
+   ],
+   [
+    "Office hours",
+    "Regular open sessions where anyone can bring questions or real work to an expert."
+   ],
+   [
+    "Task check",
+    "A short practical exercise scored before and after training to measure skill growth."
+   ]
+  ],
+  "practice": [
+   "Pick a tool you use at work or school. Write one goal for admins, builders and end users as a task each can do, and how you would check it.",
+   "Write a trust table for an AI tool you know: five output types, how far to trust each, and a quick check a busy user could do.",
+   "Write two prompt library entries for real tasks, with every field: ID, task, team, prompt with placeholders, example, check, owner.",
+   "Change the skill-growth code to also flag any team whose after-score is below 6, and add a fourth team to test it.",
+   "Stretch: draft a one-page CoE charter for a 600-person organisation: jobs, members and time, intake form fields, routing rules, and what it reports each quarter."
+  ]
+ }
+}

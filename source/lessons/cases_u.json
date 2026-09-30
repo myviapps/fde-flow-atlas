@@ -1,0 +1,122 @@
+{
+ "trees": {
+  "title": "Wrenfield Credit Union: a loan model the credit committee could read",
+  "company": "Wrenfield Credit Union (made up), member-owned lender, about 85,000 members, Canada",
+  "situation": "Loan officers approved personal loans with a points scorecard written years earlier. About 7.8 percent of approved loans defaulted within a year, and the credit committee wanted a data-driven model, but regulators required that every decline could be explained to the member.",
+  "problem": "A vendor had proposed a deep model that scored well in a demo, but nobody could explain its individual decisions, and its demo accuracy came from a split where the same members appeared in both training and test data. Simply growing one large decision tree would be readable in theory, yet with 140 leaves it was neither readable nor stable.",
+  "approach": [
+   "Built a clean dataset of 38,000 past loans with 14 features, and split training and test by member so no member appeared on both sides.",
+   "Trained trees with max_depth from 2 to 10 and plotted training and test AUC; test AUC stopped improving at depth 4 while training AUC kept climbing.",
+   "Pruned with min_samples_leaf of 300 and ccp_alpha tuned by 5-fold cross-validation, giving a 12-leaf tree the committee could read on one page.",
+   "Trained a random forest of 500 trees as the scoring engine and confirmed its out-of-bag AUC matched the held-out test AUC.",
+   "Checked importances with permutation importance on the test set after the impurity chart ranked 'application_id' fifth; the column was dropped.",
+   "Used the 12-leaf tree as the explanation layer: each decline letter cites the path of rules that applied, and cases where tree and forest disagree go to a human reviewer."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Readable policy tree (depth 4, 12 leaves), excerpt\n\n|--- debt_to_income <= 0.38\n|   |--- months_at_address <= 9.5\n|   |   |--- prior_missed_payments <= 0.5   -> approve, 6.1% default in leaf (n=2,140)\n|   |   |--- prior_missed_payments >  0.5   -> review,  14.8% default (n=610)\n|   |--- months_at_address >  9.5          -> approve, 3.2% default (n=14,900)\n|--- debt_to_income >  0.38\n|   |--- prior_missed_payments <= 0.5\n|   |   |--- loan_amount <= 12,000          -> review,  11.9% default (n=5,300)\n|   |   |--- loan_amount >  12,000          -> decline, 19.7% default (n=2,450)\n|   |--- prior_missed_payments >  0.5      -> decline, 27.4% default (n=1,980)\n\nForest AUC 0.79 (test), tree AUC 0.74 (test). Disagreements routed to review."
+  },
+  "outcome": "Over the first two quarters the default rate on newly approved loans fell from 7.8 percent to 6.6 percent at the same approval volume. Every decline letter now carried a plain rule path, and the regulator's review found no unexplained decisions.",
+  "lessons": [
+   "Split test data the way the model will be used, here by member, or accuracy is flattering.",
+   "A small pruned tree and a forest can work together: one explains, the other scores.",
+   "Always confirm feature importance with permutation importance on held-out data.",
+   "Depth is chosen from the validation curve, not from what looks detailed enough."
+  ],
+  "discuss": [
+   "What should happen when the forest and the readable tree disagree on an application?",
+   "How would you check that the tree's rules do not unfairly affect a protected group?",
+   "If the committee wanted even simpler rules, what would you give up and how would you measure it?"
+  ]
+ },
+ "boosting": {
+  "title": "Brindlecourt Freight: predicting late deliveries a day ahead",
+  "company": "Brindlecourt Freight (made up), regional parcel and pallet carrier, about 1,100 staff, Netherlands",
+  "situation": "About 9 percent of deliveries arrived after the promised window, and customer service only found out when customers called. Dispatchers wanted a list each evening of the next day's shipments most likely to be late, so they could reassign vans or warn customers.",
+  "problem": "A first attempt asked an LLM to rate each shipment from its text description, which was slow, costly for 40,000 shipments a day and no better than a coin toss on held-out weeks. A logistic regression on one-hot encoded depot and route columns was fast but missed interactions such as 'long routes from one depot on Mondays'.",
+  "approach": [
+   "Built a table of 14 months of shipments with carrier leg, depot, route, weekday, distance, weight, scheduled van load and weather forecast, and a late or not late label.",
+   "Split by time: trained on the first 11 months, used month 12 for early stopping and months 13 and 14 as the untouched test set.",
+   "Trained HistGradientBoostingClassifier with depot, route and weekday as pandas categories, learning rate 0.1 and early stopping with patience 30; it stopped at 410 trees.",
+   "Tuned max_leaf_nodes and min_samples_leaf with a small randomized search on the validation month, which removed leaves that had fitted a few storm days.",
+   "Checked the model with XGBoost as a second opinion; results were within 0.005 AUC, so the team kept the scikit-learn version to avoid a new dependency.",
+   "Computed SHAP values with TreeExplainer for each flagged shipment and turned the top three into plain reasons on the dispatcher screen."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from sklearn.ensemble import HistGradientBoostingClassifier\nfrom sklearn.metrics import roc_auc_score\n\ntrain = df[df.ship_date < \"2025-12-01\"]                       # months 1-11\nvalid = df[(df.ship_date >= \"2025-12-01\") & (df.ship_date < \"2026-01-01\")]  # month 12\ntest = df[df.ship_date >= \"2026-01-01\"]                        # months 13-14\n\nmodel = HistGradientBoostingClassifier(\n    learning_rate=0.1,\n    max_iter=3000,                        # ceiling; early stopping decides\n    max_leaf_nodes=31,\n    min_samples_leaf=200,\n    l2_regularization=1.0,\n    categorical_features=\"from_dtype\",   # depot, route, weekday as category dtype\n    early_stopping=True,\n    n_iter_no_change=30,\n)\nmodel.fit(train[X_COLS], train.late,\n          X_val=valid[X_COLS], y_val=valid.late)   # time-based validation month\nprint(\"trees:\", model.n_iter_)\nprint(\"test AUC:\", roc_auc_score(test.late, model.predict_proba(test[X_COLS])[:, 1]))"
+  },
+  "outcome": "On the two test months the model reached ROC AUC 0.81, and the top 5 percent of flagged shipments contained 31 percent of all late deliveries. Dispatchers acted on the list for eight weeks, and the late rate fell from 9 percent to 7.6 percent, with inbound 'where is my parcel' calls down by about a fifth.",
+  "lessons": [
+   "For large, structured, repeated predictions a boosted tree model is often faster, cheaper and more accurate than an LLM.",
+   "Use time-based splits for early stopping and testing when the model predicts the future.",
+   "Per-row SHAP reasons in staff language made dispatchers trust and use the list.",
+   "Measure success in the business metric (late rate, calls), not only in AUC."
+  ],
+  "discuss": [
+   "How would you detect that the model has gone stale after a new depot opens?",
+   "Dispatchers can only act on 200 shipments a day. How does that change the threshold you choose?",
+   "What would make you switch from HistGradientBoosting to LightGBM or XGBoost in production?"
+  ]
+ },
+ "knnsvm": {
+  "title": "Pellmarsh Housing Association: routing tenant repair requests",
+  "company": "Pellmarsh Housing Association (made up), social housing provider, about 22,000 homes, United Kingdom",
+  "situation": "Tenants sent about 1,800 repair requests a week by web form and email. Two coordinators read each one and assigned it to plumbing, electrical, heating, damp and mould, or general repairs, and the average wait before assignment was 26 hours.",
+  "problem": "An LLM routing project was planned but would take months of procurement and data protection review. The team needed something within two weeks that ran inside their own servers, and they had 4,000 past requests already labelled by trade.",
+  "approach": [
+   "Cleaned 4,000 labelled requests, removed names and addresses, and held out the most recent 800 as a test set.",
+   "Trained a CountVectorizer plus MultinomialNB baseline in an afternoon; it scored 81 percent accuracy and its top words per trade (leak, tap, socket, boiler, mould) made sense to the coordinators.",
+   "Trained LinearSVC on TF-IDF word and two-word features with C tuned by cross-validation; it reached 87 percent and was chosen as the router.",
+   "Added a confidence rule: requests whose decision score margin was small went to the coordinators instead of being auto-assigned.",
+   "Built a kNN 'similar past requests' panel over scaled TF-IDF vectors with cosine distance, so coordinators saw how five similar jobs were handled.",
+   "Reviewed a weekly sample of 50 auto-assigned requests with the coordinators and retrained monthly with their corrections."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "from sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.svm import LinearSVC\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.model_selection import GridSearchCV\n\npipe = make_pipeline(TfidfVectorizer(ngram_range=(1, 2), min_df=2), LinearSVC())\nsearch = GridSearchCV(pipe, {\"linearsvc__C\": [0.1, 0.3, 1, 3]}, cv=5)\nsearch.fit(train.text, train.trade)\n\nscores = search.decision_function(test.text)          # one score per trade\ntop2 = np.sort(scores, axis=1)[:, -2:]\nauto = (top2[:, 1] - top2[:, 0]) > 0.5                # clear winner only\nprint(\"auto-assigned share:\", auto.mean().round(2))\nprint(\"accuracy when auto:\", (search.predict(test.text)[auto] == test.trade[auto]).mean().round(3))"
+  },
+  "outcome": "About 70 percent of requests were auto-assigned with 94 percent accuracy on that share, and the rest reached coordinators with a suggested trade. Average time to assignment fell from 26 hours to under 4, and the LLM project later used the same test set to prove it could beat 87 percent.",
+  "lessons": [
+   "Naive Bayes gives a working, explainable baseline in hours and sets the bar for anything fancier.",
+   "A linear SVM on TF-IDF is a strong text classifier for thousands of labelled examples.",
+   "Route only confident predictions automatically and send the rest to people.",
+   "kNN is most useful where similarity itself helps the user."
+  ],
+  "discuss": [
+   "How would you choose the margin threshold for auto-assignment?",
+   "What would you monitor to spot a new kind of request, such as a new heating system, that the model has never seen?",
+   "When would an LLM router be worth its extra cost here?"
+  ]
+ },
+ "clustering": {
+  "title": "Fernbrook Outdoor: customer segments marketing could act on",
+  "company": "Fernbrook Outdoor (made up), online and in-store camping and hiking retailer, about 260,000 active customers, Australia",
+  "situation": "Marketing sent the same weekly email to every customer. Open rates had slid to 14 percent and unsubscribes were rising. The CMO asked for customer segments so campaigns could be targeted, with at most five segments because the team could only run five email tracks.",
+  "problem": "An analyst had already run k-means on raw spend and order counts and got one segment of 40 customers and one of 250,000, because a few club and school accounts with huge spend dominated the distances. The cluster numbers also changed on every rerun, so marketing could not plan around them.",
+  "approach": [
+   "Built recency, frequency, monetary value and share of full-price purchases per customer from 24 months of orders in the warehouse using SQL.",
+   "Pulled out 310 institutional accounts with a business rule, then log-transformed the skewed columns and scaled everything with StandardScaler.",
+   "Ran k-means for k from 3 to 8 with n_init 20, compared inertia elbows and average silhouette, and checked stability by rerunning on a different 12-month window.",
+   "Chose k=5, which had the second-highest silhouette but matched the five email tracks and was stable across windows (over 90 percent of customers kept their segment).",
+   "Ran DBSCAN on a sample as a check for unusual groups; it flagged a small set of accounts buying only during clearance events, which became a tag rather than a segment.",
+   "Profiled each segment with medians and sizes, named them with marketing, and wrote a nightly job to assign new customers to the nearest segment center."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Segment guide (k-means, k=5, 24 months of orders)\n\nSegment            Customers  Last order  Orders/yr  Spend/yr  Action\nCommitted hikers      31,200    18 days        6.4     $1,140  Early access to new gear\nSeasonal campers      71,800    95 days        2.1       $310  Pre-season kit reminders\nOne-time gifters      64,500   210 days        1.0        $95  Gift guide in November only\nBargain seekers       48,900    60 days        3.3       $220  Clearance alerts\nLapsed regulars       43,300   340 days        0.6       $180  Win-back offer\n\nInstitutional accounts (310) handled by the B2B team, not in segments.\nRerun check: 91% of customers kept the same segment on a later window."
+  },
+  "outcome": "After three months of targeted emails, average open rate rose from 14 percent to 21 percent and unsubscribes fell by about a third. The win-back track for lapsed regulars produced the clearest gain, reactivating 4.2 percent of that segment against 1.5 percent in a held-out control group.",
+  "lessons": [
+   "Remove or separately handle extreme groups before clustering, and log and scale skewed features.",
+   "Choose k with metrics and with the business's capacity to act.",
+   "Check stability across time windows before anyone builds campaigns on segments.",
+   "Deliver named profiles and a control group test, not cluster numbers."
+  ],
+  "discuss": [
+   "How would you tell whether the segments caused the better email results rather than just the extra attention?",
+   "How often should the segments be refreshed, and what happens to customers who move between them?",
+   "What features would you add if the CMO wanted segments based on product interests rather than spend?"
+  ]
+ }
+}

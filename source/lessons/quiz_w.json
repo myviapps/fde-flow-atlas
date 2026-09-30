@@ -1,0 +1,173 @@
+{
+ "neuralnets": [
+  {
+   "q": "What does a single artificial neuron compute?",
+   "options": [
+    "A weighted sum of inputs plus a bias, passed through an activation",
+    "The average of its inputs, rounded to 0 or 1",
+    "A lookup of the input in a table of stored examples",
+    "The distance between the input and the nearest training point"
+   ],
+   "answer": 0,
+   "why": "A neuron multiplies inputs by weights, adds a bias and applies an activation such as ReLU or sigmoid."
+  },
+  {
+   "q": "What does backpropagation compute?",
+   "options": [
+    "The final prediction for a new input",
+    "The gradient of the loss for every weight, using the chain rule",
+    "The best learning rate for the optimizer",
+    "Which training examples are mislabelled"
+   ],
+   "answer": 1,
+   "why": "Backpropagation applies the chain rule from the loss back through each layer to get every weight's gradient. The forward pass makes predictions."
+  },
+  {
+   "q": "A customer's model shows falling training loss but rising validation loss after epoch 12. What do you suggest first?",
+   "options": [
+    "Train for more epochs until validation loss comes back down",
+    "Increase the learning rate so it escapes the problem",
+    "Keep the epoch 12 checkpoint and add early stopping and regularisation",
+    "Add more hidden layers so it can learn the validation data too"
+   ],
+   "answer": 2,
+   "why": "This is overfitting. Early stopping keeps the best checkpoint, and dropout or weight decay reduce memorising. More epochs or a bigger network make it worse."
+  },
+  {
+   "q": "A team's loss jumps up and down wildly and sometimes becomes NaN. What is the most likely first thing to check?",
+   "options": [
+    "The number of output classes",
+    "Whether the test set is too small",
+    "Whether dropout is set too low",
+    "Whether the learning rate is too high"
+   ],
+   "answer": 3,
+   "why": "Too large a step overshoots the minimum and can make values explode. Lowering the learning rate or scaling inputs is the usual first fix."
+  },
+  {
+   "q": "Spot the mistake: 'We removed the activation functions to speed up our 5-layer network. It should learn the same patterns.'",
+   "options": [
+    "Without activations the layers collapse into one linear function and cannot learn curved patterns",
+    "Removing activations only affects speed, so the claim is correct",
+    "Activations are only needed in the output layer, so it is fine",
+    "It will learn the same patterns but needs more epochs"
+   ],
+   "answer": 0,
+   "why": "A chain of linear layers is still linear, so the network can only draw straight boundaries. The nonlinear bend is what makes depth useful."
+  }
+ ],
+ "dlarch": [
+  {
+   "q": "Why do CNNs suit images better than plain dense networks?",
+   "options": [
+    "They read pixels one at a time in order",
+    "They reuse small filters across the image, so fewer weights detect a pattern anywhere",
+    "They do not need any training data",
+    "They convert images into text first"
+   ],
+   "answer": 1,
+   "why": "Convolution slides the same small filter everywhere (weight sharing), so an edge detector works in any position with few weights."
+  },
+  {
+   "q": "What was the main problem plain RNNs had with long sequences?",
+   "options": [
+    "They could not process numbers, only words",
+    "They needed attention to run at all",
+    "The training signal faded or exploded as it passed back through many steps",
+    "They required images as input"
+   ],
+   "answer": 2,
+   "why": "Backpropagating through many time steps multiplies the gradient repeatedly, so it vanishes or explodes. LSTMs eased this with gates."
+  },
+  {
+   "q": "A customer has 2,000 labelled photos and wants an image classifier. What is the sensible starting point?",
+   "options": [
+    "Fine-tune a pretrained image model, starting with a new head",
+    "Train a new CNN from scratch on the 2,000 photos",
+    "Label 100,000 more photos before building anything",
+    "Use an RNN so the photos are read in order"
+   ],
+   "answer": 0,
+   "why": "Transfer learning reuses features learned from huge datasets and works well with a few thousand labels. From scratch usually underperforms at this size."
+  },
+  {
+   "q": "A customer asks why their 7 billion parameter model will not load on an 8 GB GPU. What is the best explanation?",
+   "options": [
+    "The GPU needs a driver update to handle large models",
+    "In 16-bit the weights alone need about 14 GB, more than the card's memory",
+    "GPUs cannot run language models, only images",
+    "The model needs to be converted into a CNN first"
+   ],
+   "answer": 1,
+   "why": "Each 16-bit weight takes 2 bytes, so 7 billion weights need about 14 GB. Quantisation or a bigger card or hosted API are the options."
+  },
+  {
+   "q": "Spot the mistake: 'Transformers are the best model, so we will use one for our 20-column sales table.'",
+   "options": [
+    "Transformers can only be used for images",
+    "Tables must always use an LSTM",
+    "The table needs to be at least 100 columns first",
+    "For small tabular data, gradient boosted trees usually beat deep learning"
+   ],
+   "answer": 3,
+   "why": "Architecture should follow the data shape. On typical business tables, boosted trees are usually more accurate, faster and easier to explain."
+  }
+ ],
+ "rlhf": [
+  {
+   "q": "In reinforcement learning, what is a policy?",
+   "options": [
+    "The reward the environment gives",
+    "The data used to pretrain the model",
+    "The agent's rule for choosing an action in each situation",
+    "The penalty for drifting from a reference model"
+   ],
+   "answer": 2,
+   "why": "The policy maps states to actions. RL training changes the policy so it earns more total reward."
+  },
+  {
+   "q": "In a multi-armed bandit, what does epsilon control in epsilon-greedy?",
+   "options": [
+    "How often the agent picks a random arm to explore",
+    "How much each arm pays out",
+    "How many arms there are",
+    "How fast rewards are paid"
+   ],
+   "answer": 0,
+   "why": "With probability epsilon it explores a random arm; otherwise it exploits the best arm so far. Epsilon 0 can lock onto a poor arm."
+  },
+  {
+   "q": "A customer says 'retrain the hosted model with RLHF so it stops agreeing with angry users'. What do you do first?",
+   "options": [
+    "Start collecting 100,000 human comparisons",
+    "Explain it is a learned tendency, then try prompt rules, evidence and an eval set",
+    "Switch to a model with no alignment training",
+    "Increase the temperature so answers vary more"
+   ],
+   "answer": 1,
+   "why": "Hosted models are aligned by the provider. Prompting, tools and evals are the cheap first levers; fine-tuning comes later if supported and justified."
+  },
+  {
+   "q": "A team has chosen and rejected answer pairs and wants the simplest way to train an open model on them. What fits best?",
+   "options": [
+    "Build a reward model, then run PPO with a KL penalty",
+    "Train only on the rejected answers",
+    "Pretrain a new model from scratch",
+    "Run DPO directly on the pairs"
+   ],
+   "answer": 3,
+   "why": "DPO trains on preference pairs without a separate reward model or RL loop, so it runs like ordinary fine-tuning."
+  },
+  {
+   "q": "Spot the mistake: 'We removed the KL penalty so the model can maximise the reward model score freely.'",
+   "options": [
+    "The model may exploit the reward model's quirks, known as reward hacking",
+    "The KL penalty only affects speed, so nothing changes",
+    "Without it the reward model stops training",
+    "The KL penalty is only used in bandits"
+   ],
+   "answer": 0,
+   "why": "The KL penalty keeps the model close to the SFT version. Without it the policy finds answers that score highly but are not actually better."
+  }
+ ]
+}

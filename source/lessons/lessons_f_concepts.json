@@ -1,0 +1,999 @@
+[
+ {
+  "id": "normalize",
+  "mod": 2,
+  "sec": "2.2",
+  "name": "Schema design",
+  "title": "From a messy spreadsheet to a clean schema",
+  "thesis": "Customer data usually arrives as one wide spreadsheet where the same fact is typed many times. Normalization splits it into tables joined by keys so each fact lives in one place. Analytics then reshapes it into a star schema for fast reporting.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "SQL: normalized tables and a join",
+  "code": "-- messy sheet: one row per order, items crammed in one cell\n-- order_id | email | name | city | items\n-- 5001 | ana@x.com | Ana | Leeds | KET-01 x1; MUG-02 x4\n\nCREATE TABLE customers (\n  customer_id  SERIAL PRIMARY KEY,\n  email        TEXT UNIQUE NOT NULL,\n  name         TEXT, city TEXT);\nCREATE TABLE products (\n  sku TEXT PRIMARY KEY, name TEXT, list_price NUMERIC(10,2));\nCREATE TABLE orders (\n  order_id    INT PRIMARY KEY,\n  customer_id INT NOT NULL REFERENCES customers,\n  order_date  DATE NOT NULL);\nCREATE TABLE order_lines (\n  order_id   INT  REFERENCES orders,\n  sku        TEXT REFERENCES products,\n  qty        INT  CHECK (qty > 0),\n  unit_price NUMERIC(10,2),         -- price at time of sale\n  PRIMARY KEY (order_id, sku));\n\nSELECT c.city, SUM(l.qty * l.unit_price) AS revenue\nFROM order_lines l\nJOIN orders o    ON o.order_id = l.order_id\nJOIN customers c ON c.customer_id = o.customer_id\nGROUP BY c.city;",
+  "nodes": [
+   [
+    "sheet",
+    90,
+    70,
+    "Messy sheet",
+    "one wide tab",
+    1
+   ],
+   [
+    "nf1",
+    265,
+    70,
+    "1NF",
+    "one value per cell"
+   ],
+   [
+    "nf2",
+    440,
+    70,
+    "2NF",
+    "whole-key facts"
+   ],
+   [
+    "nf3",
+    615,
+    70,
+    "3NF",
+    "no hidden chains"
+   ],
+   [
+    "keys",
+    615,
+    220,
+    "Keys",
+    "primary · foreign"
+   ],
+   [
+    "join",
+    440,
+    220,
+    "Join",
+    "rebuild the view"
+   ],
+   [
+    "star",
+    265,
+    220,
+    "Star schema",
+    "facts + dimensions"
+   ],
+   [
+    "denorm",
+    90,
+    220,
+    "Denormalize",
+    "on purpose"
+   ]
+  ],
+  "edges": [
+   [
+    "sheet",
+    "nf1"
+   ],
+   [
+    "nf1",
+    "nf2"
+   ],
+   [
+    "nf2",
+    "nf3"
+   ],
+   [
+    "nf3",
+    "keys"
+   ],
+   [
+    "keys",
+    "join"
+   ],
+   [
+    "join",
+    "star",
+    0,
+    "analytics"
+   ],
+   [
+    "star",
+    "denorm"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "The spreadsheet you inherit",
+    "n": [
+     "sheet"
+    ],
+    "d": "A retailer exports orders as one tab: customer name and city repeated on every order, and several products crammed into one cell. Every repeated value is a chance for two copies to disagree.",
+    "l": [
+     0,
+     1,
+     2
+    ]
+   },
+   {
+    "t": "First normal form",
+    "n": [
+     "nf1"
+    ],
+    "e": [
+     "sheet>nf1"
+    ],
+    "d": "1NF means every cell holds one value and every row can be identified. Split 'KET-01 x1; MUG-02 x4' into one row per order line, keyed by order and product."
+   },
+   {
+    "t": "Second normal form",
+    "n": [
+     "nf2"
+    ],
+    "e": [
+     "nf1>nf2"
+    ],
+    "d": "2NF means every non-key column depends on the whole key. Product name depends only on the product, and order date only on the order, so each moves to its own table.",
+    "l": [
+     8,
+     9,
+     10,
+     11,
+     12,
+     13
+    ]
+   },
+   {
+    "t": "Third normal form",
+    "n": [
+     "nf3"
+    ],
+    "e": [
+     "nf2>nf3"
+    ],
+    "d": "3NF removes chains where a column depends on another non-key column. Customer name and city depend on the customer, so they move to a customers table.",
+    "l": [
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "t": "Keys hold it together",
+    "n": [
+     "keys"
+    ],
+    "e": [
+     "nf3>keys"
+    ],
+    "d": "A primary key identifies each row. A foreign key points at a row in another table, and the database refuses an order for a customer that does not exist.",
+    "l": [
+     5,
+     9,
+     11,
+     12,
+     15,
+     16,
+     19
+    ]
+   },
+   {
+    "t": "Join to answer questions",
+    "n": [
+     "join"
+    ],
+    "e": [
+     "keys>join"
+    ],
+    "d": "A join follows the keys to rebuild the wide view on demand. Revenue by city reads three tables and each fact is stored once.",
+    "l": [
+     21,
+     22,
+     23,
+     24,
+     25
+    ]
+   },
+   {
+    "t": "Star schema for analytics",
+    "n": [
+     "star"
+    ],
+    "e": [
+     "join>star"
+    ],
+    "d": "Reporting systems use a star schema: one fact table of events such as sales lines, surrounded by dimension tables such as date, store and product. Queries become simple and fast to aggregate."
+   },
+   {
+    "t": "Denormalize with a reason",
+    "n": [
+     "denorm"
+    ],
+    "e": [
+     "star>denorm"
+    ],
+    "d": "Copying data on purpose is fine when reads vastly outnumber writes and the copy is rebuilt from the normalized source, for example a materialized view or a wide table fed to a dashboard."
+   }
+  ],
+  "ideas": [
+   "Normalize for correct writes: each fact lives in one place, so an update touches one row.",
+   "1NF: atomic values. 2NF: no partial dependency on a composite key. 3NF: no transitive dependency through a non-key column.",
+   "Foreign keys turn data quality rules into database guarantees.",
+   "Star schema: a narrow, tall fact table plus descriptive dimension tables, built for aggregation.",
+   "Store price at time of sale on the order line. It is a fact of that sale, not a duplicate."
+  ],
+  "traps": [
+   "Loading a customer spreadsheet straight into one table and building on it.",
+   "Using names or emails as keys when they can change; prefer a surrogate id with a unique constraint.",
+   "Denormalizing without a single source of truth to rebuild the copy from."
+  ],
+  "qa": [
+   [
+    "Explain 1NF, 2NF and 3NF to a non-engineer.",
+    "1NF: one piece of information per box. 2NF: every detail belongs to the whole record it sits on, not only part of it. 3NF: no detail that is really about some other thing in the row. Together they mean each fact is written once."
+   ],
+   [
+    "When would you denormalize?",
+    "For read-heavy analytics or latency-sensitive lookups, where joins cost too much. I keep the normalized tables as the source of truth and rebuild the denormalized copy on a schedule or as a materialized view."
+   ],
+   [
+    "OLTP vs. analytics schema?",
+    "Transactional systems use normalized 3NF tables for safe, frequent writes. Analytics uses a star schema of facts and dimensions for fast aggregation over history."
+   ]
+  ]
+ },
+ {
+  "id": "embeddings",
+  "mod": 3,
+  "sec": "3.1",
+  "name": "Embeddings and vectors",
+  "title": "Embeddings: meaning as coordinates",
+  "thesis": "An embedding model turns text into a list of numbers so that similar meanings land close together. Search then becomes geometry: find the stored vectors nearest the query vector, fast enough for millions of rows.",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "Python and pgvector",
+  "code": "import numpy as np\n\nq = np.array([1, 2, 2])      # query vector\nA = np.array([2, 4, 4])      # same direction, longer\nB = np.array([2, 2, 1])      # nearby point, other angle\n\ndef cosine(u, v):\n    return u @ v / (np.linalg.norm(u) * np.linalg.norm(v))\n\nfor name, d in [(\"A\", A), (\"B\", B)]:\n    print(name, \"dot\", q @ d,\n          \"cos\", round(cosine(q, d), 3),\n          \"L2\", round(np.linalg.norm(q - d), 3))\n# A dot 18 cos 1.0   L2 3.0\n# B dot 8  cos 0.889 L2 1.414\n\n-- pgvector: cosine distance with <=>, HNSW index\nCREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops);\nSELECT id, text, embedding <=> $1 AS distance\nFROM chunks WHERE tenant_id = 7\nORDER BY embedding <=> $1 LIMIT 5;",
+  "nodes": [
+   [
+    "docs",
+    90,
+    70,
+    "Documents",
+    "chunks of text"
+   ],
+   [
+    "model",
+    265,
+    70,
+    "Embed model",
+    "text to numbers"
+   ],
+   [
+    "vecs",
+    440,
+    70,
+    "Vectors",
+    "e.g. 768 floats"
+   ],
+   [
+    "table",
+    615,
+    70,
+    "pgvector table",
+    "vector column"
+   ],
+   [
+    "index",
+    615,
+    210,
+    "HNSW index",
+    "approximate"
+   ],
+   [
+    "score",
+    440,
+    210,
+    "Similarity",
+    "cos · dot · L2"
+   ],
+   [
+    "topk",
+    265,
+    210,
+    "Top-k chunks",
+    "nearest first"
+   ],
+   [
+    "rag",
+    90,
+    210,
+    "LLM prompt",
+    "grounded answer"
+   ],
+   [
+    "question",
+    440,
+    350,
+    "Query vector",
+    "same model"
+   ]
+  ],
+  "edges": [
+   [
+    "docs",
+    "model"
+   ],
+   [
+    "model",
+    "vecs"
+   ],
+   [
+    "vecs",
+    "table"
+   ],
+   [
+    "table",
+    "index"
+   ],
+   [
+    "index",
+    "score"
+   ],
+   [
+    "question",
+    "score",
+    0,
+    "search"
+   ],
+   [
+    "score",
+    "topk"
+   ],
+   [
+    "topk",
+    "rag"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start with text",
+    "n": [
+     "docs"
+    ],
+    "d": "Policies, tickets and manuals are split into chunks of a few hundred tokens. Each chunk will get its own vector."
+   },
+   {
+    "t": "Embed",
+    "n": [
+     "model"
+    ],
+    "e": [
+     "docs>model"
+    ],
+    "d": "An embedding model reads a chunk and outputs a fixed-length list of numbers. Texts with similar meaning get similar numbers, even with no shared words."
+   },
+   {
+    "t": "A vector per chunk",
+    "n": [
+     "vecs"
+    ],
+    "e": [
+     "model>vecs"
+    ],
+    "d": "Every chunk becomes a point in a space with hundreds of dimensions. Direction carries most of the meaning."
+   },
+   {
+    "t": "Store in Postgres",
+    "n": [
+     "table"
+    ],
+    "e": [
+     "vecs>table"
+    ],
+    "d": "pgvector adds a vector column type to PostgreSQL, so vectors sit next to ids, text and permission columns in an ordinary table.",
+    "l": [
+     16
+    ]
+   },
+   {
+    "t": "Index for speed",
+    "n": [
+     "index"
+    ],
+    "e": [
+     "table>index"
+    ],
+    "d": "Comparing the query with every row is exact but slow at scale. An HNSW index builds a layered graph of neighbours and walks it, trading a little recall for large speedups.",
+    "l": [
+     17
+    ]
+   },
+   {
+    "t": "Embed the question the same way",
+    "n": [
+     "question",
+     "score"
+    ],
+    "e": [
+     "question>score"
+    ],
+    "d": "The user question goes through the same model, so it lands in the same space. Mixing models puts query and documents in unrelated spaces."
+   },
+   {
+    "t": "Measure closeness",
+    "n": [
+     "score"
+    ],
+    "e": [
+     "index>score"
+    ],
+    "d": "Cosine compares direction only, dot product adds length, and Euclidean measures straight-line distance. In the example, cosine and dot prefer A while Euclidean prefers B.",
+    "l": [
+     2,
+     3,
+     4,
+     6,
+     7,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14
+    ]
+   },
+   {
+    "t": "Return the nearest",
+    "n": [
+     "topk"
+    ],
+    "e": [
+     "score>topk"
+    ],
+    "d": "ORDER BY distance LIMIT k returns the closest chunks. Filter by tenant or permissions in the same query.",
+    "l": [
+     18,
+     19,
+     20
+    ]
+   },
+   {
+    "t": "Ground the answer",
+    "n": [
+     "rag"
+    ],
+    "e": [
+     "topk>rag"
+    ],
+    "d": "The top chunks go into the LLM's context with their ids, so the answer can cite them. This is the retrieval half of RAG."
+   }
+  ],
+  "ideas": [
+   "Cosine = dot product of length-normalized vectors. On normalized vectors, cosine, dot and Euclidean give the same ranking.",
+   "Use the metric the embedding model was trained for; its model card usually says.",
+   "pgvector operators: <-> Euclidean, <#> negative inner product, <=> cosine distance.",
+   "HNSW: better recall and speed than IVFFlat for most workloads, at the cost of memory and slower builds.",
+   "Changing the embedding model means re-embedding every row."
+  ],
+  "traps": [
+   "Embedding queries and documents with different models or versions.",
+   "Building the index with vector_l2_ops and querying with <=>, so the index is not used.",
+   "Trusting top-k blindly for exact codes and ids, where keyword search does better."
+  ],
+  "qa": [
+   [
+    "Cosine vs. Euclidean distance?",
+    "Cosine measures the angle between vectors and ignores length. Euclidean measures straight-line distance and is affected by length. For normalized embeddings they rank results the same way."
+   ],
+   [
+    "Why use an approximate index?",
+    "Exact search compares the query with every vector, which grows linearly with rows. HNSW walks a neighbour graph and checks a small fraction, with recall tunable through ef_search."
+   ],
+   [
+    "Retrieval quality dropped after a model upgrade. What happened?",
+    "Most likely the documents were embedded with the old model and queries with the new one. Re-embed the corpus, rebuild the index, and run the retrieval eval set before switching traffic."
+   ]
+  ]
+ },
+ {
+  "id": "projectb",
+  "mod": 7,
+  "sec": "7.2",
+  "name": "Project B: context compiler",
+  "title": "Portfolio Project B: a coding agent that learns",
+  "thesis": "Project B builds a LangGraph coding agent that reads a repository with file tools, fixes tasks, and improves an itemized playbook after every run using ACE's Generator, Reflector and Curator roles, without letting that playbook collapse.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "LangGraph StateGraph (sketch)",
+  "code": "class State(TypedDict):\n    task: str\n    playbook: list[dict]           # itemized bullets\n    messages: Annotated[list, add_messages]\n    test_log: str\n    attempts: int\n    delta: list[dict]\n\ng = StateGraph(State)\ng.add_node(\"generator\", generator)   # LLM + grep/open tools\ng.add_node(\"tools\", ToolNode([grep_files, open_file, write_file]))\ng.add_node(\"run_tests\", run_tests)\ng.add_node(\"reflector\", reflector)\ng.add_node(\"curator\", curator)       # emits delta ops only\ng.add_edge(START, \"generator\")\ng.add_conditional_edges(\"generator\", wants_tool,\n    {\"tool\": \"tools\", \"done\": \"run_tests\"})\ng.add_edge(\"tools\", \"generator\")\ng.add_conditional_edges(\"run_tests\", after_tests,\n    {\"retry\": \"generator\", \"reflect\": \"reflector\"})\ng.add_edge(\"reflector\", \"curator\")\ng.add_edge(\"curator\", END)           # apply_delta() saves playbook\napp = g.compile()",
+  "nodes": [
+   [
+    "task",
+    90,
+    70,
+    "Coding task",
+    "issue or red test"
+   ],
+   [
+    "gen",
+    265,
+    70,
+    "Generator",
+    "LLM node"
+   ],
+   [
+    "tools",
+    440,
+    70,
+    "File tools",
+    "grep · open · write"
+   ],
+   [
+    "repo",
+    615,
+    70,
+    "Repository",
+    "customer code",
+    1
+   ],
+   [
+    "tests",
+    615,
+    220,
+    "Run tests",
+    "pass or fail log"
+   ],
+   [
+    "refl",
+    440,
+    220,
+    "Reflector",
+    "lessons learned"
+   ],
+   [
+    "cur",
+    265,
+    220,
+    "Curator",
+    "delta ops only"
+   ],
+   [
+    "book",
+    90,
+    220,
+    "Playbook",
+    "ids · counters"
+   ]
+  ],
+  "edges": [
+   [
+    "task",
+    "gen"
+   ],
+   [
+    "gen",
+    "tools",
+    14,
+    "call"
+   ],
+   [
+    "tools",
+    "gen",
+    14,
+    "results"
+   ],
+   [
+    "tools",
+    "repo"
+   ],
+   [
+    "repo",
+    "tests"
+   ],
+   [
+    "tests",
+    "refl"
+   ],
+   [
+    "refl",
+    "cur"
+   ],
+   [
+    "cur",
+    "book"
+   ],
+   [
+    "book",
+    "gen",
+    0,
+    "context"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A task arrives",
+    "n": [
+     "task",
+     "gen"
+    ],
+    "e": [
+     "task>gen"
+    ],
+    "d": "The input is a small coding task, such as a GitHub issue or a failing test. The graph state holds the task, the playbook, the message history and a retry counter.",
+    "l": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     14
+    ]
+   },
+   {
+    "t": "Compile the context",
+    "n": [
+     "gen",
+     "book"
+    ],
+    "e": [
+     "book>gen"
+    ],
+    "d": "The Generator's prompt is assembled from parts: instructions, the relevant playbook bullets and the task. Nothing else gets in unless a tool fetches it. This is the 'context as a compiler' idea.",
+    "l": [
+     9
+    ]
+   },
+   {
+    "t": "Search before reading",
+    "n": [
+     "gen",
+     "tools"
+    ],
+    "e": [
+     "gen>tools",
+     "tools>gen"
+    ],
+    "d": "The Generator calls grep_files to find where a symbol lives, then open_file for only the lines it needs. Tool results return to the Generator, which decides the next call.",
+    "l": [
+     10,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "t": "Change the code",
+    "n": [
+     "repo"
+    ],
+    "e": [
+     "tools>repo"
+    ],
+    "d": "Edits go through a write tool that is limited to the working copy. The agent never touches anything outside the sandbox."
+   },
+   {
+    "t": "Run the tests",
+    "n": [
+     "tests"
+    ],
+    "e": [
+     "repo>tests"
+    ],
+    "d": "Tests give real execution feedback. On failure the graph loops back to the Generator with the log, up to a retry cap.",
+    "l": [
+     11,
+     18,
+     19
+    ]
+   },
+   {
+    "t": "Reflect",
+    "n": [
+     "refl"
+    ],
+    "e": [
+     "tests>refl"
+    ],
+    "d": "The Reflector reads the whole trajectory and writes specific lessons, for example 'this repo's tests need the TZ variable set'.",
+    "l": [
+     12,
+     20
+    ]
+   },
+   {
+    "t": "Curate as deltas",
+    "n": [
+     "cur"
+    ],
+    "e": [
+     "refl>cur"
+    ],
+    "d": "The Curator turns lessons into small operations: add a bullet, mark one helpful or harmful, merge a duplicate. It never rewrites the playbook as a whole.",
+    "l": [
+     13,
+     21
+    ]
+   },
+   {
+    "t": "The playbook grows safely",
+    "n": [
+     "book"
+    ],
+    "e": [
+     "cur>book"
+    ],
+    "d": "Deltas are applied in plain code with dedupe and pruning, and the playbook is versioned. Detail accumulates instead of being summarized away, which is how context collapse is prevented.",
+    "l": [
+     21,
+     22
+    ]
+   }
+  ],
+  "ideas": [
+   "Graph nodes: Generator, tools, test runner, Reflector, Curator.",
+   "File tools keep the window small: grep first, open only the needed line range.",
+   "Curator output is structured delta ops applied by deterministic code.",
+   "Measure across rounds: pass rate, tokens per task, playbook size, harmful-bullet rate.",
+   "Compare against a baseline that rewrites the whole playbook each round to show collapse."
+  ],
+  "traps": [
+   "Dumping the whole repo into the prompt instead of using tools.",
+   "Letting the LLM rewrite the full playbook each round.",
+   "No retry cap on the Generator and test loop."
+  ],
+  "qa": [
+   [
+    "What is context collapse and how does your project avoid it?",
+    "When a model repeatedly rewrites its own accumulated context, it tends to shorten it and lose specifics. My Curator only emits delta operations, applied by code with dedupe and counters, so bullets are added or adjusted, never summarized away."
+   ],
+   [
+    "Why give the agent grep and open tools instead of the whole repo?",
+    "Most repos do not fit in a window, and even when they do, irrelevant code dilutes attention and costs tokens. Tools let the agent fetch just the lines it needs, which also leaves a trace you can debug."
+   ],
+   [
+    "How do you know the playbook helps?",
+    "Run a fixed task set over several rounds and compare pass rate and tokens per task with an empty playbook and with a full-rewrite baseline."
+   ]
+  ]
+ },
+ {
+  "id": "fluency",
+  "mod": 7,
+  "sec": "7.1",
+  "name": "Learning paths and fluency",
+  "title": "A study route and a habit of AI fluency",
+  "thesis": "Courses give you the concepts, but hiring managers look for fluent daily use of AI on real work. Pair a structured study route with a framework such as Anthropic's 4Ds, and keep evidence of both.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Study plan and 4Ds checklist",
+  "code": "STUDY ROUTE (about 6 hrs a week, 16 weeks)\nwk 1-6   Andrew Ng ML Specialization    regression, trees, eval\nwk 3-8   DeepLearning.AI short courses  RAG, agents, evals\nwk 7-12  Fast.ai Practical Deep Learning  train, fine-tune, ship\nwk 11-14 Trailhead: Agentforce trails   enterprise agent platform\nweekly   AI fluency self-check           where am I on the tiers?\n\n4Ds ON ONE REAL TASK\nDelegation   What should AI do here, what stays with me?\nDescription  Goal, context, format, examples, constraints.\nDiscernment  Check facts, logic, numbers, sources.\nDiligence    Disclose AI use, protect data, own the result.",
+  "nodes": [
+   [
+    "goal",
+    90,
+    70,
+    "FDE target role",
+    "gaps to close"
+   ],
+   [
+    "ml",
+    265,
+    70,
+    "ML foundations",
+    "Ng ML Specialization"
+   ],
+   [
+    "short",
+    440,
+    70,
+    "GenAI courses",
+    "DeepLearning.AI"
+   ],
+   [
+    "fastai",
+    615,
+    70,
+    "Deep learning",
+    "Fast.ai, top-down"
+   ],
+   [
+    "trail",
+    615,
+    220,
+    "Agent platform",
+    "Trailhead Agentforce"
+   ],
+   [
+    "tiers",
+    440,
+    220,
+    "Fluency level",
+    "Zapier-style tiers"
+   ],
+   [
+    "fourd",
+    265,
+    220,
+    "4Ds on real work",
+    "Anthropic framework"
+   ],
+   [
+    "proof",
+    90,
+    220,
+    "Proof of work",
+    "notes · projects"
+   ]
+  ],
+  "edges": [
+   [
+    "goal",
+    "ml"
+   ],
+   [
+    "ml",
+    "short"
+   ],
+   [
+    "short",
+    "fastai"
+   ],
+   [
+    "fastai",
+    "trail"
+   ],
+   [
+    "trail",
+    "tiers"
+   ],
+   [
+    "tiers",
+    "fourd"
+   ],
+   [
+    "fourd",
+    "proof"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start from the role",
+    "n": [
+     "goal"
+    ],
+    "d": "List what FDE job posts ask for and mark what you cannot yet do. The route exists to close those gaps, not to collect certificates.",
+    "l": [
+     0
+    ]
+   },
+   {
+    "t": "Classical ML foundations",
+    "n": [
+     "ml"
+    ],
+    "e": [
+     "goal>ml"
+    ],
+    "d": "Andrew Ng's Machine Learning Specialization on Coursera covers regression, classification, neural networks, trees and practical advice on evaluating models.",
+    "l": [
+     1
+    ]
+   },
+   {
+    "t": "Targeted GenAI skills",
+    "n": [
+     "short"
+    ],
+    "e": [
+     "ml>short"
+    ],
+    "d": "DeepLearning.AI's short courses teach one practical topic each, such as RAG, agents or evaluation, often with partner companies' tools. Pick those that match your projects.",
+    "l": [
+     2
+    ]
+   },
+   {
+    "t": "Hands-on deep learning",
+    "n": [
+     "fastai"
+    ],
+    "e": [
+     "short>fastai"
+    ],
+    "d": "Fast.ai's Practical Deep Learning for Coders starts by training a working model, then explains the parts. It suits engineers who learn by building.",
+    "l": [
+     3
+    ]
+   },
+   {
+    "t": "An enterprise agent platform",
+    "n": [
+     "trail"
+    ],
+    "e": [
+     "fastai>trail"
+    ],
+    "d": "Salesforce Trailhead is free, with trails on Agentforce, Salesforce's platform for AI agents. It shows how agents are configured inside a large enterprise system many customers already run.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "Place yourself on a fluency scale",
+    "n": [
+     "tiers"
+    ],
+    "e": [
+     "trail>tiers"
+    ],
+    "d": "Zapier has described AI fluency as levels running from not using AI to redesigning work around it. Use a scale like that to be honest about where you are.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Practise the 4Ds",
+    "n": [
+     "fourd"
+    ],
+    "e": [
+     "tiers>fourd"
+    ],
+    "d": "Anthropic's 4Ds are Delegation, Description, Discernment and Diligence. Apply them to one real work task each week.",
+    "l": [
+     7,
+     8,
+     9,
+     10,
+     11
+    ]
+   },
+   {
+    "t": "Keep proof",
+    "n": [
+     "proof"
+    ],
+    "e": [
+     "fourd>proof"
+    ],
+    "d": "Short write-ups of tasks you did with AI, what you checked and what you changed make better interview stories than a badge list."
+   }
+  ],
+  "ideas": [
+   "Theory route: Ng ML Specialization, then targeted DeepLearning.AI short courses.",
+   "Practice route: Fast.ai builds first and explains after.",
+   "Trailhead shows how agents live inside a platform customers already own.",
+   "Fluency is observable behaviour on real tasks, measured on a scale.",
+   "4Ds: Delegation, Description, Discernment, Diligence."
+  ],
+  "traps": [
+   "Collecting certificates with no project or work sample to show.",
+   "Treating fluency as prompt tricks rather than judgement and verification.",
+   "Pasting customer data into tools your employer has not approved."
+  ],
+  "qa": [
+   [
+    "How do you use AI in your daily work?",
+    "Give one concrete task and walk the 4Ds: what I delegated and why, how I described it, how I checked the output, and what I disclosed or verified before it went to anyone else."
+   ],
+   [
+    "What have you done to keep your skills current?",
+    "Name the route and the projects it produced, for example the ML Specialization for fundamentals, a DeepLearning.AI course on agents, and the agent I built with it."
+   ],
+   [
+    "When would you not use AI for a task?",
+    "When I cannot verify the output, when the data is not cleared for the tool, or when the task is a judgement call I need to own personally, such as a message to an upset customer executive."
+   ]
+  ]
+ }
+]

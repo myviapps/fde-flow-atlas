@@ -1,0 +1,402 @@
+[
+ {
+  "id": "p0-setup",
+  "mod": 8,
+  "sec": "8.0",
+  "name": "Setup: dev environment",
+  "title": "Setup: your dev environment",
+  "thesis": "Install Python 3.12, Git, VS Code, a virtual environment and (optionally) Docker, then prove it all works with a tested hello_fde.py checker. An FDE sets up environments on unfamiliar machines constantly, so doing it cleanly and verifiably is a core habit.",
+  "format": "project",
+  "project": {
+   "level": "Beginner",
+   "time": "1-2 hours",
+   "skills": [
+    "installing developer tools",
+    "virtual environments",
+    "environment variables and .env",
+    "subprocess",
+    "pytest with fakes"
+   ],
+   "concepts": [
+    "computers",
+    "terminal",
+    "python1",
+    "git",
+    "security",
+    "tdd"
+   ],
+   "folder": "fde-atlas/projects/p0-setup",
+   "tree": "p0-setup/\n  README.md\n  requirements.txt\n  .env.example\n  .gitignore\n  hello_fde.py\n  tests/\n    conftest.py\n    test_hello_fde.py",
+   "setup": [
+    {
+     "title": "Install Python 3.12",
+     "body": "Python runs every project in this module. Install 3.12 and confirm the version. On Windows, tick 'Add python.exe to PATH' if you use the python.org installer; the py launcher lets you pick a version.",
+     "code": "# Windows (PowerShell)\nwinget install Python.Python.3.12\npy -3.12 --version\n\n# macOS (Homebrew)\nbrew install python@3.12\npython3.12 --version\n\n# Linux (Debian/Ubuntu; older releases may need pyenv or the deadsnakes PPA)\nsudo apt update && sudo apt install python3.12 python3.12-venv\npython3.12 --version",
+     "lang": "bash"
+    },
+    {
+     "title": "Install Git and introduce yourself",
+     "body": "Git tracks every change you make. Set your name and email once so your commits are labeled.",
+     "code": "# Windows\nwinget install Git.Git\n# macOS\nbrew install git\n# Linux\nsudo apt install git\n\n# all platforms\ngit --version\ngit config --global user.name \"Your Name\"\ngit config --global user.email \"you@example.com\"",
+     "lang": "bash"
+    },
+    {
+     "title": "Install VS Code and the Python extension",
+     "body": "VS Code is the editor used throughout. Install the Python extension from Microsoft so you get linting, debugging and a test runner. On macOS, run 'Shell Command: Install code command in PATH' from the command palette so the checker can find it.",
+     "code": "# Windows\nwinget install Microsoft.VisualStudioCode\n# macOS\nbrew install --cask visual-studio-code\n# Linux: download the .deb or .rpm from code.visualstudio.com, then\nsudo apt install ./code_*.deb\n\n# all platforms\ncode --install-extension ms-python.python\ncode --version",
+     "lang": "bash"
+    },
+    {
+     "title": "Install Docker Desktop (optional)",
+     "body": "Later projects use Docker for Postgres, but each one has a no-Docker fallback, so you can skip this for now.",
+     "code": "# Windows\nwinget install Docker.DockerDesktop\n# macOS\nbrew install --cask docker\n# Linux\nsudo apt install docker.io && sudo usermod -aG docker $USER\n\ndocker --version",
+     "lang": "bash"
+    },
+    {
+     "title": "Create the project and a virtual environment",
+     "body": "A virtual environment is a private folder of packages for one project, so projects never fight over versions. Activate it every time you open a new terminal; your prompt shows (.venv) when it is active.",
+     "code": "# macOS / Linux\nmkdir p0-setup && cd p0-setup\npython3.12 -m venv .venv\nsource .venv/bin/activate\npip install -r requirements.txt\n\n# Windows PowerShell\nmkdir p0-setup; cd p0-setup\npy -3.12 -m venv .venv\n.venv\\Scripts\\Activate.ps1\npip install -r requirements.txt\n# if activation is blocked, run once:\nSet-ExecutionPolicy -Scope CurrentUser RemoteSigned",
+     "lang": "bash"
+    },
+    {
+     "title": "Put API keys in .env, never in code",
+     "body": "Copy .env.example to .env and paste your real key there. python-dotenv loads it into environment variables at runtime, and .gitignore keeps .env out of Git. A key is optional for this project.",
+     "code": "# macOS / Linux\ncp .env.example .env\n# Windows PowerShell\ncopy .env.example .env",
+     "lang": "bash"
+    }
+   ],
+   "steps": [
+    {
+     "title": "Pin the dependencies",
+     "body": "Only two packages: python-dotenv to read .env files and pytest to run tests. The >= bounds say 'at least this version' so pip can pick a recent compatible one.",
+     "code": "python-dotenv>=1.0\npytest>=8.0\n",
+     "lang": "text",
+     "file": "requirements.txt"
+    },
+    {
+     "title": "Describe secrets without storing them",
+     "body": ".env.example is committed to Git so teammates know which variables exist. It holds placeholders only.\n\nThe real .env stays on your machine.",
+     "code": "# Copy this file to .env and fill in real values. Never commit .env.\nANTHROPIC_API_KEY=your-key-here\n",
+     "lang": "text",
+     "file": ".env.example"
+    },
+    {
+     "title": "Keep junk and secrets out of Git",
+     "body": "Ignore the virtual environment, Python caches and .env. Doing this on day one prevents the most common beginner leak: an API key pushed to GitHub.",
+     "code": ".venv/\n__pycache__/\n.pytest_cache/\n.env\n",
+     "lang": "text",
+     "file": ".gitignore"
+    },
+    {
+     "title": "Write the checker",
+     "body": "Each check is a small function that returns a CheckResult (name, ok, detail, required). check_tool finds a command with shutil.which, runs it with --version and parses the number with a regular expression.\n\nNotice that which and runner are parameters with real defaults. Tests can pass in fakes, so they never depend on what is installed on the test machine. mask() makes sure an API key is never printed in full.",
+     "code": "\"\"\"hello_fde.py: check that your FDE dev environment is ready.\n\nRun it with:  python hello_fde.py\nExit code is 0 when every required tool is found, 1 otherwise.\n\"\"\"\nimport os\nimport re\nimport shutil\nimport subprocess\nimport sys\nfrom dataclasses import dataclass\n\nVERSION_RE = re.compile(r\"(\\d+\\.\\d+(?:\\.\\d+)?)\")\n\n\n@dataclass\nclass CheckResult:\n    name: str\n    ok: bool\n    detail: str\n    required: bool = True\n\n\ndef parse_version(text):\n    \"\"\"Pull the first version number like 2.43.0 out of a tool's output.\"\"\"\n    match = VERSION_RE.search(text or \"\")\n    return match.group(1) if match else None\n\n\ndef check_python(min_version=(3, 12), version_info=None):\n    v = version_info or sys.version_info\n    found = f\"{v[0]}.{v[1]}.{v[2]}\"\n    ok = (v[0], v[1]) >= min_version\n    need = f\"{min_version[0]}.{min_version[1]}+\"\n    return CheckResult(\"python\", ok, found if ok else f\"{found} (need {need})\")\n\n\ndef check_tool(name, args=(\"--version\",), required=True,\n               which=shutil.which, runner=subprocess.run):\n    \"\"\"Find a command on PATH, run it with --version, and parse the output.\"\"\"\n    path = which(name)\n    if path is None:\n        return CheckResult(name, False, \"not found on PATH\", required)\n    try:\n        out = runner([path, *args], capture_output=True, text=True, timeout=15)\n    except (OSError, subprocess.TimeoutExpired) as exc:\n        return CheckResult(name, False, f\"failed to run: {exc}\", required)\n    version = parse_version((out.stdout or \"\") + (out.stderr or \"\"))\n    return CheckResult(name, version is not None, version or \"no version in output\", required)\n\n\ndef check_venv(prefix=None, base_prefix=None):\n    \"\"\"A virtual environment is active when sys.prefix differs from sys.base_prefix.\"\"\"\n    prefix = prefix or sys.prefix\n    base_prefix = base_prefix or sys.base_prefix\n    active = prefix != base_prefix\n    detail = \"active\" if active else \"not active (run the activate script)\"\n    return CheckResult(\"venv\", active, detail)\n\n\ndef check_package(module_name):\n    try:\n        module = __import__(module_name)\n    except ImportError:\n        return CheckResult(module_name, False, \"not installed (pip install -r requirements.txt)\")\n    return CheckResult(module_name, True, getattr(module, \"__version__\", \"installed\"))\n\n\ndef mask(secret):\n    \"\"\"Never print a whole key. Show only a short prefix.\"\"\"\n    return secret[:6] + \"...\" if len(secret) > 10 else \"***\"\n\n\ndef check_env_key(key=\"ANTHROPIC_API_KEY\", env=None):\n    env = os.environ if env is None else env\n    value = env.get(key, \"\").strip()\n    detail = f\"set ({mask(value)})\" if value else \"not set (optional: copy .env.example to .env)\"\n    return CheckResult(key, bool(value), detail, required=False)\n\n\ndef run_all():\n    try:\n        from dotenv import load_dotenv\n        load_dotenv()  # reads .env in the current folder into os.environ\n    except ImportError:\n        pass\n    return [\n        check_python(),\n        check_venv(),\n        check_tool(\"git\"),\n        check_tool(\"code\", required=False),    # VS Code command line launcher\n        check_tool(\"docker\", required=False),\n        check_package(\"dotenv\"),\n        check_env_key(),\n    ]\n\n\ndef format_result(r):\n    if r.ok:\n        tag = \"OK  \"\n    else:\n        tag = \"FAIL\" if r.required else \"WARN\"\n    return f\"[{tag}] {r.name:<18} {r.detail}\"\n\n\ndef main():\n    print(\"Hello, FDE! Checking your environment...\\n\")\n    results = run_all()\n    for r in results:\n        print(format_result(r))\n    failed = [r.name for r in results if r.required and not r.ok]\n    print()\n    if failed:\n        print(\"Fix these before moving on: \" + \", \".join(failed))\n        return 1\n    print(\"All required tools found. You are ready to build.\")\n    return 0\n\n\nif __name__ == \"__main__\":\n    sys.exit(main())\n",
+     "lang": "Python",
+     "file": "hello_fde.py"
+    },
+    {
+     "title": "Let tests import the project",
+     "body": "pytest runs from the project folder, but this small conftest.py makes the import of hello_fde work no matter where pytest is started.",
+     "code": "import sys\nfrom pathlib import Path\n\n# Let tests import modules from the project root.\nsys.path.insert(0, str(Path(__file__).resolve().parent.parent))\n",
+     "lang": "Python",
+     "file": "tests/conftest.py"
+    },
+    {
+     "title": "Test the checker functions",
+     "body": "The tests cover version parsing, a too-old Python, a missing tool, a fake tool output, a tool that hangs, venv detection and key masking. None of them run a real command, so they pass on any machine in under a second.",
+     "code": "import subprocess\nfrom types import SimpleNamespace\n\nimport hello_fde as h\n\n\ndef test_parse_version_finds_numbers():\n    assert h.parse_version(\"git version 2.43.0\") == \"2.43.0\"\n    assert h.parse_version(\"Docker version 27.1.1, build 6312585\") == \"27.1.1\"\n    assert h.parse_version(\"1.95.3\\nabc123\\nx64\") == \"1.95.3\"\n    assert h.parse_version(\"no digits here\") is None\n    assert h.parse_version(None) is None\n\n\ndef test_check_python_passes_and_fails():\n    assert h.check_python((3, 12), version_info=(3, 12, 4)).ok\n    old = h.check_python((3, 12), version_info=(3, 9, 1))\n    assert not old.ok\n    assert \"need 3.12+\" in old.detail\n\n\ndef test_check_tool_missing():\n    result = h.check_tool(\"git\", which=lambda name: None)\n    assert not result.ok\n    assert result.detail == \"not found on PATH\"\n\n\ndef test_check_tool_parses_fake_output():\n    def fake_runner(cmd, **kwargs):\n        return SimpleNamespace(stdout=\"git version 2.45.1\\n\", stderr=\"\")\n\n    result = h.check_tool(\"git\", which=lambda n: \"/usr/bin/git\", runner=fake_runner)\n    assert result.ok\n    assert result.detail == \"2.45.1\"\n\n\ndef test_check_tool_handles_crash():\n    def broken_runner(cmd, **kwargs):\n        raise subprocess.TimeoutExpired(cmd, 15)\n\n    result = h.check_tool(\"docker\", required=False,\n                          which=lambda n: \"/usr/bin/docker\", runner=broken_runner)\n    assert not result.ok and not result.required\n    assert \"failed to run\" in result.detail\n\n\ndef test_check_venv():\n    assert h.check_venv(prefix=\"/proj/.venv\", base_prefix=\"/usr\").ok\n    assert not h.check_venv(prefix=\"/usr\", base_prefix=\"/usr\").ok\n\n\ndef test_env_key_is_masked():\n    result = h.check_env_key(\"ANTHROPIC_API_KEY\", env={\"ANTHROPIC_API_KEY\": \"sk-ant-abcdef123456\"})\n    assert result.ok\n    assert \"abcdef123456\" not in result.detail\n    missing = h.check_env_key(\"ANTHROPIC_API_KEY\", env={})\n    assert not missing.ok and not missing.required\n\n\ndef test_format_result_tags():\n    assert h.format_result(h.CheckResult(\"git\", True, \"2.4\")).startswith(\"[OK  ]\")\n    assert h.format_result(h.CheckResult(\"git\", False, \"x\")).startswith(\"[FAIL]\")\n    assert h.format_result(h.CheckResult(\"docker\", False, \"x\", required=False)).startswith(\"[WARN]\")\n",
+     "lang": "Python",
+     "file": "tests/test_hello_fde.py"
+    }
+   ],
+   "run": {
+    "code": "python hello_fde.py\n\n# Example output on a ready machine:\nHello, FDE! Checking your environment...\n\n[OK  ] python             3.12.4\n[OK  ] venv               active\n[OK  ] git                2.45.1\n[OK  ] code               1.95.3\n[WARN] docker             not found on PATH\n[OK  ] dotenv             installed\n[WARN] ANTHROPIC_API_KEY  not set (optional: copy .env.example to .env)\n\nAll required tools found. You are ready to build.\n\n# Exit code: 0 when all required checks pass, 1 otherwise (echo $? or $LASTEXITCODE)",
+    "lang": "bash"
+   },
+   "tests": {
+    "code": "python -m pytest -q\n\n........                                                                 [100%]\n8 passed in 0.17s",
+    "lang": "bash"
+   },
+   "stretch": [
+    "Add a --json flag that prints the results as JSON for other scripts to read",
+    "Check for uv and node as extra optional tools",
+    "Read the minimum Python version from an environment variable",
+    "Add a GitHub Actions workflow that runs the tests on Windows, macOS and Linux"
+   ],
+   "interview": "I built a small environment checker I run on any new machine or customer VM before starting work. Each check is a pure function with injectable dependencies, so the tests use fakes and run anywhere. The trade-offs: I only verify that a tool exists and reports a version, not that it is fully configured, and I mask secrets rather than printing them because terminal output often ends up in screenshots and tickets."
+  },
+  "ideas": [
+   "One virtual environment per project keeps package versions from colliding",
+   "Secrets live in environment variables loaded from an untracked .env file, with a committed .env.example as documentation",
+   "Passing dependencies like which and runner as parameters makes code testable without mocking libraries",
+   "A checker script turns 'works on my machine' into a repeatable, one-command answer"
+  ],
+  "traps": [
+   "Forgetting to activate the virtual environment, so pip installs into the system Python and imports fail later",
+   "Committing .env or pasting a key into source code; once it is in Git history, rotate the key",
+   "Having several Pythons on PATH and not knowing which one 'python' runs; check with python --version and where python (Windows) or which python"
+  ],
+  "qa": [
+   [
+    "Why use a virtual environment instead of installing packages globally?",
+    "Each project gets its own isolated set of packages and versions, so upgrading one project cannot break another, and requirements.txt describes exactly what that project needs. It also avoids needing admin rights and keeps the system Python clean."
+   ],
+   [
+    "How do you handle API keys in a project you share with a customer?",
+    "Keep them out of code and Git: read them from environment variables, load local ones from an ignored .env file, commit only a .env.example with placeholders, and never log them in full. In production use the platform's secret manager, and rotate any key that was ever exposed."
+   ]
+  ]
+ },
+ {
+  "id": "p1-csv-cleaner",
+  "mod": 8,
+  "sec": "8.1",
+  "name": "Project 1: CSV cleaner",
+  "title": "Project 1: CSV data cleaner",
+  "thesis": "Build a command-line tool that turns a messy customer CSV into clean.csv plus a rejects.csv that explains every dropped row. Cleaning a customer's data export is often the first real task on an FDE engagement, and explaining the rejects is what earns trust.",
+  "format": "project",
+  "project": {
+   "level": "Beginner",
+   "time": "2-3 hours",
+   "skills": [
+    "argparse CLIs",
+    "csv module",
+    "date parsing",
+    "data validation",
+    "deduplication",
+    "pytest parametrize"
+   ],
+   "concepts": [
+    "python1",
+    "python2",
+    "terminal",
+    "tdd",
+    "etl",
+    "dbbasics"
+   ],
+   "folder": "fde-atlas/projects/p1-csv-cleaner",
+   "tree": "p1-csv-cleaner/\n  README.md\n  requirements.txt\n  .gitignore\n  make_sample.py\n  cleaner.py\n  data/\n    customers_messy.csv   (generated)\n  output/                 (created when you run it)\n    clean.csv\n    rejects.csv\n  tests/\n    conftest.py\n    test_cleaner.py",
+   "setup": [
+    {
+     "title": "Create the folder and virtual environment",
+     "body": "Same routine as Project 0: a fresh folder, a fresh virtual environment, then install pytest.",
+     "code": "# macOS / Linux\nmkdir -p p1-csv-cleaner/tests && cd p1-csv-cleaner\npython3 -m venv .venv\nsource .venv/bin/activate\npip install -r requirements.txt\n\n# Windows PowerShell\nmkdir p1-csv-cleaner\\tests; cd p1-csv-cleaner\npy -3.12 -m venv .venv\n.venv\\Scripts\\Activate.ps1\npip install -r requirements.txt",
+     "lang": "bash"
+    }
+   ],
+   "steps": [
+    {
+     "title": "Dependencies and ignores",
+     "body": "Only pytest is needed; everything else is the standard library. The output folder is ignored because it is regenerated on every run.",
+     "code": "pytest>=8.0\n\n# .gitignore\n.venv/\n__pycache__/\n.pytest_cache/\noutput/\n",
+     "lang": "text",
+     "file": "requirements.txt"
+    },
+    {
+     "title": "Generate a messy sample file",
+     "body": "Never practise on real customer data. This script builds 20 good fake customers with a fixed random seed, then appends hand-written problem rows: missing and invalid emails, impossible and future dates, a bad country code, a non-numeric id, duplicate ids and a duplicate email hidden by different casing.\n\nBecause the seed is fixed, everyone gets the same file and the tests can assert exact counts.",
+     "code": "\"\"\"make_sample.py: generate a small, fake, messy customer CSV for practice.\n\nAll names are invented. The same seed always gives the same file.\n\"\"\"\nimport csv\nimport random\nfrom datetime import date, timedelta\nfrom pathlib import Path\n\nFIRST = [\"Ana\", \"Ben\", \"Chen\", \"Dara\", \"Eli\", \"Fatima\", \"Goran\", \"Hana\", \"Ivan\", \"Juno\"]\nLAST = [\"Silva\", \"Okafor\", \"Li\", \"Novak\", \"Haddad\", \"Kim\", \"Moreau\", \"Patel\"]\nCOUNTRIES = [\"US\", \"GB\", \"IN\", \"DE\", \"BR\", \"JP\"]\nFIELDS = [\"customer_id\", \"name\", \"email\", \"signup_date\", \"country\"]\n\n# Hand-written problem rows, so every rule in cleaner.py gets exercised.\nMESSY_ROWS = [\n    [\"21\", \"  Rosa   Diaz \", \" ROSA.DIAZ@Example.COM \", \"2024/03/05\", \"us\"],  # fixable\n    [\"22\", \"Omar Farouk\", \"\", \"2024-02-11\", \"EG\"],                            # missing email\n    [\"23\", \"Lena Berg\", \"lena.berg(at)example.com\", \"2024-01-20\", \"SE\"],      # invalid email\n    [\"24\", \"Tom Reyes\", \"tom.reyes@example.com\", \"31/02/2024\", \"MX\"],        # impossible date\n    [\"25\", \"Mia Wong\", \"mia.wong@example.com\", \"yesterday\", \"SG\"],           # not a date\n    [\"26\", \"Kai Lund\", \"kai.lund@example.com\", \"2099-01-01\", \"NO\"],          # future date\n    [\"27\", \"\", \"noname@example.com\", \"2024-04-02\", \"US\"],                    # missing name\n    [\"28\", \"Zoe Adams\", \"zoe.adams@example.com\", \"2024-05-06\", \"USA\"],       # bad country\n    [\"abc\", \"Sam Cole\", \"sam.cole@example.com\", \"2024-05-07\", \"CA\"],         # bad id\n    [\"3\", \"Duplicate Id\", \"dup.id@example.com\", \"2024-05-08\", \"US\"],         # duplicate id\n    [\"29\", \"Rosa Diaz\", \"rosa.diaz@example.com\", \"2024-03-05\", \"US\"],        # duplicate email\n    [\"30\", \"Ivy Nash\", \"ivy.nash@example.com\", \"05 Jun 2024\", \"gb\"],         # fixable\n]\n\n\ndef make_rows(n=20, seed=42):\n    rng = random.Random(seed)\n    rows = []\n    for i in range(1, n + 1):\n        first, last = rng.choice(FIRST), rng.choice(LAST)\n        signup = date(2023, 1, 1) + timedelta(days=rng.randint(0, 540))\n        email = f\"{first}.{last}{i}@example.com\".lower()\n        rows.append([str(i), f\"{first} {last}\", email, signup.isoformat(), rng.choice(COUNTRIES)])\n    rows.extend(MESSY_ROWS)\n    rows.append(list(rows[6]))  # an exact duplicate of customer 7\n    return rows\n\n\ndef write_sample(path=\"data/customers_messy.csv\", n=20, seed=42):\n    path = Path(path)\n    path.parent.mkdir(parents=True, exist_ok=True)\n    with path.open(\"w\", newline=\"\", encoding=\"utf-8\") as f:\n        writer = csv.writer(f)\n        writer.writerow(FIELDS)\n        writer.writerows(make_rows(n, seed))\n    return path\n\n\nif __name__ == \"__main__\":\n    out = write_sample()\n    print(f\"Wrote {out}\")\n",
+     "lang": "Python",
+     "file": "make_sample.py"
+    },
+    {
+     "title": "Write the validation rules",
+     "body": "clean_row trims every field, then checks one rule at a time and raises RowError on the first problem. RowError carries a short kind (for the summary) and a detail (for the rejects file).\n\nDates accept only unambiguous formats. 03/04/2024 could be March or April, so guessing would silently corrupt data; rejecting it is safer. The optional today argument lets tests freeze the calendar.",
+     "code": "\"\"\"cleaner.py: validate a messy customer CSV into clean.csv and rejects.csv.\n\nUsage:  python cleaner.py data/customers_messy.csv --out-dir output\n\"\"\"\nimport argparse\nimport csv\nimport re\nimport sys\nfrom collections import Counter\nfrom datetime import date, datetime\nfrom pathlib import Path\n\nFIELDS = [\"customer_id\", \"name\", \"email\", \"signup_date\", \"country\"]\nDATE_FORMATS = [\"%Y-%m-%d\", \"%Y/%m/%d\", \"%d %b %Y\"]  # unambiguous formats only\nEMAIL_RE = re.compile(r\"^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$\")\n\n\nclass RowError(ValueError):\n    \"\"\"A row problem. kind is a short category used in the summary.\"\"\"\n\n    def __init__(self, kind, detail=\"\"):\n        self.kind = kind\n        super().__init__(f\"{kind}: {detail}\" if detail else kind)\n\n\ndef parse_date(text, today=None):\n    today = today or date.today()\n    for fmt in DATE_FORMATS:\n        try:\n            parsed = datetime.strptime(text, fmt).date()\n        except ValueError:\n            continue\n        if parsed > today:\n            raise RowError(\"future date\", text)\n        return parsed.isoformat()\n    raise RowError(\"bad date\", repr(text))\n\n\ndef normalize_email(text):\n    email = text.lower()\n    if not email:\n        raise RowError(\"missing email\")\n    if not EMAIL_RE.match(email):\n        raise RowError(\"invalid email\", repr(email))\n    return email\n\n\ndef clean_row(raw, today=None):\n    \"\"\"Return a cleaned dict, or raise RowError for the first problem found.\"\"\"\n    row = {k: (raw.get(k) or \"\").strip() for k in FIELDS}\n    if not row[\"customer_id\"].isdigit():\n        raise RowError(\"bad id\", repr(row[\"customer_id\"]))\n    row[\"customer_id\"] = str(int(row[\"customer_id\"]))  # \"007\" -> \"7\"\n    row[\"name\"] = \" \".join(row[\"name\"].split())         # collapse inner spaces\n    if not row[\"name\"]:\n        raise RowError(\"missing name\")\n    row[\"email\"] = normalize_email(row[\"email\"])\n    row[\"signup_date\"] = parse_date(row[\"signup_date\"], today)\n    country = row[\"country\"].upper()\n    if len(country) != 2 or not country.isalpha():\n        raise RowError(\"bad country\", repr(row[\"country\"]))\n    row[\"country\"] = country\n    return row\n",
+     "lang": "Python",
+     "file": "cleaner.py"
+    },
+    {
+     "title": "Detect duplicates and keep line numbers",
+     "body": "Duplicates are checked after cleaning, so ' ROSA.DIAZ@Example.COM ' and 'rosa.diaz@example.com' count as the same person. The first occurrence wins, and each reject records its original line number (line 1 is the header) so a customer can find it in their own file.",
+     "code": "def clean_rows(rows, today=None):\n    \"\"\"Split rows into (clean, rejects). Duplicates are checked after cleaning.\"\"\"\n    clean, rejects = [], []\n    seen_ids, seen_emails = {}, {}\n    for line_no, raw in enumerate(rows, start=2):  # line 1 is the header\n        try:\n            row = clean_row(raw, today)\n            if row[\"customer_id\"] in seen_ids:\n                raise RowError(\"duplicate id\", f\"first seen on line {seen_ids[row['customer_id']]}\")\n            if row[\"email\"] in seen_emails:\n                raise RowError(\"duplicate email\", f\"first seen on line {seen_emails[row['email']]}\")\n        except RowError as err:\n            rejects.append({**{k: raw.get(k, \"\") for k in FIELDS},\n                            \"line\": line_no, \"kind\": err.kind, \"reason\": str(err)})\n            continue\n        seen_ids[row[\"customer_id\"]] = line_no\n        seen_emails[row[\"email\"]] = line_no\n        clean.append(row)\n    return clean, rejects\n",
+     "lang": "Python",
+     "file": "cleaner.py"
+    },
+    {
+     "title": "Add file handling and the command line",
+     "body": "run reads the input (utf-8-sig handles files saved by Excel), refuses files missing required columns, and writes both outputs. main uses argparse, so --help works for free and a missing file gives a clean usage error with exit code 2 instead of a stack trace.",
+     "code": "def write_csv(path, rows, fields):\n    with open(path, \"w\", newline=\"\", encoding=\"utf-8\") as f:\n        writer = csv.DictWriter(f, fieldnames=fields)\n        writer.writeheader()\n        writer.writerows(rows)\n\n\ndef run(input_path, out_dir, today=None):\n    with open(input_path, newline=\"\", encoding=\"utf-8-sig\") as f:\n        reader = csv.DictReader(f)\n        missing = [c for c in FIELDS if c not in (reader.fieldnames or [])]\n        if missing:\n            raise SystemExit(f\"error: input is missing columns: {', '.join(missing)}\")\n        rows = list(reader)\n    clean, rejects = clean_rows(rows, today)\n    out_dir = Path(out_dir)\n    out_dir.mkdir(parents=True, exist_ok=True)\n    write_csv(out_dir / \"clean.csv\", clean, FIELDS)\n    write_csv(out_dir / \"rejects.csv\", rejects, [\"line\", *FIELDS, \"kind\", \"reason\"])\n    return len(rows), clean, rejects\n\n\ndef main(argv=None):\n    parser = argparse.ArgumentParser(description=\"Clean a messy customer CSV.\")\n    parser.add_argument(\"input\", help=\"path to the messy CSV\")\n    parser.add_argument(\"--out-dir\", default=\"output\", help=\"folder for clean.csv and rejects.csv\")\n    args = parser.parse_args(argv)\n    if not Path(args.input).is_file():\n        parser.error(f\"file not found: {args.input}\")\n\n    total, clean, rejects = run(args.input, args.out_dir)\n    print(f\"Read {total} rows from {args.input}\")\n    print(f\"  clean:   {len(clean):>3}  -> {Path(args.out_dir) / 'clean.csv'}\")\n    print(f\"  rejects: {len(rejects):>3}  -> {Path(args.out_dir) / 'rejects.csv'}\")\n    if rejects:\n        print(\"Reject reasons:\")\n        for kind, count in Counter(r[\"kind\"] for r in rejects).most_common():\n            print(f\"  {kind:<16} {count}\")\n    return 0\n\n\nif __name__ == \"__main__\":\n    sys.exit(main())\n",
+     "lang": "Python",
+     "file": "cleaner.py"
+    },
+    {
+     "title": "Test the rules and the whole flow",
+     "body": "conftest.py adds the project folder to the import path (same file as Project 0). The parametrized test checks every rejection kind in one table. The end-to-end test generates the sample into a temporary folder, runs main and checks both output files and the printed summary.",
+     "code": "# tests/conftest.py\nimport sys\nfrom pathlib import Path\n\n# Let tests import modules from the project root.\nsys.path.insert(0, str(Path(__file__).resolve().parent.parent))\n\n# tests/test_cleaner.py\nimport csv\nfrom datetime import date\n\nimport pytest\n\nimport cleaner\nfrom make_sample import write_sample\n\nTODAY = date(2025, 1, 1)  # fixed \"today\" so tests never depend on the calendar\n\n\ndef good(**overrides):\n    row = {\"customer_id\": \"1\", \"name\": \"Ana Silva\", \"email\": \"ana@example.com\",\n           \"signup_date\": \"2024-03-05\", \"country\": \"us\"}\n    row.update(overrides)\n    return row\n\n\ndef test_clean_row_normalizes_values():\n    row = cleaner.clean_row(good(customer_id=\"007\", name=\"  Ana   Silva \",\n                                 email=\" ANA@Example.COM \", signup_date=\"2024/03/05\"), TODAY)\n    assert row == {\"customer_id\": \"7\", \"name\": \"Ana Silva\", \"email\": \"ana@example.com\",\n                   \"signup_date\": \"2024-03-05\", \"country\": \"US\"}\n\n\n@pytest.mark.parametrize(\"field,value,kind\", [\n    (\"email\", \"\", \"missing email\"),\n    (\"email\", \"ana(at)example.com\", \"invalid email\"),\n    (\"signup_date\", \"31/02/2024\", \"bad date\"),\n    (\"signup_date\", \"yesterday\", \"bad date\"),\n    (\"signup_date\", \"2030-01-01\", \"future date\"),\n    (\"name\", \"   \", \"missing name\"),\n    (\"country\", \"USA\", \"bad country\"),\n    (\"customer_id\", \"abc\", \"bad id\"),\n])\ndef test_clean_row_rejects(field, value, kind):\n    with pytest.raises(cleaner.RowError) as err:\n        cleaner.clean_row(good(**{field: value}), TODAY)\n    assert err.value.kind == kind\n\n\ndef test_duplicates_keep_first_and_report_line():\n    rows = [good(), good(customer_id=\"1\", email=\"other@example.com\"),\n            good(customer_id=\"2\", email=\"ANA@example.com\")]\n    clean, rejects = cleaner.clean_rows(rows, TODAY)\n    assert len(clean) == 1\n    assert [r[\"kind\"] for r in rejects] == [\"duplicate id\", \"duplicate email\"]\n    assert rejects[0][\"line\"] == 3\n    assert \"first seen on line 2\" in rejects[0][\"reason\"]\n\n\ndef test_invalid_row_does_not_block_a_later_valid_one():\n    rows = [good(email=\"\"), good(email=\"ana@example.com\")]\n    clean, rejects = cleaner.clean_rows(rows, TODAY)\n    assert len(clean) == 1 and len(rejects) == 1\n\n\ndef test_end_to_end_on_sample(tmp_path, capsys):\n    src = write_sample(tmp_path / \"messy.csv\")\n    out = tmp_path / \"out\"\n    assert cleaner.main([str(src), \"--out-dir\", str(out)]) == 0\n\n    with open(out / \"clean.csv\", newline=\"\") as f:\n        clean = list(csv.DictReader(f))\n    with open(out / \"rejects.csv\", newline=\"\") as f:\n        rejects = list(csv.DictReader(f))\n    assert len(clean) == 22\n    assert len(rejects) == 11\n    assert all(r[\"reason\"] for r in rejects)\n    assert len({r[\"email\"] for r in clean}) == len(clean)  # no duplicate emails survive\n    assert \"Read 33 rows\" in capsys.readouterr().out\n\n\ndef test_missing_columns_is_a_clear_error(tmp_path):\n    bad = tmp_path / \"bad.csv\"\n    bad.write_text(\"id,name\\n1,Ana\\n\")\n    with pytest.raises(SystemExit) as exc:\n        cleaner.run(bad, tmp_path / \"out\")\n    assert \"missing columns\" in str(exc.value)\n\n\ndef test_missing_file_exits_with_usage_error(tmp_path):\n    with pytest.raises(SystemExit) as exc:\n        cleaner.main([str(tmp_path / \"nope.csv\")])\n    assert exc.value.code == 2\n",
+     "lang": "Python",
+     "file": "tests/test_cleaner.py"
+    }
+   ],
+   "run": {
+    "code": "python make_sample.py\nWrote data/customers_messy.csv\n\npython cleaner.py data/customers_messy.csv --out-dir output\nRead 33 rows from data/customers_messy.csv\n  clean:    22  -> output/clean.csv\n  rejects:  11  -> output/rejects.csv\nReject reasons:\n  bad date         2\n  duplicate id     2\n  missing email    1\n  invalid email    1\n  future date      1\n  missing name     1\n  bad country      1\n  bad id           1\n  duplicate email  1\n\n# A few lines of output/rejects.csv\nline,customer_id,name,email,signup_date,country,kind,reason\n25,24,Tom Reyes,tom.reyes@example.com,31/02/2024,MX,bad date,bad date: '31/02/2024'\n32,29,Rosa Diaz,rosa.diaz@example.com,2024-03-05,US,duplicate email,duplicate email: first seen on line 22",
+    "lang": "bash"
+   },
+   "tests": {
+    "code": "python -m pytest -q\n\n..............                                                           [100%]\n14 passed in 0.31s",
+    "lang": "bash"
+   },
+   "stretch": [
+    "Add --strict so the tool exits with code 1 when any row is rejected, for use in a pipeline",
+    "Support DD/MM/YYYY behind an explicit --day-first flag instead of guessing",
+    "Stream rows instead of loading the whole file and time it on 1 million generated rows",
+    "Rewrite the rules with pydantic and compare readability and speed"
+   ],
+   "interview": "I built a CSV cleaner that splits a customer export into clean rows and rejects, where every reject keeps its original line number and a plain reason. The key trade-offs: I reject ambiguous dates instead of guessing, which is safer but needs a conversation with the customer; I keep the first duplicate, which is simple but may not be the most recent record; and I load the whole file into memory, which is fine for thousands of rows but would need streaming for millions."
+  },
+  "ideas": [
+   "Never drop bad rows silently: write them to a rejects file with a reason the customer can act on",
+   "Normalize first (trim, lowercase, collapse spaces), then deduplicate, or near-duplicates slip through",
+   "Accept only unambiguous formats; a wrong guess is worse than a visible rejection",
+   "A fixed-seed sample generator gives you realistic, repeatable test data with no privacy risk"
+  ],
+  "traps": [
+   "Parsing dates like 03/04/2024 without knowing the source convention, which swaps months and days silently",
+   "Checking duplicates on raw values, so case or whitespace differences hide the same customer",
+   "Writing tests that depend on today's date; pass 'today' in as a parameter"
+  ],
+  "qa": [
+   [
+    "A customer says your cleaner dropped 11 rows. How do you respond?",
+    "Point them to rejects.csv: each row has its original line number, a category and a specific reason, and the summary groups the counts. Then agree on rules for the gray areas, like which date format their system exports or which duplicate record should win, and turn those decisions into tests."
+   ],
+   [
+    "Why raise an exception per row instead of returning True or False?",
+    "The exception carries the reason, so the caller gets both the verdict and an explanation from one place. Catching RowError in one loop keeps the flow simple, and a separate kind field makes grouping for the summary easy without parsing message text."
+   ]
+  ]
+ },
+ {
+  "id": "p2-sql-analytics",
+  "mod": 8,
+  "sec": "8.2",
+  "name": "Project 2: SQL analytics",
+  "title": "Project 2: SQL analytics",
+  "thesis": "Load the cleaned customers plus orders and order items into SQLite, answer business questions with 8 SQL queries including window functions, and catch a fan-out bug that inflates revenue. FDEs are asked 'what does the data say?' in their first week, and a wrong number from a bad join destroys credibility fast.",
+  "format": "project",
+  "project": {
+   "level": "Beginner",
+   "time": "3-4 hours",
+   "skills": [
+    "schema design",
+    "joins",
+    "GROUP BY and HAVING",
+    "window functions",
+    "debugging fan-out",
+    "testing SQL"
+   ],
+   "concepts": [
+    "sql",
+    "dbbasics",
+    "normalize",
+    "acid",
+    "python2",
+    "tdd",
+    "warehouse"
+   ],
+   "folder": "fde-atlas/projects/p2-sql-analytics",
+   "tree": "p2-sql-analytics/\n  README.md\n  requirements.txt\n  .gitignore\n  load_db.py\n  queries.sql\n  run_queries.py\n  data/\n    customers.csv     (clean.csv from Project 1)\n    orders.csv\n    order_items.csv\n  tests/\n    conftest.py\n    test_queries.py",
+   "setup": [
+    {
+     "title": "Create the folder and virtual environment",
+     "body": "SQLite ships inside Python, so there is no database server to install. Window functions need SQLite 3.25 or newer, which every Python 3.12 build includes; check with the last command.",
+     "code": "# macOS / Linux\nmkdir -p p2-sql-analytics/data p2-sql-analytics/tests && cd p2-sql-analytics\npython3 -m venv .venv\nsource .venv/bin/activate\npip install -r requirements.txt\npython -c \"import sqlite3; print(sqlite3.sqlite_version)\"\n\n# Windows PowerShell\nmkdir p2-sql-analytics\\data, p2-sql-analytics\\tests; cd p2-sql-analytics\npy -3.12 -m venv .venv\n.venv\\Scripts\\Activate.ps1\npip install -r requirements.txt\npython -c \"import sqlite3; print(sqlite3.sqlite_version)\"",
+     "lang": "bash"
+    },
+    {
+     "title": "Bring in the cleaned customers",
+     "body": "Copy Project 1's output so this project stands on its own. Then create the two order files from the next step.",
+     "code": "# macOS / Linux\ncp ../p1-csv-cleaner/output/clean.csv data/customers.csv\n# Windows PowerShell\ncopy ..\\p1-csv-cleaner\\output\\clean.csv data\\customers.csv",
+     "lang": "bash"
+    }
+   ],
+   "steps": [
+    {
+     "title": "Create the order data",
+     "body": "orders.csv has one row per order with an order-level total. order_items.csv has one row per product line, so one order can have several item rows. That one-to-many relationship is exactly what causes the fan-out bug later.\n\nThe data is small on purpose: 12 orders and 19 items, so you can check every answer by hand. Completed revenue adds up to 485.",
+     "code": "# data/orders.csv\norder_id,customer_id,order_date,status,total\n101,1,2024-01-05,completed,45.00\n102,1,2024-02-10,completed,10.00\n103,2,2024-01-20,completed,55.00\n104,3,2024-02-14,refunded,50.00\n105,3,2024-03-01,completed,50.00\n106,7,2024-03-03,completed,100.00\n107,9,2024-01-28,completed,50.00\n108,12,2024-02-02,pending,30.00\n109,21,2024-03-15,completed,45.00\n110,21,2024-03-20,completed,25.00\n111,30,2024-03-25,completed,80.00\n112,9,2024-03-30,completed,25.00\n\n# data/order_items.csv\norder_id,product,qty,unit_price\n101,Widget,2,10.00\n101,Gadget,1,25.00\n102,Widget,1,10.00\n103,Gizmo,3,15.00\n103,Widget,1,10.00\n104,Gadget,2,25.00\n105,Gizmo,1,15.00\n105,Gadget,1,25.00\n105,Widget,1,10.00\n106,Gadget,4,25.00\n107,Widget,5,10.00\n108,Gizmo,2,15.00\n109,Widget,3,10.00\n109,Gizmo,1,15.00\n110,Gadget,1,25.00\n111,Gizmo,2,15.00\n111,Gadget,2,25.00\n112,Widget,1,10.00\n112,Gizmo,1,15.00\n",
+     "lang": "text",
+     "file": "data/orders.csv"
+    },
+    {
+     "title": "Define the schema and loader",
+     "body": "The schema uses primary keys, foreign keys (SQLite only enforces them after PRAGMA foreign_keys = ON), a UNIQUE email and a CHECK on status, so bad data fails loudly at load time.\n\nAll inserts run in one transaction: either every table loads or none does. Values are always passed as ? parameters, never pasted into the SQL string. The default database is :memory:, which makes tests fast and isolated. requirements.txt contains only pytest>=8.0, and .gitignore adds *.db.",
+     "code": "\"\"\"load_db.py: build a SQLite database from the CSV files in data/.\n\nUsage:  python load_db.py --db shop.db [--customers ../p1-csv-cleaner/output/clean.csv]\n\"\"\"\nimport argparse\nimport csv\nimport sqlite3\nfrom pathlib import Path\n\nDATA_DIR = Path(__file__).parent / \"data\"\n\nSCHEMA = \"\"\"\nCREATE TABLE customers (\n    customer_id INTEGER PRIMARY KEY,\n    name        TEXT NOT NULL,\n    email       TEXT NOT NULL UNIQUE,\n    signup_date TEXT NOT NULL,          -- ISO date, YYYY-MM-DD\n    country     TEXT NOT NULL\n);\nCREATE TABLE orders (\n    order_id    INTEGER PRIMARY KEY,\n    customer_id INTEGER NOT NULL REFERENCES customers(customer_id),\n    order_date  TEXT NOT NULL,\n    status      TEXT NOT NULL CHECK (status IN ('completed', 'pending', 'refunded')),\n    total       REAL NOT NULL           -- order-level amount: one value per order\n);\nCREATE TABLE order_items (\n    order_id    INTEGER NOT NULL REFERENCES orders(order_id),\n    product     TEXT NOT NULL,\n    qty         INTEGER NOT NULL,\n    unit_price  REAL NOT NULL\n);\nCREATE INDEX idx_orders_customer ON orders(customer_id);\nCREATE INDEX idx_items_order ON order_items(order_id);\n\"\"\"\n\n\ndef read_csv(path):\n    with open(path, newline=\"\", encoding=\"utf-8\") as f:\n        return list(csv.DictReader(f))\n\n\ndef insert_rows(conn, table, rows):\n    if not rows:\n        return 0\n    cols = list(rows[0].keys())\n    sql = f\"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})\"\n    conn.executemany(sql, [tuple(r[c] for c in cols) for r in rows])\n    return len(rows)\n\n\ndef build_db(db_path=\":memory:\", customers_csv=None, data_dir=DATA_DIR):\n    \"\"\"Create the tables and load the CSVs. Returns an open connection.\"\"\"\n    data_dir = Path(data_dir)\n    if db_path != \":memory:\":\n        Path(db_path).unlink(missing_ok=True)  # always rebuild from scratch\n    conn = sqlite3.connect(db_path)\n    conn.execute(\"PRAGMA foreign_keys = ON\")\n    conn.executescript(SCHEMA)\n    with conn:  # one transaction: all tables load, or none do\n        insert_rows(conn, \"customers\", read_csv(customers_csv or data_dir / \"customers.csv\"))\n        insert_rows(conn, \"orders\", read_csv(data_dir / \"orders.csv\"))\n        insert_rows(conn, \"order_items\", read_csv(data_dir / \"order_items.csv\"))\n    return conn\n\n\ndef main(argv=None):\n    parser = argparse.ArgumentParser(description=\"Load CSVs into SQLite.\")\n    parser.add_argument(\"--db\", default=\"shop.db\")\n    parser.add_argument(\"--customers\", help=\"customers CSV (default: data/customers.csv)\")\n    args = parser.parse_args(argv)\n    conn = build_db(args.db, args.customers)\n    for table in (\"customers\", \"orders\", \"order_items\"):\n        count = conn.execute(f\"SELECT COUNT(*) FROM {table}\").fetchone()[0]\n        print(f\"{table:<12} {count:>4} rows\")\n    conn.close()\n    print(f\"Saved {args.db}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+     "lang": "Python",
+     "file": "load_db.py"
+    },
+    {
+     "title": "Queries 1-3: GROUP BY and joins",
+     "body": "customers_per_country is plain GROUP BY. revenue_by_customer uses a LEFT JOIN so customers with no completed orders still appear with 0 (COALESCE turns NULL into 0).\n\nNote the status filter is in the ON clause. Put it in WHERE and those customers vanish, because their NULL status fails the filter. customers_without_orders is an anti-join: LEFT JOIN, then keep rows where the right side is NULL.",
+     "code": "-- Each query starts with a \"-- name:\" line. run_queries.py splits on those lines.\n-- Revenue means orders with status = 'completed'.\n\n-- name: customers_per_country\n-- GROUP BY basics: how many customers in each country?\nSELECT country, COUNT(*) AS customers\nFROM customers\nGROUP BY country\nORDER BY customers DESC, country;\n\n-- name: revenue_by_customer\n-- LEFT JOIN keeps customers with no completed orders; COALESCE turns NULL into 0.\n-- The status filter sits in ON, not WHERE: in WHERE it would silently drop them.\nSELECT c.customer_id, c.name,\n       COUNT(o.order_id)          AS orders,\n       COALESCE(SUM(o.total), 0)  AS revenue\nFROM customers c\nLEFT JOIN orders o\n       ON o.customer_id = c.customer_id AND o.status = 'completed'\nGROUP BY c.customer_id, c.name\nORDER BY revenue DESC, c.customer_id;\n\n-- name: customers_without_orders\n-- Anti-join: customers with no orders of any status.\nSELECT c.customer_id, c.name, c.signup_date\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.customer_id\nWHERE o.order_id IS NULL\nORDER BY c.customer_id;\n",
+     "lang": "SQL",
+     "file": "queries.sql"
+    },
+    {
+     "title": "Queries 4-6: window functions",
+     "body": "A window function computes over related rows without collapsing them like GROUP BY does. SUM() OVER (ORDER BY month) gives a running total. RANK() OVER (PARTITION BY country ...) restarts ranking in each country, so rnk = 1 is the top customer per country. LAG() reads the previous row of the same customer to measure days between orders.",
+     "code": "-- name: monthly_revenue_running\n-- Window function: running total over months.\nWITH monthly AS (\n    SELECT strftime('%Y-%m', order_date) AS month, SUM(total) AS revenue\n    FROM orders\n    WHERE status = 'completed'\n    GROUP BY month\n)\nSELECT month, revenue,\n       SUM(revenue) OVER (ORDER BY month) AS running_total\nFROM monthly\nORDER BY month;\n\n-- name: top_customer_per_country\n-- Window function: RANK() restarts for each country (PARTITION BY).\nWITH revenue AS (\n    SELECT c.country, c.name, SUM(o.total) AS revenue\n    FROM customers c\n    JOIN orders o ON o.customer_id = c.customer_id\n    WHERE o.status = 'completed'\n    GROUP BY c.customer_id\n),\nranked AS (\n    SELECT country, name, revenue,\n           RANK() OVER (PARTITION BY country ORDER BY revenue DESC) AS rnk\n    FROM revenue\n)\nSELECT country, name, revenue\nFROM ranked\nWHERE rnk = 1\nORDER BY country;\n\n-- name: days_between_orders\n-- Window function: LAG() looks at the previous order of the same customer.\nWITH ordered AS (\n    SELECT customer_id, order_id, order_date,\n           LAG(order_date) OVER (PARTITION BY customer_id ORDER BY order_date) AS prev_date\n    FROM orders\n)\nSELECT customer_id, order_id, prev_date, order_date,\n       CAST(julianday(order_date) - julianday(prev_date) AS INTEGER) AS days_since_prev\nFROM ordered\nWHERE prev_date IS NOT NULL\nORDER BY customer_id, order_date;\n",
+     "lang": "SQL",
+     "file": "queries.sql"
+    },
+    {
+     "title": "Queries 7-8: the fan-out bug and its fix",
+     "body": "fanout_bug wants revenue and units per customer, so it joins orders to order_items. But order 101 has two item rows, so its 45.00 total appears twice and gets summed twice. Total revenue reads 835 instead of 485, and nothing errors.\n\nfanout_fix first collapses items to one row per order in a CTE, then joins. Rule of thumb: aggregate the 'many' side to the grain of the 'one' side before joining, and never sum a header-level column after joining line-level rows.",
+     "code": "-- name: fanout_bug\n-- BUG: joining order_items repeats each order once per item row,\n-- so the order-level total is summed several times. Revenue is inflated.\nSELECT c.customer_id, c.name,\n       SUM(o.total)  AS revenue,\n       SUM(oi.qty)   AS units\nFROM customers c\nJOIN orders o       ON o.customer_id = c.customer_id\nJOIN order_items oi ON oi.order_id = o.order_id\nWHERE o.status = 'completed'\nGROUP BY c.customer_id, c.name\nORDER BY c.customer_id;\n\n-- name: fanout_fix\n-- FIX: aggregate items to one row per order first, then join.\nWITH items_per_order AS (\n    SELECT order_id, SUM(qty) AS units\n    FROM order_items\n    GROUP BY order_id\n)\nSELECT c.customer_id, c.name,\n       SUM(o.total)  AS revenue,\n       SUM(i.units)  AS units\nFROM customers c\nJOIN orders o           ON o.customer_id = c.customer_id\nJOIN items_per_order i  ON i.order_id = o.order_id\nWHERE o.status = 'completed'\nGROUP BY c.customer_id, c.name\nORDER BY c.customer_id;\n",
+     "lang": "SQL",
+     "file": "queries.sql"
+    },
+    {
+     "title": "Write the runner",
+     "body": "load_queries splits queries.sql on the '-- name:' lines, so SQL stays in a .sql file where editors highlight it. run_query returns column names and rows, and format_table prints them as aligned text. With no arguments it builds a fresh in-memory database and runs all eight queries.",
+     "code": "\"\"\"run_queries.py: run the named queries in queries.sql and print the results.\n\nUsage:\n  python run_queries.py                    # all queries, fresh in-memory database\n  python run_queries.py fanout_bug fanout_fix\n  python run_queries.py --db shop.db       # use a database built by load_db.py\n\"\"\"\nimport argparse\nimport re\nimport sqlite3\nimport sys\nfrom pathlib import Path\n\nfrom load_db import build_db\n\nQUERIES_FILE = Path(__file__).parent / \"queries.sql\"\nNAME_RE = re.compile(r\"^--\\s*name:\\s*(\\w+)\\s*$\", re.MULTILINE)\n\n\ndef load_queries(path=QUERIES_FILE):\n    \"\"\"Split queries.sql into {name: sql} using the '-- name:' marker lines.\"\"\"\n    text = Path(path).read_text(encoding=\"utf-8\")\n    parts = NAME_RE.split(text)  # [preamble, name1, sql1, name2, sql2, ...]\n    return {name: sql.strip() for name, sql in zip(parts[1::2], parts[2::2])}\n\n\ndef run_query(conn, sql):\n    cur = conn.execute(sql)\n    columns = [d[0] for d in cur.description]\n    return columns, cur.fetchall()\n\n\ndef format_table(columns, rows):\n    cells = [[str(c) for c in columns]] + [[\"\" if v is None else str(v) for v in r] for r in rows]\n    widths = [max(len(row[i]) for row in cells) for i in range(len(columns))]\n    lines = [\"  \".join(v.ljust(w) for v, w in zip(row, widths)) for row in cells]\n    lines.insert(1, \"  \".join(\"-\" * w for w in widths))\n    return \"\\n\".join(lines)\n\n\ndef main(argv=None):\n    parser = argparse.ArgumentParser(description=\"Run analysis queries.\")\n    parser.add_argument(\"names\", nargs=\"*\", help=\"query names to run (default: all)\")\n    parser.add_argument(\"--db\", help=\"existing SQLite file (default: build in memory)\")\n    args = parser.parse_args(argv)\n\n    queries = load_queries()\n    unknown = [n for n in args.names if n not in queries]\n    if unknown:\n        parser.error(f\"unknown query: {', '.join(unknown)}. Choose from: {', '.join(queries)}\")\n\n    conn = sqlite3.connect(args.db) if args.db else build_db()\n    for name in args.names or queries:\n        columns, rows = run_query(conn, queries[name])\n        print(f\"== {name} ({len(rows)} rows)\")\n        print(format_table(columns, rows))\n        print()\n    conn.close()\n    return 0\n\n\nif __name__ == \"__main__\":\n    sys.exit(main())\n",
+     "lang": "Python",
+     "file": "run_queries.py"
+    },
+    {
+     "title": "Assert exact results",
+     "body": "Because the data is small and fixed, each test asserts the exact answer. The fan-out test is the important one: it proves the buggy query is wrong (835), that the fixed query matches the trusted revenue_by_customer, and that customer 7, whose only order has one item row, looks correct under both, which is why this bug survives casual checks. tests/conftest.py is the same file as in Project 0.",
+     "code": "import sqlite3\n\nimport pytest\n\nfrom load_db import build_db\nfrom run_queries import load_queries, main, run_query\n\nQUERIES = load_queries()\n\n\n@pytest.fixture\ndef conn():\n    c = build_db()  # fresh in-memory database for every test\n    yield c\n    c.close()\n\n\ndef rows(conn, name):\n    return run_query(conn, QUERIES[name])[1]\n\n\ndef test_all_eight_queries_are_found():\n    assert len(QUERIES) == 8\n    assert \"fanout_bug\" in QUERIES and \"fanout_fix\" in QUERIES\n\n\ndef test_tables_loaded(conn):\n    counts = {t: conn.execute(f\"SELECT COUNT(*) FROM {t}\").fetchone()[0]\n              for t in (\"customers\", \"orders\", \"order_items\")}\n    assert counts == {\"customers\": 22, \"orders\": 12, \"order_items\": 19}\n\n\ndef test_order_totals_match_items(conn):\n    # Data sanity check: the header total equals the sum of its lines.\n    mismatches = conn.execute(\"\"\"\n        SELECT o.order_id FROM orders o JOIN order_items i ON i.order_id = o.order_id\n        GROUP BY o.order_id HAVING ABS(o.total - SUM(i.qty * i.unit_price)) > 0.001\n    \"\"\").fetchall()\n    assert mismatches == []\n\n\ndef test_customers_per_country(conn):\n    result = dict(rows(conn, \"customers_per_country\"))\n    assert result == {\"GB\": 6, \"JP\": 5, \"US\": 4, \"DE\": 3, \"BR\": 2, \"IN\": 2}\n    assert sum(result.values()) == 22\n\n\ndef test_revenue_by_customer_keeps_zero_revenue_customers(conn):\n    result = rows(conn, \"revenue_by_customer\")\n    assert len(result) == 22\n    assert result[0] == (7, \"Juno Haddad\", 1, 100.0)\n    assert sum(r[3] for r in result) == 485.0\n    by_id = {r[0]: r for r in result}\n    assert by_id[12][3] == 0      # only a pending order\n    assert by_id[3][3] == 50.0    # refunded order is excluded\n\n\ndef test_customers_without_orders(conn):\n    ids = [r[0] for r in rows(conn, \"customers_without_orders\")]\n    assert len(ids) == 14\n    assert 12 not in ids  # a pending order still counts as an order\n\n\ndef test_monthly_running_total(conn):\n    assert rows(conn, \"monthly_revenue_running\") == [\n        (\"2024-01\", 150.0, 150.0), (\"2024-02\", 10.0, 160.0), (\"2024-03\", 325.0, 485.0)]\n\n\ndef test_top_customer_per_country(conn):\n    assert rows(conn, \"top_customer_per_country\") == [\n        (\"GB\", \"Juno Haddad\", 100.0), (\"JP\", \"Dara Li\", 55.0), (\"US\", \"Dara Kim\", 75.0)]\n\n\ndef test_days_between_orders(conn):\n    gaps = {(r[0], r[1]): r[4] for r in rows(conn, \"days_between_orders\")}\n    assert gaps == {(1, 102): 36, (3, 105): 16, (9, 112): 62, (21, 110): 5}\n\n\ndef test_fanout_bug_inflates_and_fix_matches_truth(conn):\n    bug = {r[0]: r[2] for r in rows(conn, \"fanout_bug\")}\n    fix = {r[0]: r[2] for r in rows(conn, \"fanout_fix\")}\n    truth = {r[0]: r[3] for r in rows(conn, \"revenue_by_customer\") if r[3] > 0}\n    assert sum(bug.values()) == 835.0   # wrong: totals repeated per item row\n    assert fix == truth                 # right: one row per order before joining\n    assert bug[7] == fix[7]             # single-item orders hide the bug\n\n\ndef test_units_are_the_same_in_bug_and_fix(conn):\n    bug_units = {r[0]: r[3] for r in rows(conn, \"fanout_bug\")}\n    fix_units = {r[0]: r[3] for r in rows(conn, \"fanout_fix\")}\n    assert bug_units == fix_units  # line-level columns are fine; header-level ones are not\n\n\ndef test_foreign_keys_are_enforced(conn):\n    with pytest.raises(sqlite3.IntegrityError):\n        conn.execute(\"INSERT INTO orders VALUES (999, 12345, '2024-01-01', 'completed', 1.0)\")\n\n\ndef test_runner_prints_named_query(capsys):\n    assert main([\"fanout_fix\"]) == 0\n    out = capsys.readouterr().out\n    assert \"== fanout_fix (7 rows)\" in out and \"Juno Haddad\" in out\n",
+     "lang": "Python",
+     "file": "tests/test_queries.py"
+    }
+   ],
+   "run": {
+    "code": "python run_queries.py fanout_bug fanout_fix\n== fanout_bug (7 rows)\ncustomer_id  name         revenue  units\n-----------  -----------  -------  -----\n1            Ben Silva    100.0    4\n2            Dara Li      110.0    4\n3            Ivan Okafor  150.0    3\n7            Juno Haddad  100.0    4\n9            Dara Kim     100.0    7\n21           Rosa Diaz    115.0    5\n30           Ivy Nash     160.0    4\n\n== fanout_fix (7 rows)\ncustomer_id  name         revenue  units\n-----------  -----------  -------  -----\n1            Ben Silva    55.0     4\n2            Dara Li      55.0     4\n3            Ivan Okafor  50.0     3\n7            Juno Haddad  100.0    4\n9            Dara Kim     75.0     7\n21           Rosa Diaz    70.0     5\n30           Ivy Nash     80.0     4\n\npython run_queries.py monthly_revenue_running\n== monthly_revenue_running (3 rows)\nmonth    revenue  running_total\n-------  -------  -------------\n2024-01  150.0    150.0\n2024-02  10.0     160.0\n2024-03  325.0    485.0\n\n# Save a database file to explore in the sqlite3 shell or a VS Code SQLite viewer\npython load_db.py --db shop.db\ncustomers      22 rows\norders         12 rows\norder_items    19 rows\nSaved shop.db",
+    "lang": "bash"
+   },
+   "tests": {
+    "code": "python -m pytest -q\n\n.............                                                            [100%]\n13 passed in 0.18s",
+    "lang": "bash"
+   },
+   "stretch": [
+    "Add a repeat-purchase-rate query: customers with 2 or more completed orders divided by customers with any order",
+    "Store money as integer cents and explain why floats are risky for currency",
+    "Run EXPLAIN QUERY PLAN on revenue_by_customer with and without idx_orders_customer",
+    "Run Postgres with docker compose, load the same CSVs, and make the tests run against both databases"
+   ],
+   "interview": "I loaded cleaned customer data and orders into SQLite and wrote eight analysis queries covering joins, aggregation and window functions, each tested against exact expected results. The story I tell is the fan-out bug: joining line items to orders repeated the order total per line and inflated revenue from 485 to 835 with no error. I fixed it by aggregating to the order grain first, and I would mention trade-offs like SQLite for speed of setup versus Postgres for concurrency, and REAL versus integer cents for money."
+  },
+  "ideas": [
+   "Know the grain of every table (one row per what?) before you join",
+   "Aggregate the many side down to the grain of the one side before joining, or sums inflate silently",
+   "Window functions add running totals, ranks and previous-row values without collapsing rows",
+   "Small fixed datasets let you assert exact query results, which turns SQL into testable code"
+  ],
+  "traps": [
+   "Summing a header-level column like orders.total after joining line-level rows (fan-out)",
+   "Filtering the right table of a LEFT JOIN in WHERE, which quietly turns it into an inner join",
+   "Assuming SQLite enforces foreign keys by default; it does not until PRAGMA foreign_keys = ON"
+  ],
+  "qa": [
+   [
+    "Revenue on your dashboard is higher than finance's number. How do you debug it?",
+    "First check grain: count rows before and after each join. If a join to a one-to-many table like order items multiplies the order rows, any order-level sum is inflated. Compare against a simple trusted query on the orders table alone, then fix by pre-aggregating the many side in a CTE and add a test that the two numbers match."
+   ],
+   [
+    "When would you use a window function instead of GROUP BY?",
+    "When you need a per-row result that depends on other rows but still want to keep every row, such as a running total, a rank within a group, or the gap since the previous order. GROUP BY collapses rows to one per group; a window function keeps them and adds a computed column."
+   ]
+  ]
+ }
+]

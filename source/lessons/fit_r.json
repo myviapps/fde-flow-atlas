@@ -1,0 +1,16 @@
+{
+ "llmapi": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Sliding temperature and top_p shows how sampling changes outputs; the request, error and cloud details need explanation."
+ },
+ "aicoding": {
+  "best": [
+   "practice",
+   "reading"
+  ],
+  "why": "Using agents well is a habit built by doing real tasks with review, guided by clear rules on context and data safety."
+ }
+}

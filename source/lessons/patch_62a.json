@@ -1,0 +1,1015 @@
+{
+ "http": {
+  "replace_subtopics": [
+   {
+    "title": "Headers and authentication",
+    "body": "Headers are name and value pairs sent before the body. Content-Type says what format the body is in, usually application/json. Accept says what format you want back. User-Agent names your client.\n\nThe most important header is Authorization. APIs need to know who is calling, so you send a secret. An API key is a long random string the provider gives you. A bearer token is a string you send as 'Authorization: Bearer <token>', and it often expires after an hour or so. OAuth 2.0 is a common standard for obtaining such tokens: your program trades a client id and client secret, or a user's approval, for a short-lived access token.\n\nTokens are passwords. Keep them in environment variables or a secret manager, never in code, and never paste them into tickets or chat.\n\nTwo older schemes are still common on enterprise systems such as ERPs and on-premise tools. HTTP Basic auth sends a username and password on every call. The client joins them as user:password, encodes that with base64 and sends 'Authorization: Basic <encoded>'. Base64 is only an encoding, not encryption: anyone who sees the header can decode it in one line. So Basic auth is acceptable only over HTTPS, with a dedicated service account, never a person's own login. In requests you pass auth=(user, password) and the library builds the header.\n\nSome APIs want the API key in the query string, as in ?key=abc123. It works, but URLs get written to proxy logs, server access logs and browser history, so the key leaks more easily than a header does. Use a header if the API accepts one. If it does not, keep the full URL out of your own logs.",
+    "example": "A hospital's scheduling system uses OAuth 2.0 client credentials. Your service first POSTs its client id and secret to the token endpoint and receives an access token valid for 3600 seconds. Every API call then sends that token in the Authorization header. After an hour, calls start returning 401 Unauthorized, which is your signal to fetch a new token and try again. The same hospital also runs an older on-premise pharmacy system that only supports Basic auth. You ask their IT team for a service account called svc_fde with read-only rights, store the password in the secret manager, and call it over HTTPS with auth=(user, password). A mapping API they license takes ?key= in the URL, so your logger prints only the path, never the query string.",
+    "code": "import os, requests\n\n# 1. Exchange client credentials for a short-lived access token\ntok = requests.post(\n    \"https://auth.clinic-example.org/oauth/token\",\n    data={\"grant_type\": \"client_credentials\",\n          \"client_id\": os.environ[\"CLIENT_ID\"],\n          \"client_secret\": os.environ[\"CLIENT_SECRET\"]},\n    timeout=10,\n).json()\naccess_token = tok[\"access_token\"]        # expires_in is often 3600\n\n# 2. Send it as a bearer token on every call\nr = requests.get(\n    \"https://api.clinic-example.org/v1/appointments\",\n    headers={\"Authorization\": f\"Bearer {access_token}\",\n             \"Accept\": \"application/json\"},\n    timeout=10,\n)\nprint(r.status_code)\n\n# 3. HTTP Basic auth: \"user:password\" base64-encoded, sent on every call.\n#    Base64 is NOT encryption, so only ever use it over HTTPS.\nreq = requests.Request(\"GET\", \"https://erp.example-legacy.com/api/items\",\n                       auth=(\"svc_fde\", \"s3cret\")).prepare()\nprint(req.headers[\"Authorization\"])   # Basic c3ZjX2ZkZTpzM2NyZXQ=\n\n# 4. API key as a query parameter (some older APIs insist on this)\nreq = requests.Request(\"GET\", \"https://geo.example-maps.com/v1/geocode\",\n                       params={\"q\": \"Leeds\", \"key\": \"KEY123\"}).prepare()\nprint(req.url)   # https://geo.example-maps.com/v1/geocode?q=Leeds&key=KEY123\n# That full URL can end up in proxy and server logs: never log it as it is.",
+    "lang": "Python"
+   },
+   {
+    "title": "Status codes tell you what happened",
+    "body": "Every response starts with a three-digit status code. The first digit is the class. 2xx means success: 200 OK, 201 Created, 204 No Content. 3xx means the resource moved and you should follow a redirect. 4xx means the client, meaning you, did something wrong. 5xx means the server had a problem.\n\nThe 4xx codes you will see most are 400 Bad Request (malformed input), 401 Unauthorized (missing or expired credentials), 403 Forbidden (valid credentials without permission), 404 Not Found, 409 Conflict, 422 Unprocessable (the data failed validation) and 429 Too Many Requests (you hit a rate limit). The 5xx codes are 500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable and 504 Gateway Timeout.\n\nThe class tells you what to do next. Retrying a 400 will fail forever because the request itself is wrong. Retrying a 429 or 503 after a pause often succeeds. A 429 response frequently includes a Retry-After header saying how many seconds to wait.\n\n3xx redirects need a closer look. requests follows them automatically, and r.history lists the hops. Two surprises catch people. First, when the redirect points to a different host, requests drops your Authorization header on purpose so your token is not sent to a stranger, and the new host then answers 401. The fix is to call the final URL directly. Second, a 301 or 302 in reply to a POST is usually retried as a GET without the body; only 307 and 308 keep the method and body. Two more 4xx codes to know: 405 Method Not Allowed (for example POST to a read-only path) and 413 Payload Too Large (your upload or batch is over the server's size limit, so send smaller pieces).\n\nMany APIs also tell you how close you are to the rate limit on every response, not just on the 429. Common headers are X-RateLimit-Limit (calls allowed per window), X-RateLimit-Remaining (calls left) and X-RateLimit-Reset (when the window resets). A newer standard uses RateLimit-Limit, RateLimit-Remaining and RateLimit-Reset. Check the docs for the Reset unit: some APIs send a Unix time, others a number of seconds from now. A polite client slows down when Remaining gets low, instead of waiting to be blocked.",
+    "example": "An insurer's claims API returns a mix of responses during a nightly sync: 9,850 calls get 200, 120 get 429, 25 get 503 and 5 get 422. The 429s and 503s are temporary and should be retried with a wait. The 5 calls with 422 have a body saying 'policy_number must be 10 digits'. Those are data problems. Retrying will not help, so you log them and report the bad records to the customer. Later the same insurer moves the API from api.insurer-example.com to api2.insurer-example.com with a 301 redirect. Your GETs suddenly return 401 even though the token is valid, because requests removed the Authorization header when the host changed. Printing r.history shows the 301 hop, and pointing the client at api2 fixes it. You also read X-RateLimit-Remaining and pause when it drops below 5, and the 429 count falls from 120 to zero.",
+    "code": "def classify(r):\n    code = r.status_code\n    if 200 <= code < 300:\n        return \"ok\"\n    if code == 401:\n        return \"refresh token, then retry once\"\n    if code == 429:\n        wait = r.headers.get(\"Retry-After\", \"a few\")\n        return f\"rate limited: wait {wait} seconds and retry\"\n    if code in (500, 502, 503, 504):\n        return \"server trouble: retry with backoff\"\n    if 400 <= code < 500:\n        return f\"our request is wrong, do not retry: {r.text[:200]}\"\n    return \"unexpected\"\n\nimport time\n\ndef pause_if_low(r, min_left=5):\n    \"\"\"Return how many seconds to wait before the API starts answering 429.\"\"\"\n    h = r.headers\n    left = h.get(\"X-RateLimit-Remaining\") or h.get(\"RateLimit-Remaining\")\n    reset = h.get(\"X-RateLimit-Reset\") or h.get(\"RateLimit-Reset\")\n    if left is None or reset is None or int(left) > min_left:\n        return 0\n    reset = int(reset)\n    # X-RateLimit-Reset is often a Unix time; RateLimit-Reset is seconds from now\n    wait = reset - int(time.time()) if reset > 1_000_000_000 else reset\n    return max(wait, 0)\n\n# Redirects: see the hops, and notice a host change\n# r = requests.get(url, headers=auth_headers, timeout=10)\n# for hop in r.history: print(hop.status_code, hop.url)   # 301 https://api.insurer-example.com/...\n# print(r.url)                                            # the final URL to call directly",
+    "lang": "Python"
+   },
+   {
+    "title": "JSON bodies in and out",
+    "body": "JSON is text with a few building blocks: objects in curly braces holding named fields, arrays in square brackets holding lists, strings in double quotes, numbers, true, false and null. Python's json module and the requests library convert JSON objects to dicts and arrays to lists.\n\nWhen you send data, pass it with json= in requests. The library serialises the dict to JSON text and sets the Content-Type header for you. When you receive data, call r.json() to parse the body.\n\nNever assume every field is present. Real APIs omit empty fields, return null, or change a number into a string between versions. Use .get() with a default, or validate the response with a schema library such as Pydantic.\n\njson= is not the only body type. data= sends a form-encoded body (Content-Type application/x-www-form-urlencoded, text like grant_type=client_credentials&scope=read). That is what the OAuth token call in the headers section uses, because token endpoints expect a form, not JSON. files= sends a multipart body (multipart/form-data), which is how you upload a PDF, image or CSV. Each file part has a field name, a filename, the file bytes and a content type, and you can send normal form fields next to it with data=. Always open files in binary mode, 'rb'.\n\nSome values need deliberate parsing. Dates arrive as ISO 8601 strings such as 2026-03-01T09:30:00Z. The Z or an offset like +01:00 says which timezone; a string without one is ambiguous, so ask the customer what it means before you compare it with other times. Money is often sent as a string such as \"19.99\" so that it is not rounded; read it with Decimal, never float. Very large ids are sometimes sent as strings too, because JavaScript loses precision above 2 to the power 53. Keep those as strings.",
+    "example": "A logistics company's shipment API returns {\"id\": \"SHP-77\", \"weight_kg\": 12.5, \"delivered_at\": null, \"items\": [{\"sku\": \"A1\", \"qty\": 3}]}. In Python that becomes a dict whose items field is a list of dicts. delivered_at is None because the parcel is still in transit, so code that calls a date method on it would crash. Checking for None first avoids the crash. A claims team wants you to upload their daily CSV to an insurer's intake API. The API takes multipart with a field named file plus a batch field, so you send files= and data= together. The response contains \"created_at\": \"2026-03-01T09:30:00Z\" and \"total\": \"19.99\". You parse the date as a UTC datetime and the total as Decimal('19.99'), so three claims sum to exactly 59.97.",
+    "code": "import requests\n\n# Send JSON: requests serialises the dict and sets Content-Type\nr = requests.post(\"https://api.shipco-example.com/v1/shipments\",\n                  json={\"sku\": \"A1\", \"qty\": 3, \"to\": \"Leeds\"},\n                  headers={\"Authorization\": \"Bearer TOKEN\"},\n                  timeout=10)\nshipment = r.json()                 # JSON text -> dict\n\n# Read defensively: fields may be missing or null\nweight = shipment.get(\"weight_kg\", 0.0)\ndelivered = shipment.get(\"delivered_at\")    # None if in transit\nif delivered is None:\n    print(shipment[\"id\"], \"still in transit\")\nfor item in shipment.get(\"items\", []):\n    print(item[\"sku\"], item[\"qty\"])\n\nimport io, json\nfrom datetime import datetime, timezone\nfrom decimal import Decimal\n\n# Form-encoded body (data=): what OAuth token endpoints and old web forms expect\nreq = requests.Request(\"POST\", \"https://auth.example.org/token\",\n                       data={\"grant_type\": \"client_credentials\", \"scope\": \"read\"}).prepare()\nprint(req.headers[\"Content-Type\"])  # application/x-www-form-urlencoded\nprint(req.body)                     # grant_type=client_credentials&scope=read\n\n# Multipart upload (files=): sending a CSV or PDF\ncsv_file = io.BytesIO(b\"claim_id,amount\\nC-1,120.50\\n\")   # normally open(\"claims.csv\", \"rb\")\nreq = requests.Request(\"POST\", \"https://api.insure-example.com/v1/uploads\",\n                       files={\"file\": (\"claims.csv\", csv_file, \"text/csv\")},\n                       data={\"batch\": \"2026-09\"}).prepare()\nprint(req.headers[\"Content-Type\"][:30])  # multipart/form-data; boundary=\n\n# Dates, money and big ids: parse them on purpose\norder = json.loads('{\"id\": \"90071992547409931\", \"total\": \"19.99\", '\n                   '\"created_at\": \"2026-03-01T09:30:00Z\", \"local\": \"2026-03-01T09:30:00\"}')\ncreated = datetime.fromisoformat(order[\"created_at\"])   # Python 3.11+ accepts the Z\nprint(created.tzinfo)                                   # UTC\nlocal = datetime.fromisoformat(order[\"local\"])\nprint(local.tzinfo)                                     # None: ask which timezone it means\nlocal = local.replace(tzinfo=timezone.utc)              # only after the customer confirms UTC\ntotal = Decimal(order[\"total\"])                         # exact, unlike float\nprint(total * 3)                                        # 59.97\nprint(0.1 + 0.2)                                        # 0.30000000000000004\nprint(json.loads('{\"total\": 19.99}', parse_float=Decimal))  # {'total': Decimal('19.99')}",
+    "lang": "Python"
+   },
+   {
+    "title": "Pagination: getting all the data",
+    "body": "An API will not return a million records in one response. It returns a page, perhaps 100 items, plus a way to ask for the next page. You loop until there are no more pages.\n\nThere are three common styles. Offset pagination uses ?offset=200&limit=100. It is simple, but if rows are inserted while you page, items shift and you can skip or repeat some. Cursor pagination returns an opaque token like next_cursor that you send back, and it stays stable while data changes. Link-header pagination puts the URL of the next page in a Link response header; requests exposes it as r.links.\n\nAlways check the API documentation for which style is used and what the maximum page size is. Larger pages mean fewer calls and less risk of hitting rate limits.\n\nThe code below uses requests.Session instead of calling requests.get directly. A session keeps the network connection to the server open between calls (keep-alive), so page 2 onwards skips the TCP and TLS handshake. On a pull of hundreds of pages that is noticeably faster, and it puts less load on the customer's server. A session also holds default headers, such as Authorization, that it adds to every call, plus cookies. Create one session per API and reuse it.\n\nhttpx is a newer library with almost the same interface. httpx.Client plays the role of a session. httpx.AsyncClient does the same with async and await, so you can send several requests at once, for example to fetch 50 accounts in parallel. Cursor pages must still be fetched one after another, because each page tells you the next cursor, but independent calls can overlap. Keep the parallelism small, such as 5 at a time, so you stay under the rate limit.",
+    "example": "A SaaS CRM holds 48,200 contacts and returns at most 200 per page with a cursor. Your loop makes 242 calls. The last response has next_cursor set to null, which ends the loop. Had you stopped after the first call, your report would have claimed the customer has 200 contacts, a mistake that would surface in the first demo. Pulling the 48,200 contacts with a plain requests.get per page took 97 seconds; the same loop with one Session took 61 seconds because the TLS handshake happened once instead of 242 times. For the account details, one call per account, an httpx.AsyncClient with 5 requests in flight cut a 4 minute job to under a minute.",
+    "code": "import requests\n\ndef fetch_all_contacts(session, base_url):\n    contacts, cursor = [], None\n    while True:\n        params = {\"limit\": 200}\n        if cursor:\n            params[\"cursor\"] = cursor\n        r = session.get(f\"{base_url}/v1/contacts\", params=params, timeout=10)\n        r.raise_for_status()\n        page = r.json()\n        contacts.extend(page[\"items\"])\n        cursor = page.get(\"next_cursor\")\n        if not cursor:                     # last page reached\n            return contacts\n\ns = requests.Session()                      # reuses the connection\ns.headers[\"Authorization\"] = \"Bearer TOKEN\"\nprint(len(fetch_all_contacts(s, \"https://api.crm-example.com\")))\n\nimport asyncio, httpx\n\n# httpx.Client is the httpx version of requests.Session\nwith httpx.Client(base_url=\"https://api.crm-example.com\",\n                  headers={\"Authorization\": \"Bearer TOKEN\"}, timeout=10) as client:\n    r = client.get(\"/v1/contacts\", params={\"limit\": 200})\n\n# httpx.AsyncClient: independent calls in parallel, at most 5 at a time\nasync def fetch_accounts(ids):\n    limit = asyncio.Semaphore(5)\n    async with httpx.AsyncClient(base_url=\"https://api.crm-example.com\",\n                                 headers={\"Authorization\": \"Bearer TOKEN\"},\n                                 timeout=10) as client:\n        async def one(i):\n            async with limit:\n                r = await client.get(f\"/v1/accounts/{i}\")\n                r.raise_for_status()\n                return r.json()\n        return await asyncio.gather(*(one(i) for i in ids))\n\n# accounts = asyncio.run(fetch_accounts(range(1, 51)))",
+    "lang": "Python"
+   },
+   {
+    "title": "Debugging with curl first",
+    "body": "curl is a command-line tool that sends HTTP requests. It is installed on almost every machine, including locked-down customer servers where you cannot install Python packages. Reproducing a failing call with curl removes your own code from the question.\n\nUseful flags: -X sets the method, -H adds a header, -d sends a body, -i prints response headers, -v prints the whole conversation including TLS details, and -w can print the status code and timing. If curl works and your code fails, the bug is in your code. If curl fails the same way, the problem is the token, the network, or the API itself.\n\nWhen you share a curl command in a ticket, replace the token with a placeholder first.\n\ncurl is not the only option. HTTPie is a command-line client with shorter syntax and coloured output. Postman and Bruno are desktop apps where you save requests in collections, keep variables such as base_url and token per environment, and share them with teammates. Bruno stores collections as plain files you can commit to git, which suits customers that do not allow cloud tools. Check the customer's policy before you put their tokens into any desktop tool that syncs to the cloud.\n\nThe fastest way to reproduce a call the customer's own web app makes is Copy as cURL. Open the browser developer tools (F12), go to the Network tab, do the action in the app, right-click the request and choose Copy, then Copy as cURL. You get the exact URL, headers, cookies and body, ready to paste into a terminal or import into Postman or Bruno. That command contains the user's session cookie or token, so treat it like a password: remove those headers before you save or share it.",
+    "example": "A manufacturer's parts API times out from your pipeline. From the same server you run curl with -w to print the time. It takes 29 seconds and returns 504 Gateway Timeout, while the same call for a smaller date range returns in 0.4 seconds with 200. That tells you the API struggles with large queries, so you split the pull into daily ranges. A support agent at a logistics firm says the 'export shipments' button fails for March only. You watch them click it with developer tools open, copy the failing request as cURL, and run it yourself. It returns 413 Payload Too Large, so the export needs to be split by week. The whole diagnosis took ten minutes and no code.",
+    "code": "# Show response headers (-i) and the status code and time (-w)\ncurl -s -i \\\n  -H \"Authorization: Bearer $PARTS_TOKEN\" \\\n  -H \"Accept: application/json\" \\\n  -w \"\\nstatus=%{http_code} time=%{time_total}s\\n\" \\\n  \"https://api.parts-example.com/v1/parts?updated_since=2026-01-01\"\n\n# Send a JSON body with POST\ncurl -s -X POST \"https://api.parts-example.com/v1/parts\" \\\n  -H \"Authorization: Bearer $PARTS_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"part_no\": \"BRK-220\", \"qty\": 40}'\n\n# The same GET with HTTPie: == adds a query parameter, Name:value adds a header\nhttp GET \"https://api.parts-example.com/v1/parts\" updated_since==2026-01-01 \\\n  \"Authorization:Bearer $PARTS_TOKEN\"\n\n# A request pasted from the browser with Copy as cURL (trimmed).\n# Delete the cookie and authorization lines before saving or sharing it.\ncurl 'https://app.shipco-example.com/api/exports?month=2026-03' \\\n  -H 'accept: application/json' \\\n  -H 'cookie: session=REDACTED'",
+    "lang": "bash"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Basic auth",
+    "An old authentication scheme that sends base64 of user:password in the Authorization header; safe only over HTTPS."
+   ],
+   [
+    "Form-encoded body",
+    "A request body like a=1&b=2 with Content-Type application/x-www-form-urlencoded, sent with data= in requests."
+   ],
+   [
+    "Multipart upload",
+    "A request body of several parts, used to upload files, with Content-Type multipart/form-data, sent with files= in requests."
+   ],
+   [
+    "Redirect",
+    "A 3xx response that tells the client to repeat the request at another URL given in the Location header."
+   ],
+   [
+    "Keep-alive",
+    "Reusing one open network connection for many requests, which a requests.Session or httpx.Client does for you."
+   ],
+   [
+    "Rate-limit headers",
+    "Response headers such as X-RateLimit-Remaining that say how many calls you have left before you get 429."
+   ],
+   [
+    "Copy as cURL",
+    "A browser developer tools option that copies any network request as a ready-to-run curl command."
+   ],
+   [
+    "ISO 8601",
+    "The standard text format for dates and times, such as 2026-03-01T09:30:00Z, where Z means UTC."
+   ]
+  ],
+  "add_practice": [
+   "Upload a small CSV to https://httpbin.org/post with requests using files= and a data= field. Print the Content-Type header httpbin echoes back and find your file content in the response JSON.",
+   "Call https://api.github.com/rate_limit with curl -i and with HTTPie. Write down X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset, and convert the reset value to a readable time in Python.",
+   "Open any web app you use, find one API call in the browser Network tab, copy it as cURL, remove the cookie and authorization headers, and explain what each remaining header does."
+  ],
+  "fix": [
+   [
+    "A retailer called Northwind gives you API access.",
+    "A retailer called Brightcart gives you API access."
+   ]
+  ]
+ },
+ "git": {
+  "add_subtopics": [
+   {
+    "title": "Rebase versus merge, and keeping a branch up to date",
+    "body": "While you work on a branch, main keeps moving as other people merge. There are two ways to bring those new commits into your branch.\n\ngit merge origin/main adds one new merge commit that joins the two lines of history. Nothing that already exists changes, so it is always safe, but a long-lived branch collects many merge commits and the history looks like a tangle.\n\ngit rebase origin/main takes your commits off, moves your branch to the tip of main, and replays your commits on top, one by one. The result is a straight line, as if you had started your work today. The catch is that every replayed commit gets a new id. That is what rewriting history means. If you already pushed the branch, you must push again with git push --force-with-lease, which refuses to overwrite commits you have not seen.\n\nThe golden rule: only rebase a branch that nobody else works on. Never rebase main or a branch a teammate has pulled, because their copy still has the old commit ids and Git will think the work diverged. During a rebase a conflict stops at each commit. Fix the file, git add it, then git rebase --continue, or git rebase --abort to go back.\n\nOn GitHub and GitLab the merge button offers three options. Create a merge commit keeps every commit plus a merge commit. Squash and merge turns the whole pull request into one commit on main, which keeps main tidy and easy to revert. Rebase and merge replays each commit onto main without a merge commit. Many customer teams pick squash; follow whatever the repo already does.",
+    "example": "At a logistics customer your branch feat/eta-model is 12 commits behind main after a week. The team uses squash merges and a linear history, so you run git fetch and git rebase origin/main. One commit conflicts in features.py; you fix it, git add, git rebase --continue, run the tests and push with --force-with-lease. The pull request now shows only your 4 commits on top of today's main.",
+    "code": "git fetch origin\n\n# Option 1: merge (safe, adds a merge commit)\ngit merge origin/main\n\n# Option 2: rebase (straight history, rewrites YOUR branch's commit ids)\ngit rebase origin/main\n# CONFLICT in features.py -> edit the file, then:\ngit add features.py\ngit rebase --continue          # or: git rebase --abort to undo the whole rebase\n\npytest -q\ngit push --force-with-lease    # needed after a rebase; refuses to erase others' work\n\ngit log --oneline --graph -8   # see the shape of the history\n\n# Never: git rebase on main, or on a branch someone else has pulled.",
+    "lang": "bash",
+    "table": {
+     "headers": [
+      "Option",
+      "What main looks like",
+      "Use when"
+     ],
+     "rows": [
+      [
+       "Merge commit",
+       "every commit plus merge commits",
+       "the team wants full history"
+      ],
+      [
+       "Squash and merge",
+       "one commit per pull request",
+       "most customer repos; easy to revert"
+      ],
+      [
+       "Rebase and merge",
+       "every commit, no merge commits",
+       "the team wants a linear history with small commits"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Rescue tools: stash, reflog, cherry-pick and blame",
+    "body": "Four commands get you out of everyday trouble.\n\ngit stash puts your uncommitted edits on a shelf and gives you a clean working tree. Use it when someone asks for an urgent fix while you are halfway through something else. git stash list shows the shelf, and git stash pop brings the latest edits back and removes them from the shelf. Add -u to include untracked files.\n\ngit reflog is Git's private diary of where HEAD has been on your machine: every commit, checkout, reset and rebase, for about 90 days. If a git reset --hard or a bad rebase seems to have deleted commits, they are almost always still there. Find the line from before the mistake in git reflog and move back to it with git reset --hard HEAD@{2} or create a branch there.\n\ngit cherry-pick <commit> copies one commit onto the branch you are on. The classic use is a hotfix that was merged to main and must also go to a release branch, without bringing everything else from main. Use -x so the new message records where it came from.\n\ngit blame -L 40,60 file.py shows, for each line in that range, the last commit that changed it, who made it and when. It is not about blaming a person. It gives you the commit and pull request that explain why a line looks the way it does. git log -S 'text' finds the commits that added or removed a piece of text.",
+    "example": "At a bank you are mid-way through a refactor when the customer reports a wrong fee rounding in production. You git stash, switch to main, fix it in one commit and merge it. The bank runs release/2.3 in production, so you cherry-pick -x that commit onto release/2.3. Back on your branch you git stash pop. Later a colleague runs git reset --hard by mistake and loses two commits; git reflog shows them at HEAD@{1}, and one command brings them back.",
+    "code": "# Park unfinished work\ngit stash push -u -m \"half-done refactor\"\ngit stash list                  # stash@{0}: On feat/refactor: half-done refactor\n# ...switch branches, fix, commit...\ngit stash pop                   # edits come back\n\n# Recover 'lost' commits after a bad reset or rebase\ngit reflog | head -5\n# 5f1eb45 HEAD@{0}: reset: moving to HEAD~2\n# ac0e4b6 HEAD@{1}: commit: Add fee rounding test\ngit reset --hard HEAD@{1}       # or: git branch rescue ac0e4b6\n\n# Copy one fix onto a release branch\ngit switch release/2.3\ngit cherry-pick -x 7d2e9f1      # message gets \"(cherry picked from commit 7d2e9f1...)\"\n\n# Who last changed lines 40 to 60, and in which commit?\ngit blame -L 40,60 fees.py\ngit log -S \"ROUND_HALF_UP\" --oneline   # commits that added or removed this text",
+    "lang": "bash"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Branches and the remote",
+    "body": "A branch is a lightweight, movable name that points at a commit. main (older repos use master) is the shared branch that should always work. When you start a task, you create a new branch from main. Your commits move your branch forward and leave main alone.\n\nA remote is a copy of the repository on a server, usually called origin, hosted on GitHub, GitLab, Bitbucket or a customer's internal server. git push uploads your branch's commits to the remote. git pull downloads new commits from the remote and merges them into your current branch. git fetch downloads without merging, so you can look first.\n\nName branches after the work: fix/retry-429, feat/claims-export. Keep them short-lived, ideally merged within a few days, so they do not drift far from main.\n\nBefore your first commit on a new laptop, tell Git who you are with git config --global user.name and user.email. Use the email the customer's GitHub or GitLab knows, or your commits will not link to your account.\n\nThe remote also needs to know it is you. There are two common ways. With SSH you create a key pair with ssh-keygen -t ed25519, paste the public key (the .pub file) into your account settings, and clone with the git@ address. With HTTPS you clone the https:// address and use a personal access token (PAT) instead of a password when asked. Many customer GitLab servers only allow PATs, and some require single sign-on first. Give a token the smallest scope that works, such as read_repository and write_repository, and set an expiry date.\n\nIf clone hangs or fails with a certificate error inside a customer network, the traffic probably has to go through their proxy. git config --global http.proxy sets it, and the enterprise networking topic covers proxies and custom certificate bundles in detail.",
+    "example": "Two FDEs work at an insurer. Ana creates feat/claims-export, and Ben creates fix/null-policy-dates, both from the same main commit. They commit and push independently for two days without affecting each other. Each branch gets its own pull request and review. On day one at an insurer you get a laptop and access to their self-hosted GitLab. SSH on port 22 is blocked by the firewall, so you create a PAT with read and write repository scopes and a 90 day expiry, set http.proxy to their proxy address, and clone over HTTPS. Your first push shows your name correctly because you set user.email to your insurer account address.",
+    "code": "git switch main\ngit pull                              # get everyone's latest work\ngit switch -c feat/claims-export      # new branch from here\n\n# ...edit, add, commit a few times...\n\ngit push -u origin feat/claims-export # first push sets upstream\ngit branch -a                         # list local and remote branches\ngit switch main                       # jump back; your branch is kept\n\n# One-time setup on a new machine\ngit config --global user.name \"Sam Rivera\"\ngit config --global user.email \"sam.rivera@insurer-example.com\"\ngit config --global init.defaultBranch main\n\n# Option A: SSH key\nssh-keygen -t ed25519 -C \"sam.rivera@insurer-example.com\"\ncat ~/.ssh/id_ed25519.pub        # paste this into GitHub/GitLab > SSH keys\nssh -T git@gitlab.insurer-example.com\ngit clone git@gitlab.insurer-example.com:claims/pipeline.git\n\n# Option B: HTTPS with a personal access token (PAT) as the password\ngit clone https://gitlab.insurer-example.com/claims/pipeline.git\n\n# Behind a corporate proxy\ngit config --global http.proxy http://proxy.insurer-example.com:8080",
+    "lang": "bash"
+   },
+   {
+    "title": "Pull requests and code review",
+    "body": "A pull request (GitLab calls it a merge request) asks to merge one branch into another, usually into main. It shows the full diff, runs automated checks, and gives reviewers a place to comment on specific lines.\n\nA good pull request does one thing. Its description says what changed, why, and how it was tested, and links the ticket. Keep it small enough to review in one sitting; a few hundred changed lines is a common rough ceiling.\n\nReview is a conversation. Reviewers ask questions and suggest changes. You respond by pushing more commits to the same branch, and the pull request updates. When reviewers approve and CI is green, the pull request is merged. Many teams protect main so nothing can be pushed to it directly.\n\nCommit messages are part of the review too. A common convention: a subject line of 50 characters or fewer, written as a command (Add retry on 429, not Added or Adding), no full stop, then a blank line and a body that explains why the change was needed, not just what. Put the ticket id in the subject or body so the change is traceable. Some teams use Conventional Commits, which start the subject with a type such as feat:, fix:, docs: or chore:, so tools can build changelogs automatically.\n\nSometimes you have read access to a customer's or an open source repo but no right to push branches. Then you use the fork-and-PR workflow: fork the repo into your own account, clone your fork, push your branch there, and open a pull request from your fork into the original. Add the original as a second remote called upstream so you can fetch its latest main.\n\nWhen a set of merged changes is released, mark that exact commit with a tag. git tag -a v1.4.2 -m \"...\" creates an annotated tag with a message and author, and git push origin v1.4.2 shares it. GitHub and GitLab turn tags into releases with notes. The same version usually becomes the Docker image tag in the deploy topic, so anyone can map what is running back to the exact code.",
+    "example": "Ben opens a pull request titled 'Treat empty policy start dates as missing, not 1970-01-01'. The description explains that 312 claims had empty dates that were being parsed as the Unix epoch, which skewed the age-of-policy feature. A customer engineer asks whether the model needs retraining. Ben answers, adds a test with an empty date, pushes, gets approval and merges. At a retailer, your fix commit reads 'fix: skip empty SKU rows in nightly load (RET-231)' with a body explaining that 1.2 percent of rows had blank SKUs and crashed the join. For their open source forecasting library, you have no push rights, so you fork it, push to your fork and open a pull request upstream. After the retailer's release, you tag the merged commit v1.4.2, and the pipeline image is built as forecasting:1.4.2.",
+    "code": "## What\nTreat empty policy_start_date as missing instead of 1970-01-01.\n\n## Why\n312 claims had empty dates parsed as the Unix epoch, which made\npolicy age look like 56 years and skewed the fraud model feature.\n\n## How tested\n- New unit test: test_empty_start_date_is_none\n- Re-ran September backfill: 312 rows now null, 0 rows at 1970\n\n## Follow-up\nFeature table needs a rebuild; retraining ticket CLAIMS-418.\n\n# A good commit message\ngit commit -m \"fix: skip empty SKU rows in nightly load (RET-231)\" \\\n           -m \"1.2% of rows had blank SKUs and crashed the join on sku_id.\"\n\n# Fork-and-PR when you cannot push to the original repo\ngit clone git@github.com:sam-rivera/forecast-lib.git     # your fork\ncd forecast-lib\ngit remote add upstream https://github.com/forecast-org/forecast-lib.git\ngit fetch upstream\ngit switch -c fix/empty-sku upstream/main\n# ...commit...\ngit push -u origin fix/empty-sku    # then open the PR from your fork on GitHub\n\n# Tag a release\ngit tag -a v1.4.2 -m \"Nightly load skips empty SKUs\"\ngit push origin v1.4.2\ngit tag --list \"v1.4*\"",
+    "lang": "Text"
+   },
+   {
+    "title": "Undoing mistakes safely",
+    "body": "Git makes most mistakes recoverable. Before a commit, git restore discards edits to a file. git restore --staged unstages a file while keeping the edits.\n\nAfter a commit that is already pushed and shared, use git revert. It creates a new commit that applies the opposite change. History stays intact, which matters on shared branches and in audited environments.\n\ngit reset and git push --force rewrite history. They are fine on your own unshared branch and dangerous on shared ones, because they can delete commits other people have. If a secret was ever committed, treat it as leaked even after you remove it, because it remains in history and in every clone. Rotate the secret.\n\ngit reset moves your branch to an earlier commit, and its flag decides what happens to the changes in the commits you step back over. --soft keeps them staged, ready to commit again. --mixed, the default, keeps them in your files but unstaged. --hard throws them away completely, along with any uncommitted edits, so double check with git status first. Use reset only on commits you have not pushed. If you made a typo in the last commit message or forgot a file, and have not pushed yet, git commit --amend replaces that last commit instead.\n\nPrevention beats rescue. A .gitignore file at the root of the repo lists paths Git should never track: secrets, virtual environments, caches and data. .gitignore only affects untracked files. If a file is already committed, you must also run git rm --cached on it, which stops tracking it but leaves it on your disk. Then add a pre-commit hook with a secret scanner such as gitleaks or detect-secrets, so a commit that contains something that looks like a key is blocked before it is even created.",
+    "example": "A deploy on Friday merges a change that breaks the nightly load at a retailer. Rather than debugging under pressure, you run git revert on the merge commit, open a pull request with the revert, get a quick approval and deploy. The pipeline is back to the previous behaviour in 15 minutes, and the original change can be fixed on Monday. You commit 'Add clams export' and notice the typo and a missing test file before pushing. git add tests/test_export.py and git commit --amend -m 'Add claims export' fixes both in one commit. Later you find that .env was committed a month ago. You add it to .gitignore, run git rm --cached .env, commit, and ask the customer to rotate the database password in it, because the old value is still in history.",
+    "code": "git restore report.py            # discard unstaged edits\ngit restore --staged report.py   # unstage, keep the edits\n\ngit log --oneline -3\n# 9c1e7aa Merge pull request #57 from feat/new-loader\n# ...\n\ngit revert -m 1 9c1e7aa          # undo a merge commit (-m 1 keeps main's side)\ngit push                         # history keeps both the change and its undo\n\n# .gitignore: stop secrets being committed in the first place\n# .env\n# *.pem\n\n# git reset flavours (only on commits you have NOT pushed)\ngit reset --soft HEAD~1    # undo the last commit, keep its changes staged\ngit reset HEAD~1           # --mixed (default): keep changes, unstaged\ngit reset --hard HEAD~1    # undo the commit AND delete its changes\n\n# Fix the last unpushed commit (message or a forgotten file)\ngit add tests/test_export.py\ngit commit --amend -m \"Add claims export\"\n\n# A real .gitignore for a Python project\ncat > .gitignore <<'EOF'\n.env\n.venv/\n__pycache__/\n*.pyc\n*.pem\n*.key\ndata/\n.pytest_cache/\nEOF\n\n# The file was already committed: stop tracking it, keep it on disk\ngit rm --cached .env\ngit commit -m \"Stop tracking .env\"\ngit status --short         # .env no longer listed\n\n# Block secrets before they are committed (pre-commit framework)\n# .pre-commit-config.yaml:\n#   repos:\n#     - repo: https://github.com/gitleaks/gitleaks\n#       rev: v8.24.2\n#       hooks: [{id: gitleaks}]\npip install pre-commit && pre-commit install",
+    "lang": "bash",
+    "table": {
+     "headers": [
+      "Command",
+      "Commit",
+      "Staged changes",
+      "Your files"
+     ],
+     "rows": [
+      [
+       "reset --soft",
+       "moved back",
+       "kept, staged",
+       "kept"
+      ],
+      [
+       "reset --mixed",
+       "moved back",
+       "unstaged",
+       "kept"
+      ],
+      [
+       "reset --hard",
+       "moved back",
+       "deleted",
+       "deleted"
+      ],
+      [
+       "revert",
+       "new undo commit",
+       "not touched",
+       "not touched"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Rebase",
+    "Replaying your branch's commits on top of another branch, which gives a straight history but new commit ids."
+   ],
+   [
+    "Force-with-lease",
+    "A safer force push that refuses to overwrite remote commits you have not fetched."
+   ],
+   [
+    "Squash merge",
+    "Merging a whole pull request as a single commit on main."
+   ],
+   [
+    "Stash",
+    "A shelf where Git keeps uncommitted edits so you can switch tasks with a clean working tree."
+   ],
+   [
+    "Reflog",
+    "Git's local log of every place HEAD has pointed, used to recover commits after a bad reset or rebase."
+   ],
+   [
+    "Cherry-pick",
+    "Copying one specific commit onto the current branch."
+   ],
+   [
+    "Blame",
+    "A view showing which commit and author last changed each line of a file."
+   ],
+   [
+    "Amend",
+    "Replacing the last commit with a corrected one; only safe before it is pushed."
+   ],
+   [
+    ".gitignore",
+    "A file listing paths Git should never track, such as .env, .venv/ and data/."
+   ],
+   [
+    "Personal access token",
+    "A generated password with limited scopes and an expiry, used for Git over HTTPS."
+   ],
+   [
+    "Fork",
+    "Your own server-side copy of someone else's repository, used to open pull requests without push rights."
+   ],
+   [
+    "Tag",
+    "A permanent name, such as v1.4.2, attached to one commit to mark a release."
+   ]
+  ],
+  "add_practice": [
+   "Create a repo with a branch that is 3 commits behind main. Bring it up to date once with git merge and once (after resetting) with git rebase, and compare git log --oneline --graph for both.",
+   "Make two commits, run git reset --hard HEAD~2, then recover both commits using only git reflog. Deliverable: the reflog lines you used.",
+   "Commit a fake .env file, then stop tracking it with .gitignore and git rm --cached. Install pre-commit with gitleaks and show that a commit containing a fake AWS key is blocked.",
+   "Cherry-pick one commit from main onto a release/1.0 branch with -x, then tag the result v1.0.1 and list the tags."
+  ],
+  "fix": [
+   [
+    "git clone https://github.com/northwind/forecasting.git",
+    "git clone https://github.com/brightcart/forecasting.git"
+   ]
+  ]
+ },
+ "tdd": {
+  "add_subtopics": [
+   {
+    "title": "Testing errors, time, files and environment",
+    "body": "Real code does more than return numbers. It raises errors, reads the clock, writes files and reads environment variables. pytest has a built-in tool for each.\n\npytest.raises checks that code raises an error. Wrap the call in with pytest.raises(ValueError): and the test passes only if that error is raised. Add match= with a piece of the expected message, so a different ValueError from somewhere else does not pass by accident.\n\npytest.approx compares decimal numbers with a small tolerance. Floats cannot store most decimals exactly, so 0.1 + 0.2 == 0.3 is False in Python. approx makes it pass. For real money, use Decimal in the code; approx is for measurements, averages and ratios.\n\nmonkeypatch is a fixture that changes something only for one test and puts it back afterwards. monkeypatch.setenv sets an environment variable, delenv removes one, and setattr swaps an attribute or function.\n\ntmp_path is a fixture that gives each test its own new empty folder, as a pathlib.Path. Write files there, never in the project or your home folder.\n\nCode that calls datetime.now() gives a different answer every day, so its tests break at midnight or on the 1st of the month. Two fixes: pass the current time in as a parameter (an injected clock), or freeze time in the test with the freezegun library, so datetime.now() always returns the moment you choose.",
+    "example": "At a housing association you build an arrears checker. Tests prove that a rent split with 0 tenants raises ValueError mentioning 'at least 1', that three-way splits come out at 33.33 within a cent, that the sandbox CRM URL is used when CRM_BASE_URL is set, that the CSV report lands in a temporary folder with the right lines, and that a payment due on 1 March is not overdue on 28 February. All six tests run in 0.1 seconds on any day of the year.",
+    "code": "# app.py\nimport os, csv\nfrom datetime import datetime, timezone\n\ndef split_bill(total: float, people: int) -> float:\n    if people <= 0:\n        raise ValueError(f\"people must be at least 1, got {people}\")\n    return total / people\n\ndef api_base_url() -> str:\n    return os.environ.get(\"CRM_BASE_URL\", \"https://api.crm-example.com\")\n\ndef write_report(rows, folder) -> str:\n    path = folder / \"report.csv\"\n    with open(path, \"w\", newline=\"\") as f:\n        csv.writer(f).writerows(rows)\n    return str(path)\n\ndef is_overdue(due: datetime, now=None) -> bool:\n    now = now or datetime.now(timezone.utc)   # injectable clock\n    return now > due\n\n\n# test_app.py\nfrom datetime import datetime, timezone\nimport pytest\nfrom freezegun import freeze_time\nfrom app import split_bill, api_base_url, write_report, is_overdue\n\ndef test_split_rejects_zero_people():\n    with pytest.raises(ValueError, match=\"at least 1\"):\n        split_bill(100.0, 0)\n\ndef test_split_three_ways():\n    assert split_bill(100.0, 3) == pytest.approx(33.33, abs=0.01)\n    assert 0.1 + 0.2 == pytest.approx(0.3)      # plain == would fail\n\ndef test_base_url_from_env(monkeypatch):\n    monkeypatch.setenv(\"CRM_BASE_URL\", \"https://sandbox.crm-example.com\")\n    assert api_base_url() == \"https://sandbox.crm-example.com\"\n    # monkeypatch undoes the change after the test\n\ndef test_report_written(tmp_path):              # a fresh empty folder per test\n    path = write_report([[\"id\", \"total\"], [1, 9.5]], tmp_path)\n    assert open(path).read() == \"id,total\\n1,9.5\\n\"\n\nDUE = datetime(2026, 3, 1, tzinfo=timezone.utc)\n\ndef test_overdue_with_injected_clock():\n    assert is_overdue(DUE, now=datetime(2026, 3, 2, tzinfo=timezone.utc))\n\n@freeze_time(\"2026-02-28 12:00:00\")\ndef test_not_overdue_with_frozen_clock():\n    assert not is_overdue(DUE)\n\n# $ pytest -q\n# ......                                   [100%]\n# 6 passed",
+    "lang": "Python"
+   },
+   {
+    "title": "Integration tests against a real database",
+    "body": "Mocks cannot catch a wrong column name or a broken SQL query. For that you need an integration test against a real database of the same kind and version as production, never the customer's live one.\n\nThere are two common ways to get a throwaway database. The first is a docker compose file with a postgres service that you start before the tests, locally and in CI. The second is the testcontainers library, which starts a PostgreSQL container from inside a pytest fixture and removes it when the run ends, so nothing needs to be running beforehand. Both need Docker.\n\nThe pg_conn fixture used earlier in this lesson is built in two layers. A session-scoped fixture runs once per test run: it connects and creates the tables. A function-scoped fixture runs for every test: it opens a connection, whose work stays inside one open transaction, inserts a few seed rows the test can rely on, hands the connection to the test and rolls everything back afterwards. Every test starts from the same known state, and tests cannot leak rows into each other.\n\nFor HTTP APIs, the middle ground between a mock and the real service is a recorded response. The responses library (for requests) and respx (for httpx) let you register a URL and the JSON it should return, and they fail the test if your code calls a URL you did not register. vcrpy goes one step further: it records real replies once into a file (a cassette) and replays them on later runs. Remove tokens and personal data from cassettes before you commit them.",
+    "example": "For an insurer's claims loader, the unit tests mocked the database, yet the first deploy failed because the real table called the column policy_no, not policy. After that you add integration tests with the fixtures below. They run against PostgreSQL 16, the same version the insurer uses, and the column-name bug would have failed in CI in 0.2 seconds.",
+    "code": "# conftest.py\nimport os\nimport psycopg\nimport pytest\n\nDB_URL = os.environ.get(\"TEST_DATABASE_URL\",\n                        \"postgresql://postgres@localhost:5433/postgres\")\n\n@pytest.fixture(scope=\"session\")\ndef pg_setup():\n    \"\"\"Runs once per test run: connect and create the schema.\"\"\"\n    conn = psycopg.connect(DB_URL, autocommit=True)\n    conn.execute(\"DROP TABLE IF EXISTS claims\")\n    conn.execute(\"CREATE TABLE claims (id serial PRIMARY KEY, policy text NOT NULL,\"\n                 \" amount numeric(10,2) NOT NULL)\")\n    yield conn                      # tests run here\n    conn.execute(\"DROP TABLE claims\")   # teardown after the last test\n    conn.close()\n\n@pytest.fixture\ndef pg_conn(pg_setup):\n    \"\"\"Runs per test: a transaction that is rolled back, so tests never see each other's rows.\"\"\"\n    conn = psycopg.connect(DB_URL)          # autocommit off: everything is one transaction\n    conn.execute(\"INSERT INTO claims (policy, amount) VALUES ('SEED1', 10.00)\")  # seed row\n    yield conn\n    conn.rollback()                         # undo inserts, seeds and all\n    conn.close()\n\n\n# test_loader.py\nimport pytest\nimport responses\nfrom loader import load_claims, fetch_policy\n\n@pytest.mark.integration\ndef test_load_claims_writes_rows(pg_conn):\n    load_claims(pg_conn, [{\"policy\": \"ab12\", \"amount\": 50}])\n    rows = pg_conn.execute(\"SELECT policy, amount FROM claims ORDER BY id\").fetchall()\n    assert [r[0] for r in rows] == [\"SEED1\", \"AB12\"]\n\n@pytest.mark.integration\ndef test_each_test_starts_clean(pg_conn):\n    n = pg_conn.execute(\"SELECT count(*) FROM claims\").fetchone()[0]\n    assert n == 1                    # only the seed row: the last test was rolled back\n\n@responses.activate\ndef test_fetch_policy_with_recorded_reply():\n    responses.get(\"https://api.insurer-example.com/v1/policies/P-9\",\n                  json={\"id\": \"P-9\", \"status\": \"active\"}, status=200)\n    assert fetch_policy(\"P-9\")[\"status\"] == \"active\"\n    assert len(responses.calls) == 1\n\n# $ pytest -q\n# ...                                      [100%]\n# 3 passed\n\n# conftest.py variant: start a throwaway PostgreSQL in Docker for the test run\nimport psycopg, pytest\nfrom testcontainers.postgres import PostgresContainer\n\n@pytest.fixture(scope=\"session\")\ndef pg_url():\n    with PostgresContainer(\"postgres:16\", driver=None) as pg:   # starts, then stops at the end\n        yield pg.get_connection_url()\n",
+    "lang": "Python"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Your first pytest test",
+    "body": "In pytest, a test is a plain function whose name starts with test_, in a file whose name starts with test_. Inside it, you call your code and use Python's assert statement to check the result. If the assertion is true, the test passes. If it is false or the code raises an error, the test fails and pytest shows you the values involved.\n\nYou run all tests with the command pytest from the project folder. It finds the test files automatically, runs every test function, and prints a summary such as '5 passed, 1 failed'.\n\nGood tests check one behaviour each and have names that read like a sentence. When one fails, the name alone should tell you what broke.\n\nA few command-line flags make pytest much nicer to work with. -x stops at the first failure, so you fix one thing at a time. -k runs only tests whose names match an expression, such as -k discount or -k \"member and not under\". -vv prints each test name and shows full, untruncated differences when an assertion fails. --lf (last failed) reruns only the tests that failed in the previous run, which is fast when you are fixing a bug. -s shows print() output, which pytest normally hides for passing tests. You can run a single test with its path and name, as in pytest test_pricing.py::test_non_member_pays_full_price.",
+    "example": "A retailer applies a 10% loyalty discount on orders over 100 pounds. You write a function apply_discount(total, is_member). Tests check three facts: a member spending 150 pays 135, a member spending 80 pays 80, and a non-member spending 150 pays 150. Running pytest prints '3 passed'. While fixing the discount rule you run pytest -x -k member to work on member cases only, then pytest --lf to rerun just the two that failed, and finally a plain pytest before you commit.",
+    "code": "# pricing.py\ndef apply_discount(total: float, is_member: bool) -> float:\n    if is_member and total > 100:\n        return round(total * 0.9, 2)\n    return total\n\n# test_pricing.py\nfrom pricing import apply_discount\n\ndef test_member_over_100_gets_10_percent_off():\n    assert apply_discount(150.0, True) == 135.0\n\ndef test_member_under_100_pays_full_price():\n    assert apply_discount(80.0, True) == 80.0\n\ndef test_non_member_pays_full_price():\n    assert apply_discount(150.0, False) == 150.0\n\n# $ pytest -q\n# ...                                  [100%]\n# 3 passed\n\n# $ pytest -x                  # stop at the first failure\n# $ pytest -k member           # only tests with 'member' in the name\n# 2 passed, 1 deselected\n# $ pytest -vv                 # each test name, full assertion diffs\n# $ pytest --lf                # rerun only the last failures\n# $ pytest -s                  # show print() output\n# $ pytest test_pricing.py::test_non_member_pays_full_price   # one test",
+    "lang": "Python"
+   },
+   {
+    "title": "Fixtures and parametrised tests",
+    "body": "A fixture is a function that prepares something a test needs, such as sample data, a temporary file or a database connection. You mark it with @pytest.fixture and name it as a test argument. pytest runs the fixture and passes the result in. Fixtures in a file called conftest.py are shared by all tests in that folder.\n\nParametrisation runs one test function with many inputs. @pytest.mark.parametrize takes a list of cases and pytest reports each as its own test. This is ideal for data-cleaning rules, where you want to check dozens of messy input values.\n\nBoth features keep tests short, which makes them easier to read and more likely to be kept up to date.\n\nA fixture has a scope that controls how often it runs. The default, function, runs it again for every test, which is safest. module runs it once per test file, and session runs it once for the whole test run, which suits slow setup such as starting a database. Share a wider-scoped fixture only if tests cannot change it, or reset it between tests.\n\nMany fixtures also need to clean up. Write the fixture with yield instead of return. Code before yield is setup, the yielded value goes to the test, and code after yield is teardown, which runs even if the test fails. Use it to close connections, delete files or roll back transactions.",
+    "example": "A logistics customer sends postcodes in every format: ' sw1a 1aa', 'SW1A1AA', 'sw1a-1aa'. You write one parametrised test with six input and expected-output pairs for normalise_postcode(). When the customer reports a new format, you add one line to the list, watch it fail, and fix the function. The postcode tests get a shared lookup table of 30,000 valid postcodes that takes 2 seconds to load. You make that fixture session-scoped so it loads once, not 40 times, and the test run drops from 80 seconds to 3.",
+    "code": "import pytest\nfrom cleaning import normalise_postcode\n\n@pytest.mark.parametrize(\"raw, expected\", [\n    (\" sw1a 1aa\", \"SW1A 1AA\"),\n    (\"SW1A1AA\",   \"SW1A 1AA\"),\n    (\"sw1a-1aa\",  \"SW1A 1AA\"),\n    (\"M1 1AE\",    \"M1 1AE\"),\n    (\"\",          None),          # empty input is missing\n    (None,        None),\n])\ndef test_normalise_postcode(raw, expected):\n    assert normalise_postcode(raw) == expected\n\n@pytest.fixture\ndef sample_orders():\n    return [{\"id\": 1, \"postcode\": \"sw1a1aa\"}, {\"id\": 2, \"postcode\": \"\"}]\n\ndef test_orders_get_clean_postcodes(sample_orders):\n    cleaned = [normalise_postcode(o[\"postcode\"]) for o in sample_orders]\n    assert cleaned == [\"SW1A 1AA\", None]\n\n@pytest.fixture(scope=\"session\")          # once for the whole run\ndef postcode_lookup():\n    return load_postcode_table(\"data/postcodes.csv\")\n\n@pytest.fixture                             # scope=\"function\" is the default\ndef db_conn():\n    conn = connect_test_db()                # setup\n    yield conn                              # the test runs here\n    conn.close()                            # teardown, even if the test failed",
+    "lang": "Python"
+   },
+   {
+    "title": "CI: tests on every pull request",
+    "body": "Continuous integration means every change is automatically built and tested on a clean machine, usually when a pull request is opened or updated. GitHub Actions, GitLab CI and Jenkins are common CI systems. You describe the steps in a configuration file in the repo.\n\nA typical Python workflow checks out the code, installs a Python version, installs dependencies, and runs pytest. If any test fails, the pull request shows a red cross. With branch protection turned on, a pull request cannot be merged until the required checks pass.\n\nCI also catches the 'works on my machine' problem, because the clean machine has only what the repo declares. Add linting and type checks to the same workflow once tests are in place.\n\nCoverage tells you which lines of your code the tests actually ran. Install pytest-cov and run pytest --cov=src --cov-report=term-missing to see the percentage per file and the line numbers never executed. --cov-fail-under=80 makes the run fail if coverage drops below 80 percent, which is a useful guard in CI. Be clear about what it proves: an uncovered line has definitely never been tested, but a covered line only ran once. It may have no assertion checking it, so a high percentage does not mean the code is correct.\n\nThe workflow above installs with pip. If the project uses uv and a lock file, as the take-home layout does, CI should use the same tool so it installs exactly the locked versions. The astral-sh/setup-uv action installs uv and caches downloaded packages between runs, which cuts minutes from each job. Use the same commands in CI as in your README or Makefile, so a green local run means a green CI run.",
+    "example": "At a manufacturer, a customer engineer opens a pull request that renames a column. Two of your unit tests fail in CI because the loader still uses the old name. The pull request is blocked. The engineer fixes the loader in the same pull request, CI turns green, and the change merges without ever breaking the nightly job. At the manufacturer, coverage showed the loader at 64 percent, with the whole bad-row branch never run. You add two tests for malformed rows, reach 91 percent, and set --cov-fail-under=85. A later pull request that adds an untested export path fails CI until its author adds tests.",
+    "code": "# .github/workflows/tests.yml\nname: tests\non:\n  pull_request:\n  push:\n    branches: [main]\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n      - run: pip install -r requirements.txt pytest\n      - run: pytest -q          # a failing test fails the job\n\n# Coverage locally\n# $ pytest -q --cov=app --cov-report=term-missing --cov-fail-under=80\n# Name     Stmts   Miss  Cover   Missing\n# app.py      16      0   100%\n# Required test coverage of 80% reached. Total coverage: 100.00%\n\n# .github/workflows/tests.yml using uv and its cache\nname: tests\non:\n  pull_request:\n  push:\n    branches: [main]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: astral-sh/setup-uv@v6\n        with:\n          enable-cache: true          # reuse downloaded packages between runs\n      - run: uv sync --locked         # exact versions from uv.lock\n      - run: uv run pytest -q --cov=src --cov-fail-under=80",
+    "lang": "YAML"
+   }
+  ],
+  "add_glossary": [
+   [
+    "pytest.raises",
+    "A context manager that makes a test pass only if the code inside raises the given error."
+   ],
+   [
+    "pytest.approx",
+    "A helper that compares floats with a small tolerance, so 0.1 + 0.2 equals 0.3."
+   ],
+   [
+    "monkeypatch",
+    "A pytest fixture that changes environment variables or attributes for one test and restores them afterwards."
+   ],
+   [
+    "tmp_path",
+    "A pytest fixture giving each test its own new, empty temporary folder."
+   ],
+   [
+    "Freezing time",
+    "Making datetime.now() return a fixed moment in a test, for example with freezegun."
+   ],
+   [
+    "Fixture scope",
+    "How often a fixture runs: once per test (function), per file (module) or per run (session)."
+   ],
+   [
+    "Yield fixture",
+    "A fixture that yields its value and runs cleanup code after the test finishes."
+   ],
+   [
+    "Coverage",
+    "The share of code lines that ran during the tests, measured with pytest-cov."
+   ],
+   [
+    "Testcontainers",
+    "A library that starts a real database or service in Docker from inside a test fixture."
+   ],
+   [
+    "Recorded response",
+    "A saved or registered HTTP reply, used with responses, respx or vcrpy, so tests do not call the real API."
+   ]
+  ],
+  "add_practice": [
+   "Write parse_amount(s) that raises ValueError('empty amount') for ''. Test the error with pytest.raises(match=), a float result with pytest.approx, and a CSV writer with tmp_path.",
+   "Write days_until_renewal(renewal_date) that uses today's date. Test it twice: once by injecting today as a parameter, once with freezegun.",
+   "Start PostgreSQL with Docker, build a session fixture that creates a table and a per-test fixture that rolls back, and prove with two tests that rows from one test are not visible in the next.",
+   "Add pytest-cov to one of your projects, find one uncovered branch with --cov-report=term-missing, write a test for it, and set --cov-fail-under in CI."
+  ]
+ },
+ "debugging": {
+  "add_subtopics": [
+   {
+    "title": "Bugs that only happen sometimes or only in production",
+    "body": "The hardest bugs are the ones you cannot reproduce on your laptop. The code is the same, so something else must differ. Work through a diff checklist and compare production with your machine one item at a time.\n\nConfiguration and environment variables: a missing setting, a different feature flag, a different API base URL. Library versions: run pip freeze in both places and diff the output, because a loose requirement such as pandas>=2 can install a different version in the container. Data: production has rows your sample never had, such as nulls, huge values, emoji or a new country. Timezone and locale: servers usually run in UTC, and date parsing or number formatting can change with the locale. Operating system and CPU: Linux in production against macOS on your laptop, or amd64 against arm64. Permissions: the service account cannot read a file or a table your own login can.\n\nBugs that happen only sometimes usually come from timing or shared state. A race condition happens when two workers read and update the same thing at the same time and the result depends on who is faster. Ordering bugs appear when code assumes results come back in order, but a database without ORDER BY or a parallel job returns them in any order. Caches serve old values after the source changed, and the bug disappears when the cache expires, which makes it look random.\n\nThe best evidence is the exact input that failed. Save the failing payload in production with a request ID, after removing personal data and secrets, then replay it locally. Very often the bug reproduces at once.",
+    "example": "A travel company's booking sync fails for about 1 in 200 bookings, only in production. The FDE adds code that saves each failing payload, redacted, under its request ID. Two of the saved payloads have a departure time of 02:30 on the night the clocks went forward, a local time that does not exist. The laptop never saw such data. The repro takes one command and the fix converts to UTC before parsing.",
+    "code": "import json, hashlib, pathlib, platform, os, time\nfrom importlib.metadata import version\n\n# 1. Print the facts that often differ; run this in BOTH places and compare\ndef env_report(packages=(\"requests\", \"pandas\")):\n    print(\"python  \", platform.python_version(), platform.machine())\n    print(\"tz      \", time.tzname, \"TZ env:\", os.environ.get(\"TZ\"))\n    for p in packages:\n        print(f\"{p:8}\", version(p))\n# python   3.11.15 x86_64\n# tz       ('UTC', 'UTC') TZ env: None\n# requests 2.33.1\n# pandas   3.0.6\n# Also: pip freeze > prod.txt, then diff prod.txt laptop.txt\n\n# 2. Save a failing payload safely, so it can be replayed on a laptop\nSENSITIVE = {\"email\", \"name\", \"phone\", \"iban\", \"token\"}\n\ndef redact(obj):\n    if isinstance(obj, dict):\n        return {k: (\"<redacted:\" + hashlib.sha256(str(v).encode()).hexdigest()[:8] + \">\"\n                    if k in SENSITIVE else redact(v)) for k, v in obj.items()}\n    if isinstance(obj, list):\n        return [redact(x) for x in obj]\n    return obj\n\ndef save_failing_payload(payload, request_id, folder=\"failed_payloads\"):\n    path = pathlib.Path(folder) / f\"{request_id}.json\"\n    path.parent.mkdir(exist_ok=True)\n    path.write_text(json.dumps(redact(payload), indent=1))\n    return path\n\npayload = {\"order_id\": 88213, \"email\": \"a.khan@example.org\", \"lines\": [{\"sku\": \"B-7\", \"qty\": \"2\"}]}\nprint(save_failing_payload(payload, \"req-7f3a\").read_text())\n# {\n#  \"order_id\": 88213,\n#  \"email\": \"<redacted:42aa7a2e>\",\n#  ...\n# Replay later: handle_order(json.loads(open(\"failed_payloads/req-7f3a.json\").read()))",
+    "lang": "Python",
+    "checklist": [
+     "Config and environment variables, including feature flags",
+     "Library versions: diff pip freeze from both places",
+     "Data: nulls, sizes, new values, encodings the sample lacks",
+     "Timezone and locale settings",
+     "Operating system and CPU architecture",
+     "Permissions of the service account",
+     "Timing: concurrent workers, missing ORDER BY, retries",
+     "Caches that may still hold old values",
+     "The exact failing input, saved with personal data removed"
+    ]
+   },
+   {
+    "title": "Debugging a running service or container",
+    "body": "Sometimes the bug only shows up inside the deployed service, in a Docker container or a Kubernetes pod. You can still look inside.\n\nFirst, run commands in the container. docker exec -it <container> sh, or kubectl exec -it <pod> -- sh for Kubernetes, opens a shell there. From it you can check environment variables with env, test DNS and network access to a dependency, and run one-line Python checks with python -c, for example importing a library and printing its version, or calling the API the service uses.\n\nSecond, raise the log level. Many services read LOG_LEVEL from an environment variable at startup. Set it to DEBUG, restart one instance, reproduce the bug and set it back, because debug logs are large and can contain data you should not keep. Some services also offer an admin endpoint that changes the level without a restart.\n\nThird, attach a real debugger. debugpy is the debug engine behind VS Code's Python debugger. Start the service with python -m debugpy --listen 0.0.0.0:5678 so it waits for a debugger connection. Then forward that port to your laptop with kubectl port-forward pod/<name> 5678:5678 (or publish it with docker run -p 5678:5678), and in VS Code use an Attach configuration pointing at localhost:5678. You can now set breakpoints in the live process. Only do this in a development or staging environment: a paused breakpoint stops that instance from serving anyone.\n\nFinally, follow one request across services by its request ID. If every service logs the same ID, one search in the log tool shows the whole path. The observability topic covers how to set that up.",
+    "example": "A document service works locally but returns 500 for PDF uploads in the customer's staging cluster. kubectl exec and python -c show that the image has an older version of the PDF library than the lock file says. To be sure that is the cause, the FDE starts one pod with debugpy, port-forwards 5678, attaches VS Code, and stops at the exact line where the library raises. The image build is fixed to install from the lock file.",
+    "code": "# Look inside a running container or pod\ndocker exec -it docsvc sh\nkubectl exec -it deploy/docsvc -n pilot -- sh\n  env | grep -E \"LOG_LEVEL|API_URL\"\n  python -c \"import pypdf; print(pypdf.__version__)\"\n  python -c \"import httpx; print(httpx.get('http://ocr.pilot.svc:8080/health').status_code)\"\n\n# Raise the log level on one instance, then set it back\nkubectl set env deploy/docsvc -n pilot LOG_LEVEL=DEBUG\n\n# Attach VS Code to the live process with debugpy (staging only)\n#   container command: python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app:app --port 8000\n#   add --wait-for-client to pause until the debugger connects\nkubectl port-forward pod/docsvc-7c9d8-abcde 5678:5678 -n pilot\n\n# .vscode/launch.json\n# {\"name\": \"Attach to pod\", \"type\": \"debugpy\", \"request\": \"attach\",\n#  \"connect\": {\"host\": \"localhost\", \"port\": 5678},\n#  \"pathMappings\": [{\"localRoot\": \"${workspaceFolder}\", \"remoteRoot\": \"/app\"}]}\n\n# Follow one request through every service by its id\nkubectl logs deploy/docsvc -n pilot --since=1h | grep \"req-7f3a\"",
+    "lang": "bash"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "A method: reproduce, isolate, hypothesise, verify",
+    "body": "Beginners often read the code, guess, change something and rerun, again and again. That works for tiny bugs and wastes hours on real ones. A method is faster.\n\nReproduce: make the bug happen on demand, ideally on your machine, with the same input, version and settings. If you cannot reproduce it, collect more evidence first (logs, the exact input, the time it happened). Isolate: shrink the problem. Which input, which function, which commit? Hypothesise: write down one specific, testable guess, such as \"the total is wrong because amounts with a comma are skipped\". Test it: add a print or log, or pause in a debugger, and check. If the guess is wrong, cross it out and make a new one; that is progress too. Fix and verify: change the cause, rerun the original repro, and add a test so the bug cannot quietly return.\n\nKeep a short bug log as you go. It stops you repeating experiments, and it becomes your write-up later.\n\nSet a timebox before you start, for example two hours. When it runs out without progress, stop and escalate: share your bug log with a teammate or the owning team. The log shows what you already ruled out, so they start from where you are, not from zero. Asking early is a skill, not a failure, and customers care more about the fix than about who found it.\n\nWhen stuck, explain the problem out loud, line by line, to someone else, even a rubber duck on your desk. Saying what each line should do often reveals the line that does not. A coding agent is a good listener too: paste the bug log, the traceback and the relevant function, and ask it to list possible causes and a test for each. Treat its answers as hypotheses to check, never as the fix itself.\n\nBe careful with quick fixes such as removing commas from numbers. They depend on the number format. Many European systems write one thousand two hundred and fifty as 1.250,00, where the dot separates thousands and the comma marks the decimals. Removing commas turns that into 1.25, which is silently wrong. Ask which format each source uses, parse with that format on purpose, and add a test for it.",
+    "example": "A freight company's weekly invoice total is 1,250.00 lower than their ledger. The FDE reproduces it with one week's data, notices the gap equals exactly one invoice, and guesses that invoice is skipped. Logging each parsed total confirms the invoice with \"1,250.00\" never gets parsed. The fix strips the comma, and a unit test with that exact value is added. At the freight company, a second customer site in Germany sends totals like 1.250,00. The comma fix would have turned them into 1.25 without any error. The FDE asks for the format of each feed, adds a decimal_sep setting per source and a test for both formats, before the German feed is switched on.",
+    "code": "BUG LOG: invoice total wrong for Tamsel Freight (made up)\n\nSymptom      Weekly total 2,340.10, customer's ledger says 3,590.10\nRepro        python sync.py --week 2026-W11   (fails every time on my laptop)\nFacts        Diff is exactly 1,250.00. One invoice in that week is 1,250.00.\nHypothesis 1 That invoice is skipped because its total has a comma.\nTest         Log each parsed total for W11            -> RESULT: confirmed\nFix          Strip thousands separators before float()\nVerify       W11 total now 3,590.10; new unit test passes; W10 unchanged\n\nfrom decimal import Decimal\n\ndef parse_amount(text: str, decimal_sep: str = \".\") -> Decimal:\n    \"\"\"Parse '1,250.00' (decimal_sep='.') or '1.250,00' (decimal_sep=',').\"\"\"\n    thousands_sep = \",\" if decimal_sep == \".\" else \".\"\n    cleaned = text.strip().replace(\" \", \"\").replace(thousands_sep, \"\")\n    return Decimal(cleaned.replace(decimal_sep, \".\"))\n\nprint(float(\"1,250.00\".replace(\",\", \"\")))        # 1250.0   the quick fix works here\nprint(float(\"1.250,00\".replace(\",\", \"\")))        # 1.25     silently WRONG for a German invoice\nprint(parse_amount(\"1,250.00\"))                  # 1250.00\nprint(parse_amount(\"1.250,00\", decimal_sep=\",\")) # 1250.00\nprint(parse_amount(\"1 250,00\", decimal_sep=\",\")) # 1250.00  (French style, space for thousands)\n\ndef test_parse_amount_formats():\n    assert parse_amount(\"1,250.00\") == Decimal(\"1250.00\")\n    assert parse_amount(\"1.250,00\", decimal_sep=\",\") == Decimal(\"1250.00\")",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Step",
+      "Question to ask",
+      "Output"
+     ],
+     "rows": [
+      [
+       "Reproduce",
+       "Can I make it fail on demand?",
+       "A command that fails every time"
+      ],
+      [
+       "Isolate",
+       "Which input, function or commit?",
+       "The smallest failing case"
+      ],
+      [
+       "Hypothesise",
+       "What exactly do I think is wrong?",
+       "One written, testable guess"
+      ],
+      [
+       "Test",
+       "Does the evidence agree?",
+       "Confirmed or crossed out"
+      ],
+      [
+       "Fix and verify",
+       "Does the original repro pass now?",
+       "Fix plus a regression test"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Reading tracebacks and logs",
+    "body": "When Python crashes it prints a traceback: the chain of function calls that were running, oldest at the top and the one that failed at the bottom. Read it from the bottom up. The last line gives the exception type (ValueError, KeyError, TypeError) and a message that often includes the bad value. The frame just above shows the file, line number and code where it broke. Then walk up until you reach the first frame in code you or the customer wrote; frames inside libraries are usually where the error surfaced, not where the mistake was made.\n\nIf you see \"During handling of the above exception, another exception occurred\", there are two tracebacks. The first one is usually the real cause.\n\nLogs work the same way. In a noisy log, search for the first ERROR or Traceback around the time of the failure, not the last one, because later errors are often consequences. If requests carry an ID (an order number, a request ID), grep for that ID to follow one request through many services.\n\nYou also write the code that produces tracebacks, so make them useful to the next person. Inside an except block, log with log.exception(\"message\"). It logs at ERROR level and adds the full traceback. log.error(\"message\", exc_info=True) does the same. A plain log.error(str(e)) keeps only the message and throws away the file and line numbers you need later.\n\nWhen you catch a low-level error and raise a clearer one, write raise NewError(\"what failed and for which record\") from e. The word from links the two, and the traceback shows both with the line \"The above exception was the direct cause of the following exception\". Without from, Python shows \"During handling of the above exception, another exception occurred\", which suggests a second bug. Never catch an error and carry on without logging it, because that is how data disappears silently.",
+    "example": "A claims integration crashes overnight and the log shows 300 errors. The FDE runs grep for ERROR and looks at the first hit: a single ValueError about a date \"31/02/2026\" at 01:12. Every later error is \"record not found\", caused by the first failure stopping the batch. Fixing date validation removes all 300. The invoice loader now skips a bad row instead of crashing the whole batch. Because it uses log.exception and raise ... from e, the log line says which invoice failed, shows the original ValueError with its bad value, and points at the exact line. The on-call engineer at the customer can fix the source data without calling you.",
+    "code": "Traceback (most recent call last):          <- read from the BOTTOM up\n  File \"invoices.py\", line 10, in <module>   <- outermost call (where it started)\n    print(load(payload))\n  File \"invoices.py\", line 8, in load\n    return sum(parse_total(r) for r in rows)\n  File \"invoices.py\", line 8, in <genexpr>\n    return sum(parse_total(r) for r in rows)\n  File \"invoices.py\", line 4, in parse_total  <- last frame: where it broke\n    return float(line[\"total\"])\nValueError: could not convert string to float: '1,250.00'\n^ exception type    ^ message, often with the bad value\n\n# In logs, find the FIRST error, not the loudest or the last one:\n$ grep -n -E \"ERROR|Traceback\" app.log | head -3\n$ grep -n \"order 88213\" app.log            # follow one request by its id\n\nimport logging\nlog = logging.getLogger(\"invoices\")\n\nclass InvoiceParseError(Exception):\n    pass\n\ndef parse_total(row):\n    try:\n        return float(row[\"total\"])\n    except ValueError as e:\n        # \"from e\" keeps the original error attached as the cause\n        raise InvoiceParseError(f\"invoice {row['id']}: bad total {row['total']!r}\") from e\n\ndef load(rows):\n    good = []\n    for row in rows:\n        try:\n            good.append(parse_total(row))\n        except InvoiceParseError:\n            log.exception(\"skipping row\")   # ERROR level WITH the full traceback\n            # same as: log.error(\"skipping row\", exc_info=True)\n    return sum(good)\n\n# ERROR invoices: skipping row\n# Traceback (most recent call last):\n#   File \"invoices.py\", line 9, in parse_total\n#     return float(row[\"total\"])\n# ValueError: could not convert string to float: '1,250.00'\n#\n# The above exception was the direct cause of the following exception:\n#\n# Traceback (most recent call last):\n#   ...\n# InvoiceParseError: invoice A2: bad total '1,250.00'",
+    "lang": "Text"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Race condition",
+    "A bug where the result depends on which of two concurrent operations finishes first."
+   ],
+   [
+    "Environment diff",
+    "Comparing config, library versions, data, timezone, OS and permissions between where a bug happens and where it does not."
+   ],
+   [
+    "Replay",
+    "Running saved real input, with personal data removed, through the code locally to reproduce a bug."
+   ],
+   [
+    "debugpy",
+    "The Python debug engine behind VS Code, which can attach to a running process over a network port."
+   ],
+   [
+    "Port-forward",
+    "A kubectl command that connects a port on your laptop to a port inside a pod."
+   ],
+   [
+    "log.exception",
+    "A logging call used inside except that records the message at ERROR level plus the full traceback."
+   ],
+   [
+    "Exception chaining",
+    "raise NewError(...) from e, which keeps the original error attached as the cause."
+   ],
+   [
+    "Timebox",
+    "A fixed amount of time you allow for an investigation before you escalate."
+   ],
+   [
+    "Rubber-duck debugging",
+    "Explaining the code line by line to someone or something else until the mistake becomes obvious."
+   ]
+  ],
+  "add_practice": [
+   "Write a function that fails only when the TZ environment variable is Europe/Berlin. Reproduce it with TZ=Europe/Berlin python script.py and fix it by working in UTC.",
+   "Wrap a parser in try/except, raise a custom error with from e, log it with log.exception, and compare the output with log.error(str(e)).",
+   "Run a small FastAPI or Flask app in Docker started with python -m debugpy --listen 0.0.0.0:5678, publish the port, attach VS Code and stop at a breakpoint inside a request handler.",
+   "Write parse_amount for both 1,250.00 and 1.250,00 formats with tests, and explain in one sentence why replace(',', '') is unsafe."
+  ],
+  "concept_fix": [
+   [
+    "#     return float(line[\"total\"].replace(\",\", \"\"))",
+    "#     return float(line[\"total\"].replace(\",\", \"\"))   # only if no source sends 1.250,00"
+   ]
+  ]
+ },
+ "aicoding": {
+  "add_subtopics": [
+   {
+    "title": "Driving an agent session: plan first, permissions and context",
+    "body": "How you run a session matters as much as what you ask.\n\nPlan first. For anything bigger than a small fix, ask the agent for a plan before it edits a file: which files it will change, in what order, and how it will test. Claude Code has a plan mode for this (Shift+Tab cycles the modes), and other tools have similar ask or plan modes. Correcting a plan takes a minute; undoing a wrong 30-file change takes an hour.\n\nSet permissions on purpose. Agents ask before running commands or editing files, and a settings file lets you decide in advance. In Claude Code, .claude/settings.json has allow and deny lists: allow safe, frequent commands such as running tests, and deny reading .env files or running deploy commands. Commit the project settings so the whole team shares them.\n\nManage the context window. The model can only hold a limited amount of text at once, and a long session fills it with old files, logs and dead ends. Start a fresh session for each new task, use /clear between unrelated tasks, and put lasting knowledge in CLAUDE.md, not in chat history. When a long session is compacted (summarised to free space), details can drift, so restate the key rules or start over.\n\nRun agents in parallel safely. git worktree add creates a second working folder of the same repository on another branch. Each agent gets its own worktree and branch, so they never edit the same files at once.\n\nUse agents headless. claude -p runs one prompt without the interactive screen, which suits scripts and CI jobs, such as a first-pass review of every pull request. Give headless runs the smallest set of allowed tools.",
+    "example": "At a utilities customer, an FDE must add a new meter type to three services. She asks for a plan, spots that the agent wants to edit a generated file, and corrects it. She then opens two worktrees, one per service, and runs one agent in each with the shared settings file that allows pytest and ruff but denies .env and kubectl. A CI job runs claude -p on each pull request to list risky changes for the human reviewer.",
+    "code": "// .claude/settings.json (committed, shared by the team)\n{\n  \"permissions\": {\n    \"allow\": [\"Bash(pytest:*)\", \"Bash(ruff check:*)\", \"Bash(git diff:*)\"],\n    \"deny\":  [\"Read(./.env)\", \"Read(./secrets/**)\", \"Bash(kubectl:*)\", \"Bash(curl:*)\"]\n  }\n}\n\n# Parallel agents, one worktree and branch each\ngit worktree add ../meters-api -b feat/meter-type-api\ngit worktree add ../meters-etl -b feat/meter-type-etl\ngit worktree list\n# (run one agent session inside each folder; remove with: git worktree remove ../meters-api)\n\n# Headless, for scripts and CI: one prompt, limited tools, output to a file\nclaude -p \"Review the diff against main. List risky changes: auth, deletes, new dependencies.\" \\\n  --allowedTools \"Bash(git diff:*)\" \"Read\" > review.md\n\n# Inside a session\n# Shift+Tab   cycle modes, including plan mode (no edits until you approve)\n# /clear      start fresh before an unrelated task",
+    "lang": "bash"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Security and data rules on customer systems",
+    "body": "At a customer, their rules decide which tools you may use and what they may see. Before using any AI tool on their code, ask which tools are approved, under which accounts, and with which settings. Many companies allow only enterprise plans with agreed data handling, or only tools running against models inside their own cloud.\n\nKeep sensitive data out of prompts. That includes credentials, API keys, connection strings, personal data about their customers or staff, and anything marked confidential. Use synthetic or masked data for tests and examples. Remember that an agent reading files can pick up a .env file or a data export in the folder, so keep those out of the working directory or excluded.\n\nLimit what the agent can do. Give it the least access it needs: a development environment, read-only database users, no production credentials. Review or approve shell commands rather than allowing everything, especially anything that deletes, deploys or sends data out. Agents can also be steered by instructions hidden in files or web pages they read (prompt injection), so do not let an agent with broad permissions process untrusted content unattended.\n\nWatch every new dependency an agent adds. Models sometimes suggest a package name that sounds right but does not exist. Attackers register such invented names on PyPI and npm with malicious code, which is called slopsquatting; typo-squatting is the same trick with misspellings such as reqeusts. Before installing, check that the package exists, is the one you meant, has a real project page and history, and pin the exact version in the lock file. Better still, ask the agent to use the standard library or a dependency the project already has.\n\nFinally, read the contract. Many statements of work (SOWs) and master agreements now say who owns AI-generated code, whether AI tools may be used at all, and whether generated code must be scanned for licensed open source snippets. Some customers also require you to record which changes were AI-assisted, for example with a commit trailer. Check with your account lead before the first commit, not after.",
+    "example": "At Fenwick Mutual, an insurer, the security team approved one coding tool on an enterprise plan, for the development environment only. The FDE kept claim exports outside the repository, created a masked sample of 50 claims for tests, used a read-only database user, and set the agent to ask before running any command. When an auditor asked months later how AI tools had been used, she could answer with the approval email and the settings file. On the same project an agent suggested pip install dateutil-parser-pro. A quick PyPI check showed the package did not exist, so the FDE used python-dateutil, already approved, instead. Fenwick's contract also required a trailer on AI-assisted commits, so the team added Assisted-by lines.",
+    "code": "import requests\n\ndef check_package(name: str) -> str:\n    \"\"\"Look a package up on PyPI before installing something an agent suggested.\"\"\"\n    r = requests.get(f\"https://pypi.org/pypi/{name}/json\", timeout=10)\n    if r.status_code == 404:\n        return f\"{name}: NOT ON PyPI, possibly invented; do not install\"\n    data = r.json()\n    uploads = [f[\"upload_time\"][:10] for files in data[\"releases\"].values() for f in files]\n    return f\"{name}: latest {data['info']['version']}, first upload {min(uploads)}\"\n\nfor name in [\"python-dateutil\", \"dateutil-parser-pro\"]:\n    print(check_package(name))\n# python-dateutil: latest 2.9.0.post0, first upload 2008-08-06\n# dateutil-parser-pro: NOT ON PyPI, possibly invented; do not install\n\n# Record AI assistance when the customer's policy asks for it\n# git commit -m \"Parse policy dates in UTC\" -m \"Assisted-by: coding agent (approved enterprise plan)\"",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Rule",
+      "Do",
+      "Do not"
+     ],
+     "rows": [
+      [
+       "Approved tools only",
+       "Use the tool and plan the customer approved",
+       "Use a personal account on their code"
+      ],
+      [
+       "No secrets in context",
+       "Load keys from a vault or env at runtime",
+       "Paste keys or .env files into prompts"
+      ],
+      [
+       "No real personal data",
+       "Use synthetic or masked samples",
+       "Share production exports with the tool"
+      ],
+      [
+       "Least privilege",
+       "Dev environment, read-only users",
+       "Give the agent production credentials"
+      ],
+      [
+       "Human approval",
+       "Approve deletes, deploys, network calls",
+       "Allow every command automatically"
+      ],
+      [
+       "Verify new packages",
+       "Check PyPI or npm, then pin the version",
+       "Install whatever name the agent suggests"
+      ],
+      [
+       "Follow the contract",
+       "Check SOW clauses on AI code and IP",
+       "Assume AI use is allowed everywhere"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Giving context: CLAUDE.md, specs, tests",
+    "body": "An agent only knows what it can read. Three kinds of context make the biggest difference.\n\nA project rules file is a short file in the repository that the tool reads at the start of every session. Claude Code uses CLAUDE.md; Cursor and Copilot have their own equivalents. Put in it how to build and test, the folder layout, coding conventions, and hard rules such as 'never edit generated files' or 'all database access goes through repo/'. Keep it short and correct; stale rules mislead.\n\nA spec is a few lines on what to build: inputs, outputs, edge cases and what done means. Writing it forces you to think, and the agent follows it far better than a one-line request.\n\nTests first means you write, or ask the agent to write, failing tests that describe the behaviour before the implementation. The tests become an objective check, and you can see if the agent later tries to change them to pass.\n\nContext does not have to be files in the repository. The Model Context Protocol (MCP) lets an agent connect to other systems through small servers: the customer's ticket tracker, their internal docs, or a database. With the ticket server the agent can read the actual ticket instead of your summary, and with a database server it can check the real schema before writing a query. Use only servers the customer approves, and give each the narrowest access: a read-only database user on a development copy, read access to one project in the tracker. Anything the agent reads through MCP is also untrusted content, so the prompt injection rules in the security section apply. The MCP topic explains how servers work.",
+    "example": "An FDE at Lanternfield Clinics needed a function to normalise appointment times from three source systems. He wrote a six-line spec, listed five edge cases (missing timezone, daylight saving change, 24:00, blank, two formats in one file), asked the agent to write failing tests for those first, reviewed the tests, then asked for the implementation. The first version failed two tests; the second passed all of them. At Lanternfield Clinics, the FDE connected the agent to the ticket tracker with a read-only token for one project. The agent read the ticket, including a comment from a nurse listing a sixth edge case the FDE had missed, and added a test for it.",
+    "code": "# CLAUDE.md  (project rules file, read at the start of each session)\n\n## Build and test\n- Install: pip install -e .[dev]\n- Run tests: pytest -q   (must pass before any commit)\n- Lint: ruff check .\n\n## Layout\n- src/connectors/  one module per customer system (read-only clients)\n- src/pipeline/    transforms; pure functions, no network calls\n- tests/           mirrors src/; fixtures in tests/fixtures (synthetic data only)\n\n## Rules\n- Never edit files in src/generated/ (built from the OpenAPI spec).\n- No real customer data in tests or prompts. Use tests/fixtures.\n- Do not change an existing test to make it pass; ask first.\n- Keep changes small: one feature or fix per commit.\n\n# Connect an approved MCP server (Claude Code), shared with the team via .mcp.json\nclaude mcp add --transport http tickets https://mcp.tickets-example.com/mcp\nclaude mcp list\n# Use a read-only token for one project, and a read-only DB user on a dev copy.",
+    "lang": "Text"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Plan mode",
+    "A mode where the agent proposes a plan and makes no edits until you approve it."
+   ],
+   [
+    "Permission allowlist",
+    "Settings that let an agent run chosen commands without asking and block others."
+   ],
+   [
+    "Context window",
+    "The limited amount of text a model can consider at once in a session."
+   ],
+   [
+    "Compaction",
+    "Summarising an old part of a long session to free context, which can lose details."
+   ],
+   [
+    "Git worktree",
+    "An extra working folder of the same repository on another branch, useful for parallel agents."
+   ],
+   [
+    "Headless mode",
+    "Running an agent with a single prompt and no interactive screen, for scripts and CI."
+   ],
+   [
+    "Slopsquatting",
+    "Publishing malicious packages under names that AI tools tend to invent, hoping someone installs them."
+   ],
+   [
+    "MCP server",
+    "A small service that connects an AI tool to another system, such as a ticket tracker or database, through the Model Context Protocol."
+   ],
+   [
+    "SOW",
+    "Statement of work: the contract document that defines the scope and rules of an engagement."
+   ]
+  ],
+  "add_practice": [
+   "Write a .claude/settings.json for a Python project that allows pytest and ruff, and denies reading .env and running curl. Test that the agent asks before a denied action.",
+   "Create two git worktrees of one repository, run a small change in each on its own branch, and merge both.",
+   "Ask a coding agent for a library that parses a niche date format. Check every package it names on PyPI and record which exist, when they were first uploaded and which you would approve.",
+   "Read a sample statement of work (or write one) and list every clause that affects AI tool use, code ownership and licence scanning."
+  ]
+ },
+ "bigo": {
+  "add_subtopics": [
+   {
+    "title": "Measure before you optimise: profiling Python",
+    "body": "When a customer says \"the job is slow\", do not guess which line is to blame. Measure first, change one thing, then measure again.\n\nStart with a stopwatch. time.perf_counter() gives a precise clock: read it before and after a step and subtract. This tells you how long the whole job or one stage takes.\n\nFor comparing two small pieces of code, use timeit. It runs a statement many times and reports the total, which smooths out noise. It is ideal for questions like \"is a set lookup really faster than a list lookup here?\"\n\nTo find where the time goes in a real program, use a profiler. cProfile ships with Python. It counts every function call and how long each took. Sort by tottime (time spent inside the function itself) to find the hot spot. snakeviz draws the same data as a clickable chart. py-spy is a separate tool that can attach to a program that is already running, even in production, without changing its code, and can draw a flame graph: a picture where the widest bars are the functions using the most time.\n\nMemory is the other half. tracemalloc, also built in, reports how much memory Python allocated and the peak. Use it when a job dies with MemoryError or the container is killed for using too much RAM.\n\nOnce you know the hot spot, the fix is often one of the Big-O fixes in this lesson: a set instead of a list, one bulk query instead of many, or streaming instead of loading everything.",
+    "example": "A retail customer's nightly SKU matching job grows from 10 minutes to 3 hours. The FDE runs it under cProfile on one day's data. 97 percent of the time is in one list comprehension that checks order SKUs against a list of catalogue SKUs. Changing that list to a set drops the run to 40 seconds, and the before and after numbers go into the ticket.",
+    "code": "import cProfile, pstats, time, timeit, tracemalloc\n\ndef normalise(sku):\n    return sku.strip().upper()\n\ndef match(orders, catalogue):\n    known = [normalise(c) for c in catalogue]           # a list, not a set: the bug\n    return [o for o in orders if normalise(o) in known]\n\ncatalogue = [f\"sku-{i}\" for i in range(20_000)]\norders = [f\"SKU-{i} \" for i in range(0, 40_000, 2)]\n\n# 1. Time the whole job with perf_counter\nt = time.perf_counter()\nmatch(orders, catalogue)\nprint(f\"match: {time.perf_counter() - t:.1f} s\")\n\n# 2. Compare two small alternatives with timeit (runs each one many times)\nsetup = \"L = [f'sku-{i}' for i in range(20_000)]; S = set(L)\"\nfor stmt in [\"'sku-19999' in L\", \"'sku-19999' in S\"]:\n    secs = timeit.timeit(stmt, setup=setup, number=1_000)\n    print(f\"{stmt:18} {secs / 1_000 * 1e6:8.2f} microseconds per lookup\")\n\n# 3. Find WHERE the time goes with cProfile\ncProfile.run(\"match(orders, catalogue)\", \"match.prof\")\npstats.Stats(\"match.prof\").strip_dirs().sort_stats(\"tottime\").print_stats(3)\n\n# 4. Measure memory with tracemalloc\ntracemalloc.start()\nrows = [{\"id\": i, \"name\": f\"C{i}\"} for i in range(100_000)]\ncurrent, peak = tracemalloc.get_traced_memory()\nprint(f\"peak memory: {peak / 1e6:.0f} MB\")\ntracemalloc.stop()\n\n# Example output (your times will differ):\n# match: 1.8 s\n# 'sku-19999' in L     117.88 microseconds per lookup\n# 'sku-19999' in S       0.02 microseconds per lookup\n#    ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n#         1    1.730    1.730    1.748    1.748 prof.py:8(<listcomp>)\n#     40000    0.019    0.000    0.028    0.000 prof.py:3(normalise)\n#     40000    0.005    0.000    0.005    0.000 {method 'upper' of 'str' objects}\n# peak memory: 28 MB\n#\n# The report points at line 8, the 'in known' check on a list.\n# Fix: known = {normalise(c) for c in catalogue}  (a set)\n\n# From the terminal, on a real job:\n#   python -m cProfile -o job.prof run_job.py   then   snakeviz job.prof   (pip install snakeviz)\n#   py-spy top --pid 4121          live view of a running process (pip install py-spy)\n#   py-spy record -o flame.svg -- python run_job.py",
+    "lang": "Python"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "What Big-O measures",
+    "body": "Big-O counts how the number of basic steps grows with input size, written n. It ignores constant factors and small terms, because at large n the biggest term dominates. A function doing 3n + 50 steps is O(n). One doing n^2 + 1000n is O(n^2).\n\nThe common classes, from fastest to slowest growth, are: O(1), constant, the same work whatever n is. O(log n), logarithmic, where each step halves what remains. O(n), linear, touching each item once. O(n log n), typical of efficient sorting. O(n^2), quadratic, usually a loop inside a loop.\n\nThe gaps get huge fast. For n = 1,000,000: log n is about 20, n log n is about 20 million, and n^2 is a trillion.\n\nBest, average and worst case. The same code can take different amounts of work depending on the data. Searching a list for a value is best case O(1) when it is the first item, average case about n/2 steps (still O(n)), and worst case n steps when it is last or missing. When people give one Big-O for an algorithm, they usually mean the worst case, except for hash tables. A dict lookup is O(1) on average but can be O(n) in a rare worst case when many keys land in the same slot. That is what \"O(1) on average\" means elsewhere in this lesson.\n\nAmortised O(1). list.append is described as O(1) even though, now and then, the list is full and Python must allocate a bigger block and copy every item. Because the block grows by a proportion each time, those copies are rare, and averaged over many appends the cost per append stays constant. That average over a long sequence of operations is called amortised cost. Dicts grow the same way.\n\nSpace complexity in practice. Memory grows with n too. Loading a whole file into a list is O(n) memory; reading it one row at a time with a generator, or in chunks with pandas read_csv(chunksize=...), is O(1) memory for the rows, because only a small running total is kept. A 10 GB file will not fit in an 8 GB container, but it can be streamed.",
+    "example": "A bank has 1 million transactions. Checking whether one account id is in a Python set takes about one step. Binary search on a sorted list takes about 20 comparisons. Scanning a list takes up to 1 million. Comparing every transaction with every other to find duplicates takes about 500 billion comparisons, which at roughly 10 million comparisons per second in plain Python is over 13 hours. At a utilities customer, an FDE must total 10 GB of meter readings on a small container. Loading the file with pandas crashes; reading it in 50,000-row chunks and adding each chunk's totals finishes in minutes using a few hundred MB.",
+    "code": "import math\n\nfor n in [1_000, 100_000, 1_000_000]:\n    print(f\"n={n:>9,}  \"\n          f\"log n={math.log2(n):5.0f}  \"\n          f\"n log n={n * math.log2(n):>14,.0f}  \"\n          f\"n^2={n * n:>18,}\")\n\n# n=    1,000  log n=   10  n log n=        9,966  n^2=         1,000,000\n# n=  100,000  log n=   17  n log n=    1,660,964  n^2=    10,000,000,000\n# n=1,000,000  log n=   20  n log n=   19,931,569  n^2= 1,000,000,000,000\n\nimport sys\n\n# Amortised O(1): list.append usually just fills a spare slot.\n# Now and then the list is full, so Python allocates a bigger block and copies.\nitems, last = [], sys.getsizeof([])\nfor i in range(40):\n    items.append(i)\n    size = sys.getsizeof(items)\n    if size != last:\n        print(f\"append #{i + 1:>2}: grew to {size} bytes\")\n        last = size\n\n# Best, average and worst case of one linear search\ndata = list(range(1_000_000))\nprint(data.index(0))          # best case: found at step 1\nprint(data.index(500_000))    # average case: about n/2 steps\nprint(999_999 in data)        # worst case: all n steps (also when missing)\n# Example output on Python 3.11, 64-bit (exact sizes vary by version):\n# append # 1: grew to 88 bytes\n# append # 5: grew to 120 bytes\n# append # 9: grew to 184 bytes\n# append #17: grew to 248 bytes\n# append #25: grew to 312 bytes\n# append #33: grew to 376 bytes\n# 0\n# 500000\n# True\n# Only 6 of 40 appends needed a bigger block: amortised O(1).\n\nimport csv, random, tracemalloc\nimport pandas as pd\n\nrandom.seed(1)\n\n# Make a sample file (imagine 10 GB instead of 200,000 rows)\nwith open(\"meter_readings.csv\", \"w\", newline=\"\") as f:\n    w = csv.writer(f)\n    w.writerow([\"meter_id\", \"kwh\"])\n    for i in range(200_000):\n        w.writerow([f\"M{i % 500}\", round(random.random() * 3, 3)])\n\ndef total_all_at_once(path):          # O(n) memory: every row in RAM\n    with open(path) as f:\n        rows = list(csv.DictReader(f))\n    return sum(float(r[\"kwh\"]) for r in rows)\n\ndef total_streamed(path):             # O(1) memory: one row at a time\n    with open(path) as f:\n        return sum(float(r[\"kwh\"]) for r in csv.DictReader(f))\n\nfor fn in (total_all_at_once, total_streamed):\n    tracemalloc.start()\n    total = fn(\"meter_readings.csv\")\n    peak = tracemalloc.get_traced_memory()[1]\n    tracemalloc.stop()\n    print(f\"{fn.__name__:18} peak {peak / 1e6:6.1f} MB\")\n\n# pandas: read in chunks and keep only small running totals\nper_meter = None\nfor chunk in pd.read_csv(\"meter_readings.csv\", chunksize=50_000):\n    part = chunk.groupby(\"meter_id\")[\"kwh\"].sum()\n    per_meter = part if per_meter is None else per_meter.add(part, fill_value=0)\nprint(len(per_meter), \"meters, top usage\", round(per_meter.max(), 1), \"kWh\")\n# total_all_at_once  peak   59.8 MB\n# total_streamed     peak    0.0 MB\n# 500 meters, top usage 655.3 kWh",
+    "lang": "Python"
+   },
+   {
+    "title": "List versus dict: the most common fix",
+    "body": "In Python, checking x in some_list walks the list from the start until it finds x, so it is O(n). Checking x in some_set or x in some_dict uses a hash table: Python computes a number from x and jumps straight to the right slot, so it is O(1) on average.\n\nThe trap appears when the list check sits inside a loop. For each of n orders, you scan m customers. That is O(n times m). With 50,000 of each, it is up to 2.5 billion comparisons.\n\nThe fix is to build a dict or set once, in O(m), and then look each item up in O(1). Total work becomes O(n + m). You trade some memory for the index, which is almost always worth it.\n\nA few other everyday operations hide an O(n) loop inside one innocent-looking call:\n\nlist.pop(0) and list.insert(0, x) shift every other item by one place, so using a list as a queue is O(n) per step. Use collections.deque, whose popleft() and appendleft() are O(1).\n\nBuilding a long string or bytes value with += in a loop can copy everything built so far on each step, which is O(n^2) in total. CPython sometimes optimises the str case, but you cannot rely on it, and bytes always pays. Collect the pieces in a list and call \"\".join(pieces) once.\n\nx in some_dict.values() is a linear scan, because values are not indexed, only keys are. If you need to look up by value often, build a reverse dict once.",
+    "example": "An e-commerce FDE matches 200,000 payments to 200,000 invoices by invoice number. The first version loops over payments and, for each, searches the invoice list. It is still running after an hour. Building invoices_by_number = {inv['number']: inv for inv in invoices} and looking each payment up takes under a second. A logistics FDE finds a retry queue built with list.pop(0) taking most of a job's time once it holds 100,000 items; switching to deque removes it from the profile entirely.",
+    "code": "invoices = [{\"number\": f\"INV-{i}\", \"amount\": i % 500} for i in range(200_000)]\npayments = [{\"ref\": f\"INV-{i}\", \"paid\": i % 500} for i in range(0, 400_000, 2)]\n\n# Slow: O(n * m). 'in' on a list scans it every time.\n# numbers = [inv[\"number\"] for inv in invoices]\n# matched = [p for p in payments if p[\"ref\"] in numbers]\n\n# Fast: O(n + m). Build the index once.\nby_number = {inv[\"number\"]: inv for inv in invoices}     # O(m)\nmatched, unmatched = [], []\nfor p in payments:                                       # O(n)\n    inv = by_number.get(p[\"ref\"])                        # O(1) average\n    (matched if inv else unmatched).append(p)\n\nprint(len(matched), \"matched,\", len(unmatched), \"unmatched\")\n\nimport time\nfrom collections import deque\n\ndef timed(label, fn):\n    t = time.perf_counter()\n    fn()\n    print(f\"{label:28} {time.perf_counter() - t:6.3f} s\")\n\nN = 100_000\n\ndef queue_list():\n    q = list(range(N))\n    while q:\n        q.pop(0)            # O(n): every other item shifts left\n\ndef queue_deque():\n    q = deque(range(N))\n    while q:\n        q.popleft()         # O(1): built for both ends\n\ndef build_plus():\n    b = b\"\"\n    for i in range(N):\n        b += b\"%d,\" % i     # copies everything built so far, every time\n\ndef build_join():\n    b = b\",\".join(b\"%d\" % i for i in range(N))   # one pass, one copy\n\nprices = {f\"SKU-{i}\": i for i in range(N)}\ndef search_values():\n    return sum(1 for p in range(N - 2_000, N) if p in prices.values())  # O(n) each\n\nreverse = {v: k for k, v in prices.items()}   # build once, O(n)\ndef search_reverse():\n    return sum(1 for p in range(N - 2_000, N) if p in reverse)          # O(1) each\n\ntimed(\"list.pop(0) queue\", queue_list)\ntimed(\"deque.popleft() queue\", queue_deque)\ntimed(\"bytes += in a loop\", build_plus)\ntimed(\"bytes join\", build_join)\ntimed(\"x in dict.values() x2000\", search_values)\ntimed(\"x in reverse dict x2000\", search_reverse)\n\n# Example output (your times will differ):\n# list.pop(0) queue             0.835 s\n# deque.popleft() queue         0.005 s\n# bytes += in a loop            0.713 s\n# bytes join                    0.046 s\n# x in dict.values() x2000      1.797 s\n# x in reverse dict x2000       0.000 s",
+    "lang": "Python"
+   },
+   {
+    "title": "Hidden loops: N+1 queries and API calls",
+    "body": "Complexity is not only about loops you can see. Calling a database or an API inside a loop multiplies slow network round trips by n. This is called the N+1 problem: one query to get a list, then one more query per item.\n\nA network call might take 20 to 200 milliseconds, while a dict lookup takes well under a microsecond. So 10,000 calls in a loop can take many minutes even though the Big-O looks like a harmless O(n).\n\nThe fix is to fetch in bulk. Use a single SQL query with a JOIN or WHERE id IN (...), or an API's batch endpoint, then build a dict in memory and look up from it.\n\npandas has its own version of this trap. df.iterrows() and df.apply(..., axis=1) run a Python function once per row, which is hundreds of times slower than a vectorised operation that works on a whole column at once, such as df[\"qty\"] * df[\"price\"]. Worse is a lookup inside apply, such as filtering the customers table once per order: that is O(n times m), a hidden nested loop. Replace it with one merge, which builds a hash index like a dict and is O(n + m). The table shows timings from one run on 200,000 orders and 5,000 customers; the pandas topic covers vectorised operations and merge in more detail.",
+    "example": "A healthcare dashboard loads 3,000 appointments, then queries the patients table once per appointment to get the name. At 30 ms per query that is 90 seconds per page load. Rewriting it as one query that joins appointments to patients returns everything in about 200 ms. At a retailer, an order report used apply to look up each order's region in a customers DataFrame. On 2,000 rows it took half a second; on the full 200,000 it would take about a minute. One merge did all 200,000 rows in a twentieth of a second.",
+    "code": "-- N+1: application runs this once per appointment (3,000 times)\n-- SELECT name FROM patients WHERE id = :patient_id;\n\n-- One query instead: let the database join\nSELECT a.id        AS appointment_id,\n       a.starts_at,\n       p.name      AS patient_name\nFROM appointments a\nJOIN patients p ON p.id = a.patient_id\nWHERE a.starts_at::date = CURRENT_DATE\nORDER BY a.starts_at;",
+    "lang": "SQL",
+    "table": {
+     "headers": [
+      "pandas approach",
+      "What it does",
+      "Time measured"
+     ],
+     "rows": [
+      [
+       "for _, row in df.iterrows()",
+       "Python loop, one row at a time",
+       "3.5 s for 200,000 rows"
+      ],
+      [
+       "df[\"qty\"] * df[\"price\"]",
+       "Vectorised, whole column in compiled code",
+       "0.002 s for 200,000 rows"
+      ],
+      [
+       "apply with a filter on customers per row",
+       "Hidden nested loop, O(n times m)",
+       "0.47 s for only 2,000 rows"
+      ],
+      [
+       "orders.merge(customers, on=\"cust_id\")",
+       "One hash join, O(n + m)",
+       "0.06 s for 200,000 rows"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Profiler",
+    "A tool that records which functions a program spends its time in."
+   ],
+   [
+    "cProfile",
+    "Python's built-in profiler; it counts calls and time per function."
+   ],
+   [
+    "Flame graph",
+    "A chart of profiled code where the widest bars are the functions using the most time."
+   ],
+   [
+    "tracemalloc",
+    "Python's built-in module for measuring how much memory code allocates and its peak."
+   ],
+   [
+    "Amortised cost",
+    "The average cost per operation over a long sequence, where rare expensive steps are spread across many cheap ones."
+   ],
+   [
+    "Worst case",
+    "The largest amount of work an algorithm can need for inputs of size n."
+   ],
+   [
+    "deque",
+    "A double-ended queue from collections with O(1) adds and removes at both ends."
+   ],
+   [
+    "Vectorised operation",
+    "A pandas or NumPy operation on a whole column at once, run in fast compiled code instead of a Python loop."
+   ],
+   [
+    "Streaming",
+    "Processing data one row or chunk at a time so memory stays small whatever the file size."
+   ]
+  ],
+  "add_practice": [
+   "Run a slow script of your own (or the SKU matching example) under cProfile, sort by tottime, fix the top function, and record the before and after times.",
+   "Replace a list used as a queue with collections.deque in a script that processes 100,000 items, and time both versions.",
+   "Write a function that totals a column in a CSV larger than your free memory (generate one), first by loading everything, then by streaming, and compare peak memory with tracemalloc.",
+   "Rewrite a pandas iterrows loop as a vectorised expression and a per-row lookup as a merge. Check that the results are identical with DataFrame.equals."
+  ]
+ },
+ "resilient": {
+  "add_subtopics": [
+   {
+    "title": "Rate limiting yourself and circuit breakers",
+    "body": "Backoff reacts after the API complains. It is better not to trip the limit in the first place, and to stop calling an API that is clearly down.\n\nA client-side rate limiter keeps you under the customer's limit. The simplest is a fixed pace, such as one request every 0.2 seconds for 5 per second. A token bucket is more flexible: the bucket holds up to N tokens and refills at a steady rate; each request takes one token and waits if the bucket is empty. It allows a short burst and then settles at the agreed rate. Set it a little below the published limit, because other systems may share the same API key.\n\nA concurrency cap limits how many requests are in flight at once. In async code use asyncio.Semaphore(3); with threads, a worker pool of 3. Rate and concurrency are different: 3 slow requests in flight might only be 1 per second.\n\nA circuit breaker protects both sides when the API is failing. It counts failures in a row. After a threshold, the circuit opens and calls fail immediately without touching the network, for a cool-down period. Then it lets one trial call through (half-open). If that works, the circuit closes and traffic resumes; if not, it opens again. Without it, 20 workers keep hammering a dead server with retries, filling logs and slowing its recovery.\n\nLibraries exist for all three (aiolimiter, pybreaker), but the logic is small enough to read in full below.",
+    "example": "A logistics customer's shipment API allows 300 requests per minute per key, shared with their own mobile app. The FDE sets a token bucket at 4 per second (240 per minute) and 3 requests in flight. One night the API goes down for 20 minutes. After 3 failures the breaker opens, the job pauses for 60 seconds at a time instead of firing thousands of retries, and it carries on when the API returns.",
+    "code": "import asyncio, time\n\nclass TokenBucket:\n    \"\"\"Allow `rate` calls per second on average, with bursts up to `capacity`.\"\"\"\n    def __init__(self, rate: float, capacity: int):\n        self.rate, self.capacity = rate, capacity\n        self.tokens = capacity\n        self.updated = time.monotonic()\n        self.lock = asyncio.Lock()\n\n    async def acquire(self):\n        async with self.lock:\n            while True:\n                now = time.monotonic()\n                self.tokens = min(self.capacity,\n                                  self.tokens + (now - self.updated) * self.rate)\n                self.updated = now\n                if self.tokens >= 1:\n                    self.tokens -= 1\n                    return\n                await asyncio.sleep((1 - self.tokens) / self.rate)  # wait for next token\n\nclass CircuitOpen(Exception):\n    pass\n\nclass CircuitBreaker:\n    \"\"\"After `threshold` failures in a row, refuse calls for `cooldown` seconds.\"\"\"\n    def __init__(self, threshold: int = 5, cooldown: float = 30.0):\n        self.threshold, self.cooldown = threshold, cooldown\n        self.failures, self.opened_at = 0, None\n\n    async def call(self, fn, *args):\n        if self.opened_at is not None:\n            if time.monotonic() - self.opened_at < self.cooldown:\n                raise CircuitOpen(\"customer API is down, not calling it\")\n            self.opened_at = None                 # half-open: allow one trial call\n        try:\n            result = await fn(*args)\n        except Exception:\n            self.failures += 1\n            if self.failures >= self.threshold:\n                self.opened_at = time.monotonic() # open the circuit\n            raise\n        self.failures = 0                         # success closes it again\n        return result\n\nbucket = TokenBucket(rate=5, capacity=5)          # stay under 5 requests/second\nlimit = asyncio.Semaphore(3)                      # at most 3 requests in flight\nbreaker = CircuitBreaker(threshold=3, cooldown=2.0)\n\nasync def fake_api(page):                          # stands in for session.get(...)\n    await asyncio.sleep(0.05)\n    if 10 <= page < 16:\n        raise ConnectionError(\"503\")               # the API goes down for a while\n    return {\"page\": page}\n\nasync def fetch(page):\n    await bucket.acquire()\n    async with limit:\n        return await breaker.call(fake_api, page)\n\nasync def main():\n    start = time.monotonic()\n    results = await asyncio.gather(*(fetch(p) for p in range(20)),\n                                   return_exceptions=True)\n    ok = sum(isinstance(r, dict) for r in results)\n    down = sum(isinstance(r, ConnectionError) for r in results)\n    skipped = sum(isinstance(r, CircuitOpen) for r in results)\n    print(f\"{ok} ok, {down} failed calls, {skipped} skipped by the breaker, \"\n          f\"{time.monotonic() - start:.1f} s\")\n\nasyncio.run(main())\n# 10 ok, 3 failed calls, 7 skipped by the breaker, 3.0 s",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Tool",
+      "Protects against",
+      "Typical setting"
+     ],
+     "rows": [
+      [
+       "Token bucket",
+       "Going over the calls-per-second limit",
+       "A bit under the published limit"
+      ],
+      [
+       "Semaphore or worker pool",
+       "Too many requests at once",
+       "2 to 10 in flight"
+      ],
+      [
+       "Backoff with jitter",
+       "Retrying in waves",
+       "1 s doubling, capped at 30 s"
+      ],
+      [
+       "Circuit breaker",
+       "Hammering an API that is down",
+       "Open after 5 failures, 30 to 60 s cool-down"
+      ]
+     ]
+    }
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Timeouts and error classes",
+    "body": "Every HTTP call needs a timeout, which is a maximum time to wait for a reply. Without one, a stuck server can freeze your worker forever.\n\nHTTP status codes tell you what went wrong. Codes 200 to 299 mean success. 429 means 'too many requests', you hit a rate limit. 500 to 599 mean the server had a problem. Most other 4xx codes, like 400, 401, 403, 404 and 422, mean your request is wrong.\n\nThis gives a simple rule. Transient errors (429, 5xx, timeouts, connection resets) may succeed later, so retry them. Permanent errors (most 4xx) will fail again, so stop and fix the cause.\n\nOne 4xx code deserves special care: 401 Unauthorized. With OAuth, access tokens expire after a set time, often one hour, so a 401 in a long job is often just an expired token, not a bug. The http topic says to refresh the token and retry once, and this lesson says to stop on 401; both are right, in order. Refresh the token once and repeat the request. If the second attempt also returns 401, the credentials themselves are wrong or revoked, so stop and alert a person. Never loop on refresh. A 403 Forbidden means the token is valid but lacks permission, so refreshing will not help.",
+    "example": "A pipeline calls a retailer's orders API. At 09:00 it gets a 503 because the server is restarting. Retrying 4 seconds later works. At 09:05 it gets a 401 because the API token expired. Retrying 50 times would just fill the logs, so the job stops and alerts the FDE to rotate the token. In the same pipeline, the access token expires at 10:00 in the middle of a run. The next call gets a 401, the client refreshes the token once, and the run continues. The 09:05 case above is different: it uses a static API key with nothing to refresh, so stopping and alerting is right. And when a refresh itself returns 401, for example because the customer rotated the client secret, the job also stops and pages the FDE.",
+    "code": "import requests\n\nclass RetryableError(Exception):\n    \"\"\"Error worth retrying: rate limit, server error, timeout.\"\"\"\n\ndef classify(resp: requests.Response) -> None:\n    if resp.status_code == 429:                   # rate limited\n        raise RetryableError(\"429\", resp.headers.get(\"Retry-After\"))\n    if 500 <= resp.status_code < 600:             # server problem\n        raise RetryableError(str(resp.status_code))\n    resp.raise_for_status()                       # other 4xx: a real bug, fail\n\ndef get(session: requests.Session, url: str, params: dict) -> dict:\n    try:\n        resp = session.get(url, params=params, timeout=(3, 10))  # connect, read\n    except (requests.Timeout, requests.ConnectionError) as e:\n        raise RetryableError(\"network\") from e\n    classify(resp)\n    return resp.json()\n\n\n# 401: refresh the OAuth token once, then give up\nimport requests\n\nclass AuthFailed(Exception):\n    \"\"\"Credentials are wrong even after a refresh: stop and alert a person.\"\"\"\n\ndef get_with_refresh(session, url, params, tokens):\n    \"\"\"401 once: refresh the OAuth access token and retry. 401 twice: stop.\"\"\"\n    for attempt in (1, 2):\n        headers = {\"Authorization\": f\"Bearer {tokens.access_token()}\"}\n        resp = session.get(url, params=params, headers=headers, timeout=(3, 10))\n        if resp.status_code != 401:\n            resp.raise_for_status()\n            return resp.json()\n        if attempt == 1:\n            tokens.refresh()          # expired access token: get a new one\n    raise AuthFailed(\"401 after token refresh: check the client secret or its scopes\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Backoff, jitter and Retry-After",
+    "body": "Retrying immediately after a failure usually fails again and adds load to a struggling server. Exponential backoff waits longer after each failure: 1 second, then 2, then 4, then 8.\n\nJitter adds a small random amount to each wait. Without it, 20 parallel workers that failed at the same moment all retry at the same moment, and the server gets hit in waves.\n\nSome servers send a Retry-After header saying exactly how long to wait. Honour it when present. Always cap the number of attempts, then fail loudly so a person can look.\n\nNote that the plain tenacity setup above ignores Retry-After: wait_exponential_jitter only knows its own schedule. To honour the header, keep its value on the exception and give tenacity a custom wait function that uses it when present and falls back to backoff otherwise. The header comes in two forms: a number of seconds, such as Retry-After: 120, or an HTTP date, such as Retry-After: Wed, 30 Sep 2026 10:00:30 GMT. Handle both, and cap the wait so a strange value cannot pause the job for a day.",
+    "example": "An FDE runs 10 workers against a CRM API limited to 100 requests per minute. Without jitter, all 10 get 429s together and retry together every few seconds. With exponential backoff plus jitter, retries spread out, and the job finishes its 50,000 records in about 9 minutes without tripping the limit again. On the CRM job, the API starts returning Retry-After: 60 on its 429s. With the custom wait, workers pause the full 60 seconds instead of retrying after 1, 2 and 4 seconds, and the 429s stop.",
+    "code": "from tenacity import (retry, stop_after_attempt,\n                      wait_exponential_jitter, retry_if_exception_type)\n\n@retry(\n    wait=wait_exponential_jitter(initial=1, max=30),  # 1s, 2s, 4s... plus random jitter, capped at 30s\n    stop=stop_after_attempt(5),                       # give up after 5 tries\n    retry=retry_if_exception_type(RetryableError),    # only transient errors\n    reraise=True,                                     # surface the last error\n)\ndef fetch_page(session, cursor):\n    return get(session, \"https://api.example-crm.com/v1/orders\",\n               {\"cursor\": cursor, \"limit\": 500})\n\n\n# Honouring Retry-After (seconds or an HTTP date) with a custom wait\nimport email.utils, time\nimport requests\nfrom tenacity import (retry, stop_after_attempt, wait_exponential_jitter,\n                      retry_if_exception_type)\n\nclass RetryableError(Exception):\n    def __init__(self, reason, retry_after=None):\n        super().__init__(reason)\n        self.retry_after = retry_after          # raw header value, or None\n\ndef parse_retry_after(value, now=None):\n    \"\"\"Retry-After is either seconds (\"120\") or an HTTP date.\"\"\"\n    if value is None:\n        return None\n    if value.strip().isdigit():\n        return float(value)\n    when = email.utils.parsedate_to_datetime(value)   # \"Wed, 30 Sep 2026 10:00:00 GMT\"\n    now = time.time() if now is None else now\n    return max(0.0, when.timestamp() - now)\n\nbackoff = wait_exponential_jitter(initial=1, max=30)\n\ndef wait_retry_after_or_backoff(retry_state):\n    err = retry_state.outcome.exception()\n    seconds = parse_retry_after(getattr(err, \"retry_after\", None))\n    if seconds is not None:\n        return min(seconds, 300)                # obey the server, but cap it\n    return backoff(retry_state)                 # otherwise normal backoff + jitter\n\n@retry(wait=wait_retry_after_or_backoff,\n       stop=stop_after_attempt(5),\n       retry=retry_if_exception_type(RetryableError),\n       reraise=True)\ndef fetch_page(session, cursor):\n    resp = session.get(\"https://api.example-crm.com/v1/orders\",\n                       params={\"cursor\": cursor, \"limit\": 500}, timeout=(3, 10))\n    if resp.status_code == 429:\n        raise RetryableError(\"429\", resp.headers.get(\"Retry-After\"))\n    if resp.status_code >= 500:\n        raise RetryableError(str(resp.status_code))\n    resp.raise_for_status()\n    return resp.json()\n\nprint(parse_retry_after(\"120\"))\nprint(parse_retry_after(\"Wed, 30 Sep 2026 10:00:30 GMT\",\n                        now=email.utils.parsedate_to_datetime(\n                            \"Wed, 30 Sep 2026 10:00:00 GMT\").timestamp()))\n# 120.0\n# 30.0",
+    "lang": "Python"
+   },
+   {
+    "title": "Pagination and checkpoints",
+    "body": "APIs return large results in pages. Offset pagination ('give me rows 1000 to 1500') can skip or repeat rows if data changes during the pull. Cursor pagination returns a token pointing to where the next page starts, which is stable.\n\nA checkpoint is a saved cursor. After each page is stored, write the cursor to a file or table. If the job crashes on page 812, it can resume from page 812 instead of starting over.\n\nFor very large backfills, first ask the customer whether a bulk export or a webhook exists. It is often faster than paging through millions of records.\n\nTwo details make checkpoints safe. First, the cursor checkpoint is only for resuming one backfill. When the last page arrives, next_cursor is empty; if you save that empty value, the next scheduled run loads None and starts the whole backfill again. Instead, mark the backfill as done and record a watermark, the time the backfill started. Later runs ask only for records changed since the watermark (for example updated_since=...) and move it forward. Start the watermark a little early, since records edited during the backfill must not be missed; upserts make any overlap harmless.\n\nSecond, write the checkpoint atomically. If the process dies half way through writing checkpoint.json, the file can be left empty or broken, and the next run fails to read it. Write to a temporary file in the same folder, flush it to disk, then call os.replace, which swaps the new file in as one step: readers see either the old checkpoint or the new one, never half of each. A database table updated in the same transaction as the data is even safer.",
+    "example": "A hospital scheduling API returns 200 appointments per page. The initial backfill is 1.8 million appointments, about 9,000 pages. The job crashes at page 4,120 due to a network outage. Because the cursor was saved after each page, the rerun continues from 4,120 and finishes in half the time. On the next night's run the job sees backfill_done and a watermark, and fetches only the 6,000 appointments updated since then, instead of starting the 9,000 pages again.",
+    "code": "import json, os, pathlib, tempfile\n\nCHECKPOINT = pathlib.Path(\"checkpoint.json\")\n\ndef load_state():\n    if CHECKPOINT.exists():\n        return json.loads(CHECKPOINT.read_text())\n    return {\"cursor\": None, \"backfill_done\": False, \"watermark\": None}\n\ndef save_state(state):\n    # Atomic write: write a temp file in the same folder, then swap it in.\n    # A crash mid-write leaves the old checkpoint intact, never half a file.\n    fd, tmp = tempfile.mkstemp(dir=CHECKPOINT.parent, suffix=\".tmp\")\n    with os.fdopen(fd, \"w\") as f:\n        json.dump(state, f)\n        f.flush()\n        os.fsync(f.fileno())\n    os.replace(tmp, CHECKPOINT)\n\ndef backfill(fetch_page, sink, started_at):\n    \"\"\"Resumable one-off backfill. The cursor is only for resuming THIS run.\"\"\"\n    state = load_state()\n    if state[\"backfill_done\"]:\n        return state\n    while True:\n        page = fetch_page(state[\"cursor\"])\n        sink.write(page[\"data\"])                      # store first...\n        next_cursor = page.get(\"next_cursor\")\n        if not next_cursor:                           # last page: do NOT save a null\n            state.update(cursor=None, backfill_done=True, watermark=started_at)\n            save_state(state)                         # later runs go incremental\n            return state\n        state[\"cursor\"] = next_cursor\n        save_state(state)                             # ...then checkpoint\n\n# Later scheduled runs: ask only for what changed since the watermark, e.g.\n# GET /v1/orders?updated_since=<watermark>, then move the watermark forward.\n\n# --- quick check with a fake API of 3 pages ---\nclass Sink:\n    def __init__(self): self.rows = []\n    def write(self, rows): self.rows += rows\npages = {None: {\"data\": [1, 2], \"next_cursor\": \"c2\"},\n         \"c2\": {\"data\": [3, 4], \"next_cursor\": \"c3\"},\n         \"c3\": {\"data\": [5], \"next_cursor\": None}}\nCHECKPOINT.unlink(missing_ok=True)\nsink = Sink()\nprint(backfill(pages.get, sink, \"2026-09-29T02:00:00Z\"), sink.rows)\nprint(backfill(pages.get, Sink(), \"2026-09-30T02:00:00Z\"))   # second run: no restart\n# {'cursor': None, 'backfill_done': True, 'watermark': '2026-09-29T02:00:00Z'} [1, 2, 3, 4, 5]\n# {'cursor': None, 'backfill_done': True, 'watermark': '2026-09-29T02:00:00Z'}",
+    "lang": "Python"
+   },
+   {
+    "title": "Test the failure paths first",
+    "body": "Test-Driven Development (TDD) means writing a failing test before the code that makes it pass. For ingestion, the most valuable tests cover failures: a 429, a 500, a timeout and a malformed record.\n\nYou do not want to call the real customer API in tests. A mock replaces it with a fake that returns whatever you script. The responses library does this for requests.\n\nKeep changes small and reviewed. Commit each fix on a feature branch with its test, and open a pull request so a teammate can check the retry logic.\n\nOne snag: the retry test above really waits, because wait_exponential_jitter sleeps 1 second, then about 2, between attempts, and a Retry-After of 120 would wait two minutes. Tests must stay fast, so replace the wait in tests only. With tenacity, set fetch_page.retry.wait to wait_none() in a fixture; pytest's monkeypatch puts the original back after each test. The retry logic, attempt count and error classes are still exercised; only the sleeping is removed. Test the wait function itself separately, as a plain function.",
+    "example": "Before writing fetch_page, the FDE writes a test where the fake API returns 429, then 503, then 200. The test asserts that the function returns the data and made exactly 3 calls. A second test returns 401 and asserts that the function fails after 1 call. The FDE's suite of 14 retry tests took 40 seconds because every test slept. After adding the fixture it runs in under a second, so people actually run it before each commit.",
+    "code": "import pytest, requests, responses\n\nURL = \"https://api.example-crm.com/v1/orders\"\n\n@responses.activate\ndef test_retries_transient_then_succeeds():\n    responses.add(responses.GET, URL, status=429)\n    responses.add(responses.GET, URL, status=503)\n    responses.add(responses.GET, URL, json={\"data\": [], \"next_cursor\": None})\n    assert fetch_page(requests.Session(), None)[\"data\"] == []\n    assert len(responses.calls) == 3             # retried twice\n\n@responses.activate\ndef test_does_not_retry_auth_error():\n    responses.add(responses.GET, URL, status=401)\n    with pytest.raises(requests.HTTPError):\n        fetch_page(requests.Session(), None)\n    assert len(responses.calls) == 1             # no retry on 4xx\n\n\n# Fast retry tests: keep the logic, remove the sleeps\nimport time\nimport pytest, requests, responses\nfrom tenacity import wait_none\nfrom ingest import fetch_page\n\nURL = \"https://api.example-crm.com/v1/orders\"\n\n@pytest.fixture(autouse=True)\ndef no_waiting(monkeypatch):\n    # Keep the retry logic, skip the real sleeps so the suite stays fast\n    monkeypatch.setattr(fetch_page.retry, \"wait\", wait_none())\n\n@responses.activate\ndef test_retries_transient_then_succeeds():\n    responses.add(responses.GET, URL, status=429, headers={\"Retry-After\": \"120\"})\n    responses.add(responses.GET, URL, status=503)\n    responses.add(responses.GET, URL, json={\"data\": [], \"next_cursor\": None})\n    start = time.perf_counter()\n    assert fetch_page(requests.Session(), None)[\"data\"] == []\n    assert len(responses.calls) == 3\n    assert time.perf_counter() - start < 0.5      # no real 120 s wait\n# 1 passed in 0.03s\n\nimport pytest, requests, responses\nfrom ingest import get_with_refresh, AuthFailed\nURL = \"https://api.example-crm.com/v1/orders\"\nclass Tokens:                               # fake token source\n    def __init__(self): self.n = 0\n    def access_token(self): return f\"tok{self.n}\"\n    def refresh(self): self.n += 1\n@responses.activate\ndef test_refresh_once_then_ok():\n    responses.add(responses.GET, URL, status=401)\n    responses.add(responses.GET, URL, json={\"data\": [1]})\n    t = Tokens()\n    assert get_with_refresh(requests.Session(), URL, {}, t) == {\"data\": [1]}\n    assert t.n == 1 and responses.calls[1].request.headers[\"Authorization\"] == \"Bearer tok1\"\n@responses.activate\ndef test_stop_after_second_401():\n    responses.add(responses.GET, URL, status=401)\n    responses.add(responses.GET, URL, status=401)\n    with pytest.raises(AuthFailed):\n        get_with_refresh(requests.Session(), URL, {}, Tokens())\n    assert len(responses.calls) == 2",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Token bucket",
+    "A rate limiter that holds up to N tokens, refills at a steady rate and spends one per request."
+   ],
+   [
+    "Concurrency cap",
+    "A limit on how many requests are in flight at once, for example with asyncio.Semaphore."
+   ],
+   [
+    "Circuit breaker",
+    "A guard that stops calling a failing service for a cool-down period after repeated errors."
+   ],
+   [
+    "Half-open",
+    "The circuit breaker state that lets one trial call through to see if the service has recovered."
+   ],
+   [
+    "Watermark",
+    "A saved timestamp marking how far data has been loaded, used to fetch only newer changes next time."
+   ],
+   [
+    "Atomic write",
+    "Writing a file so readers see the old or new version but never a half-written one, for example with os.replace."
+   ],
+   [
+    "Retry-After",
+    "An HTTP response header telling the client how long to wait, as seconds or a date, before trying again."
+   ],
+   [
+    "Token refresh",
+    "Getting a new OAuth access token with a refresh token or client credentials when the old one expires."
+   ]
+  ],
+  "add_practice": [
+   "Implement a token bucket and use it to call https://httpbin.org/get 30 times at no more than 5 per second. Log the time of each call and show the rate stays under the limit.",
+   "Add a circuit breaker to a fake API that fails for pages 10 to 15. Show in logs that calls are skipped while the circuit is open and resume after the cool-down.",
+   "Break the old checkpoint code on purpose: run a backfill to the end, then run it again and show it restarts. Fix it with a done flag and a watermark, and write the checkpoint atomically.",
+   "Write a pytest suite for a tenacity-decorated function that includes a 429 with Retry-After: 120, and make the whole suite finish in under one second."
+  ]
+ },
+ "sql": {
+  "add_subtopics": [
+   {
+    "title": "Anti-joins, EXISTS and deduplication with ROW_NUMBER",
+    "body": "Three query shapes come up in almost every engagement and interview.\n\nAn anti-join finds rows in A with no match in B: customers with no orders, invoices with no payment. There are two good ways. LEFT JOIN B and keep rows WHERE the B key IS NULL: the left join fills NULL when nothing matched, so those are exactly the unmatched rows. Or write WHERE NOT EXISTS (SELECT 1 FROM B WHERE ...), which reads like the question and is the safest form.\n\nAvoid NOT IN with a subquery. If the subquery returns even one NULL, NOT IN returns no rows at all, because x NOT IN (1, NULL) means x <> 1 AND x <> NULL, and a comparison with NULL is unknown. Real tables often have NULL foreign keys, so this bug silently returns an empty result.\n\nA semi-join is the opposite: rows in A that have at least one match in B. WHERE EXISTS returns each A row once, however many matches B has, so it never fans out the way a plain JOIN does.\n\nDeduplication keeps one row per key, usually the latest. Number the rows inside each key with ROW_NUMBER() OVER (PARTITION BY key ORDER BY loaded_at DESC) and keep rn = 1. Add a tie-breaker column to the ORDER BY so the choice is repeatable when two rows share a timestamp. Snowflake, BigQuery, Databricks and DuckDB offer QUALIFY, which filters on a window function directly and saves the outer query. PostgreSQL also has DISTINCT ON (key) for the same job.",
+    "example": "A telecom's CRM export has 2.1 million customer rows but only 1.9 million distinct customer ids, because every edit adds a new row. The FDE keeps the latest row per id with ROW_NUMBER, then uses NOT EXISTS to list 3,400 customers with no billing account. An earlier NOT IN version had returned zero rows, because 12 billing accounts had a NULL customer_id.",
+    "code": "CREATE TABLE customers (customer_id int PRIMARY KEY, name text);\nCREATE TABLE orders (order_id int PRIMARY KEY, customer_id int, amount numeric);\nINSERT INTO customers VALUES (1,'Arden Bikes'),(2,'Birchway Cafe'),(3,'Coldharbour Gym'),(4,'Dunmore Books');\nINSERT INTO orders VALUES (10,1,120),(11,1,80),(12,3,45),(13,NULL,60);   -- one NULL customer_id\n\n-- Anti-join 1: LEFT JOIN ... IS NULL\nSELECT c.customer_id, c.name\nFROM   customers c\nLEFT JOIN orders o ON o.customer_id = c.customer_id\nWHERE  o.order_id IS NULL\nORDER  BY c.customer_id;\n-- 2 | Birchway Cafe\n-- 4 | Dunmore Books\n\n-- Anti-join 2: NOT EXISTS (same 2 rows, the safest form)\nSELECT c.customer_id, c.name\nFROM   customers c\nWHERE  NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id)\nORDER  BY c.customer_id;\n\n-- The trap: NOT IN returns 0 rows because the subquery contains a NULL\nSELECT c.customer_id, c.name\nFROM   customers c\nWHERE  c.customer_id NOT IN (SELECT customer_id FROM orders);\n-- (0 rows)\n\n-- Semi-join: customers with at least one order, each listed once\nSELECT c.customer_id, c.name\nFROM   customers c\nWHERE  EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id)\nORDER  BY c.customer_id;\n-- 1 | Arden Bikes        (2 orders, still 1 row)\n-- 3 | Coldharbour Gym\n\n-- Dedupe: keep the latest row per customer\nCREATE TABLE customer_updates (customer_id int, email text, loaded_at timestamp);\nINSERT INTO customer_updates VALUES\n (1,'old@arden.example','2026-09-01 08:00'),(1,'new@arden.example','2026-09-03 08:00'),\n (2,'hi@birchway.example','2026-09-02 08:00'),(2,'hi@birchway.example','2026-09-02 08:00');\n\nWITH ranked AS (\n  SELECT *,\n         ROW_NUMBER() OVER (PARTITION BY customer_id\n                            ORDER BY loaded_at DESC, email) AS rn   -- email breaks ties\n  FROM   customer_updates\n)\nSELECT customer_id, email, loaded_at\nFROM   ranked\nWHERE  rn = 1\nORDER  BY customer_id;\n-- 1 | new@arden.example   | 2026-09-03 08:00:00\n-- 2 | hi@birchway.example | 2026-09-02 08:00:00\n\n-- Snowflake, BigQuery, Databricks, DuckDB: QUALIFY does it without the CTE\n-- SELECT customer_id, email, loaded_at\n-- FROM   customer_updates\n-- QUALIFY ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY loaded_at DESC, email) = 1;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Self-joins, full outer joins and set operations",
+    "body": "A few more join shapes cover most remaining questions.\n\nFULL OUTER JOIN keeps every row from both sides, with NULLs where one side has no match. It is the tool for reconciling two sources, such as the CRM and the billing system: one query shows rows missing on the left, rows missing on the right, and rows that match but disagree. COALESCE the two keys so every row has an id to show.\n\nA self-join joins a table to itself under two aliases. It answers questions that compare rows in the same table: each employee next to their manager, or each order next to the same customer's previous order.\n\nCROSS JOIN pairs every row of A with every row of B, so 3 stores and 30 days give 90 rows. It sounds useless but builds grids and date spines: a full list of days to LEFT JOIN your data onto, so days with no sales show 0 instead of disappearing from a chart. In PostgreSQL, generate_series makes the list of days.\n\nSet operations stack results vertically instead of side by side. UNION ALL keeps every row. UNION also removes duplicates, which costs a sort or hash and can hide real duplicates you wanted to see, so use UNION ALL unless you need the removal. EXCEPT returns rows in the first query but not the second; INTERSECT returns rows in both. The columns must match in number and type.",
+    "example": "A subscription business says finance and the CRM disagree by $41,000. A FULL OUTER JOIN on invoice_id finds 212 invoices only in billing (created by a manual process) and 37 with different amounts (discounts applied after sync). The FDE sends the three lists to the two teams instead of one confusing total.",
+    "code": "CREATE TABLE crm_invoices     (invoice_id text, amount numeric);\nCREATE TABLE billing_invoices (invoice_id text, amount numeric);\nINSERT INTO crm_invoices     VALUES ('INV-1',100),('INV-2',250),('INV-3',75);\nINSERT INTO billing_invoices VALUES ('INV-1',100),('INV-2',240),('INV-4',30);\n\n-- Reconcile two sources: FULL OUTER JOIN keeps rows missing on either side\nSELECT COALESCE(c.invoice_id, b.invoice_id) AS invoice_id,\n       c.amount AS crm_amount,\n       b.amount AS billing_amount,\n       CASE WHEN c.invoice_id IS NULL THEN 'missing in CRM'\n            WHEN b.invoice_id IS NULL THEN 'missing in billing'\n            WHEN c.amount <> b.amount THEN 'amount differs'\n            ELSE 'ok' END AS status\nFROM   crm_invoices c\nFULL OUTER JOIN billing_invoices b ON b.invoice_id = c.invoice_id\nORDER  BY 1;\n-- INV-1 | 100 | 100 | ok\n-- INV-2 | 250 | 240 | amount differs\n-- INV-3 |  75 |     | missing in billing\n-- INV-4 |     |  30 | missing in CRM\n\n-- Self-join: each employee next to their manager (same table twice)\nCREATE TABLE staff (id int, name text, manager_id int);\nINSERT INTO staff VALUES (1,'Priya',NULL),(2,'Tomas',1),(3,'Wen',1),(4,'Kofi',2);\nSELECT e.name AS employee, m.name AS manager\nFROM   staff e\nLEFT JOIN staff m ON m.id = e.manager_id\nORDER  BY e.id;\n-- Priya | (none)\n-- Tomas | Priya\n-- Wen   | Priya\n-- Kofi  | Tomas\n\n-- CROSS JOIN a date spine: one row per day, even days with no sales\nCREATE TABLE sales (sold_on date, amount numeric);\nINSERT INTO sales VALUES ('2026-09-01',50),('2026-09-01',20),('2026-09-03',40);\nSELECT d::date AS day, COALESCE(SUM(s.amount), 0) AS revenue\nFROM   generate_series(DATE '2026-09-01', DATE '2026-09-04', INTERVAL '1 day') AS d\nLEFT JOIN sales s ON s.sold_on = d::date\nGROUP  BY d\nORDER  BY d;\n-- 2026-09-01 | 70\n-- 2026-09-02 |  0\n-- 2026-09-03 | 40\n-- 2026-09-04 |  0\n\n-- CROSS JOIN: every store with every day (a grid to fill in)\nSELECT COUNT(*) AS grid_rows\nFROM   (VALUES ('north'),('south'),('east')) AS stores(store)\nCROSS JOIN generate_series(1, 30) AS day;\n-- 90\n\n-- UNION removes duplicates (and sorts or hashes to do it); UNION ALL keeps every row\nSELECT COUNT(*) AS union_rows FROM (\n  SELECT invoice_id FROM crm_invoices UNION     SELECT invoice_id FROM billing_invoices) t;   -- 4\nSELECT COUNT(*) AS union_all_rows FROM (\n  SELECT invoice_id FROM crm_invoices UNION ALL SELECT invoice_id FROM billing_invoices) t;   -- 6\n-- EXCEPT and INTERSECT: in one list but not the other, or in both\nSELECT invoice_id FROM crm_invoices EXCEPT SELECT invoice_id FROM billing_invoices;\n-- INV-3\n",
+    "lang": "SQL"
+   },
+   {
+    "title": "Conditional logic, dates and types",
+    "body": "Business rules turn into CASE WHEN. It works like if and else inside a query: CASE WHEN condition THEN value WHEN other_condition THEN value ELSE default END. Conditions are checked top to bottom and the first true one wins, so put the most specific first.\n\nConditional aggregation puts CASE inside an aggregate to count several things in one pass: SUM(CASE WHEN priority = 'high' THEN 1 ELSE 0 END). PostgreSQL and some others also allow COUNT(*) FILTER (WHERE priority = 'high'), which is shorter. This replaces running one query per category.\n\nDividing two integers gives an integer in PostgreSQL, SQL Server and SQLite: 3 / 4 is 0, not 0.75. That is why this lesson writes 100.0 * x / y. Multiplying by a decimal or using CAST(x AS numeric) makes the result a decimal. Protect against dividing by zero with NULLIF(y, 0), which turns 0 into NULL, so the result is NULL instead of an error.\n\nFor dates, DATE_TRUNC('month', ts) rounds a timestamp down to the start of its month, day or hour, which makes grouping by period easy. With timestamptz (a timestamp with time zone), the time zone decides which day a moment belongs to. An order at 01:30 UTC on 2 September is still 1 September in New York, so a daily report grouped in UTC can disagree with the customer's own report. Agree the reporting time zone and convert with AT TIME ZONE before truncating.\n\nCAST (or :: in PostgreSQL) converts text to numbers or dates, and fails loudly on bad values, which is what you want.",
+    "example": "A support team's SLA report shows 91 percent within 4 hours, but their manager counts 87. The FDE finds two causes: tickets opened in the evening in the US were grouped into the next UTC day, and an integer division rounded one team's rate. Converting to America/New_York before DATE_TRUNC and writing 100.0 * fixes both.",
+    "code": "CREATE TABLE tickets (id int, priority text, status text,\n                      opened_at timestamptz, resolved_at timestamptz);\nINSERT INTO tickets VALUES\n (1,'high','closed','2026-09-01 07:30+00','2026-09-01 09:30+00'),\n (2,'low', 'open',  '2026-09-02 01:30+00',NULL),\n (3,'high','closed','2026-09-02 10:00+00','2026-09-03 10:00+00'),\n (4,'low', 'closed','2026-09-02 12:00+00','2026-09-02 13:00+00');\n\n-- CASE WHEN: label each row\nSELECT id,\n       CASE WHEN resolved_at IS NULL                        THEN 'open'\n            WHEN resolved_at - opened_at <= INTERVAL '4 hours' THEN 'within SLA'\n            ELSE 'late' END AS sla\nFROM   tickets ORDER BY id;\n-- 1 within SLA | 2 open | 3 late | 4 within SLA\n\n-- Conditional aggregation: several counts in one pass\nSELECT COUNT(*)                                          AS total,\n       SUM(CASE WHEN priority = 'high' THEN 1 ELSE 0 END) AS high_case,\n       COUNT(*) FILTER (WHERE priority = 'high')          AS high_filter,   -- PostgreSQL\n       COUNT(*) FILTER (WHERE status = 'open')            AS still_open\nFROM   tickets;\n-- total 4 | high_case 2 | high_filter 2 | still_open 1\n\n-- Integer division: 3 / 4 is 0 in PostgreSQL, SQL Server and SQLite\nSELECT 3 / 4 AS int_div, 3 / 4.0 AS decimal_div,\n       CAST(3 AS numeric) / 4 AS cast_div, ROUND(100.0 * 3 / 4, 1) AS pct;\n-- int_div 0 | decimal_div 0.75000... | cast_div 0.75000... | pct 75.0\n\n-- NULLIF: avoid \"division by zero\" by turning 0 into NULL\nSELECT priority,\n       COUNT(*) FILTER (WHERE status = 'closed') AS closed,\n       ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'closed')\n             / NULLIF(COUNT(*), 0), 1) AS closed_pct\nFROM   tickets GROUP BY priority ORDER BY priority;\n-- high | 2 | 100.0\n-- low  | 1 |  50.0\n\n-- Dates: DATE_TRUNC buckets timestamps; the time zone decides which day a row lands on\nSELECT DATE_TRUNC('day', opened_at AT TIME ZONE 'UTC')::date              AS day_utc,\n       DATE_TRUNC('day', opened_at AT TIME ZONE 'America/New_York')::date AS day_new_york,\n       id\nFROM   tickets ORDER BY id;\n-- 2026-09-01 | 2026-09-01 | 1\n-- 2026-09-02 | 2026-09-01 | 2   <- 01:30 UTC is still 1 September in New York\n-- 2026-09-02 | 2026-09-02 | 3\n-- 2026-09-02 | 2026-09-02 | 4\n\nSELECT DATE_TRUNC('month', opened_at AT TIME ZONE 'UTC')::date AS month,\n       COUNT(*) AS opened\nFROM   tickets GROUP BY 1;\n-- 2026-09-01 | 4\n\n-- CAST text to numbers and dates (fails loudly on bad input)\nSELECT CAST('42.50' AS numeric) + 1 AS n, '2026-09-30'::date + 1 AS next_day;\n-- 43.50 | 2026-10-01\n",
+    "lang": "SQL"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "Window functions",
+    "body": "A window function computes a value across a set of rows related to the current row, without collapsing them. GROUP BY turns many rows into one. A window keeps every row and adds a column.\n\nThe syntax is FUNCTION() OVER (PARTITION BY ... ORDER BY ...). PARTITION BY splits rows into groups. ORDER BY sets the order within each group. Useful functions include ROW_NUMBER, RANK, LAG (the previous row's value) and SUM as a running total.\n\nWindow functions run at the SELECT step, so to filter on their result, wrap the query in a CTE and filter in the outer query.\n\nROW_NUMBER, RANK and DENSE_RANK differ only when there are ties. For deals of 9, 7, 7 and 5, ROW_NUMBER gives 1, 2, 3, 4 (always unique, so ties are broken arbitrarily unless you add a tie-breaker), RANK gives 1, 2, 2, 4 (tied rows share a rank and the next rank is skipped), and DENSE_RANK gives 1, 2, 2, 3 (no gap). Use ROW_NUMBER to pick exactly one row, RANK or DENSE_RANK to return every tied winner.\n\nA frame limits which rows of the window a function sees. ROWS BETWEEN 6 PRECEDING AND CURRENT ROW means this row and the 6 before it, which gives a 7-day moving average when there is one row per day. The first six rows have fewer days in the window, so show that count or skip them. If some days are missing, build a date spine first, or the frame will span more than 7 calendar days.\n\nThe default frame catches people out. With ORDER BY in the OVER clause, the default frame runs from the first row to the current row. That is why SUM gives a running total, and also why LAST_VALUE returns the current row instead of the last one. Write the frame explicitly: ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING.\n\nKeeping one latest row per key is such a common use of ROW_NUMBER that it has its own subtopic in this lesson, along with the QUALIFY shortcut.",
+    "example": "A subscription company wants each customer's most recent plan change and how much their monthly price moved. ROW_NUMBER picks the latest change per customer. LAG gets the previous price so the query can compute the difference, for example from $49 to $99, a change of +$50. The same company's sales dashboard shows a 7-day moving average of new subscriptions using a ROWS frame, and a leaderboard using DENSE_RANK so two reps tied for second both show as 2.",
+    "code": "WITH changes AS (\n  SELECT customer_id,\n         changed_at,\n         monthly_price,\n         LAG(monthly_price) OVER (PARTITION BY customer_id\n                                  ORDER BY changed_at)        AS prev_price,\n         ROW_NUMBER()       OVER (PARTITION BY customer_id\n                                  ORDER BY changed_at DESC)   AS rn\n  FROM   plan_changes\n)\nSELECT customer_id,\n       changed_at,\n       prev_price,\n       monthly_price,\n       monthly_price - prev_price AS delta\nFROM   changes\nWHERE  rn = 1;             -- latest change only; filtering happens outside the window\n\n\nCREATE TABLE sales_reps (rep text, deals int);\nINSERT INTO sales_reps VALUES ('Ana',9),('Ben',7),('Chen',7),('Dara',5);\n\n-- Same tied data, three ranking functions\nSELECT rep, deals,\n       ROW_NUMBER() OVER (ORDER BY deals DESC, rep) AS row_number,  -- 1,2,3,4: always unique\n       RANK()       OVER (ORDER BY deals DESC)      AS rank,        -- 1,2,2,4: gap after a tie\n       DENSE_RANK() OVER (ORDER BY deals DESC)      AS dense_rank   -- 1,2,2,3: no gap\nFROM   sales_reps\nORDER  BY deals DESC, rep;\n-- Ana  | 9 | 1 | 1 | 1\n-- Ben  | 7 | 2 | 2 | 2\n-- Chen | 7 | 3 | 2 | 2\n-- Dara | 5 | 4 | 4 | 3\n\n-- Frames: a 7-day moving average (this row and the 6 before it)\nCREATE TABLE daily_orders (day date, orders int);\nINSERT INTO daily_orders\nSELECT d::date, 100 + (EXTRACT(day FROM d)::int % 5) * 10\nFROM   generate_series(DATE '2026-09-01', DATE '2026-09-10', INTERVAL '1 day') d;\n\nSELECT day, orders,\n       ROUND(AVG(orders) OVER (ORDER BY day\n                               ROWS BETWEEN 6 PRECEDING AND CURRENT ROW), 1) AS avg_7d,\n       COUNT(*)      OVER (ORDER BY day\n                           ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)        AS days_in_window\nFROM   daily_orders\nORDER  BY day;\n-- 2026-09-01 | 110 | 110.0 | 1\n-- 2026-09-02 | 120 | 115.0 | 2\n-- ...\n-- 2026-09-07 | 120 | 118.6 | 7   <- first full 7-day window\n-- 2026-09-10 | 100 | 120.0 | 7\n\n-- The LAST_VALUE surprise: with ORDER BY, the default frame ends at the CURRENT row\nSELECT day, orders,\n       LAST_VALUE(orders) OVER (ORDER BY day)                  AS last_default,\n       LAST_VALUE(orders) OVER (ORDER BY day\n            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_whole\nFROM   daily_orders\nWHERE  day <= DATE '2026-09-03'\nORDER  BY day;\n-- 2026-09-01 | 110 | 110 | 130\n-- 2026-09-02 | 120 | 120 | 130\n-- 2026-09-03 | 130 | 130 | 130\n",
+    "lang": "SQL"
+   },
+   {
+    "title": "CTEs for readable queries",
+    "body": "A common table expression (CTE) is a named subquery defined with WITH at the top of a query. It lets you build a result in small, readable steps.\n\nEach CTE can refer to the ones before it. You can run each step on its own while debugging, which is useful when a number looks wrong in front of a customer.\n\nIn modern PostgreSQL and most warehouses, CTEs are usually optimised like normal subqueries, so readability rarely costs performance.\n\nMore precisely: since PostgreSQL 12, a CTE that is referenced once (and has no side effects) is inlined, meaning the planner merges it into the main query, so filters in the outer query can still use indexes inside it. A CTE referenced two or more times is computed once and stored (materialised). You can override this: WITH c AS MATERIALIZED (...) forces storing, which can help when an expensive step is reused; WITH c AS NOT MATERIALIZED (...) forces inlining. Before version 12, every CTE was materialised, which is why older advice says CTEs are slow. Check with EXPLAIN when in doubt.\n\nA recursive CTE (WITH RECURSIVE) walks hierarchies of unknown depth: org charts, bills of materials, folder trees, account parents. It has two parts joined by UNION ALL: an anchor query that finds the starting rows, such as the top manager, and a recursive query that joins the table to the rows found so far to find the next level. It stops when a step finds no new rows. Add a depth limit in case the data contains a loop, such as two people listed as each other's manager.",
+    "example": "An insurer wants the average days from claim filed to first payment, for claims filed in Q2, by product line. The FDE builds it in three CTEs: Q2 claims, first payment per claim, and the joined result. When the auto line looks odd, they run the second CTE alone and find duplicate payment rows. The insurer also wants claim totals rolled up through its broker hierarchy, which is between 2 and 6 levels deep. A recursive CTE walks from each top-level broker down, carrying a path such as North > Metro > Harbour Street, and the totals are grouped by the top level.",
+    "code": "WITH q2_claims AS (\n  SELECT claim_id, product_line, filed_at\n  FROM   claims\n  WHERE  filed_at >= DATE '2026-04-01' AND filed_at < DATE '2026-07-01'\n),\nfirst_payment AS (\n  SELECT claim_id, MIN(paid_at) AS first_paid_at   -- one row per claim\n  FROM   payments\n  GROUP  BY claim_id\n)\nSELECT c.product_line,\n       COUNT(*)                                        AS claims,\n       ROUND(AVG(p.first_paid_at::date - c.filed_at::date), 1) AS avg_days_to_pay\nFROM   q2_claims c\nJOIN   first_payment p USING (claim_id)\nGROUP  BY c.product_line\nORDER  BY avg_days_to_pay DESC;\n\n\nCREATE TABLE claims (claim_id int PRIMARY KEY, product_line text, filed_at date);\nINSERT INTO claims SELECT g, (ARRAY['auto','home','travel'])[1 + g % 3], DATE '2026-01-01' + g % 300\nFROM generate_series(1, 100000) g;\nANALYZE claims;\n\n-- Referenced once: PostgreSQL 12+ inlines the CTE, so the filter reaches the index\nEXPLAIN (COSTS OFF)\nWITH c AS (SELECT * FROM claims)\nSELECT * FROM c WHERE claim_id = 42;\n-- Index Scan using claims_pkey on claims\n--   Index Cond: (claim_id = 42)\n\n-- MATERIALIZED forces it to be computed once and stored first\nEXPLAIN (COSTS OFF)\nWITH c AS MATERIALIZED (SELECT * FROM claims)\nSELECT * FROM c WHERE claim_id = 42;\n-- CTE Scan on c\n--   Filter: (claim_id = 42)\n--   CTE c\n--     ->  Seq Scan on claims      <- reads all 100,000 rows\n\n-- Recursive CTE: walk an org chart from the top down\nCREATE TABLE staff (id int, name text, manager_id int);\nINSERT INTO staff VALUES (1,'Priya',NULL),(2,'Tomas',1),(3,'Wen',1),(4,'Kofi',2),(5,'Lena',4);\n\nWITH RECURSIVE chain AS (\n  SELECT id, name, manager_id, 1 AS level, name::text AS path\n  FROM   staff\n  WHERE  manager_id IS NULL                       -- anchor: the top of the tree\n  UNION ALL\n  SELECT s.id, s.name, s.manager_id, c.level + 1, c.path || ' > ' || s.name\n  FROM   staff s\n  JOIN   chain c ON s.manager_id = c.id           -- recursive step: direct reports\n  WHERE  c.level < 20                             -- safety stop if the data has a loop\n)\nSELECT level, name, path FROM chain ORDER BY path;\n-- 1 | Priya | Priya\n-- 2 | Tomas | Priya > Tomas\n-- 3 | Kofi  | Priya > Tomas > Kofi\n-- 4 | Lena  | Priya > Tomas > Kofi > Lena\n-- 2 | Wen   | Priya > Wen\n",
+    "lang": "SQL"
+   },
+   {
+    "title": "Joins and the fan-out trap",
+    "body": "A join combines rows from two tables where a condition matches. An INNER JOIN keeps only rows with a match on both sides. A LEFT JOIN keeps every row from the left table and fills NULL where the right side has no match.\n\nThe cardinality of a relationship is how many rows match on each side. If one order has many shipments, joining orders to shipments produces one row per shipment. Summing order amounts after that join counts each order several times. This is called fan-out.\n\nThe fix is to aggregate the 'many' side first, down to one row per key, and then join.\n\nWhen the join condition or filter value comes from Python, such as a region chosen in a web form, never build the SQL string yourself with an f-string or +. If the value contains a quote, it can change the query itself: north' OR '1'='1 turns a filter into \"return every row\". This is SQL injection, one of the most common security holes. Instead, write a placeholder (%s in psycopg for PostgreSQL, ? in sqlite3) and pass the values separately. The driver sends them as data, so they can never become SQL. For a list of ids, pass a Python list to = ANY(%s). Placeholders work for values only; if a user picks a table or column name, check it against an allowlist.",
+    "example": "An online store reports $2.4M revenue for August, while finance says $1.6M. The query joined orders to shipments, and split shipments meant about a third of orders appeared twice. Aggregating shipments per order first, then joining, returns $1.6M. In the reporting tool, the region filter was later rewritten from an f-string to a %s placeholder after a tester typed a quote into the region box and got every customer back.",
+    "code": "-- Fan-out bug: orders with 2 shipments are counted twice\nSELECT SUM(o.amount)\nFROM   orders o\nJOIN   shipments s ON s.order_id = o.order_id;\n\n-- Fix: reduce shipments to one row per order first\nWITH ship AS (\n  SELECT order_id, COUNT(*) AS n_shipments, MAX(shipped_at) AS last_shipped\n  FROM   shipments\n  GROUP  BY order_id\n)\nSELECT SUM(o.amount) AS revenue\nFROM   orders o\nLEFT JOIN ship s ON s.order_id = o.order_id     -- keeps unshipped orders too\nWHERE  o.created_at >= DATE '2026-08-01'\n  AND  o.created_at <  DATE '2026-09-01';\n\n-- From Python (psycopg): pass values as parameters, never in an f-string\n/*\nimport psycopg\n\nconn = psycopg.connect(\"dbname=shop\"   # plus host and user for your database)\ncur = conn.cursor()\ncur.execute(\"CREATE TEMP TABLE customers (customer_id int, name text, region text)\")\ncur.executemany(\"INSERT INTO customers VALUES (%s, %s, %s)\",\n                [(1, \"Arden Bikes\", \"north\"), (2, \"Birchway Cafe\", \"south\")])\n\nregion = \"north' OR '1'='1\"            # what a malicious or careless user might type\n\n# NEVER: an f-string pastes the text into the SQL, so the OR clause runs\ncur.execute(f\"SELECT name FROM customers WHERE region = '{region}'\")\nprint(\"f-string:\", cur.fetchall())\n\n# ALWAYS: %s placeholder, values passed separately; the driver sends them as data\ncur.execute(\"SELECT name FROM customers WHERE region = %s\", (region,))\nprint(\"placeholder:\", cur.fetchall())\n\ncur.execute(\"SELECT name FROM customers WHERE region = %s\", (\"north\",))\nprint(\"normal use:\", cur.fetchall())\n\n# Lists: use = ANY(%s) with a Python list instead of building IN (...) by hand\ncur.execute(\"SELECT name FROM customers WHERE customer_id = ANY(%s) ORDER BY 1\", ([1, 2],))\nprint(\"any:\", cur.fetchall())\n# Placeholders are for values only. Table or column names from users need\n# an allowlist, or psycopg.sql.Identifier.\n\n# f-string: [('Arden Bikes',), ('Birchway Cafe',)]   <- injection returned everything\n# placeholder: []\n# normal use: [('Arden Bikes',)]\n# any: [('Arden Bikes',), ('Birchway Cafe',)]\n*/",
+    "lang": "SQL"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Anti-join",
+    "A query that returns rows in one table with no matching row in another, for example with NOT EXISTS."
+   ],
+   [
+    "Semi-join",
+    "A query that returns rows in one table that have at least one match in another, each once, for example with EXISTS."
+   ],
+   [
+    "Self-join",
+    "Joining a table to itself under two aliases to compare rows in the same table."
+   ],
+   [
+    "FULL OUTER JOIN",
+    "A join that keeps all rows from both tables, with NULLs where either side has no match."
+   ],
+   [
+    "Date spine",
+    "A complete list of dates used as the base of a query so that days with no data still appear."
+   ],
+   [
+    "UNION ALL",
+    "Stacks two query results and keeps every row; UNION also removes duplicates."
+   ],
+   [
+    "Conditional aggregation",
+    "Using CASE or FILTER inside an aggregate to count or sum several categories in one pass."
+   ],
+   [
+    "Integer division",
+    "Dividing two integers, which drops the fraction in many databases, so 3 / 4 is 0."
+   ],
+   [
+    "Window frame",
+    "The set of rows around the current row that a window function uses, set with ROWS BETWEEN."
+   ],
+   [
+    "QUALIFY",
+    "A clause in Snowflake, BigQuery, Databricks and DuckDB that filters on a window function result."
+   ],
+   [
+    "Recursive CTE",
+    "A WITH RECURSIVE query that repeats a join step to walk a hierarchy such as an org chart."
+   ],
+   [
+    "SQL injection",
+    "An attack where input text changes the meaning of a SQL query because it was pasted into the query string."
+   ],
+   [
+    "Parameterised query",
+    "A query with placeholders whose values are sent separately, so they are always treated as data."
+   ]
+  ],
+  "add_practice": [
+   "Using the customers and orders tables from this lesson, list customers with no orders with LEFT JOIN, NOT EXISTS and NOT IN. Insert an order with a NULL customer_id and show which version breaks.",
+   "Build two small invoice tables that disagree and write one FULL OUTER JOIN query that labels each invoice ok, missing in one side, or amount differs.",
+   "Write a daily revenue query over a date spine for September, with a 7-day moving average using ROWS BETWEEN, and show days with no sales as 0.",
+   "Write a ticket report that uses conditional aggregation to count high, medium and low priority tickets per week, in the customer's time zone, with a percentage that cannot divide by zero.",
+   "Write a recursive CTE that lists every person under a given manager with their depth and full path, and test it on data that contains a loop.",
+   "Write a Python function that filters orders by a region typed by a user. Show that an f-string version is injectable and the %s version is not."
+  ]
+ },
+ "planner": {
+  "add_subtopics": [
+   {
+    "title": "Statistics and bad row estimates",
+    "body": "Every estimate the planner makes comes from statistics stored in the catalog. ANALYZE (or autovacuum, which runs it for you) samples each column and records how many distinct values it has, the most common values and how often they appear, and a histogram of the rest. From these, the planner guesses how many rows a filter like city = 'Leeds' will return. That guess is the 'rows=' number in EXPLAIN.\n\nEstimates go wrong in three common ways. First, the statistics are stale, for example after a big load or delete, so run ANALYZE. Second, the sample missed a skewed column, so raise the detail with ALTER TABLE ... ALTER COLUMN ... SET STATISTICS 500 and analyze again. Third, two filtered columns are related, such as city and country. The planner assumes columns are independent and multiplies the two selectivities, which makes the estimate far too small. CREATE STATISTICS tells Postgres that the columns move together.\n\nWhy it matters: an estimate that is 100 times too low pushes the planner toward a nested loop or an index scan that is fine for 20 rows and terrible for 2,000. When a plan looks wrong, compare 'rows=' with 'actual rows=' first, then fix the estimate before adding indexes.",
+    "example": "A freight company filters shipments by city and country. Every city in country0 belongs to it, so the real match for city7 AND country0 is about 2,000 of 200,000 rows. The planner estimated only 223 because it treated the two columns as independent, and it chose a plan built for a tiny result. After CREATE STATISTICS on (city, country) and ANALYZE, the estimate rose to about 1,900, the planner chose a plan suited to the real size, and the query got faster.",
+    "code": "-- 200,000 shipments; city7 always belongs to country0 (2,000 real matches)\nEXPLAIN SELECT * FROM shipments\nWHERE city = 'city7' AND country = 'country0';\n-- Gather ... rows=223   <- too low (columns treated as independent)\n\n-- Tell Postgres these two columns are related, then refresh statistics\nCREATE STATISTICS ship_city_country (dependencies) ON city, country FROM shipments;\nANALYZE shipments;\n\nEXPLAIN SELECT * FROM shipments\nWHERE city = 'city7' AND country = 'country0';\n-- Gather ... rows=1873  <- close to the real 2,000\n\n-- Give one skewed column a bigger sample (default is 100)\nALTER TABLE shipments ALTER COLUMN city SET STATISTICS 500;\nANALYZE shipments;\n\n-- Compare estimate and reality on any suspicious node\nEXPLAIN (ANALYZE) SELECT count(*) FROM shipments WHERE city = 'city7';",
+    "lang": "SQL"
+   },
+   {
+    "title": "Join algorithms and scan nodes",
+    "body": "When a query joins two tables, the planner picks one of three algorithms, and each shows up as a node name in EXPLAIN.\n\nNested Loop: for each row from the outer input, look up matching rows in the inner input. It is best when the outer side is small and the inner side has an index on the join column. It is the worst choice when both sides are large, because the inner lookup repeats once per outer row (the loops number).\n\nHash Join: read the smaller table into an in-memory hash table (the Hash node), then stream the bigger table past it and probe. It is the usual winner for large joins on equality, and needs no index. If the hash table does not fit in work_mem it spills to disk in batches, which is slower.\n\nMerge Join: both inputs arrive sorted on the join column, then are walked together like a zipper. It is chosen when the data is already sorted, for example from an index, or when a sort is cheap.\n\nYou will also see Bitmap Index Scan followed by Bitmap Heap Scan very often. The index scan collects the matching row locations into a bitmap, then the heap scan reads the table pages in physical order, once each. The planner uses this in the middle ground: too many rows for a plain Index Scan, too few for a Seq Scan. The Recheck Cond line is normal.",
+    "example": "A retailer joins 10,000 customers to 200,000 orders. For one customer, the planner uses a Nested Loop: one index lookup on customers, then a Bitmap Heap Scan on that customer's 20 orders. For a report that totals sales by region across all orders, it switches to a Hash Join: the small customers table is hashed and the 200,000 orders stream past it. Forcing a nested loop on the report would mean 200,000 separate lookups.",
+    "code": "-- Small filtered outer side + indexed inner side -> Nested Loop\nEXPLAIN SELECT c.name, o.total\nFROM   customers c JOIN orders o ON o.customer_id = c.id\nWHERE  c.id = 42;\n--  Nested Loop\n--    -> Index Scan using customers_pkey on customers c\n--    -> Bitmap Heap Scan on orders o\n--         -> Bitmap Index Scan on orders_customer_id_idx\n\n-- Big equality join, no filter -> Hash Join (the small table is hashed)\nEXPLAIN SELECT c.region, sum(o.total)\nFROM   customers c JOIN orders o ON o.customer_id = c.id\nGROUP  BY c.region;\n--  Hash Join  Hash Cond: (o.customer_id = c.id)\n--    -> Parallel Seq Scan on orders o\n--    -> Hash -> Seq Scan on customers c\n\n-- Both sides come out of indexes already sorted -> Merge Join\nEXPLAIN SELECT * FROM customers c JOIN orders o ON o.customer_id = c.id\nORDER BY c.id;\n--  Merge Join  Merge Cond: (c.id = o.customer_id)\n\n-- Experiment only: switch an algorithm off for this session to compare plans\nSET enable_hashjoin = off;\nEXPLAIN ANALYZE SELECT c.region, sum(o.total)\nFROM customers c JOIN orders o ON o.customer_id = c.id GROUP BY c.region;\nRESET enable_hashjoin;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Finding slow queries and keeping tables healthy",
+    "body": "You usually do not know which query is slow. The pg_stat_statements extension answers that. It records, for every distinct query shape, how many times it ran and how much total time it used. Sort by total_exec_time, not by the slowest single run: a 20 ms query that runs 5 million times an hour costs more than a 30-second report that runs once. To turn it on, add pg_stat_statements to shared_preload_libraries, restart, and run CREATE EXTENSION. On managed services (RDS, Cloud SQL) this is usually a parameter setting.\n\nauto_explain writes the plan of any query slower than a chosen threshold into the server log, so you can see the plan that ran in production, not one you reproduced.\n\nPostgres never overwrites a row in place. An UPDATE or DELETE leaves the old version behind as a dead tuple. VACUUM marks that space reusable, and autovacuum runs it in the background. A table with heavy updates or a huge delete can bloat: it holds much more space than its live data, and scans get slower. Plain VACUUM makes space reusable but usually does not shrink the file. VACUUM FULL rewrites the table and shrinks it, but takes a lock that blocks all access, so it is a maintenance-window tool.\n\nIndexes need care too: check for unused ones, and REINDEX CONCURRENTLY a badly bloated one.",
+    "example": "A telecom's dashboard feels slow. The FDE enables pg_stat_statements, waits a day, and sorts by total time. The top query is a tiny lookup that runs 8 million times, each with a Seq Scan, so it uses most of the database's time. One index fixes it. Two weeks later a purge job deletes half of a 200,000-row table. The file stays at 13 MB until VACUUM FULL, run in a maintenance window, shrinks it to about 6.7 MB.",
+    "code": "-- postgresql.conf (then restart): shared_preload_libraries = 'pg_stat_statements'\nCREATE EXTENSION IF NOT EXISTS pg_stat_statements;\n\n-- Top 5 queries by total time used\nSELECT round(total_exec_time::numeric, 1) AS total_ms,\n       calls,\n       round(mean_exec_time::numeric, 2)   AS mean_ms,\n       left(query, 60)                     AS query\nFROM   pg_stat_statements\nORDER  BY total_exec_time DESC\nLIMIT  5;\n-- Literal values are replaced by $1, $2, so similar queries are grouped\n\n-- Log plans of slow queries (session-level demo; use the config file in production)\nLOAD 'auto_explain';\nSET auto_explain.log_min_duration = '500ms';\nSET auto_explain.log_analyze = on;\n\n-- Dead rows and vacuum history\nSELECT relname, n_live_tup, n_dead_tup, last_autovacuum\nFROM   pg_stat_user_tables\nORDER  BY n_dead_tup DESC\nLIMIT  5;\n\n-- Space reuse (no blocking) vs shrink the file (blocks all access)\nVACUUM (VERBOSE, ANALYZE) shipments;\nVACUUM FULL shipments;   -- 13 MB -> about 6.7 MB after deleting half the rows\n\n-- Rebuild a bloated index without blocking writes\nREINDEX INDEX CONCURRENTLY idx_ref;",
+    "lang": "SQL"
+   }
+  ],
+  "replace_subtopics": [
+   {
+    "title": "B-tree indexes and column order",
+    "body": "A B-tree is a balanced tree that keeps keys in sorted order. Finding a key takes about log(n) steps, so even a billion rows need only a few levels. Because keys are sorted, a B-tree also handles ranges (created_at > X) and ORDER BY.\n\nA composite index covers several columns, such as (customer_id, created_at). It is sorted by the first column, then the second within each first value. Put columns filtered by equality first and range columns after. A query that does not filter on the first column usually cannot use the index efficiently.\n\nSome things prevent index use: wrapping the column in a function, like lower(email), or a pattern that starts with a wildcard, like LIKE '%smith'. An expression index on lower(email) solves the first case.\n\nFour more things matter on a real customer database.\n\n1) Build indexes without blocking. A plain CREATE INDEX blocks writes to the table until it finishes, which on a big live table can mean minutes of failed orders. CREATE INDEX CONCURRENTLY builds the index while writes continue. It is slower, cannot run inside a transaction block, and if it fails it leaves an INVALID index that you must drop. Dropping has the same option: DROP INDEX CONCURRENTLY. Before dropping, check idx_scan in pg_stat_user_indexes over a full business cycle (month-end jobs may be the only user), and keep the CREATE INDEX statement so you can undo it.\n\n2) A covering index adds extra columns with INCLUDE. If every column the query needs is in the index, Postgres can answer from the index alone (an Index Only Scan) and skip the table. This works best on tables that are vacuumed regularly.\n\n3) A partial index covers only some rows, such as WHERE status = 'open'. It is tiny and fast when queries only care about that slice.\n\n4) Watch for silent index killers. If the column type and the compared value differ, the database may convert the column instead of the value, and an index on the column stops helping. In Postgres, comparing an integer column with a numeric value like 500.0 does this. (Comparing a text column with a bare integer is an error in Postgres, but SQL Server and MySQL convert silently and then scan.) Also, LIKE 'abc%' can only use a plain B-tree index if the database uses the C collation. Otherwise create the index with text_pattern_ops.",
+    "example": "A bank's statement page runs WHERE account_id = 5521 AND posted_at >= '2026-06-01' ORDER BY posted_at DESC LIMIT 50. With an index on (account_id, posted_at), the database jumps to account 5521, walks backward through dates and stops after 50 rows. With the index in the reverse order, it would scan every account's recent rows. Later the same bank adds a nightly job that only reads open disputes. A partial index on (account_id) WHERE status = 'open' is a small fraction of the size of a full one, and the FDE builds it with CREATE INDEX CONCURRENTLY so customers can keep posting payments during the build.",
+    "code": "-- Equality column first, range/sort column second\nCREATE INDEX idx_txn_account_posted\n    ON transactions (account_id, posted_at);\n\n-- Uses the index for the filter AND the sort, stops at 50 rows\nSELECT *\nFROM   transactions\nWHERE  account_id = 5521\n  AND  posted_at >= DATE '2026-06-01'\nORDER  BY posted_at DESC\nLIMIT  50;\n\n-- Function on the column hides it from a plain index...\n-- WHERE lower(email) = 'ana@example.com'\n-- ...so index the expression instead\nCREATE INDEX idx_users_email_lower ON users (lower(email));\n\n-- Build on a live table without blocking writes (not inside BEGIN/COMMIT)\nCREATE INDEX CONCURRENTLY idx_txn_disputes_open\n    ON transactions (account_id) WHERE status = 'open';   -- also a partial index\n\n-- Check it is valid; a failed concurrent build leaves indisvalid = false\nSELECT indexrelid::regclass AS index_name, indisvalid\nFROM   pg_index\nWHERE  indrelid = 'transactions'::regclass;\n\n-- Covering index: INCLUDE columns are stored but not searched\nCREATE INDEX idx_txn_cover ON transactions (account_id) INCLUDE (amount);\n-- SELECT amount FROM transactions WHERE account_id = 5521;  -> Index Only Scan\n\n-- Drop an unused index without blocking\nDROP INDEX CONCURRENTLY idx_txn_cover;\n\n-- Type mismatch: id is an integer column, 500.0 is numeric\n-- EXPLAIN SELECT * FROM shipments WHERE id = 500.0;   -> Seq Scan, Filter: ((id)::numeric = 500.0)\n-- EXPLAIN SELECT * FROM shipments WHERE id = 500;     -> Index Scan using shipments_pkey\n\n-- Prefix search on a text column: needs text_pattern_ops unless the C collation is used\nCREATE INDEX idx_ship_ref_like ON shipments (ref text_pattern_ops);\n-- WHERE ref LIKE '1234%'  -> Index Scan using idx_ship_ref_like",
+    "lang": "SQL"
+   },
+   {
+    "title": "Partitioning large tables",
+    "body": "Partitioning splits one logical table into several physical tables based on a key, most often a date range. Queries still address the parent table.\n\nWhen a query filters on the partition key, the planner skips partitions that cannot contain matching rows. This is called partition pruning. It works like an index at the level of whole chunks.\n\nPartitioning also makes data retention easy. Deleting a year of data from a normal table is slow and leaves bloat. Dropping or detaching a partition is almost instant.\n\nSnowflake and BigQuery have no B-tree indexes, so the tuning tools are different (see the warehouse concept). The same idea of skipping data still applies. In BigQuery you partition a table by a date column and add clustering columns, and queries that filter on the partition column only read (and are billed for) the matching partitions. In Snowflake, data is stored in small micro-partitions, and a clustering key on a large table keeps similar values together so filters can skip most of them. In both, the habit is the same as in Postgres: filter on the partition or clustering column, and never wrap it in a function that hides it.",
+    "example": "An IoT customer stores 4 billion sensor readings. Queries almost always ask for the last 7 days. The FDE partitions the table by month. A query for the last week touches one or two partitions instead of the entire table, and the retention job drops partitions older than 24 months each month. When the same customer moves its history into BigQuery, the FDE partitions the events table by day and clusters it by sensor_id, and requires a date filter so nobody scans (and pays for) the whole table by accident.",
+    "code": "CREATE TABLE readings (\n    sensor_id   bigint       NOT NULL,\n    recorded_at timestamptz  NOT NULL,\n    value       double precision\n) PARTITION BY RANGE (recorded_at);\n\nCREATE TABLE readings_2026_09 PARTITION OF readings\n    FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');\nCREATE TABLE readings_2026_10 PARTITION OF readings\n    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');\n\n-- Index is created on each partition\nCREATE INDEX ON readings (sensor_id, recorded_at);\n\n-- Only September's partition is scanned (partition pruning)\nEXPLAIN SELECT avg(value) FROM readings\nWHERE recorded_at >= '2026-09-20' AND recorded_at < '2026-09-27';\n\n-- BigQuery: partition by day, cluster by sensor, and force a date filter\nCREATE TABLE analytics.readings (\n    sensor_id   INT64,\n    recorded_at TIMESTAMP,\n    value       FLOAT64\n)\nPARTITION BY DATE(recorded_at)\nCLUSTER BY sensor_id\nOPTIONS (require_partition_filter = TRUE);\n\n-- Snowflake: add a clustering key to a large existing table\nALTER TABLE readings CLUSTER BY (TO_DATE(recorded_at), sensor_id);",
+    "lang": "SQL"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Nested Loop",
+    "A join that looks up matching inner rows once for each outer row; best when the outer side is small and the inner side is indexed."
+   ],
+   [
+    "Hash Join",
+    "A join that builds an in-memory hash table from the smaller input and probes it with the larger one."
+   ],
+   [
+    "Merge Join",
+    "A join that walks two inputs sorted on the join column together, like a zipper."
+   ],
+   [
+    "Bitmap Heap Scan",
+    "A scan that reads table pages in order after a Bitmap Index Scan has collected the matching row locations."
+   ],
+   [
+    "Index Only Scan",
+    "A scan that answers a query from the index alone without visiting the table."
+   ],
+   [
+    "Covering index",
+    "An index that stores extra columns with INCLUDE so common queries need no table visit."
+   ],
+   [
+    "Partial index",
+    "An index that covers only rows matching a WHERE condition, so it is small and fast."
+   ],
+   [
+    "CREATE INDEX CONCURRENTLY",
+    "Builds an index without blocking writes; slower, and a failed build leaves an INVALID index to drop."
+   ],
+   [
+    "text_pattern_ops",
+    "An index operator class that lets LIKE 'abc%' use a B-tree when the database collation is not C."
+   ],
+   [
+    "pg_stat_statements",
+    "A Postgres extension that records call counts and total time for each distinct query shape."
+   ],
+   [
+    "auto_explain",
+    "A Postgres module that logs the plans of queries slower than a set threshold."
+   ],
+   [
+    "VACUUM",
+    "Marks the space of dead row versions as reusable; VACUUM FULL also shrinks the file but blocks access."
+   ],
+   [
+    "Bloat",
+    "Wasted space in a table or index from dead row versions that have not been cleaned up."
+   ],
+   [
+    "Extended statistics",
+    "Extra statistics created with CREATE STATISTICS so the planner knows that columns are related."
+   ],
+   [
+    "Clustering key",
+    "A Snowflake or BigQuery setting that stores similar values together so filters can skip data."
+   ]
+  ],
+  "add_practice": [
+   "In Postgres, create a customers table (10,000 rows) and an orders table (200,000 rows). Run EXPLAIN on a one-customer join and on a group-by-region join, and note which of Nested Loop, Hash Join and Merge Join each uses. Deliverable: both plans with one sentence on why each algorithm was chosen.",
+   "Create a table where two columns are strongly related (city and country). Show the estimated versus actual rows for a filter on both, add CREATE STATISTICS, run ANALYZE, and compare again. Deliverable: the before and after estimates.",
+   "Enable pg_stat_statements, run 200 small queries and one big one, and list the top 3 by total time. Then delete half of a table, compare pg_table_size before and after VACUUM and VACUUM FULL, and write two sentences on when you would use each. Deliverable: the query output and your notes."
+  ]
+ }
+}

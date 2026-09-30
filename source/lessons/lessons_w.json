@@ -1,0 +1,672 @@
+{
+ "neuralnets": {
+  "plain": "A neural network is a program that learns a pattern from examples instead of being given rules. It is built from simple units called neurons: each one multiplies its inputs by numbers called weights, adds them up with a bias, and passes the total through a small bending function called an activation. Neurons are arranged in layers, and the output of one layer is the input of the next. Training means adjusting all the weights, a tiny step at a time, so the network's answers get closer to the correct ones.",
+  "analogy": "Think of a team of cooks tasting a soup. Each cook adjusts one ingredient, and after every tasting the head chef tells each cook how much their ingredient helped or hurt, so each one turns their dial a little. Backpropagation is the head chef working out who gets which feedback.",
+  "why": "Customers will ask why a model behaves oddly, why training takes days, or why a vendor needs GPUs. If you understand the forward pass, the loss and the training loop, you can read a training log, spot overfitting, and explain a fine-tuning quote to an insurer's data team in plain words. It is also the base for dlarch, transformer and finetune.",
+  "subtopics": [
+   {
+    "title": "The neuron and the perceptron",
+    "body": "A single artificial neuron does three things. It multiplies each input by a weight, which says how much that input matters. It adds the results together with a bias, which shifts the threshold up or down. Then it applies an activation function to decide the output.\n\nThe perceptron, invented in the late 1950s, is the simplest version. Its activation is a step: output 1 if the total is above zero, else 0. It learns with a very simple rule. If it predicts wrongly, move each weight a little toward the right answer, in proportion to its input. Repeat over the examples until there are no mistakes.\n\nA perceptron can only draw a straight line between classes. It learns AND and OR easily, but it can never learn XOR (output 1 when the two inputs differ), because no single straight line separates those points. That limit is the reason we stack neurons into layers, which is where the rest of this lesson goes.",
+    "example": "A small bakery chain, Crumbhaven, wants a rule to flag a day as 'order extra flour' when both a weekend and a local event are coming. That is logical AND. The perceptron below starts with zero weights and after 6 passes lands on weights 0.2 and 0.1 with bias -0.2: only when both inputs are 1 does 0.2 + 0.1 - 0.2 rise above zero.",
+    "code": "import numpy as np\n\n# A perceptron learning logical AND: output 1 only if both inputs are 1\nX = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])\ny = np.array([0, 0, 0, 1])\n\nw = np.zeros(2)   # one weight per input\nb = 0.0           # bias shifts the threshold\nlr = 0.1          # learning rate: size of each correction\n\nfor epoch in range(10):\n    errors = 0\n    for xi, target in zip(X, y):\n        pred = 1 if xi @ w + b > 0 else 0   # weighted sum, then step\n        error = target - pred               # -1, 0 or +1\n        w += lr * error * xi                # nudge weights toward the answer\n        b += lr * error\n        errors += abs(error)\n    if errors == 0:\n        print(\"converged after epoch\", epoch + 1)\n        break\n\nprint(\"weights\", w.round(2), \"bias\", round(b, 2))\nprint(\"predictions\", [1 if xi @ w + b > 0 else 0 for xi in X])\n\n# Output:\n# converged after epoch 6\n# weights [0.2 0.1] bias -0.2\n# predictions [0, 0, 0, 1]",
+    "lang": "Python"
+   },
+   {
+    "title": "Activation functions",
+    "body": "An activation function is the small bend applied after the weighted sum. It matters because a stack of layers with no bend is mathematically the same as one layer: multiplying by one grid of weights and then another is still just multiplying by a single combined grid. The bend is what lets a deep network draw curved boundaries.\n\nThe classic choices are sigmoid, which squashes any number into the range 0 to 1, and tanh, which squashes into -1 to 1. Both flatten out for large inputs, so their slope is almost zero there and learning slows. ReLU (rectified linear unit) simply turns negatives into zero and keeps positives. It is cheap and does not flatten for positive values, so it became the default for hidden layers in deep networks.\n\nAt the output you pick the activation that matches the question. Sigmoid gives one probability for a yes or no question. Softmax turns a list of scores into probabilities that add up to 1, one per class; it is also what an LLM uses to choose its next token.",
+    "example": "A clinic triage model scores a message for three queues: urgent 2.0, routine 1.0, admin 0.1. Softmax turns these into 66 percent, 24 percent and 10 percent. The model routes to urgent, and the 66 percent can be shown to staff as a confidence.",
+    "code": "import numpy as np\n\nz = np.array([-3.0, -1.0, 0.0, 1.0, 3.0])   # raw scores before activation\n\nsigmoid = 1 / (1 + np.exp(-z))     # squashes to 0..1\ntanh = np.tanh(z)                  # squashes to -1..1\nrelu = np.maximum(0, z)            # negatives become 0\n\nprint(\"sigmoid\", sigmoid.round(3))\nprint(\"tanh   \", tanh.round(3))\nprint(\"relu   \", relu)\n\n# softmax turns a list of scores into probabilities that sum to 1\nscores = np.array([2.0, 1.0, 0.1])\nprobs = np.exp(scores) / np.exp(scores).sum()\nprint(\"softmax\", probs.round(3), \"sum\", probs.sum().round(3))\n\n# Output:\n# sigmoid [0.047 0.269 0.5   0.731 0.953]\n# tanh    [-0.995 -0.762  0.     0.762  0.995]\n# relu    [0. 0. 0. 1. 3.]\n# softmax [0.659 0.242 0.099] sum 1.0",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Activation",
+      "Output range",
+      "Typical use"
+     ],
+     "rows": [
+      [
+       "Step",
+       "0 or 1",
+       "Original perceptron, not trainable by gradients"
+      ],
+      [
+       "Sigmoid",
+       "0 to 1",
+       "Output for yes/no probability"
+      ],
+      [
+       "Tanh",
+       "-1 to 1",
+       "Hidden layers in small or older networks"
+      ],
+      [
+       "ReLU",
+       "0 to infinity",
+       "Default for hidden layers"
+      ],
+      [
+       "Softmax",
+       "0 to 1, sums to 1",
+       "Output for choosing one of many classes"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "The forward pass and the loss",
+    "body": "The forward pass is the trip from input to prediction. The input vector is multiplied by the first weight matrix, a bias is added, the activation is applied, and the result feeds the next layer. With numpy this is one line per layer, because matrix multiplication does all the weighted sums at once (see mathbasics for matrices).\n\nA prediction is useless for learning until you score it. The loss function turns 'how wrong' into one number. For predicting a quantity, such as a delivery time, the usual loss is mean squared error: the average of (prediction minus truth) squared. For yes or no questions it is binary cross-entropy: minus the log of the probability the model gave to the correct answer. Cross-entropy punishes confident mistakes hard. Saying 0.6 when the answer is 1 costs about 0.51, but saying 0.6 when the answer is 0 costs about 0.92, and saying 0.01 when the answer is 1 costs about 4.6.\n\nTraining is nothing more than changing the weights to make the average loss over the training data smaller.",
+    "example": "A loan pre-screening model at Ferrowick Credit takes two features and has three hidden units. For one applicant the hidden layer outputs 0.5, 0 and 0.3, the output probability is 0.603 and the true label is 1 (repaid). The loss is 0.505. Had the applicant defaulted, the same prediction would have cost 0.925, a bigger penalty because the model leaned the wrong way.",
+    "code": "import numpy as np\n\nx = np.array([1.0, 0.0])              # one example with 2 features\nW1 = np.array([[0.5, -0.4, 0.3],      # 2 inputs -> 3 hidden units\n               [0.2,  0.8, -0.6]])\nb1 = np.array([0.0, 0.1, 0.0])\nW2 = np.array([0.7, -0.5, 0.9])       # 3 hidden units -> 1 output\nb2 = -0.2\n\nh = np.maximum(0, x @ W1 + b1)        # hidden layer with ReLU\nz = h @ W2 + b2                        # output score\np = 1 / (1 + np.exp(-z))               # sigmoid: probability of class 1\n\ny = 1                                  # the true label\nloss = -(y * np.log(p) + (1 - y) * np.log(1 - p))   # binary cross-entropy\nprint(\"hidden\", h.round(3))\nprint(\"prob\", round(p, 3), \"loss\", round(loss, 3))\nprint(\"loss if the label were 0:\", round(-np.log(1 - p), 3))\n\n# Output:\n# hidden [0.5 0.  0.3]\n# prob 0.603 loss 0.505\n# loss if the label were 0: 0.925",
+    "lang": "Python"
+   },
+   {
+    "title": "Backpropagation and the chain rule",
+    "body": "To improve, each weight needs to know one thing: if I increase slightly, does the loss go up or down, and by how much? That number is the gradient of the loss with respect to that weight.\n\nThe chain rule from calculus says that when things are connected in a chain, the effect of the first link on the last is the product of the effects along the way. For one neuron: the weight changes the score z, z changes the probability p, and p changes the loss. So dloss/dw = dloss/dp times dp/dz times dz/dw. Each factor is easy on its own.\n\nBackpropagation applies this from the loss backwards, layer by layer, reusing the pieces already computed so the whole network's gradients cost about as much as one extra forward pass. Frameworks such as PyTorch do it automatically, which is called automatic differentiation.\n\nYou can always check a gradient by nudging a weight by a tiny amount and measuring the change in loss. If the two numbers agree, the maths is right. Engineers still do this when writing custom layers.",
+    "example": "One neuron with input 2.0, weight 0.3 and bias -0.1 gives probability 0.622 for a true label of 1. The chain rule gives a gradient of -0.355: raising the weight lowers the loss. Nudging the weight by one millionth confirms the same number. One step with learning rate 0.5 moves the weight from 0.3 to about 0.477.",
+    "code": "import numpy as np\n\n# One neuron: p = sigmoid(w * x + b), loss = (p - y)^2\nx, y = 2.0, 1.0\nw, b = 0.3, -0.1\n\nz = w * x + b\np = 1 / (1 + np.exp(-z))\nloss = (p - y) ** 2\n\n# Chain rule: dloss/dw = dloss/dp * dp/dz * dz/dw\ndloss_dp = 2 * (p - y)\ndp_dz = p * (1 - p)          # derivative of sigmoid\ndz_dw = x\ngrad_w = dloss_dp * dp_dz * dz_dw\nprint(\"gradient by chain rule:\", round(grad_w, 5))\n\n# Check it numerically: nudge w a tiny bit and watch the loss change\neps = 1e-6\np2 = 1 / (1 + np.exp(-((w + eps) * x + b)))\nnumeric = ((p2 - y) ** 2 - loss) / eps\nprint(\"gradient by nudging:   \", round(numeric, 5))\nprint(\"new w after one step:  \", round(w - 0.5 * grad_w, 5))\n\n# Output:\n# gradient by chain rule: -0.35489\n# gradient by nudging:    -0.35489\n# new w after one step:   0.47745",
+    "lang": "Python"
+   },
+   {
+    "title": "Training: optimizers, batches and epochs",
+    "body": "Gradient descent repeats three moves: forward pass, backward pass, update each weight by minus learning rate times gradient. The learning rate is the step size. Too big and the loss bounces or explodes; too small and training crawls.\n\nComputing the gradient over millions of examples for every step is slow, so we use batches: small random groups, often 32 to 256 examples. One update per batch is stochastic gradient descent (SGD). One full pass over every batch is an epoch, and training typically runs for many epochs.\n\nAdam is the most common optimizer today. It keeps a running average of recent gradients (momentum, so steps keep a steady direction) and of their size (so each weight gets its own step scale). It usually works with little tuning, often starting at a learning rate of 0.001.\n\nThe code trains a 2-4-1 network on XOR, the problem a perceptron cannot solve. With random seed 1 it reaches near-perfect predictions. With seed 0 the same code stalls at a loss of about 0.35, stuck with two predictions at 0.5, which shows that starting weights matter and why people rerun or use better optimizers.",
+    "example": "A parcel company, Brisklane, trains a delay predictor on 400,000 past deliveries with batches of 256. That is about 1,563 updates per epoch. After 10 epochs the validation loss stops improving, so the team stops there instead of the 50 epochs they had planned.",
+    "code": "import numpy as np\n\nrng = np.random.default_rng(1)\nX = np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=float)\ny = np.array([[0], [1], [1], [0]], dtype=float)   # XOR: 1 when inputs differ\n\nW1 = rng.normal(0, 1, (2, 4)); b1 = np.zeros(4)   # 2 inputs -> 4 hidden\nW2 = rng.normal(0, 1, (4, 1)); b2 = np.zeros(1)   # 4 hidden -> 1 output\nsig = lambda z: 1 / (1 + np.exp(-z))\nlr = 1.0\n\nfor epoch in range(3001):\n    # forward pass\n    h = np.tanh(X @ W1 + b1)\n    p = sig(h @ W2 + b2)\n    loss = -np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))\n    # backward pass (chain rule, layer by layer)\n    dz2 = (p - y) / len(X)              # gradient at output score\n    dW2 = h.T @ dz2; db2 = dz2.sum(0)\n    dh = dz2 @ W2.T * (1 - h ** 2)      # back through tanh\n    dW1 = X.T @ dh; db1 = dh.sum(0)\n    # gradient descent update\n    W1 -= lr * dW1; b1 -= lr * db1\n    W2 -= lr * dW2; b2 -= lr * db2\n    if epoch % 1000 == 0:\n        print(f\"epoch {epoch:4d}  loss {loss:.4f}\")\n\nprint(\"predictions\", p.ravel().round(3))\n\n# Output:\n# epoch    0  loss 0.6712\n# epoch 1000  loss 0.0024\n# epoch 2000  loss 0.0012\n# epoch 3000  loss 0.0008\n# predictions [0.    0.999 0.999 0.001]",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Optimizer",
+      "How it steps",
+      "When people use it"
+     ],
+     "rows": [
+      [
+       "SGD",
+       "Fixed learning rate times gradient",
+       "Simple baselines, some vision training"
+      ],
+      [
+       "SGD with momentum",
+       "Keeps part of the previous step",
+       "Smoother, faster than plain SGD"
+      ],
+      [
+       "Adam",
+       "Momentum plus per-weight step size",
+       "Default for most deep learning"
+      ],
+      [
+       "AdamW",
+       "Adam with decoupled weight decay",
+       "Common for transformers and fine-tuning"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Overfitting controls and PyTorch",
+    "body": "A big network can memorise its training data, including the noise, and then fail on new data. That is overfitting (see mlbasics). You spot it when training loss keeps falling while validation loss, measured on held-out data, starts rising.\n\nThree controls are used almost everywhere. Early stopping watches validation loss and stops training, keeping the best checkpoint, once it has not improved for a set number of epochs (the patience). Dropout randomly switches off a fraction of hidden units on each training step, so the network cannot rely on any single unit; it is turned off when predicting. Weight decay adds a small pull toward zero on every weight, which keeps the model simpler; AdamW is Adam with weight decay applied in the recommended way. More data and data augmentation (for example flipping images) help too.\n\nIn practice nobody writes backprop by hand. PyTorch builds the network from layers, computes gradients with loss.backward(), and applies the optimizer with opt.step(). The example below is the XOR network again with all three controls. It requires torch, which is not installed where these lessons were checked, so it was not run and no output is shown.",
+    "example": "Wrenholt Components trained a sensor model whose validation loss was lowest at epoch 14 but training continued to epoch 60. Test accuracy was 81 percent. Turning on early stopping with patience 5, dropout 0.2 and weight decay 0.0001 kept the epoch 14 weights and test accuracy rose to 86 percent.",
+    "code": "# Requires torch (pip install torch). Not run in this lesson.\nimport torch\nfrom torch import nn\n\nX = torch.tensor([[0., 0.], [0., 1.], [1., 0.], [1., 1.]])\ny = torch.tensor([[0.], [1.], [1.], [0.]])\n\nmodel = nn.Sequential(\n    nn.Linear(2, 8), nn.Tanh(),\n    nn.Dropout(p=0.1),        # dropout: silence 10% of hidden units while training\n    nn.Linear(8, 1),          # one raw score (a logit) per example\n)\nloss_fn = nn.BCEWithLogitsLoss()   # sigmoid plus cross-entropy, done stably\nopt = torch.optim.AdamW(model.parameters(), lr=0.05, weight_decay=1e-4)\n\nbest, waited = float(\"inf\"), 0\nfor epoch in range(3000):\n    model.train()\n    opt.zero_grad()                # clear last step's gradients\n    loss = loss_fn(model(X), y)    # forward pass and loss\n    loss.backward()                # backpropagation, done for you\n    opt.step()                     # Adam update with weight decay\n    model.eval()                   # dropout off for checking\n    with torch.no_grad():          # use a separate validation set in real work\n        val = loss_fn(model(X), y).item()\n    if val < best - 1e-4:\n        best, waited = val, 0\n    else:\n        waited += 1\n    if waited >= 200:              # early stopping: no progress for 200 epochs\n        break\nprint(\"stopped at epoch\", epoch, \"best loss\", round(best, 4))\nprint(torch.sigmoid(model(X)).ravel())",
+    "lang": "Python (requires torch)",
+    "checklist": [
+     "Split off a validation set before training starts",
+     "Plot training and validation loss per epoch",
+     "Turn on early stopping and keep the best checkpoint",
+     "Try dropout (0.1 to 0.5) on hidden layers",
+     "Add weight decay, for example with AdamW",
+     "Call model.eval() before predicting so dropout is off"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Neuron",
+    "A unit that computes a weighted sum of its inputs plus a bias, then applies an activation function."
+   ],
+   [
+    "Weight",
+    "A learned number that says how strongly one input affects a neuron."
+   ],
+   [
+    "Activation function",
+    "The nonlinear bend applied after the weighted sum, such as ReLU, tanh or sigmoid."
+   ],
+   [
+    "Forward pass",
+    "Running inputs through the layers to get a prediction."
+   ],
+   [
+    "Loss function",
+    "A formula that turns the gap between prediction and truth into one number to minimise."
+   ],
+   [
+    "Gradient",
+    "How much the loss changes when one weight changes slightly, and in which direction."
+   ],
+   [
+    "Backpropagation",
+    "Computing all gradients by applying the chain rule from the loss back through each layer."
+   ],
+   [
+    "Learning rate",
+    "The size of each weight update step."
+   ],
+   [
+    "Epoch",
+    "One complete pass through all the training data."
+   ],
+   [
+    "Dropout",
+    "Randomly switching off some units during training to reduce overfitting."
+   ]
+  ],
+  "practice": [
+   "Run the perceptron code on OR and on XOR. Write down what happens on XOR after 10 epochs and explain why in two sentences.",
+   "In the XOR network, change the learning rate to 0.1 and to 5.0 and change the seed from 1 to 0. Record the final loss for each run in a small table and describe what you see.",
+   "Stretch: add a validation split to a sklearn MLPClassifier on make_moons(noise=0.3) and compare alpha (weight decay) values 0.0001, 0.01 and 1.0. Report which generalises best and why."
+  ]
+ },
+ "dlarch": {
+  "plain": "A deep learning architecture is the wiring plan of a neural network: which neurons connect to which, and which weights are shared. Different data has different shapes, so different wiring works best. Images are grids where nearby pixels belong together, so they suit convolutional neural networks (CNNs). Text and signals are sequences, which were first handled by recurrent networks (RNNs) and LSTMs, and are now handled by transformers built on attention. Today most real projects start from a large pretrained model and adapt it, which is called transfer learning.",
+  "analogy": "Architectures are like different kitchen tools. A grater (a CNN) works on anything with texture, a conveyor belt (an RNN) handles items strictly one after another, and a big table where every cook can see every ingredient at once (a transformer) is fastest when you have enough staff, which in computing means GPUs.",
+  "why": "Customers will show you an image problem, a sensor stream or a pile of documents and ask what model to use and how long it will take. Knowing the main architectures, why transformers won and why pretrained models change the maths of a project lets you give an honest estimate and avoid training from scratch when you do not need to.",
+  "subtopics": [
+   {
+    "title": "CNNs: convolution and pooling",
+    "body": "A plain dense network links every pixel to every hidden unit. A small 224 by 224 colour photo has about 150,000 input numbers, so one dense layer of 1,000 units needs 150 million weights, and it would have to relearn what an edge looks like at every position.\n\nA convolutional layer fixes both problems. It learns small filters, called kernels, for example 3 by 3. Each filter slides across the image and at every position multiplies its 9 weights with the 9 pixels under it and sums them. The result is a feature map that lights up wherever the filter's pattern appears. The same few weights are reused everywhere, which is called weight sharing.\n\nPooling then shrinks each feature map, usually by keeping the maximum in each 2 by 2 block. This halves the width and height and makes the network less sensitive to exact position. Stacking convolution and pooling layers builds up from edges, to textures, to parts, to whole objects. A final dense layer turns those features into class scores.",
+    "example": "A packaging line at Pellingham Foods photographs seals. A filter that detects a sharp dark-to-bright edge responds strongly along an intact seal line and weakly where the seal is broken. In the toy example below, a 3 by 3 edge filter finds the left edge of a bright block, and pooling keeps the strongest responses in a smaller grid.",
+    "code": "import numpy as np\n\n# A 6x6 grayscale \"image\": a bright block in the bottom right corner\nimg = np.array([[0, 0, 0, 0, 0, 0]] * 3 + [[0, 0, 0, 9, 9, 9]] * 3, dtype=float)\n\n# A 3x3 kernel that responds to dark-to-bright vertical edges\nkernel = np.array([[-1, 0, 1],\n                   [-1, 0, 1],\n                   [-1, 0, 1]], dtype=float)\n\n# Convolution: slide the kernel over every 3x3 patch, multiply and sum\nout = np.zeros((4, 4))\nfor r in range(4):\n    for c in range(4):\n        out[r, c] = (img[r:r+3, c:c+3] * kernel).sum()\nprint(\"feature map:\\n\", out)\n\n# 2x2 max pooling: keep the strongest value in each 2x2 block\npooled = out.reshape(2, 2, 2, 2).max(axis=(1, 3))\nprint(\"after max pooling:\\n\", pooled)\n\n# Output:\n# feature map:\n#  [[ 0.  0.  0.  0.]\n#  [ 0.  9.  9.  0.]\n#  [ 0. 18. 18.  0.]\n#  [ 0. 27. 27.  0.]]\n# after max pooling:\n#  [[ 9.  9.]\n#  [27. 27.]]",
+    "lang": "Python"
+   },
+   {
+    "title": "RNNs and LSTMs, and why they struggled",
+    "body": "A recurrent neural network (RNN) reads a sequence one step at a time and carries a hidden state, a small memory vector, from each step to the next. That fits text, speech and sensor streams, where order matters.\n\nTraining an RNN means backpropagating through every time step. The gradient from step 100 back to step 1 is multiplied by roughly the same factor at each step. If that factor is below 1 the signal shrinks to nothing (vanishing gradients) and the network cannot learn long-range links. If it is above 1 the signal blows up (exploding gradients) and training breaks. The code shows how fast this happens.\n\nThe LSTM (long short-term memory, 1997) added gates that decide what to keep, what to forget and what to output, giving a cleaner path for memory. LSTMs powered speech recognition and translation for years. Two problems remained. Every step still waits for the previous one, so training cannot be spread across thousands of GPU cores. And in translation the whole input sentence had to squeeze through one fixed-size vector, a bottleneck for long sentences.",
+    "example": "A utility, Greyfen Water, predicted pump failures from 30 days of hourly readings, 720 steps. A plain RNN ignored anything more than a day or so back. An LSTM captured weekly patterns better, but each training run took most of a day because the 720 steps had to be processed in order.",
+    "code": "# Why plain RNNs forget: the gradient from an early word is multiplied\n# by a factor at every step it travels back through time.\nfor factor in [0.9, 0.5, 1.1]:\n    signal = [round(factor ** steps, 4) for steps in (10, 50, 100)]\n    print(f\"factor {factor}: after 10, 50, 100 steps -> {signal}\")\n\n# Output:\n# factor 0.9: after 10, 50, 100 steps -> [0.3487, 0.0052, 0.0]\n# factor 0.5: after 10, 50, 100 steps -> [0.001, 0.0, 0.0]\n# factor 1.1: after 10, 50, 100 steps -> [2.5937, 117.3909, 13780.6123]",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Model",
+      "Reads sequence",
+      "Long-range memory",
+      "Parallel training"
+     ],
+     "rows": [
+      [
+       "RNN",
+       "One step at a time",
+       "Weak, gradients fade",
+       "No"
+      ],
+      [
+       "LSTM",
+       "One step at a time",
+       "Better, via gates",
+       "No"
+      ],
+      [
+       "Transformer",
+       "All tokens at once",
+       "Direct links via attention",
+       "Yes"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Attention and the jump to transformers",
+    "body": "Attention was first added to RNN translators around 2014 to remove the bottleneck. Instead of relying on one summary vector, the decoder could look back at every input word and decide how much each one mattered for the word it was writing.\n\nThe mechanism is simple. Each token asks a question (a query vector), every token offers a label (a key vector), and the dot product of query and key says how relevant they are. Softmax turns those scores into weights that add up to 1, and the output is a weighted blend of the tokens' value vectors. In the toy code, the word 'bank' gives most weight to itself, then to 'loan' and 'river', and least to 'the'.\n\nIn 2017 the paper 'Attention Is All You Need' dropped recurrence entirely. The transformer uses only attention plus small dense layers, so every token in a sequence is processed at the same time. That made training massively parallel on GPUs, which allowed much bigger models on much more data. This architecture underlies today's LLMs and many vision models. The transformer topic walks through one forward pass in detail.",
+    "example": "In 'she paid the bank before walking by the river bank', attention lets each 'bank' look at 'paid' or 'river' directly, however far away they are, to work out which meaning applies. An RNN would have to carry that clue step by step through every word in between.",
+    "code": "import numpy as np\n\n# Four words, each already turned into a 3-number vector (made-up values)\nwords = [\"the\", \"bank\", \"river\", \"loan\"]\nvecs = np.array([[0.1, 0.0, 0.1],\n                 [0.9, 0.8, 0.1],\n                 [0.2, 0.9, 0.0],\n                 [0.9, 0.1, 0.8]])\n\nquery = vecs[1]                          # \"bank\" asks: who is relevant to me?\nscores = vecs @ query / np.sqrt(3)       # dot product with every word, scaled\nweights = np.exp(scores) / np.exp(scores).sum()   # softmax to percentages\ncontext = weights @ vecs                 # blend of all words, by weight\n\nfor w, a in zip(words, weights):\n    print(f\"{w:6s} attention {a:.2f}\")\nprint(\"new vector for 'bank':\", context.round(2))\n\n# Output:\n# the    attention 0.16\n# bank   attention 0.34\n# river  attention 0.25\n# loan   attention 0.26\n# new vector for 'bank': [0.6  0.52 0.26]",
+    "lang": "Python"
+   },
+   {
+    "title": "Transfer learning and pretrained models",
+    "body": "Training a large network from scratch needs millions of examples and a lot of GPU time. Most customers have neither. Transfer learning takes a model already trained on a huge general dataset, such as millions of photos or a large share of the public web, and adapts it to a narrower task.\n\nThis works because early layers learn general features. An image model's first layers detect edges and textures that are useful for X-rays, parcels and plants alike. A language model already knows grammar and many facts.\n\nThere are three common levels. Feature extraction freezes the whole pretrained model and trains only a new small output layer, called a head. Fine-tuning then unfreezes some or all layers and trains them with a small learning rate, so the useful knowledge is not destroyed. For LLMs, parameter-efficient methods such as LoRA train a small set of extra weights instead (see finetune). And often, especially with LLMs, prompting a pretrained model with a few examples is enough without any training.\n\nPretrained models come from model hubs and vendors, each with a licence. Check the licence and what data it was trained on before a customer ships it.",
+    "example": "Corvale Seeds had 1,500 labelled photos of plant leaves in five disease classes. A CNN trained from scratch reached 64 percent accuracy. Starting from a pretrained image model and training only a new head reached 85 percent in about 15 minutes on one GPU, and unfreezing the last block raised it to 89 percent.",
+    "code": "",
+    "lang": "Text",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "hub",
+       90,
+       70,
+       "Model hub",
+       "pretrained weights"
+      ],
+      [
+       "freeze",
+       265,
+       70,
+       "Freeze layers",
+       "keep what it knows"
+      ],
+      [
+       "head",
+       440,
+       70,
+       "New head",
+       "your classes"
+      ],
+      [
+       "train",
+       615,
+       70,
+       "Train head",
+       "small labelled set"
+      ],
+      [
+       "eval",
+       615,
+       220,
+       "Evaluate",
+       "held-out test set"
+      ],
+      [
+       "unfreeze",
+       440,
+       220,
+       "Unfreeze top",
+       "if not good enough"
+      ],
+      [
+       "ship",
+       265,
+       220,
+       "Deploy",
+       "after a re-test"
+      ],
+      [
+       "monitor",
+       90,
+       220,
+       "Monitor",
+       "retrain on drift"
+      ]
+     ],
+     "edges": [
+      [
+       "hub",
+       "freeze"
+      ],
+      [
+       "freeze",
+       "head"
+      ],
+      [
+       "head",
+       "train"
+      ],
+      [
+       "train",
+       "eval"
+      ],
+      [
+       "eval",
+       "unfreeze"
+      ],
+      [
+       "unfreeze",
+       "ship"
+      ],
+      [
+       "ship",
+       "monitor"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "GPUs and why they matter",
+    "body": "Almost all the work in a neural network is multiplying matrices: huge grids of weights times vectors of inputs. Each output number is independent of the others, so they can all be computed at the same time.\n\nA CPU has a handful of powerful cores designed for varied, step-by-step work. A GPU (graphics processing unit) has thousands of simpler cores designed to do the same arithmetic on many numbers at once, plus very fast memory. For matrix maths a data-centre GPU is often tens to hundreds of times faster than a CPU. The 2012 image model AlexNet was trained on two gaming GPUs, and that result helped start the deep learning boom.\n\nTwo numbers dominate planning. Compute: generating one token costs roughly two operations per parameter, so bigger models are slower and costlier. Memory: all the weights must fit in the GPU's memory, at 2 bytes per weight in 16-bit format, plus extra for the attention cache. A 7 billion parameter model needs about 14 GB just for weights. Training needs several times more memory than inference because gradients and optimizer state are stored too. This is why quantisation, smaller models and hosted APIs matter so much in practice.",
+    "example": "Ravelsby Insurance asked why their laptop took minutes per answer from an open 7 billion parameter model. The rough sum below shows the arithmetic alone is about 14 ms per token on a strong CPU versus 0.05 ms on a data-centre GPU, and the 14 GB of weights would not fit on their small office GPU. Moving to a hosted endpoint was the practical answer.",
+    "code": "# Rough compute to run a model: about 2 floating point operations\n# (a multiply and an add) per parameter for each token generated.\nparams = 7e9                  # a 7 billion parameter model\nflops_per_token = 2 * params\n\ncpu_flops = 1e12              # example: ~1 TFLOP/s for a strong CPU\ngpu_flops = 300e12            # example: ~300 TFLOP/s for a data-centre GPU\n\nfor name, speed in [(\"CPU\", cpu_flops), (\"GPU\", gpu_flops)]:\n    ms = flops_per_token / speed * 1000\n    print(f\"{name}: {ms:.2f} ms of pure maths per token\")\n\n# Memory: each 16-bit weight takes 2 bytes, and it all must fit on the card\nprint(\"weights in 16-bit:\", params * 2 / 1e9, \"GB\")\n\n# Output:\n# CPU: 14.00 ms of pure maths per token\n# GPU: 0.05 ms of pure maths per token\n# weights in 16-bit: 14.0 GB",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "",
+      "CPU",
+      "GPU"
+     ],
+     "rows": [
+      [
+       "Cores",
+       "Tens of powerful cores",
+       "Thousands of simple cores"
+      ],
+      [
+       "Best at",
+       "Varied, branching logic",
+       "Same maths on many numbers"
+      ],
+      [
+       "Memory",
+       "Large but slower",
+       "Smaller but very fast"
+      ],
+      [
+       "Deep learning role",
+       "Data prep, small models",
+       "Training and serving big models"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Choosing an architecture as an FDE",
+    "body": "In customer work the question is rarely which architecture is most exciting. It is what gets a reliable result soonest with the data and budget available.\n\nStart with the data shape. Tables of numbers and categories are usually best served by gradient boosted trees (see boosting); deep learning rarely wins there. Images point to a pretrained CNN or vision transformer. Text points to a pretrained transformer, and often to an LLM API with a good prompt before any training. Time series may need only a classical model (see timeseries), with LSTMs or transformers when there is lots of data.\n\nThen count labels. Under a few hundred labelled examples, prompting or feature extraction from a pretrained model is the realistic path. Thousands allow fine-tuning. Training from scratch is for teams with very large datasets and budgets.\n\nFinally check the constraints: where the model must run (cloud, on premises, on a device), how fast it must answer, and what the licence of the pretrained model allows. Write the choice and the reason down, and keep a simple baseline to compare against.",
+    "example": "A regional hospital group, Bramblecross Health, asked for 'a deep learning model' to predict missed appointments from a table of 60,000 bookings with 25 columns. The FDE trained a gradient boosted model in an afternoon as a baseline, then a small dense network. The trees scored better and were easier to explain, so they shipped the trees.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Identify the data shape: table, image, text, audio or time series",
+     "Count labelled examples and estimate the cost of more",
+     "Build a simple baseline first",
+     "Look for a pretrained model and check its licence",
+     "Check where it must run and the latency target",
+     "Estimate GPU memory and cost before promising a timeline",
+     "Record the decision and the reason for it"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Architecture",
+    "The wiring plan of a neural network: its layers, connections and shared weights."
+   ],
+   [
+    "Convolution",
+    "Sliding a small learned filter over an input and summing products at each position."
+   ],
+   [
+    "Pooling",
+    "Shrinking a feature map by keeping one value, often the maximum, from each small block."
+   ],
+   [
+    "RNN",
+    "A network that reads a sequence one step at a time, carrying a hidden state forward."
+   ],
+   [
+    "LSTM",
+    "An RNN with gates that control what to remember and forget, so memory lasts longer."
+   ],
+   [
+    "Vanishing gradient",
+    "A training signal that shrinks toward zero as it passes back through many steps or layers."
+   ],
+   [
+    "Attention",
+    "A mechanism that lets each token weigh every other token by relevance and blend their information."
+   ],
+   [
+    "Transfer learning",
+    "Reusing a model trained on a large dataset as the starting point for a new task."
+   ],
+   [
+    "GPU",
+    "A chip with thousands of cores that performs the same maths on many numbers in parallel."
+   ]
+  ],
+  "practice": [
+   "Change the kernel in the convolution code to detect horizontal edges instead of vertical ones and check that the feature map changes as you expect.",
+   "Using the GPU arithmetic code, estimate memory and per-token maths for a 70 billion parameter model in 16-bit and in 4-bit. Write two sentences a customer could understand.",
+   "Stretch: for three imaginary customer problems (invoice photos, call-centre transcripts, a sales table), write one paragraph each choosing an architecture and a starting pretrained model type, with the reason and a baseline."
+  ]
+ },
+ "rlhf": {
+  "plain": "Reinforcement learning (RL) is a way of learning by trying things and getting a score, called a reward, instead of being shown the right answer. An agent takes actions in an environment, sees what happens and how much reward it got, and slowly learns a policy, a rule for choosing actions. RLHF, reinforcement learning from human feedback, applies this to language models: people compare pairs of answers, a separate reward model learns to predict their choices, and the language model is tuned to earn high reward. It is one of the main reasons chat assistants follow instructions and decline clearly harmful requests.",
+  "analogy": "Training a dog with treats is reinforcement learning: nobody explains the trick, the dog tries things and learns what earns a treat. RLHF is like a panel of judges tasting pairs of dishes and saying which is better, then training a new chef to cook the kind of dish the judges tend to prefer.",
+  "why": "You will almost never run RLHF yourself, but customers will ask why the model refuses a harmless request, agrees too easily, or writes too much, and whether they can 'train it' on their preferences. Knowing how preference training shapes behaviour lets you explain it honestly and point to the options that exist: prompting, evals, supervised fine-tuning and, where a provider offers it, preference fine-tuning.",
+  "subtopics": [
+   {
+    "title": "Agent, environment, reward, policy",
+    "body": "Every RL problem has the same four parts. The agent is the learner that makes decisions. The environment is everything it interacts with. At each step the agent sees the state, picks an action, and the environment returns a new state and a reward, a number that says how good that was. The policy is the agent's rule for picking actions from states, and the goal is a policy that earns the most total reward over time.\n\nThe key difference from the supervised learning in neuralnets is that nobody labels the correct action. Rewards can also be delayed: in chess the only reward may be winning or losing at the end, so the agent must work out which earlier moves deserve credit.\n\nRL is behind game-playing systems, some robotics and some recommendation and pricing systems. In business it is less common than supervised learning because it needs many trials, and real trials can be expensive or risky. Simulations are often used to train first.\n\nIn the toy corridor below, a random policy wanders and wastes steps, while an always-move-right policy reaches the reward in the minimum four steps.",
+    "example": "A warehouse robot at Dunmarrow Logistics is the agent, the aisle map is the environment, its position is the state, moves are actions, and the reward is +10 for reaching the pick location and -1 per move. A good policy is the shortest safe route.",
+    "code": "import numpy as np\n\n# Environment: a corridor of 5 cells. Start at 0, reward +10 at cell 4,\n# and -1 for every step taken (so shorter routes are better).\nrng = np.random.default_rng(0)\n\ndef run_episode(policy):\n    state, total, steps = 0, 0, 0\n    while state != 4 and steps < 50:\n        action = policy(state)                 # the agent chooses\n        state = max(0, min(4, state + action)) # the environment reacts\n        reward = 10 if state == 4 else -1      # and hands back a reward\n        total += reward\n        steps += 1\n    return total, steps\n\nrandom_policy = lambda s: rng.choice([-1, 1])  # move left or right at random\nalways_right = lambda s: 1                     # a better policy\n\nprint(\"random policy (reward, steps):\", run_episode(random_policy))\nprint(\"always right  (reward, steps):\", run_episode(always_right))\n\n# Output:\n# random policy (reward, steps): (-2, 13)\n# always right  (reward, steps): (7, 4)",
+    "lang": "Python"
+   },
+   {
+    "title": "Bandits: exploration versus exploitation",
+    "body": "The multi-armed bandit is the simplest RL problem. Imagine several slot machines (arms), each paying out with a hidden probability. Each pull gives a reward. You want the most total reward, so you must balance two needs. Exploitation means pulling the arm that looks best so far. Exploration means trying other arms in case one is better than you think.\n\nEpsilon-greedy is the classic strategy. With probability epsilon, pick a random arm; otherwise pick the arm with the best average so far. With epsilon 0 you can lock onto a poor arm forever, as the code shows: it found arm 0 paying something and never looked further. With epsilon 0.1 it discovered the 50 percent arm and earned almost the maximum. With epsilon 0.5 it kept wasting half its pulls on random arms. Smarter methods such as upper confidence bound (UCB) and Thompson sampling explore more where they are unsure.\n\nBandits are used in real products: choosing which web page variant to show, which email subject line to send, or which recommendation to try, adapting while the test runs instead of splitting traffic evenly.",
+    "example": "Loftwhistle Home, an online furniture shop, tests four checkout button designs. Instead of a fixed four-week A/B test with 25 percent traffic each, a bandit shifts traffic toward the best design as evidence builds, while still sending a little traffic to the others in case early numbers were luck.",
+    "code": "import numpy as np\n\nrng = np.random.default_rng(7)\ntrue_rates = [0.20, 0.35, 0.50, 0.30]      # hidden payout chance per arm\n\ndef play(epsilon, pulls=2000):\n    counts = np.zeros(4); values = np.zeros(4); total = 0\n    for t in range(pulls):\n        if rng.random() < epsilon:\n            arm = rng.integers(4)          # explore: try a random arm\n        else:\n            arm = int(np.argmax(values))   # exploit: best estimate so far\n        reward = 1 if rng.random() < true_rates[arm] else 0\n        counts[arm] += 1\n        values[arm] += (reward - values[arm]) / counts[arm]   # running average\n        total += reward\n    return total, counts.astype(int)\n\nfor eps in [0.0, 0.1, 0.5]:\n    total, counts = play(eps)\n    print(f\"epsilon {eps}: reward {total}, pulls per arm {counts}\")\nprint(\"best possible on average:\", int(0.50 * 2000))\n\n# Output:\n# epsilon 0.0: reward 385, pulls per arm [2000    0    0    0]\n# epsilon 0.1: reward 940, pulls per arm [ 105   89 1698  108]\n# epsilon 0.5: reward 839, pulls per arm [ 240  272 1225  263]\n# best possible on average: 1000",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Epsilon",
+      "Behaviour",
+      "Risk"
+     ],
+     "rows": [
+      [
+       "0",
+       "Always exploit",
+       "May lock onto a poor arm"
+      ],
+      [
+       "0.05 to 0.1",
+       "Mostly exploit, some exploring",
+       "Usually a good balance"
+      ],
+      [
+       "0.5",
+       "Half the pulls random",
+       "Wastes reward on known poor arms"
+      ],
+      [
+       "1",
+       "Always explore",
+       "Never uses what it learned"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "How LLMs are aligned with RLHF",
+    "body": "A pretrained language model has learned to continue text. Ask it a question and it may answer, or it may continue with more questions, or produce something rude it saw online. Alignment is the work of making it helpful, honest and safe to use.\n\nThe widely published recipe, used for example in OpenAI's InstructGPT work in 2022, has three stages. First, supervised fine-tuning (SFT): people write good answers to many prompts and the model is fine-tuned on them. Second, preference data and a reward model: the SFT model writes two or more answers per prompt, people choose the better one, and a reward model learns to score answers the way they would. Third, reinforcement learning: the language model is now the agent, writing an answer is its action, and the reward model's score is its reward. An algorithm called PPO nudges the model toward higher-scoring answers.\n\nA KL penalty is added to the reward. It measures how far the tuned model has drifted from the SFT model and subtracts reward for large drift. Without it, the model learns to exploit the reward model, for example by writing long, flattering answers the reward model happens to like. This is called reward hacking.",
+    "example": "For the prompt 'Summarise this lease clause', the model writes answer A (accurate, 3 lines) and answer B (friendly but misses a break clause). A labeler picks A. Thousands of such choices train the reward model, and RL then makes answers like A more likely.",
+    "code": "",
+    "lang": "Text",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "pre",
+       90,
+       70,
+       "Pretraining",
+       "next-token model"
+      ],
+      [
+       "sft",
+       265,
+       70,
+       "SFT",
+       "example answers"
+      ],
+      [
+       "pairs",
+       440,
+       70,
+       "Preference pairs",
+       "chosen vs rejected"
+      ],
+      [
+       "rm",
+       615,
+       70,
+       "Reward model",
+       "learns the taste"
+      ],
+      [
+       "rl",
+       615,
+       220,
+       "RL with KL",
+       "PPO update"
+      ],
+      [
+       "evals",
+       440,
+       220,
+       "Safety evals",
+       "red-teaming"
+      ],
+      [
+       "release",
+       265,
+       220,
+       "Release",
+       "API and chat"
+      ]
+     ],
+     "edges": [
+      [
+       "pre",
+       "sft"
+      ],
+      [
+       "sft",
+       "pairs"
+      ],
+      [
+       "pairs",
+       "rm"
+      ],
+      [
+       "rm",
+       "rl"
+      ],
+      [
+       "rl",
+       "evals"
+      ],
+      [
+       "evals",
+       "release"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Reward models and preference data",
+    "body": "A reward model is usually a copy of the language model with its final layer replaced by one that outputs a single number, the score. It is trained on preference pairs: a prompt, a chosen answer and a rejected answer.\n\nThe standard training rule is the Bradley-Terry model. It says the probability that people prefer answer A over B is the sigmoid of score A minus score B. If the reward model gives the chosen answer a much higher score, that probability is close to 1 and the loss, minus its log, is small. If it scores the rejected answer higher, the loss is large and training pushes the scores the other way.\n\nThe reward model is only as good as the preferences. Labelers follow written guidelines, and where those are vague the reward model learns whatever labelers happened to like. People often prefer answers that are longer, more confident or that agree with them, even when a shorter or more critical answer is better. These habits are one known source of verbosity and sycophancy, the tendency to tell users what they want to hear.",
+    "example": "Quillfern Legal Aid collects 500 comparisons from its advisers on draft replies. A pair where the reward model scores the chosen reply 2.0 and the rejected -1.0 gives a 95 percent win probability and a small loss. A pair it gets backwards, -0.5 against 1.5, produces a loss of 2.1 and a strong correction.",
+    "code": "import numpy as np\n\n# A reward model gives each answer a score. The Bradley-Terry model turns\n# two scores into the probability a human prefers answer A over answer B.\ndef prefer_prob(score_a, score_b):\n    return 1 / (1 + np.exp(-(score_a - score_b)))\n\npairs = [  # (score of chosen answer, score of rejected answer)\n    (2.0, -1.0),   # reward model agrees strongly with the human\n    (0.5, 0.3),    # agrees, but only just\n    (-0.5, 1.5),   # disagrees: it scored the rejected answer higher\n]\nfor chosen, rejected in pairs:\n    p = prefer_prob(chosen, rejected)\n    loss = -np.log(p)          # training pushes this loss down\n    print(f\"P(chosen wins) = {p:.3f}   loss = {loss:.3f}\")\n\n# Output:\n# P(chosen wins) = 0.953   loss = 0.049\n# P(chosen wins) = 0.550   loss = 0.598\n# P(chosen wins) = 0.119   loss = 2.127",
+    "lang": "Python"
+   },
+   {
+    "title": "DPO and constitutional-style feedback",
+    "body": "Classic RLHF has many moving parts: a reward model, an RL loop, a KL penalty and careful tuning. Newer methods simplify it.\n\nDirect Preference Optimization (DPO, 2023) uses the same chosen and rejected pairs but no separate reward model and no RL loop. It trains the model so the chosen answer becomes more likely, and the rejected one less likely, compared with a frozen reference copy. The reference plays the same role as the KL penalty, keeping the model from drifting. It is a simple loss you can run with ordinary fine-tuning tools, which is why it spread quickly. The code shows that the loss starts at about 0.69 when nothing has changed, drops when the chosen answer gets likelier, and rises when the rejected one does.\n\nHuman labels are slow and costly. Constitutional-style methods, such as Anthropic's Constitutional AI, write down a set of principles, the constitution, and have an AI model critique and revise answers and choose between them according to those principles. These AI-made preferences feed the same training steps. The general idea is called RL from AI feedback (RLAIF). Humans still write the principles and check the results.",
+    "example": "A team fine-tuning an open model for polite, short support replies has 3,000 preference pairs. Running DPO takes one training job with a standard library, instead of building a reward model and an RL pipeline, and they check the result with their eval set before and after.",
+    "code": "import numpy as np\n\n# DPO needs no separate reward model. For each preference pair it compares\n# how much the model being trained (policy) raised the log-probability of the\n# chosen answer versus the rejected one, relative to a frozen reference copy.\ndef dpo_loss(pol_chosen, pol_rejected, ref_chosen, ref_rejected, beta=0.1):\n    margin = (pol_chosen - ref_chosen) - (pol_rejected - ref_rejected)\n    return -np.log(1 / (1 + np.exp(-beta * margin)))\n\n# log-probabilities of whole answers (negative numbers; closer to 0 = more likely)\nprint(\"before training:\", round(dpo_loss(-40, -38, -40, -38), 3))\nprint(\"chosen made likelier:\", round(dpo_loss(-30, -38, -40, -38), 3))\nprint(\"rejected made likelier:\", round(dpo_loss(-40, -30, -40, -38), 3))\n\n# Output:\n# before training: 0.693\n# chosen made likelier: 0.313\n# rejected made likelier: 1.171",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Method",
+      "Needs reward model",
+      "Needs RL loop",
+      "Labels from"
+     ],
+     "rows": [
+      [
+       "RLHF (PPO)",
+       "Yes",
+       "Yes",
+       "Human comparisons"
+      ],
+      [
+       "DPO",
+       "No",
+       "No",
+       "Human or AI comparisons"
+      ],
+      [
+       "Constitutional / RLAIF",
+       "Often yes",
+       "Often yes",
+       "AI judged against written principles"
+      ],
+      [
+       "SFT only",
+       "No",
+       "No",
+       "Example answers"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "What it means for an FDE",
+    "body": "The hosted models your customers use have already been through this training by the provider. You will not run RLHF on them. What you will do is explain behaviour and choose the right lever.\n\nMany complaints trace back to preference training. The model refuses a harmless request because it looks like a risky one. It agrees with a user who is wrong. It writes long answers with caveats. It sounds confident when it should say 'I don't know'. Explain these as learned tendencies, not bugs in the customer's data, and then fix them with the cheapest lever that works.\n\nThe levers, in rough order: a clearer system prompt with explicit rules and examples; retrieval so answers are grounded in the customer's documents (see rag); an eval set that measures the behaviour (see evals); guardrails for hard limits; and only then fine-tuning. Some providers offer supervised fine-tuning on some models, and some also offer preference fine-tuning such as DPO; check what the customer's provider and model actually support. With open-weight models the team can run SFT or DPO themselves with libraries such as Hugging Face TRL.\n\nIf the customer collects preference data, have them record prompt, both answers, the choice and the reason. That data doubles as an eval set.",
+    "example": "Sallowby Telecom's support assistant refused to explain how to reset a router's admin password because it looked like a hacking request. The FDE added a system prompt rule that account holders may reset their own devices, with one example, built 30 eval cases of legitimate and suspicious requests, and cut wrong refusals from 22 percent to 3 percent without any training.",
+    "code": "",
+    "lang": "Text",
+    "checklist": [
+     "Reproduce the behaviour with 10 to 20 real prompts",
+     "Explain it to the customer as a learned tendency, in plain words",
+     "Try a clearer system prompt with rules and examples first",
+     "Build an eval set that measures the behaviour",
+     "Add retrieval or guardrails if the problem is facts or hard limits",
+     "Check which fine-tuning options the provider and model support",
+     "Collect preference pairs with reasons if fine-tuning is justified"
+    ]
+   }
+  ],
+  "glossary": [
+   [
+    "Agent",
+    "The learner in RL that chooses actions."
+   ],
+   [
+    "Environment",
+    "Everything the agent interacts with; it returns new states and rewards."
+   ],
+   [
+    "Reward",
+    "A number telling the agent how good the result of an action was."
+   ],
+   [
+    "Policy",
+    "The agent's rule for choosing an action in each situation."
+   ],
+   [
+    "Exploration vs exploitation",
+    "The trade-off between trying new options and using the best known one."
+   ],
+   [
+    "Multi-armed bandit",
+    "An RL problem with several options of unknown payout and no changing state."
+   ],
+   [
+    "Reward model",
+    "A model trained on human comparisons to score how good an answer is."
+   ],
+   [
+    "KL penalty",
+    "A cost for drifting far from the starting model during RL fine-tuning."
+   ],
+   [
+    "DPO",
+    "Direct Preference Optimization: training on chosen and rejected pairs without a reward model or RL loop."
+   ],
+   [
+    "Reward hacking",
+    "When a model finds ways to score highly that do not match what people actually want."
+   ]
+  ],
+  "practice": [
+   "Run the bandit code with epsilon 0.01, 0.05, 0.1 and 0.2 and three different seeds each. Tabulate total reward and say which epsilon you would pick.",
+   "Write 10 preference pairs for a customer support assistant (prompt, answer A, answer B, which is better, one-line reason) and note which ones a labeler might get wrong.",
+   "Stretch: a customer wants to 'RLHF our model so it stops refusing refund questions'. Write a one-page reply explaining what is happening and the levers you would try, in order, with how you would measure success."
+  ]
+ }
+}

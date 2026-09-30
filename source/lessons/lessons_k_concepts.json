@@ -1,0 +1,651 @@
+[
+ {
+  "id": "prompting",
+  "mod": 3,
+  "sec": "3.2",
+  "name": "Prompting and JSON output",
+  "format": "text",
+  "vb": null,
+  "title": "Prompts that behave the same way every time",
+  "thesis": "A good prompt is a small specification: who the model is, what to do, what it needs to know, what good looks like and exactly what shape the answer must take. Structured output turns the model's reply into data your code can trust.",
+  "ideas": [
+   "Every strong prompt has five parts: role, task, context, examples and output format. Missing parts are where inconsistent answers come from.",
+   "Few-shot examples teach format and judgment faster than paragraphs of rules. Pick examples that cover the tricky cases.",
+   "XML-style tags such as <document> and <instructions> keep data, rules and examples clearly separated, which also helps against injected instructions.",
+   "For machine-readable output, force a tool call or use the provider's JSON schema mode, then validate with Pydantic anyway.",
+   "Prompts are code. Keep them in files, version them, review changes and run evals before a new version ships."
+  ],
+  "traps": [
+   "Asking for 'JSON only' in plain text and calling json.loads on the reply. One stray sentence or code fence breaks the parser in production.",
+   "Editing a prompt directly in production to fix one complaint, with no version number and no eval run, and silently breaking other cases.",
+   "Stuffing ten near-identical examples into a prompt, so the model copies their wording instead of learning the pattern."
+  ],
+  "qa": [
+   [
+    "How do you get reliable JSON out of an LLM?",
+    "Define the shape as a JSON schema, give it to the model as a tool and force that tool with tool_choice, or use the provider's structured output mode. Then validate the result with Pydantic and retry once with the validation error if it fails. Log every failure so the eval set grows."
+   ],
+   [
+    "A customer says the model gives different answers to the same question. What do you check first?",
+    "The prompt itself: is the task ambiguous, is the output format specified, are there examples of the edge cases? Then temperature and whether the context changes between calls. I would build a small eval set from their examples and measure agreement before and after each change."
+   ],
+   [
+    "When is it worth enabling extended thinking or asking for step-by-step reasoning?",
+    "When the task needs several dependent steps, like reconciling two invoices or applying a multi-rule policy. It costs more tokens and latency, so I measure accuracy with and without it on the eval set and only keep it where it pays off."
+   ]
+  ]
+ },
+ {
+  "id": "guardrails",
+  "mod": 3,
+  "sec": "3.5",
+  "name": "LLM security and guardrails",
+  "format": "flowchart",
+  "title": "Layered defenses around an LLM app",
+  "thesis": "Any text the model reads can try to give it orders. You cannot make the model perfectly obedient, so you limit what it can do: filter what goes in, isolate untrusted content, give tools the least privilege, ask a human before risky actions and check what comes out.",
+  "note": "Read left to right, then right to left along the bottom row. Each box is a separate layer of defense. Read-only tool calls can go straight from the allowlist to the output filter; only risky writes stop at the human.",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "src",
+    90,
+    70,
+    "Untrusted text",
+    "user, docs, web",
+    1
+   ],
+   [
+    "infilt",
+    265,
+    70,
+    "Input filter",
+    "PII, known attacks"
+   ],
+   [
+    "isolate",
+    440,
+    70,
+    "Isolate content",
+    "data inside tags"
+   ],
+   [
+    "llm",
+    615,
+    70,
+    "LLM proposes",
+    "answer or action"
+   ],
+   [
+    "allow",
+    615,
+    220,
+    "Tool allowlist",
+    "least privilege"
+   ],
+   [
+    "human",
+    440,
+    220,
+    "Human approval",
+    "risky writes only"
+   ],
+   [
+    "outfilt",
+    265,
+    220,
+    "Output filter",
+    "PII, links, secrets"
+   ],
+   [
+    "user",
+    90,
+    220,
+    "Result delivered",
+    "logged and audited"
+   ]
+  ],
+  "edges": [
+   [
+    "src",
+    "infilt"
+   ],
+   [
+    "infilt",
+    "isolate",
+    0,
+    "clean"
+   ],
+   [
+    "isolate",
+    "llm"
+   ],
+   [
+    "llm",
+    "allow",
+    0,
+    "tool call"
+   ],
+   [
+    "allow",
+    "human",
+    0,
+    "write?"
+   ],
+   [
+    "human",
+    "outfilt",
+    0,
+    "approved"
+   ],
+   [
+    "outfilt",
+    "user",
+    0,
+    "safe"
+   ]
+  ],
+  "ideas": [
+   "Prompt injection is text that tries to override your instructions. Direct injection comes from the user; indirect injection hides in documents, web pages, emails or tool results the model reads.",
+   "The model cannot reliably tell instructions from data, so security must come from what the system allows, and never only from what the prompt asks.",
+   "Least privilege: each tool gets the narrowest scope and credentials it needs, ideally the end user's own permissions.",
+   "Data exfiltration usually needs a way out: a link, an image URL, an email tool or a web request. Removing or allowlisting those exits stops most leaks.",
+   "Red-teaming means attacking your own system on purpose with a written suite of attacks, and re-running it on every prompt or model change."
+  ],
+  "traps": [
+   "Relying on a system prompt line like 'never reveal secrets' as the only defense.",
+   "Giving an agent a service account with admin rights because it was faster to set up.",
+   "Rendering model output as Markdown with images or links enabled, which lets an injected instruction send data to an attacker's URL."
+  ],
+  "qa": [
+   [
+    "What is indirect prompt injection and how would you defend against it?",
+    "It is when instructions arrive inside content the model reads, like a PDF or a web page, instead of from the user. I treat all retrieved content as data: wrap it in tags, tell the model to ignore instructions inside it, strip risky exits like links from output, keep tools read-only by default, and require human approval for any action with side effects."
+   ],
+   [
+    "A bank wants an assistant that can move money. How do you make that safe?",
+    "The model can only draft a transfer. A tool with the user's own permissions validates the amount and payee against an allowlist and limits, and the user confirms on a screen the model cannot fake. Everything is logged, and the red-team suite includes attempts to trigger transfers from injected text."
+   ],
+   [
+    "How do you prevent PII leaking in responses?",
+    "Minimise PII in context in the first place, redact or tokenise it before the call where possible, scope retrieval to what the user is allowed to see, and run an output filter that detects and masks PII patterns before anything is shown or logged."
+   ]
+  ]
+ },
+ {
+  "id": "llmcost",
+  "mod": 3,
+  "sec": "3.5",
+  "name": "LLM cost and latency",
+  "format": "text",
+  "vb": null,
+  "title": "Making an LLM feature cheap and fast enough",
+  "thesis": "Cost is tokens times price, and latency is mostly how many tokens the model must read and write. Measure both per request, then pull the big levers: a smaller model where it is good enough, caching, batching, shorter context and capped output.",
+  "ideas": [
+   "Price is quoted per million tokens, separately for input and output. Output tokens usually cost several times more than input tokens.",
+   "Route easy requests to a small, cheap model and hard ones to a large model. Measure quality on your eval set before routing.",
+   "Prompt caching reuses a long, unchanging prefix (system prompt, documents, tool definitions) at a reduced price and with faster time to first token.",
+   "Batch APIs trade speed for price on work nobody is waiting for, like nightly summaries.",
+   "Report p50 and p95 latency and cost per 1,000 requests. Averages hide the slow tail that users complain about."
+  ],
+  "traps": [
+   "Quoting a customer a monthly cost from one test prompt, then discovering real requests carry ten times more context.",
+   "Putting timestamps or user names at the start of the prompt, which changes the prefix on every call and prevents cache hits.",
+   "Setting max_tokens very high 'just in case' and not noticing that a verbose model is driving both cost and latency."
+  ],
+  "qa": [
+   [
+    "The customer's LLM bill doubled last month. How do you investigate?",
+    "Break cost down per feature and per request from the usage fields we log: input tokens, output tokens, cache reads. Look for growth in volume versus growth in tokens per request. Common causes are a growing chat history, a larger retrieval top-k, retries, or an agent looping. Then apply the matching fix and track cost per 1,000 requests."
+   ],
+   [
+    "How would you cut latency for a chat assistant?",
+    "Stream tokens so the user sees text immediately, cache the static prefix, trim history and retrieved chunks, cap output length, and route simple questions to a faster model. I would measure time to first token and p95 total time before and after each change."
+   ],
+   [
+    "When does a batch API make sense?",
+    "When results are not needed right away, for example re-classifying 200,000 support tickets overnight. It is typically priced lower than live calls, and you avoid rate limit pressure on the live path."
+   ]
+  ]
+ },
+ {
+  "id": "mlops",
+  "mod": 3,
+  "sec": "4.3",
+  "name": "MLOps and monitoring",
+  "format": "animation",
+  "title": "The model lifecycle, from data to retraining",
+  "thesis": "A model is never finished. It is trained on a snapshot of the world, the world keeps changing, and MLOps is the loop that tracks every experiment, promotes models safely and notices when they start to go wrong.",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "Python: track, register and gate with MLflow",
+  "code": "import mlflow\nfrom mlflow import MlflowClient\n\nmlflow.set_experiment(\"churn-model\")\nwith mlflow.start_run() as run:\n    X_tr, X_te, y_tr, y_te = load_features(\"2026-09\")  # your function\n    model = train(X_tr, y_tr, max_depth=6)              # your function\n    auc = evaluate(model, X_te, y_te)                    # your function\n    mlflow.log_params({\"max_depth\": 6, \"data\": \"2026-09\"})\n    mlflow.log_metric(\"auc\", auc)\n    mlflow.sklearn.log_model(model, \"model\",\n                             registered_model_name=\"churn-model\")\n\n# Eval gate: only promote if it beats the current champion\nclient = MlflowClient()\nchamp = client.get_model_version_by_alias(\"churn-model\", \"champion\")\nchamp_auc = client.get_run(champ.run_id).data.metrics[\"auc\"]\nif auc >= champ_auc + 0.005:\n    new = client.search_model_versions(f\"run_id='{run.info.run_id}'\")[0]\n    client.set_registered_model_alias(\"churn-model\", \"challenger\", new.version)\n\n# Serving always loads whatever the \"champion\" alias points to\nlive = mlflow.pyfunc.load_model(\"models:/churn-model@champion\")",
+  "nodes": [
+   [
+    "data",
+    90,
+    70,
+    "Data",
+    "raw + labels",
+    1
+   ],
+   [
+    "feat",
+    265,
+    70,
+    "Feature store",
+    "shared features"
+   ],
+   [
+    "train",
+    440,
+    70,
+    "Training run",
+    "tracked in MLflow"
+   ],
+   [
+    "gate",
+    615,
+    70,
+    "Eval gate",
+    "beat the champion?"
+   ],
+   [
+    "reg",
+    615,
+    210,
+    "Model registry",
+    "versions + aliases"
+   ],
+   [
+    "shadow",
+    440,
+    210,
+    "Shadow deploy",
+    "runs, not used"
+   ],
+   [
+    "canary",
+    265,
+    210,
+    "Canary rollout",
+    "5% then 100%"
+   ],
+   [
+    "mon",
+    90,
+    210,
+    "Monitoring",
+    "drift, errors, KPIs"
+   ],
+   [
+    "retrain",
+    265,
+    350,
+    "Retrain trigger",
+    "schedule or alert"
+   ]
+  ],
+  "edges": [
+   [
+    "data",
+    "feat"
+   ],
+   [
+    "feat",
+    "train"
+   ],
+   [
+    "train",
+    "gate",
+    0,
+    "metrics"
+   ],
+   [
+    "gate",
+    "reg",
+    0,
+    "pass"
+   ],
+   [
+    "reg",
+    "shadow"
+   ],
+   [
+    "shadow",
+    "canary",
+    0,
+    "looks fine"
+   ],
+   [
+    "canary",
+    "mon",
+    0,
+    "live"
+   ],
+   [
+    "mon",
+    "retrain",
+    0,
+    "drift"
+   ],
+   [
+    "retrain",
+    "data"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start from versioned data",
+    "n": [
+     "data"
+    ],
+    "d": "Training data is a snapshot, for example all customers and whether they cancelled, as of September 2026. Record exactly which snapshot you used so any model can be rebuilt later.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Features come from one place",
+    "n": [
+     "feat"
+    ],
+    "e": [
+     "data>feat"
+    ],
+    "d": "A feature is an input column the model uses, like 'support tickets in the last 30 days'. A feature store computes it once and serves the same definition to training and to live predictions, so the two never disagree.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Train and track the run",
+    "n": [
+     "train"
+    ],
+    "e": [
+     "feat>train"
+    ],
+    "d": "Every training run logs its parameters, metrics and the model file to an experiment tracker such as MLflow. Weeks later you can answer 'which settings and data produced this model?'.",
+    "l": [
+     3,
+     4,
+     6,
+     8,
+     9
+    ]
+   },
+   {
+    "t": "An eval gate decides",
+    "n": [
+     "gate"
+    ],
+    "e": [
+     "train>gate"
+    ],
+    "d": "The new model is scored on a fixed test set and compared with the model currently in production, called the champion. It only moves on if it is clearly better.",
+    "l": [
+     7,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "t": "Register a new version",
+    "n": [
+     "reg"
+    ],
+    "e": [
+     "gate>reg"
+    ],
+    "d": "The model registry stores numbered versions and aliases such as 'champion' and 'challenger'. Moving an alias is how you promote or roll back, without redeploying code.",
+    "l": [
+     10,
+     11,
+     18,
+     19
+    ]
+   },
+   {
+    "t": "Shadow deploy first",
+    "n": [
+     "shadow"
+    ],
+    "e": [
+     "reg>shadow"
+    ],
+    "d": "In shadow mode the new model receives copies of real requests and its predictions are logged, but users still get the old model's answers. You compare the two on live data at zero risk."
+   },
+   {
+    "t": "Canary, then full rollout",
+    "n": [
+     "canary"
+    ],
+    "e": [
+     "shadow>canary"
+    ],
+    "d": "A canary sends a small share of real traffic, say 5%, to the new model and watches errors and business metrics. If they hold, traffic moves to 100% and the alias becomes champion.",
+    "l": [
+     21,
+     22
+    ]
+   },
+   {
+    "t": "Monitor for drift",
+    "n": [
+     "mon"
+    ],
+    "e": [
+     "canary>mon"
+    ],
+    "d": "Data drift means the inputs change, like a new product line. Concept drift means the link between inputs and the right answer changes, like customers leaving for a new competitor. Monitoring watches both, plus latency and errors."
+   },
+   {
+    "t": "Retrain and loop",
+    "n": [
+     "retrain",
+     "data"
+    ],
+    "e": [
+     "mon>retrain",
+     "retrain>data"
+    ],
+    "d": "A schedule or a drift alert triggers retraining on fresh data, and the whole loop repeats. For LLM apps the same loop runs with prompt versions, eval gates and trace review in place of weights.",
+    "l": [
+     3,
+     4
+    ]
+   }
+  ],
+  "ideas": [
+   "The lifecycle is a loop: data, features, training, evaluation, registry, deployment, monitoring and back to data.",
+   "Experiment tracking records parameters, metrics, data version and the model file for every run, so results are reproducible.",
+   "A registry with aliases separates 'which model is live' from the serving code, which makes promotion and rollback a one-line change.",
+   "Shadow and canary deploys test a new model on real traffic before it can hurt many users.",
+   "LLMOps is the same loop for prompts and models you do not train: versioned prompts, eval gates in CI, traces reviewed by humans and online quality metrics."
+  ],
+  "traps": [
+   "Computing features one way in a training notebook and another way in the live service, so the model sees different inputs in production (training-serving skew).",
+   "Monitoring only uptime and latency, so a model that is quietly getting worse for three months goes unnoticed.",
+   "Retraining automatically on a schedule and deploying without an eval gate, so a bad data week ships a worse model."
+  ],
+  "qa": [
+   [
+    "What is the difference between data drift and concept drift?",
+    "Data drift is a change in the inputs, such as a new customer segment or a sensor recalibrated. Concept drift is a change in the relationship between inputs and the correct output, such as fraud patterns changing. Data drift can be caught without labels; concept drift usually needs fresh labels or a proxy business metric."
+   ],
+   [
+    "How would you roll out a new model at a customer with no downtime and little risk?",
+    "Register it as a new version, run it in shadow on live traffic to compare predictions, then canary it to a small share of traffic with automatic rollback if error rate or a business metric degrades, then move the champion alias. The old version stays in the registry for instant rollback."
+   ],
+   [
+    "What does MLOps look like for an LLM feature where you never train a model?",
+    "Prompts, tool definitions and model choice are versioned like code. Every change runs an offline eval set as a gate in CI. In production we log traces, sample them for human review, track quality and cost metrics, and feed failures back into the eval set."
+   ]
+  ]
+ },
+ {
+  "id": "multiagent",
+  "mod": 3,
+  "sec": "3.3",
+  "name": "Multi-agent systems",
+  "format": "flowchart",
+  "title": "When and how to split work across agents",
+  "thesis": "Most tasks need one agent with good tools. Split into several agents only when the work is broad enough to run in parallel or needs separate context, and then design the orchestration, shared state and budgets as carefully as any distributed system.",
+  "note": "Start at the top left. The router decides whether one agent is enough. If not, an orchestrator hands sub-tasks to workers, which write into shared state, and a reviewer checks the combined result before the answer goes out.",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "user",
+    90,
+    70,
+    "User request",
+    "\"compare vendors\""
+   ],
+   [
+    "router",
+    265,
+    70,
+    "Router",
+    "is one agent enough?"
+   ],
+   [
+    "single",
+    440,
+    70,
+    "Single agent",
+    "tools in a loop"
+   ],
+   [
+    "answer",
+    615,
+    70,
+    "Final answer",
+    "with sources"
+   ],
+   [
+    "orch",
+    265,
+    210,
+    "Orchestrator",
+    "plans, delegates"
+   ],
+   [
+    "state",
+    440,
+    210,
+    "Shared state",
+    "notes, files, ids"
+   ],
+   [
+    "review",
+    615,
+    210,
+    "Reviewer",
+    "checks, merges"
+   ],
+   [
+    "w1",
+    265,
+    350,
+    "Worker A",
+    "own context",
+    1
+   ],
+   [
+    "w2",
+    440,
+    350,
+    "Worker B",
+    "own context",
+    1
+   ]
+  ],
+  "edges": [
+   [
+    "user",
+    "router"
+   ],
+   [
+    "router",
+    "single",
+    0,
+    "simple"
+   ],
+   [
+    "router",
+    "orch",
+    0,
+    "broad"
+   ],
+   [
+    "single",
+    "answer"
+   ],
+   [
+    "orch",
+    "w1",
+    0,
+    "sub-task"
+   ],
+   [
+    "orch",
+    "w2",
+    0,
+    "sub-task"
+   ],
+   [
+    "w1",
+    "state"
+   ],
+   [
+    "w2",
+    "state"
+   ],
+   [
+    "state",
+    "review"
+   ],
+   [
+    "review",
+    "answer"
+   ]
+  ],
+  "ideas": [
+   "Start with a single agent. Add agents only when you can name the benefit: parallel speed, separate context windows, or different permissions.",
+   "Orchestrator-worker: one agent plans and delegates, workers each solve a narrow sub-task with a fresh context and return a short summary.",
+   "Planner-executor splits thinking from doing: one call writes a plan, another follows it step by step, and the plan can be checked before anything runs.",
+   "A handoff passes the conversation and a clear summary to a specialist agent, like a triage agent passing a billing question to the billing agent.",
+   "Shared state (a scratchpad, a database table or files) must have clear ownership rules, or agents overwrite each other."
+  ],
+  "traps": [
+   "Building five agents for a task one agent with three tools could do, then paying five times the tokens and debugging five prompts.",
+   "No limits on turns, depth or spend, so two agents politely hand work back and forth until the budget is gone.",
+   "Letting parallel workers edit the same file or record without locks or a single merge step."
+  ],
+  "qa": [
+   [
+    "When would you use multiple agents instead of one?",
+    "When the task breaks into independent parts that can run in parallel, like researching ten vendors, or when one context window cannot hold everything, or when parts need different tools and permissions. If none of those apply, one agent with good tools is cheaper and easier to debug."
+   ],
+   [
+    "What are the main failure modes of multi-agent systems and how do you guard against them?",
+    "Loops, cost blowups and conflicting edits. I set hard caps on turns, sub-agent count and tokens per task, give each worker a narrow brief and a structured return format, make one component own each piece of shared state, and trace every agent call so we can see where it went wrong."
+   ],
+   [
+    "How do you evaluate a multi-agent system?",
+    "End to end on task success with a fixed eval set, plus per-agent checks such as whether the orchestrator's plan was sensible and whether each worker's output was correct. I also track cost and latency per task, because a small quality gain can come with a large cost increase."
+   ]
+  ]
+ }
+]

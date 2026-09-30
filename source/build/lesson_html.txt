@@ -1,0 +1,15 @@
+    <section class="lesson" id="lesson" aria-label="Lesson" hidden>
+      <div class="intro">
+        <div class="plain"><h4>In plain words</h4><p id="lplain"></p></div>
+        <div class="side">
+          <div><h4>Everyday analogy</h4><p id="lanalogy"></p></div>
+          <div><h4>Why an FDE needs this</h4><p id="lwhy"></p></div>
+        </div>
+      </div>
+      <div><p class="lesson-h">In this lesson</p><div class="toc" id="ltoc"></div></div>
+      <div id="lsubs" class="lesson"></div>
+      <div class="cols">
+        <div class="panel"><h4>Glossary</h4><dl class="gloss" id="lgloss"></dl></div>
+        <div class="panel practice"><h4>Practice exercises</h4><ol id="lpractice"></ol></div>
+      </div>
+    </section>

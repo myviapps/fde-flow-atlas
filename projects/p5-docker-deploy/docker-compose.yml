@@ -1,0 +1,15 @@
+services:
+  api:
+    build: .
+    image: tickets-api:local
+    ports:
+      - "8000:8000"
+    environment:
+      API_KEY: ${API_KEY:-change-me-dev-key}   # read from your shell or a .env file
+      DATABASE_URL: sqlite:////data/tickets.db
+    volumes:
+      - tickets-data:/data                     # keeps the SQLite file across restarts
+    restart: unless-stopped
+
+volumes:
+  tickets-data:

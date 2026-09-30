@@ -1,0 +1,1712 @@
+{
+ "llmcost": [
+  {
+   "q": "What are the two kinds of tokens an LLM API call is billed for?",
+   "options": [
+    "Input tokens you send and output tokens the model writes",
+    "Cached tokens and uncached tokens only",
+    "Words in the prompt and characters in the answer",
+    "Tokens per second and tokens per minute"
+   ],
+   "answer": 0,
+   "why": "Every call charges for input tokens (instructions, history, documents) and output tokens, each at its own price per million."
+  },
+  {
+   "q": "Why do teams report p95 latency instead of only the average?",
+   "options": [
+    "p95 is always lower, so it looks better in reports",
+    "The average hides the slow tail that real users feel",
+    "Providers only bill by p95",
+    "p95 measures cost, not time"
+   ],
+   "answer": 1,
+   "why": "p95 is the time 95% of requests beat, so it shows how bad the slow requests are. An average can look fine while many users wait."
+  },
+  {
+   "q": "Brightfield Insurance's claims bot is too expensive. Most questions are simple lookups. What change usually cuts cost most safely?",
+   "options": [
+    "Switch every call to the biggest model for accuracy",
+    "Remove the system prompt entirely",
+    "Route easy requests to a small model and hard ones to a large one",
+    "Raise max_tokens so answers finish in one call"
+   ],
+   "answer": 2,
+   "why": "Routing sends the easy majority to a cheaper, faster model while keeping the large model for hard cases, so cost drops without hurting quality."
+  },
+  {
+   "q": "Every call at Kestrel Logistics starts with the same 6,000-token policy manual. What helps most with cost and speed?",
+   "options": [
+    "Paraphrase the manual differently on each call",
+    "Move the manual after the user question",
+    "Split the manual across ten separate calls",
+    "Use prompt caching on that identical prefix"
+   ],
+   "answer": 3,
+   "why": "Prompt caching stores the processed identical prefix, so repeat calls read it cheaply and faster. It only works if the prefix is exactly the same."
+  },
+  {
+   "q": "A teammate puts the current timestamp and user name at the very start of every prompt. Why is this a mistake?",
+   "options": [
+    "It makes the prefix differ each call, so cache hits never happen",
+    "Timestamps are not allowed by LLM providers",
+    "It makes the answer shorter than it should be",
+    "It forces the model to stream its output"
+   ],
+   "answer": 0,
+   "why": "Caching matches an exact prefix. Changing text at the start breaks it every time, so put variable details after the stable block."
+  }
+ ],
+ "mlops": [
+  {
+   "q": "What is MLOps?",
+   "options": [
+    "A library for training neural networks faster",
+    "Practices for getting models into production and keeping them healthy",
+    "A type of GPU used for inference",
+    "A dashboard showing server uptime"
+   ],
+   "answer": 1,
+   "why": "MLOps covers the whole model lifecycle: data, training, registry, deployment, monitoring and retraining."
+  },
+  {
+   "q": "What is data drift?",
+   "options": [
+    "A model file being copied to the wrong folder",
+    "A slow database query",
+    "A change in the inputs the model sees compared with training data",
+    "Labels arriving late from the customer"
+   ],
+   "answer": 2,
+   "why": "Data drift means live inputs no longer look like the training data, for example a new customer segment, which can quietly hurt accuracy."
+  },
+  {
+   "q": "Harlow Bank wants a new fraud model live next week, but fears it behaves badly on real traffic. What is a low-risk first step?",
+   "options": [
+    "Replace the old model for all users at once",
+    "Skip testing because the test set score was good",
+    "Shadow deploy: log its predictions on real traffic while users get the old model",
+    "Retrain it daily until it looks stable"
+   ],
+   "answer": 2,
+   "why": "A shadow deploy shows how the new model behaves on live traffic with zero user impact. A canary can follow with a small share of users."
+  },
+  {
+   "q": "A churn model at Pinecrest Telecom was great in testing but is weak in production. Features were rewritten for the live service. Likely cause?",
+   "options": [
+    "The GPU was too small for inference",
+    "Training-serving skew: features are computed differently in each place",
+    "The model registry lost its version number",
+    "Users stopped logging in"
+   ],
+   "answer": 1,
+   "why": "When training and serving compute features differently, the model sees unfamiliar inputs live. A shared feature definition or feature store prevents this."
+  },
+  {
+   "q": "Which setup is the classic MLOps trap?",
+   "options": [
+    "Logging parameters and metrics for each experiment run",
+    "Storing approved models with versions in a registry",
+    "Monitoring input distributions as well as accuracy",
+    "Auto-retraining on a schedule and deploying with no eval gate"
+   ],
+   "answer": 3,
+   "why": "Without an evaluation gate, one bad data week can ship a worse model automatically. Always compare against the current model before deploying."
+  }
+ ],
+ "mlmetrics": [
+  {
+   "q": "In a fraud model, what does recall measure?",
+   "options": [
+    "Share of flagged cases that were really fraud",
+    "Share of all real fraud cases the model caught",
+    "Share of all predictions that were correct",
+    "How fast the model scores a transaction"
+   ],
+   "answer": 1,
+   "why": "Recall is caught fraud divided by all real fraud. Precision is the share of flags that were right."
+  },
+  {
+   "q": "What does the classification threshold do?",
+   "options": [
+    "Sets how much training data to use",
+    "Measures model speed",
+    "Turns the model's score into a yes or no decision",
+    "Chooses which features to keep"
+   ],
+   "answer": 2,
+   "why": "Moving the threshold trades false alarms against misses, so it should reflect what each error costs."
+  },
+  {
+   "q": "Ashford Bank's churn model shows 97% accuracy, but only 3% of customers churn. What do you check first?",
+   "options": [
+    "Precision and recall on the churners, from the confusion matrix",
+    "Whether accuracy can reach 99%",
+    "The model's training time",
+    "How many features the model uses"
+   ],
+   "answer": 0,
+   "why": "A model that predicts 'no churn' for everyone scores 97% here. Rare events need precision, recall and the confusion matrix."
+  },
+  {
+   "q": "At a hospital, missing a sepsis case is far worse than a false alarm. How should you set the threshold?",
+   "options": [
+    "Keep the default 0.5",
+    "Raise it to cut false alarms",
+    "Pick it at random and review later",
+    "Lower it to catch more cases, accepting more false alarms"
+   ],
+   "answer": 3,
+   "why": "When misses are costly, favour recall. Choose the threshold from the real cost of each error type."
+  },
+  {
+   "q": "A teammate tuned the threshold on the test set and then reported test scores. Why is that a problem?",
+   "options": [
+    "Test sets must never be used at all",
+    "The scores look better than they will be in production",
+    "Thresholds cannot be tuned",
+    "It makes the model train slower"
+   ],
+   "answer": 1,
+   "why": "Tuning on the test set leaks it into your choices. Tune on a validation set and keep the test set for the final, honest score."
+  }
+ ],
+ "docai": [
+  {
+   "q": "What is OCR?",
+   "options": [
+    "Turning images of text, like scans, into machine-readable text",
+    "A way to compress PDFs",
+    "A database for storing documents",
+    "A method for translating documents"
+   ],
+   "answer": 0,
+   "why": "OCR (optical character recognition) reads text from images. PDFs that already contain text do not need it."
+  },
+  {
+   "q": "Why extract document fields into a fixed schema?",
+   "options": [
+    "It makes the PDF smaller",
+    "It removes the need for any review",
+    "Downstream systems get consistent, checkable fields",
+    "It lets the model skip reading the text"
+   ],
+   "answer": 2,
+   "why": "A schema gives every field a name and type, so you can validate values with rules and load them into other systems."
+  },
+  {
+   "q": "Carden Insurance sends 50,000 PDFs; most are digital, some are scans. How do you process them cheaply?",
+   "options": [
+    "Send every page to a vision model",
+    "Extract text directly where it exists and OCR only the scans",
+    "Retype them by hand",
+    "Convert all pages to images first"
+   ],
+   "answer": 1,
+   "why": "Most digital PDFs already contain clean text. OCR or vision only where needed saves cost and errors."
+  },
+  {
+   "q": "An extraction model returns invoice totals that look tidy but a few are wrong. What should the pipeline add?",
+   "options": [
+    "A bigger model and nothing else",
+    "Faster OCR",
+    "More PDFs in the batch",
+    "Rule checks like line items summing to the total, with doubtful cases sent to a person"
+   ],
+   "answer": 3,
+   "why": "Tidy output is not proof. Schema checks, business rules and a human review path catch errors before they spread."
+  },
+  {
+   "q": "Which document pipeline choice is the trap?",
+   "options": [
+    "Keeping table structure when parsing",
+    "Validating fields against a schema",
+    "Flattening tables to plain text and letting the model guess which number is which",
+    "Routing low-confidence fields to review"
+   ],
+   "answer": 2,
+   "why": "Flattened tables lose which value belongs to which row and column. Keep the layout so numbers stay attached to labels."
+  }
+ ],
+ "serving": [
+  {
+   "q": "What is VRAM, and why does it matter for serving open models?",
+   "options": [
+    "Disk space for logs; it limits history",
+    "GPU memory; the weights and working memory must fit in it",
+    "Network bandwidth; it limits users",
+    "CPU cache; it sets the tokenizer speed"
+   ],
+   "answer": 1,
+   "why": "An open model's weights plus its working memory, like the KV cache, must fit in the GPU's memory."
+  },
+  {
+   "q": "What does an inference server like vLLM mainly add?",
+   "options": [
+    "Batches many requests together so the GPU is used efficiently",
+    "Trains the model on customer data",
+    "Replaces the need for a GPU",
+    "Writes prompts for users"
+   ],
+   "answer": 0,
+   "why": "Batching concurrent requests keeps the GPU busy and raises throughput far above one request at a time."
+  },
+  {
+   "q": "Stonebridge Health must keep patient data inside its own network. Which option fits?",
+   "options": [
+    "A public hosted API with default settings",
+    "Emailing data to a vendor for batch processing",
+    "Self-host an open-weight model on their own GPUs",
+    "Skip AI for this use case entirely"
+   ],
+   "answer": 2,
+   "why": "Self-hosting gives control over where data goes, at the cost of running the GPUs and servers yourself."
+  },
+  {
+   "q": "A model fit on the GPU in testing but crashes with out-of-memory once users send long prompts. Likely cause?",
+   "options": [
+    "The tokenizer is too slow",
+    "The model weights changed",
+    "The server has too few CPU cores",
+    "The GPU was sized for weights only, not the growing KV cache"
+   ],
+   "answer": 3,
+   "why": "Long prompts and many users grow the working memory. Size for weights plus KV cache at real concurrency."
+  },
+  {
+   "q": "A team compares self-hosting to an API using only the hourly GPU price. What are they missing?",
+   "options": [
+    "Engineer time, idle capacity and upgrade work",
+    "The model's parameter count",
+    "The API's documentation quality",
+    "Nothing, GPU price is the full cost"
+   ],
+   "answer": 0,
+   "why": "Self-hosting has hidden costs. A fair comparison includes people, idle GPUs and maintenance."
+  }
+ ],
+ "frameworks": [
+  {
+   "q": "At its core, what is an agent loop?",
+   "options": [
+    "A scheduled batch job",
+    "Call the model, run the tools it asks for, feed results back, repeat",
+    "A database trigger",
+    "A chain of fixed prompts with no tools"
+   ],
+   "answer": 1,
+   "why": "Frameworks package parts of this loop. Understanding the raw loop helps you judge whether you need one."
+  },
+  {
+   "q": "When is adopting an agent framework worth it?",
+   "options": [
+    "Whenever it is the most popular choice",
+    "Always, for any LLM feature",
+    "When it removes real work you would otherwise write and maintain",
+    "Never, frameworks are always harmful"
+   ],
+   "answer": 2,
+   "why": "Pick a framework for real value like state, retries or tracing, not because it is trendy."
+  },
+  {
+   "q": "Wexford Bank needs a three-step extraction flow and has a strict security review. What do you suggest?",
+   "options": [
+    "A small direct loop using the model SDK, easy to review",
+    "The largest framework with every plugin enabled",
+    "Three different frameworks for flexibility",
+    "A custom framework built from scratch over months"
+   ],
+   "answer": 0,
+   "why": "For a simple flow, a thin direct loop keeps prompts visible and the security review small."
+  },
+  {
+   "q": "A customer's agent gives odd answers, and nobody can see the exact prompt the framework sends. First step?",
+   "options": [
+    "Switch to a bigger model",
+    "Add more tools",
+    "Rewrite the whole app in another framework",
+    "Turn on tracing or logging to see the exact prompt and tool schemas"
+   ],
+   "answer": 3,
+   "why": "You cannot debug what you cannot see. Inspect what the model actually receives before changing anything else."
+  },
+  {
+   "q": "Which framework decision is the trap?",
+   "options": [
+    "Checking who will maintain the code",
+    "Choosing by popularity instead of the customer's language, hosting and security needs",
+    "Reviewing the framework's tracing support",
+    "Starting with a simple loop and adding a library later"
+   ],
+   "answer": 1,
+   "why": "The right choice depends on the customer's constraints and who owns the code after you leave."
+  }
+ ],
+ "graphrag": [
+  {
+   "q": "How does a knowledge graph store facts?",
+   "options": [
+    "As entities joined by named relationships",
+    "As long text chunks with embeddings",
+    "As rows in a spreadsheet",
+    "As images of documents"
+   ],
+   "answer": 0,
+   "why": "For example: Supplier A SUPPLIES Part B. This lets you follow connections across many facts."
+  },
+  {
+   "q": "What is entity resolution?",
+   "options": [
+    "Increasing image resolution before OCR",
+    "Deleting old entities from the graph",
+    "Merging different mentions of the same thing into one node",
+    "Ranking entities by popularity"
+   ],
+   "answer": 2,
+   "why": "Without it, 'Acme Corp' and 'ACME Inc.' become separate nodes and connections are lost."
+  },
+  {
+   "q": "Halden Pharma asks: 'Which of our suppliers depend on a factory affected by the flood?' Why might GraphRAG help?",
+   "options": [
+    "The question is a single-fact lookup",
+    "It needs several connected facts across documents",
+    "Graphs are always faster than vector search",
+    "It avoids needing any documents"
+   ],
+   "answer": 1,
+   "why": "Multi-hop questions need linked facts that plain chunk retrieval often misses."
+  },
+  {
+   "q": "A team wants a knowledge graph for an HR bot where users ask 'How many vacation days do I get?'. Your advice?",
+   "options": [
+    "Build the graph first, it is always better",
+    "Use both a graph and three vector stores",
+    "Replace documents with a graph entirely",
+    "Start with plain RAG; these are simple lookups it handles well"
+   ],
+   "answer": 3,
+   "why": "Graphs add cost and complexity. Use them when questions truly need connected facts."
+  },
+  {
+   "q": "Your LLM-built graph has 4,000 relationship types like 'supplies', 'supplier_of' and 'provides_to'. What went wrong?",
+   "options": [
+    "The LLM could invent any label instead of using a fixed set",
+    "Too few documents were used",
+    "The graph database is too slow",
+    "Entity names were too short"
+   ],
+   "answer": 0,
+   "why": "Give the LLM a fixed list of allowed relationship types so the graph stays consistent and queryable."
+  }
+ ],
+ "multimodal": [
+  {
+   "q": "What does a voice agent chain together?",
+   "options": [
+    "Only a text-to-speech model",
+    "Image model, OCR and a database",
+    "Voice detection, speech-to-text, an LLM with tools, and text-to-speech",
+    "A phone line and a recorded menu"
+   ],
+   "answer": 2,
+   "why": "Each stage adds delay, so the whole round trip must stay near one second to feel natural."
+  },
+  {
+   "q": "What does speech-to-text do?",
+   "options": [
+    "Turns spoken audio into written text",
+    "Reads text aloud",
+    "Translates between languages",
+    "Detects the speaker's mood only"
+   ],
+   "answer": 0,
+   "why": "Speech-to-text (transcription) lets the LLM work with what the caller said."
+  },
+  {
+   "q": "Callers at Tidewater Couriers complain of long silences before the voice agent replies. What helps most?",
+   "options": [
+    "Use a larger LLM for better answers",
+    "Stream the reply and start speaking as the first sentence arrives",
+    "Add hold music",
+    "Ask callers to speak more slowly"
+   ],
+   "answer": 1,
+   "why": "Waiting for the full reply before speaking adds seconds. Streaming into text-to-speech cuts perceived delay."
+  },
+  {
+   "q": "You tested a voice agent with clean studio audio. Real users call from warehouses on speakerphone. What next?",
+   "options": [
+    "Nothing, the tests passed",
+    "Only test with more studio audio",
+    "Ask users to find a quiet room",
+    "Test with realistic noisy recordings before launch"
+   ],
+   "answer": 3,
+   "why": "Real conditions differ from the lab. Test with the audio your users actually produce."
+  },
+  {
+   "q": "A team reuses its chat prompt for the voice agent. What problem usually appears?",
+   "options": [
+    "Long, formatted answers with bullets that sound awful read aloud",
+    "The agent stops using tools",
+    "Speech-to-text stops working",
+    "Costs drop too much"
+   ],
+   "answer": 0,
+   "why": "Voice needs short, spoken-style answers. Markdown lists and long paragraphs do not work when heard."
+  }
+ ],
+ "responsibleai": [
+  {
+   "q": "What is the NIST AI RMF?",
+   "options": [
+    "A US framework to help organisations manage AI risks",
+    "A European law that bans all AI",
+    "A model training library",
+    "A certificate every AI engineer must hold"
+   ],
+   "answer": 0,
+   "why": "It is voluntary guidance for mapping, measuring and managing AI risk. The EU AI Act is the binding law."
+  },
+  {
+   "q": "What does meaningful human oversight require?",
+   "options": [
+    "A person clicking approve on every output",
+    "No humans at all, for consistency",
+    "A reviewer with the time, context and authority to disagree",
+    "A monthly report nobody reads"
+   ],
+   "answer": 2,
+   "why": "Oversight only counts if the human can actually catch and override errors."
+  },
+  {
+   "q": "Crestview Lending wants an AI to pre-screen loan applications. When should fairness testing start?",
+   "options": [
+    "After launch, if complaints arrive",
+    "At design time, testing outcomes across groups before launch",
+    "Only if a regulator asks",
+    "Never, models are neutral"
+   ],
+   "answer": 1,
+   "why": "Governance is design input. Testing early lets you change features or thresholds before harm happens."
+  },
+  {
+   "q": "Crestview's COO asks you: 'Is our tool high-risk under the EU AI Act?' How do you answer?",
+   "options": [
+    "Give a firm legal yes or no yourself",
+    "Say the act does not apply to banks",
+    "Tell them to ignore it until enforcement",
+    "Explain the framework's categories and point them to their legal team for the final call"
+   ],
+   "answer": 3,
+   "why": "FDEs explain how the rules work but do not give legal conclusions. Compliance decisions belong to the customer's lawyers."
+  },
+  {
+   "q": "A reviewer approves 400 AI decisions an hour and has never rejected one. What is the problem?",
+   "options": [
+    "The human in the loop is a rubber stamp, not real oversight",
+    "The reviewer is too slow",
+    "The model needs more features",
+    "Nothing, this shows the model is perfect"
+   ],
+   "answer": 0,
+   "why": "Oversight with no time or real disagreement gives false comfort. Reduce volume or sample and measure reviewer agreement."
+  }
+ ],
+ "case": [
+  {
+   "q": "In a case interview, what is the first move with a vague prompt like 'use AI to cut discharge delays'?",
+   "options": [
+    "Pick a model and sketch the architecture",
+    "Restate the goal and ask what 'better' means",
+    "Estimate the GPU budget",
+    "List every AI technique you know"
+   ],
+   "answer": 1,
+   "why": "Restating and clarifying shows you listen and often reveals that the stated ask is really a guess at a solution."
+  },
+  {
+   "q": "What is a guardrail metric?",
+   "options": [
+    "The main metric the sponsor pays for",
+    "A metric that measures model speed only",
+    "A metric that must not get worse while you improve the main one",
+    "A metric used only in the demo"
+   ],
+   "answer": 2,
+   "why": "A guardrail stops you from winning on one number by breaking something else, such as readmission rate while cutting discharge time."
+  },
+  {
+   "q": "Mapleton Hospital says 'discharges take too long'. On day one, what should you do?",
+   "options": [
+    "Start building a chatbot for nurses",
+    "Shadow a case manager on real discharges and file the data access request",
+    "Write a 30-page architecture document",
+    "Ask IT to buy a vector database"
+   ],
+   "answer": 1,
+   "why": "Watching real work reveals where delays hide, and data access is usually the slowest part, so start it in parallel right away."
+  },
+  {
+   "q": "A sponsor wants a full AI platform across all 12 wards. How do you scope the first release?",
+   "options": [
+    "Build all 12 wards at once to show ambition",
+    "Refuse until the data is perfect",
+    "Build a demo on fake data for every ward",
+    "Propose a thin slice: one ward, one bottleneck, real data, end to end"
+   ],
+   "answer": 3,
+   "why": "A thin slice solves one real problem end to end in production conditions, which proves value fast and teaches you what to scale."
+  },
+  {
+   "q": "A candidate's case answer skips straight to a model choice and never states a baseline. What is the main problem?",
+   "options": [
+    "Without a baseline there is no way to prove the work added value",
+    "Model choice should always come after pricing",
+    "Baselines are only needed for research papers",
+    "The answer was too short for the interviewer"
+   ],
+   "answer": 0,
+   "why": "A baseline is the value before any change. Without it you cannot show impact, and opening with the model skips the real problem."
+  }
+ ],
+ "discovery": [
+  {
+   "q": "What is a leading question?",
+   "options": [
+    "A question that suggests the answer you want to hear",
+    "The first question in an interview guide",
+    "A question asked to the most senior person",
+    "A question about the budget"
+   ],
+   "answer": 0,
+   "why": "Leading questions like 'Wouldn't automation be faster?' push polite people to agree, so you learn little."
+  },
+  {
+   "q": "What is the end product of customer discovery?",
+   "options": [
+    "A signed contract",
+    "A working prototype",
+    "A clear problem statement grounded in real evidence",
+    "A list of every feature users asked for"
+   ],
+   "answer": 2,
+   "why": "Discovery ends in a problem statement: who has the problem, what it is, how much it costs and why it matters now."
+  },
+  {
+   "q": "At Riverbend Utilities, a billing clerk says 'the system is slow'. How do you find the real cause?",
+   "options": [
+    "Tell them your product will fix it",
+    "Ask why repeatedly until you reach a cause you can act on",
+    "Move on to the next interviewee",
+    "Ask whether they would like an AI assistant"
+   ],
+   "answer": 1,
+   "why": "The five whys digs past the first symptom. The first answer is rarely the root cause."
+  },
+  {
+   "q": "You have interviewed only the VP who funds the project at Cobalt Freight. What should you do next?",
+   "options": [
+    "Write the problem statement now",
+    "Start building to save time",
+    "Send the VP a survey",
+    "Shadow the dispatchers who do the daily work"
+   ],
+   "answer": 3,
+   "why": "The sponsor knows the goal, but daily users know where the pain really is. Watching them reveals skipped steps and workarounds."
+  },
+  {
+   "q": "Which interview question is the classic discovery mistake?",
+   "options": [
+    "'Walk me through what you did last Tuesday.'",
+    "'How do you handle an order that fails?'",
+    "'Would you use a tool that did this automatically?'",
+    "'What happened the last time this broke?'"
+   ],
+   "answer": 2,
+   "why": "Hypothetical 'would you use...' questions get polite yes answers. Ask about what people actually did recently instead."
+  }
+ ],
+ "exec": [
+  {
+   "q": "What does 'answer first' mean in an executive update?",
+   "options": [
+    "Start with the technical root cause analysis",
+    "Put the main conclusion in the first line, then the support",
+    "Answer every question they asked in order",
+    "Reply within one minute of any email"
+   ],
+   "answer": 1,
+   "why": "Executives often read only the first lines, so the answer must lead. SCQA and the pyramid principle order the rest."
+  },
+  {
+   "q": "Why translate 'recall went from 71% to 93%' for an executive?",
+   "options": [
+    "Executives buy outcomes like risk, cost and throughput, not ML metrics",
+    "Recall is confidential",
+    "Executives prefer longer explanations",
+    "Percentages are not allowed in updates"
+   ],
+   "answer": 0,
+   "why": "Converting a metric into its business effect, like far fewer wrong-policy answers, makes the value clear to the decision maker."
+  },
+  {
+   "q": "The CIO of Sterling Mutual emails: 'Your assistant is completely broken.' What do you do first?",
+   "options": [
+    "Reply with a detailed architecture explanation",
+    "Wait until you know the root cause before replying",
+    "Acknowledge, restate the business impact and commit to an update time",
+    "Forward it to your manager and stay quiet"
+   ],
+   "answer": 2,
+   "why": "Listening and restating lowers the temperature. Then you triage, restore service and send a short answer-first update."
+  },
+  {
+   "q": "During an outage, you can restore service with a workaround in two hours or ship a full fix in three days. What do you do?",
+   "options": [
+    "Wait for the full fix so it is done properly",
+    "Ship the workaround now, then do the root-cause fix",
+    "Do neither until the CIO approves in writing",
+    "Roll back all features from the last year"
+   ],
+   "answer": 1,
+   "why": "Restore service first. A workaround in hours beats a perfect fix in days, and the root-cause fix can follow."
+  },
+  {
+   "q": "Which is the classic mistake when an angry executive calls?",
+   "options": [
+    "Restating their business impact",
+    "Promising the next update time",
+    "Sending a short answer-first summary",
+    "Opening with a technical deep-dive and a guessed root cause"
+   ],
+   "answer": 3,
+   "why": "A technical deep-dive confuses, and promising a root cause before you have one damages trust if it turns out wrong."
+  }
+ ],
+ "docs": [
+  {
+   "q": "What question does a statement of work (SOW) answer?",
+   "options": [
+    "How will the engineers build it?",
+    "What are we paying for, by when and how will it be accepted?",
+    "Why did we choose this database?",
+    "Who attended the kickoff meeting?"
+   ],
+   "answer": 1,
+   "why": "The SOW is a contract document: scope, deliverables, timeline, acceptance criteria and fees."
+  },
+  {
+   "q": "What belongs in a PRD rather than a design doc?",
+   "options": [
+    "The database schema",
+    "The retry and caching strategy",
+    "The problem, the users and how success is measured",
+    "The deployment pipeline"
+   ],
+   "answer": 2,
+   "why": "A PRD describes the problem and desired outcome, not the code. The design doc covers how it will be built."
+  },
+  {
+   "q": "A draft SOW for Alder Retail says the deliverable is 'an AI solution'. What should you add?",
+   "options": [
+    "Specific deliverables and measurable acceptance criteria",
+    "A longer company history section",
+    "More marketing language about AI",
+    "A list of every tool you might use"
+   ],
+   "answer": 0,
+   "why": "Vague deliverables invite scope creep and payment disputes. Acceptance criteria say exactly when the work counts as done."
+  },
+  {
+   "q": "In a hallway chat, Alder's manager asks you to add a second region to the pilot and you agree. What should happen next?",
+   "options": [
+    "Nothing, a verbal yes is enough",
+    "Quietly build it and hope timelines hold",
+    "Tell the engineers but not the sponsor",
+    "Log the decision and update the SOW or raise a change request"
+   ],
+   "answer": 3,
+   "why": "Untracked scope changes cause disputes later. A decision log and SOW update keep everyone aligned on cost and timing."
+  },
+  {
+   "q": "A teammate writes the design doc after the code is finished. What is the problem?",
+   "options": [
+    "Design docs must be longer than the code",
+    "The doc never influenced the decision or caught risks early",
+    "Design docs are only for executives",
+    "Nothing, this is the recommended order"
+   ],
+   "answer": 1,
+   "why": "A design doc exists to compare alternatives and catch problems before building. Written afterwards, it only describes."
+  }
+ ],
+ "demo": [
+  {
+   "q": "What is the 'before and after' structure in a demo?",
+   "options": [
+    "Showing the old product version, then the new one",
+    "Showing today's painful task, then the same task with your system",
+    "Demoing to executives, then to users",
+    "Reading the agenda, then the summary"
+   ],
+   "answer": 1,
+   "why": "Showing the pain first makes the improvement obvious. Keep the comparison fair: same task, same data."
+  },
+  {
+   "q": "How should a demo for executives differ from one for end users?",
+   "options": [
+    "Executives get more features and more screens",
+    "There should be no difference at all",
+    "Lead with the result and rollout; users want to see their exact workflow",
+    "Executives should see only the code"
+   ],
+   "answer": 2,
+   "why": "Executives care about outcomes, cost, risk and timing. End users care whether it fits their daily work."
+  },
+  {
+   "q": "Tomorrow you demo to Oakridge Clinic over unreliable hotel Wi-Fi. What should you prepare?",
+   "options": [
+    "A screen recording and cached responses as a fallback for each live step",
+    "A longer introduction to fill time if it breaks",
+    "A new feature to impress them",
+    "Nothing, apologise if it fails"
+   ],
+   "answer": 0,
+   "why": "Planning a fallback for each live step turns a failure into a thirty-second pause instead of a lost meeting."
+  },
+  {
+   "q": "You have ten minutes with Oakridge's COO. Your product has 25 features. What do you show?",
+   "options": [
+    "All 25 features quickly",
+    "The settings and admin screens",
+    "The architecture diagram only",
+    "One real user workflow told as a story, then the ask"
+   ],
+   "answer": 3,
+   "why": "One workflow done well beats a feature tour. Leave time for the closing ask."
+  },
+  {
+   "q": "Which is the classic demo mistake?",
+   "options": [
+    "Using realistic data from discovery",
+    "Clicking through every screen with no user or story in mind",
+    "Rehearsing with a timer",
+    "Ending with a clear next step"
+   ],
+   "answer": 1,
+   "why": "Feature tours lose the audience. A story about one real user shows why the product matters."
+  }
+ ],
+ "moat": [
+  {
+   "q": "In AI products, what is a data moat?",
+   "options": [
+    "A firewall around the customer's database",
+    "Proprietary process data from real use that competitors cannot copy",
+    "A large public dataset anyone can download",
+    "An encrypted backup of the model"
+   ],
+   "answer": 1,
+   "why": "Features can be copied from a demo. Records of how real work gets done, like corrections and decisions, cannot."
+  },
+  {
+   "q": "What is the difference between COGS and R&D?",
+   "options": [
+    "They are two names for the same cost",
+    "COGS is research; R&D is hosting",
+    "COGS is the cost of serving one customer; R&D improves the product for all",
+    "R&D is only spent on salaries"
+   ],
+   "answer": 2,
+   "why": "Custom one-off work lands in COGS and hurts margins. Work that helps every customer is R&D and builds value."
+  },
+  {
+   "q": "Fernway Logistics asks for a special approval rule no other customer needs. Where should it go?",
+   "options": [
+    "Isolate it in configuration or an owned adapter",
+    "Fork the core product for Fernway",
+    "Hard-code it into the main codebase",
+    "Refuse because it is a one-off"
+   ],
+   "answer": 0,
+   "why": "Config or an adapter with a named owner isolates the one-off so it cannot break anything else."
+  },
+  {
+   "q": "Three customers now ask for the same export connector. What do you do?",
+   "options": [
+    "Build three separate custom versions",
+    "Tell them to write it themselves",
+    "Keep it as a one-off for the first customer only",
+    "Bring product the evidence of repetition and a draft design for the core"
+   ],
+   "answer": 3,
+   "why": "Repetition across customers is the signal to generalize. Bring evidence so it becomes a product feature."
+  },
+  {
+   "q": "Which pattern is the trap the lesson warns about?",
+   "options": [
+    "Using config for customer thresholds",
+    "Letting FDEs become the permanent support desk for a customer",
+    "Giving each adapter a named owner",
+    "Collecting user corrections as training data"
+   ],
+   "answer": 1,
+   "why": "An escalation crutch ties up FDEs forever and stops the customer from owning the system."
+  }
+ ],
+ "change": [
+  {
+   "q": "What is a champion in an adoption plan?",
+   "options": [
+    "The executive who signs the contract",
+    "A respected user who helps peers adopt the tool",
+    "The vendor's sales lead",
+    "The person who resists the change most"
+   ],
+   "answer": 1,
+   "why": "Champions are trusted colleagues who answer questions, share tips and bring feedback back to the team."
+  },
+  {
+   "q": "Which is a real adoption measure?",
+   "options": [
+    "Number of licenses bought",
+    "Number of logins in week one",
+    "Share of real tasks done in the new tool",
+    "Number of training invites sent"
+   ],
+   "answer": 2,
+   "why": "Adoption means real work moves to the tool. Logins and licenses can grow while work stays in the old spreadsheet."
+  },
+  {
+   "q": "Senior adjusters at Fairlane Mutual refuse the new tool. What do you do first?",
+   "options": [
+    "Ask what the tool breaks or slows for them",
+    "Escalate to their boss to force use",
+    "Remove the old system overnight",
+    "Ignore them and focus on new hires"
+   ],
+   "answer": 0,
+   "why": "Resistance is information. Their objections often reveal real gaps in the tool or workflow."
+  },
+  {
+   "q": "Go-live is in six weeks. When should most user training happen?",
+   "options": [
+    "All in one big session today",
+    "Only after launch if people ask",
+    "Never, the tool is intuitive",
+    "Close to go-live, on users' real tasks, with follow-up help"
+   ],
+   "answer": 3,
+   "why": "Training too early is forgotten. Short, task-based sessions near launch, plus support, stick better."
+  },
+  {
+   "q": "A dashboard shows 90% of Fairlane users logged in, but claims are still handled in the old spreadsheet. The mistake?",
+   "options": [
+    "Too few licenses",
+    "Counting logins as adoption instead of real work in the tool",
+    "The dashboard is too slow",
+    "Training started too late"
+   ],
+   "answer": 1,
+   "why": "Logins are not usage. Measure tasks completed in the new tool."
+  }
+ ],
+ "pm": [
+  {
+   "q": "What is a RAID log?",
+   "options": [
+    "A list of Risks, Assumptions, Issues and Dependencies",
+    "A record of server failures",
+    "A backup of the code repository",
+    "A list of team holidays"
+   ],
+   "answer": 0,
+   "why": "A RAID log tracks what could go wrong, what you assume, current problems and what you depend on, each with an owner."
+  },
+  {
+   "q": "In MoSCoW prioritisation, what does 'Must' mean?",
+   "options": [
+    "Nice to have if time allows",
+    "Agreed not to do this time",
+    "Without it the release fails or has no value",
+    "Important, but there is a workaround"
+   ],
+   "answer": 2,
+   "why": "Must items are essential. Should, Could and Won't come after, so the real Musts do not slip."
+  },
+  {
+   "q": "The Marlowe Retail project needs a firewall rule from their IT team to proceed. How do you handle it?",
+   "options": [
+    "Wait quietly until IT acts",
+    "Track it as a dependency with an owner and a due date",
+    "Work around security controls",
+    "Blame IT in the final report"
+   ],
+   "answer": 1,
+   "why": "Customer dependencies cause most FDE delays. Give them owners and dates like any other task and chase early."
+  },
+  {
+   "q": "Week 6 of 10: data access is two weeks late and the deadline is now at risk. What status do you report?",
+   "options": [
+    "Green, since you might catch up",
+    "Red only in the final week",
+    "No report until it is resolved",
+    "Amber now, with the cause, impact and what you need"
+   ],
+   "answer": 3,
+   "why": "Reporting amber early builds trust and gives time to act. Jumping from green to red late destroys it."
+  },
+  {
+   "q": "Which delivery habit is the trap?",
+   "options": [
+    "Ending each sprint with a demo",
+    "Writing user stories with acceptance criteria",
+    "Marking every request as a Must",
+    "Sending a weekly status report"
+   ],
+   "answer": 2,
+   "why": "If everything is a Must, nothing is. Prioritise honestly so the essentials ship."
+  }
+ ],
+ "roi": [
+  {
+   "q": "What is payback period?",
+   "options": [
+    "The time until total benefits cover the total cost",
+    "The length of the contract",
+    "The time to build the system",
+    "The time until the first invoice"
+   ],
+   "answer": 0,
+   "why": "Payback tells a CFO how long the money is at risk before the project pays for itself."
+  },
+  {
+   "q": "What does a sensitivity analysis show?",
+   "options": [
+    "Which users are most sensitive to change",
+    "How the result changes if key assumptions are wrong",
+    "The model's accuracy on sensitive data",
+    "How fast the system responds"
+   ],
+   "answer": 1,
+   "why": "Testing lower adoption or smaller savings shows whether the case still holds when you are wrong."
+  },
+  {
+   "q": "A tool saves Pembrook Claims staff 2,000 hours a year, but no one is let go or overtime cut. How do you present it?",
+   "options": [
+    "As 2,000 hours of cash saved at full salary",
+    "As zero value",
+    "As capacity freed up for other work, a softer benefit",
+    "As a headcount reduction"
+   ],
+   "answer": 2,
+   "why": "Saved hours are not saved cash unless spending drops. Call it capacity freed and say what it enables."
+  },
+  {
+   "q": "You are building Pembrook's business case. Which cost is most often forgotten?",
+   "options": [
+    "The first build sprint",
+    "The pilot team's kickoff meeting",
+    "The laptop used for coding",
+    "Running costs like LLM tokens, monitoring and maintainers"
+   ],
+   "answer": 3,
+   "why": "The full cost of an AI system includes ongoing running and people costs, not just the build."
+  },
+  {
+   "q": "A business case assumes all 500 agents use the tool fully from day one. What is wrong?",
+   "options": [
+    "Nothing, it keeps the math simple",
+    "Adoption ramps up over time, so benefits are overstated",
+    "500 agents is too few for AI",
+    "ROI cannot be calculated with agents"
+   ],
+   "answer": 1,
+   "why": "Real adoption grows gradually. Model a ramp and test lower adoption in the sensitivity analysis."
+  }
+ ],
+ "arc": [
+  {
+   "q": "What are the four phases of the course's 12-week engagement arc?",
+   "options": [
+    "Sell, build, bill, renew",
+    "Design, code, test, deploy",
+    "Scope, prototype, harden, hand over",
+    "Discover, fundraise, hire, launch"
+   ],
+   "answer": 2,
+   "why": "Scope (weeks 1-2), prototype (3-6), harden (7-10) and hand over (11-12), each with a clear output."
+  },
+  {
+   "q": "What does SMART stand for in success criteria?",
+   "options": [
+    "Specific, Measurable, Achievable, Relevant, Time-bound",
+    "Simple, Modern, Automated, Robust, Tested",
+    "Scalable, Managed, Accurate, Reliable, Trusted",
+    "Strategic, Minimal, Agile, Rapid, Technical"
+   ],
+   "answer": 0,
+   "why": "A SMART criterion names the team, metric, baseline, target, deadline and where the number comes from."
+  },
+  {
+   "q": "In week 1 at Glenmore Insurance, IT says data access will take a month. What do you do?",
+   "options": [
+    "Build the whole pilot on fake data and swap later",
+    "File the access request on day one and scope with samples meanwhile",
+    "Delay the project start by a month",
+    "Copy data from a personal laptop"
+   ],
+   "answer": 1,
+   "why": "Access is often the slowest part. Starting the request immediately keeps it from blocking the prototype."
+  },
+  {
+   "q": "At the end of hardening, the team wants to change how 'handling time' is defined. What is the risk?",
+   "options": [
+    "None, better definitions always help",
+    "It makes the dashboard load slower",
+    "It requires a new SOW",
+    "The comparison with the baseline becomes meaningless"
+   ],
+   "answer": 3,
+   "why": "Measure the result exactly as you measured the baseline. Changing definitions midway breaks the comparison and trust."
+  },
+  {
+   "q": "Which is the trap in a new engagement?",
+   "options": [
+    "Naming a baseline metric in discovery",
+    "Training a client Center of Excellence",
+    "Proposing 'let's build a RAG bot' before any baseline exists",
+    "Choosing one pilot team and workflow"
+   ],
+   "answer": 2,
+   "why": "Jumping to a solution before you know the pain and the baseline means you cannot prove value later."
+  }
+ ],
+ "pod": [
+  {
+   "q": "In the course's pod model, what does the Echo do?",
+   "options": [
+    "Writes most of the production code",
+    "Owns the customer relationship, scoping and admin",
+    "Runs the model training cluster",
+    "Reviews every architecture decision centrally"
+   ],
+   "answer": 1,
+   "why": "The Echo is the Deployment Strategist. The two Deltas are the engineers who write the code."
+  },
+  {
+   "q": "What is time-to-value (TTV)?",
+   "options": [
+    "Days from contract signature to the first measurable customer value",
+    "Time for a model to finish training",
+    "Hours an engineer spends per ticket",
+    "Time between two releases"
+   ],
+   "answer": 0,
+   "why": "TTV is the pod's headline metric because it captures both speed and real impact."
+  },
+  {
+   "q": "Your pod's engineers at Quarry Foods spend half their week on status calls and access tickets. What fixes this?",
+   "options": [
+    "Hire a third engineer to write reports",
+    "Cancel all customer meetings",
+    "The Echo absorbs admin so the Deltas stay on engineering",
+    "Ask engineers to work weekends"
+   ],
+   "answer": 2,
+   "why": "Protecting engineers from admin drag is a core Echo job. Unprotected, it can eat 40 to 60% of their time."
+  },
+  {
+   "q": "Leadership tells your pod: 'cut invoice exceptions by 30% this quarter, because renewal depends on it.' How should the pod work?",
+   "options": [
+    "Wait for a detailed plan from headquarters",
+    "Submit each decision to a central review board",
+    "Build every feature on the original roadmap",
+    "Choose its own approach to hit that intent"
+   ],
+   "answer": 3,
+   "why": "Mission-type tactics: leaders give the objective and the reason, and the team on site picks the method."
+  },
+  {
+   "q": "Which is a pod anti-pattern?",
+   "options": [
+    "Shipping small features and keeping those users adopt",
+    "Tracking TTV and adoption",
+    "Measuring the pod by features shipped instead of value delivered",
+    "Giving the pod a clear outcome and reason"
+   ],
+   "answer": 2,
+   "why": "Counting features rewards output, not impact. Value delivered and adoption are the measures that matter."
+  }
+ ],
+ "lastmile": [
+  {
+   "q": "What is last-mile onboarding?",
+   "options": [
+    "Sending the contract to the customer",
+    "Getting a working product to run in one customer's messy environment",
+    "Training the sales team",
+    "Writing marketing copy for launch"
+   ],
+   "answer": 1,
+   "why": "The name comes from delivery: the final stretch to the door is the hardest. Undocumented APIs, broken schemas and exceptions stall it."
+  },
+  {
+   "q": "What is a typed wrapper around an API?",
+   "options": [
+    "A small module that hides the API's quirks behind a clean, checked interface",
+    "A PDF describing the API",
+    "A firewall rule for API traffic",
+    "A new version of the customer's API"
+   ],
+   "answer": 0,
+   "why": "Only the wrapper knows about the messy API. The product gets predictable, validated objects."
+  },
+  {
+   "q": "Hollis Manufacturing's ERP API has no documentation. What do you do first?",
+   "options": [
+    "Guess the fields and ship to production",
+    "Ask for a sandbox, probe carefully and save real responses as test fixtures",
+    "Wait until their vendor writes documentation",
+    "Rewrite their ERP system"
+   ],
+   "answer": 1,
+   "why": "Learn by observation, save every response, and build a wrapper with tests against those fixtures."
+  },
+  {
+   "q": "At Hollis, 'orders over 50,000 go to Priya for approval' is an unwritten rule. How should you encode it?",
+   "options": [
+    "Fork the product code for Hollis",
+    "Ignore it until users complain",
+    "Ask Priya to approve everything",
+    "As a configurable rule outside the core code"
+   ],
+   "answer": 3,
+   "why": "Exceptions belong in rules or config the customer can see and change, not in a product fork."
+  },
+  {
+   "q": "Your team rebuilds the same CRM connector from scratch for each new customer. What is the fix?",
+   "options": [
+    "Assign a new engineer each time",
+    "Keep doing it; every customer is unique",
+    "Turn it into a reusable playbook template and push common parts into the product",
+    "Stop supporting that CRM"
+   ],
+   "answer": 2,
+   "why": "A fix used once is wasted. Playbooks and templates make the tenth onboarding faster than the first."
+  }
+ ],
+ "fluency": [
+  {
+   "q": "What is AI fluency?",
+   "options": [
+    "Knowing many prompt tricks",
+    "Holding several AI certificates",
+    "Using AI tools well on real work, with judgement and verification",
+    "Being able to train a model from scratch"
+   ],
+   "answer": 2,
+   "why": "Fluency is behaviour: knowing when to use AI, how to direct it and how to check what it produces."
+  },
+  {
+   "q": "Where should an FDE learning route start?",
+   "options": [
+    "From the requirements in real FDE job posts",
+    "From the longest course catalogue",
+    "From whatever is trending this week",
+    "From the most advanced math course"
+   ],
+   "answer": 0,
+   "why": "Start from the job: list recurring skills from job posts and mark each as strong, partial or missing."
+  },
+  {
+   "q": "You need to draft a customer-facing summary at work. Using the 4Ds, what comes first?",
+   "options": [
+    "Paste everything into the tool and send the result",
+    "Delegation: decide which parts AI does well and which you must own",
+    "Ask a friend to review it",
+    "Write it all by hand to be safe"
+   ],
+   "answer": 1,
+   "why": "Delegation comes first. Then you describe the task well, check the output with discernment and stay diligent about responsibility."
+  },
+  {
+   "q": "A colleague wants to paste Veridian Health patient notes into a free chatbot to summarise them. What do you say?",
+   "options": [
+    "Fine, as long as the summary is accurate",
+    "Only paste half the notes",
+    "Remove the dates first and then paste",
+    "Stop: use only tools your employer has approved for that data"
+   ],
+   "answer": 3,
+   "why": "Customer and patient data must stay in approved tools. Accuracy does not fix a data-handling violation."
+  },
+  {
+   "q": "Which is the common learning-path trap?",
+   "options": [
+    "Building a project to show each skill",
+    "Applying new skills to one work task a week",
+    "Collecting certificates with no project or work sample to show",
+    "Picking courses based on job posts"
+   ],
+   "answer": 2,
+   "why": "Certificates alone prove little. Hiring managers want to see working projects and results."
+  }
+ ],
+ "interview": [
+  {
+   "q": "Which pillar carries the most weight in the course's FDE interview blueprint?",
+   "options": [
+    "Business acumen",
+    "Customer scenario and communication",
+    "Algorithm puzzles",
+    "Deep technical understanding"
+   ],
+   "answer": 3,
+   "why": "Deep technical is 40%, practical implementation 30%, customer scenario 20% and business acumen 10%."
+  },
+  {
+   "q": "What does NRR (net revenue retention) measure?",
+   "options": [
+    "Revenue kept and grown from existing customers over a year",
+    "New customers signed per quarter",
+    "Profit per engineer",
+    "Time from contract to value"
+   ],
+   "answer": 0,
+   "why": "NRR includes expansion and losses from current customers. FDE work that drives adoption pushes it up."
+  },
+  {
+   "q": "In a scenario round, the 'customer' says: 'We want AI to improve our supply chain.' What do you do first?",
+   "options": [
+    "Propose an LLM agent architecture",
+    "Quote a price",
+    "Ask discovery questions to find the specific pain and metric",
+    "Explain how transformers work"
+   ],
+   "answer": 2,
+   "why": "The round scores discovery and scoping. Jumping to a solution is the most common failure."
+  },
+  {
+   "q": "An interviewer keeps asking 'why' about your vector search until you are unsure. How should you answer?",
+   "options": [
+    "Invent a confident answer",
+    "Explain what you know in layers and say clearly where your knowledge ends",
+    "Change the subject to your strongest project",
+    "Say the question is unfair"
+   ],
+   "answer": 1,
+   "why": "Follow-ups probe your edge. A layered answer and honest limits score better than a made-up detail."
+  },
+  {
+   "q": "Which is a classic FDE interview prep mistake?",
+   "options": [
+    "Mapping STAR stories to the four pillars",
+    "Practising a timed build",
+    "Preparing numbers from portfolio evals",
+    "Spending most prep time on algorithm puzzles"
+   ],
+   "answer": 3,
+   "why": "DSA is a small part of an FDE loop. Keep it warm, but spend most time in proportion to the pillar weights."
+  }
+ ],
+ "dsa": [
+  {
+   "q": "What is the average time to check if a key is in a Python dict?",
+   "options": [
+    "O(1)",
+    "O(n)",
+    "O(log n)",
+    "O(n squared)"
+   ],
+   "answer": 0,
+   "why": "Dicts and sets use hashing, so lookups are constant time on average. Checking 'x in list' is O(n)."
+  },
+  {
+   "q": "Which data structure is first in, first out?",
+   "options": [
+    "Stack",
+    "Heap",
+    "Queue",
+    "Hash map"
+   ],
+   "answer": 2,
+   "why": "A queue serves items in arrival order. A stack is last in, first out."
+  },
+  {
+   "q": "You must find the 10 slowest API calls out of 5 million log lines. Which approach fits best?",
+   "options": [
+    "Sort all 5 million lines, then take the top 10",
+    "Keep a heap of size 10 while scanning once",
+    "Compare every pair of lines",
+    "Use binary search on the unsorted log"
+   ],
+   "answer": 1,
+   "why": "A size-k heap gives top-k in O(n log k) with little memory, better than sorting everything."
+  },
+  {
+   "q": "You need the fewest hops between two services in a dependency graph. Which algorithm?",
+   "options": [
+    "Depth-first search",
+    "Binary search",
+    "Bubble sort",
+    "Breadth-first search"
+   ],
+   "answer": 3,
+   "why": "BFS explores level by level, so the first time it reaches the target is via the fewest edges in an unweighted graph."
+  },
+  {
+   "q": "A candidate's loop calls list.pop(0) on every step. What is the hidden problem?",
+   "options": [
+    "pop(0) is not valid Python",
+    "pop(0) is O(n), so the loop quietly becomes O(n squared)",
+    "It removes the last item instead",
+    "Lists cannot be used in loops"
+   ],
+   "answer": 1,
+   "why": "Removing from the front shifts every item. Use collections.deque with popleft() for O(1)."
+  }
+ ],
+ "builddrill": [
+  {
+   "q": "In a 90-minute build drill, what is the biggest block of time for?",
+   "options": [
+    "Choosing a framework",
+    "Writing the README",
+    "The core end-to-end path",
+    "Adding authentication"
+   ],
+   "answer": 2,
+   "why": "The suggested plan gives about 30 minutes to the core path. Setup should be fast because you practised it."
+  },
+  {
+   "q": "Which things should you usually cut or stub in a build drill?",
+   "options": [
+    "Authentication, databases and polish",
+    "Input validation and error handling",
+    "Tests and the README",
+    "The one working end-to-end path"
+   ],
+   "answer": 0,
+   "why": "Keep one working path, validation, basic errors, a couple of tests and a README. Stub the rest and say so."
+  },
+  {
+   "q": "Ten minutes into a live build for a claims API, you are unsure if inputs can be missing. What do you do?",
+   "options": [
+    "Guess and move on silently",
+    "Ask a quick clarifying question that changes what you build",
+    "Stop and write a long spec",
+    "Build both versions just in case"
+   ],
+   "answer": 1,
+   "why": "A few targeted clarifying questions show FDE instincts. Too many eat your time."
+  },
+  {
+   "q": "You have 10 minutes left and skipped retries and a database. How do you present this?",
+   "options": [
+    "Hide the shortcuts and hope nobody asks",
+    "Apologise for not finishing everything",
+    "Rush to add a database in the last minutes",
+    "Show it working, run the tests, and explain each trade-off and next step"
+   ],
+   "answer": 3,
+   "why": "Named trade-offs turn shortcuts into evidence of judgement: what you did, why, the risk and what comes next."
+  },
+  {
+   "q": "Which is the classic build-drill trap?",
+   "options": [
+    "Running the code early and often",
+    "Spending 40 minutes on setup and a fancy architecture",
+    "Writing two quick tests",
+    "Talking through your reasoning"
+   ],
+   "answer": 1,
+   "why": "Burning time on setup leaves nothing for the core path. Practise scaffolding until it takes under ten minutes."
+  }
+ ],
+ "casebank": [
+  {
+   "q": "In the case practice rubric, what does a strong 'first slice' look like?",
+   "options": [
+    "A full platform covering every department",
+    "Shippable in weeks, narrow, with a human in the loop",
+    "A slide deck with no build",
+    "A research study lasting a year"
+   ],
+   "answer": 1,
+   "why": "A narrow slice with human review proves value fast and keeps risk low."
+  },
+  {
+   "q": "Roughly how many clarifying questions does the bank suggest before committing to a plan?",
+   "options": [
+    "None; start with the solution",
+    "About fifteen, to be thorough",
+    "Three to five sharp ones that change the plan",
+    "One, then assume the rest"
+   ],
+   "answer": 2,
+   "why": "A few targeted questions show structure. Too many and you never commit to a plan."
+  },
+  {
+   "q": "Case: a vendor's AI assistant at Greyhaven Energy's call centre has 15% usage. Your first two weeks?",
+   "options": [
+    "Rebuild it with a newer model immediately",
+    "Add five new features to attract users",
+    "Recommend cancelling the contract",
+    "Learn what success meant, study usage by team and talk to agents who stopped"
+   ],
+   "answer": 3,
+   "why": "A rescue is about diagnosis and adoption first. Users who quit tell you the real blockers."
+  },
+  {
+   "q": "Mid-case, the interviewer challenges your assumption that labelled data exists. What is the best reaction?",
+   "options": [
+    "Thank them, adjust the plan and say what changes",
+    "Defend the assumption for several minutes",
+    "Ignore it and keep presenting",
+    "Say the case cannot be solved"
+   ],
+   "answer": 0,
+   "why": "Adapting to pushback is a strong signal. Defending a weak assumption at length is worse than changing course."
+  },
+  {
+   "q": "A candidate opens a permit-processing case by choosing an LLM and a vector database. What is the mistake?",
+   "options": [
+    "The LLM choice was too small",
+    "They should have picked a graph database",
+    "Jumping to architecture before knowing the user, workflow or metric",
+    "Nothing, speed is scored highly"
+   ],
+   "answer": 2,
+   "why": "Solutions before questions is the most costly mistake across cases."
+  }
+ ],
+ "sqlbank": [
+  {
+   "q": "What is the difference between WHERE and HAVING?",
+   "options": [
+    "They are identical",
+    "WHERE filters rows before grouping; HAVING filters groups after aggregation",
+    "HAVING filters rows before grouping; WHERE filters groups",
+    "WHERE works only on text columns"
+   ],
+   "answer": 1,
+   "why": "Use HAVING for conditions on aggregates like COUNT(*) > 5, since WHERE runs before grouping."
+  },
+  {
+   "q": "What does a LEFT JOIN return?",
+   "options": [
+    "All rows from the left table, with matches from the right or NULLs",
+    "Only rows that match in both tables",
+    "All rows from both tables",
+    "Only rows with no match"
+   ],
+   "answer": 0,
+   "why": "LEFT JOIN keeps every left row. Unmatched right-side columns come back as NULL."
+  },
+  {
+   "q": "Ridgeway Retail wants each customer's most recent order. Which approach fits best?",
+   "options": [
+    "SELECT DISTINCT on customer_id",
+    "GROUP BY order_id",
+    "ROW_NUMBER() partitioned by customer, ordered by date desc; keep row 1",
+    "A CROSS JOIN of customers and orders"
+   ],
+   "answer": 2,
+   "why": "A window function ranks orders within each customer, so you can keep the latest one with all its columns."
+  },
+  {
+   "q": "A revenue report doubled after you joined orders to a shipments table. What most likely happened?",
+   "options": [
+    "The database cached old results",
+    "SUM is broken for large tables",
+    "The WHERE clause was missing a semicolon",
+    "Orders with several shipments were repeated by the join, inflating the sum"
+   ],
+   "answer": 3,
+   "why": "A one-to-many join multiplies rows. Aggregate shipments first, or join at the right grain."
+  },
+  {
+   "q": "A query uses WHERE discount = NULL and returns no rows, though many discounts are missing. What is wrong?",
+   "options": [
+    "Comparing with = NULL is never true; use IS NULL",
+    "NULL values cannot be stored in numeric columns",
+    "The column must be renamed",
+    "WHERE cannot be used with numbers"
+   ],
+   "answer": 0,
+   "why": "NULL means unknown, so = NULL is not true for any row. Use IS NULL or IS NOT NULL."
+  }
+ ],
+ "career": [
+  {
+   "q": "What makes a resume bullet an 'impact bullet'?",
+   "options": [
+    "It lists your job duties clearly",
+    "It names every tool you used",
+    "It is under five words long",
+    "Action verb, what you built, and a measurable result"
+   ],
+   "answer": 3,
+   "why": "Duties say what your job was. Impact bullets say what changed because of you."
+  },
+  {
+   "q": "What does STAR stand for?",
+   "options": [
+    "Situation, Task, Action, Result",
+    "Skill, Tool, Approach, Review",
+    "Summary, Timeline, Achievement, Reference",
+    "Strategy, Tactic, Assessment, Response"
+   ],
+   "answer": 0,
+   "why": "Most of a STAR answer's time should go on Action, and the Result ideally has a number."
+  },
+  {
+   "q": "You search job boards only for 'Forward Deployed Engineer' and find few roles. What should you do?",
+   "options": [
+    "Wait for more FDE postings",
+    "Apply to unrelated roles",
+    "Also search Solutions Engineer, AI Engineer and Deployment Strategist",
+    "Only apply through cold emails"
+   ],
+   "answer": 2,
+   "why": "The same work appears under several titles. Read the description for customer-facing and deployment work."
+  },
+  {
+   "q": "A recruiter at Lumora Analytics asks your salary expectation in the first call. A good response?",
+   "options": [
+    "Give a low number to seem easy to hire",
+    "Say you want to understand the role and level first and ask the budgeted range",
+    "Refuse to continue the call",
+    "Give your current salary plus 5%"
+   ],
+   "answer": 1,
+   "why": "Negotiation starts with a written offer. Early on, learn the role and range before naming numbers."
+  },
+  {
+   "q": "Which resume bullet shows the trap the lesson warns about?",
+   "options": [
+    "'Cut report time 60% by building a dbt pipeline'",
+    "'Shipped a RAG pilot used by 40 agents'",
+    "'Reduced API errors from 5% to 0.5%'",
+    "'Responsible for data pipelines'"
+   ],
+   "answer": 3,
+   "why": "It lists a duty, not a result. Also never inflate numbers you cannot explain in an interview."
+  }
+ ],
+ "projecta": [
+  {
+   "q": "What does RAG (retrieval-augmented generation) do?",
+   "options": [
+    "Trains a new model on every question",
+    "Searches documents for relevant passages, then has the model answer using them",
+    "Generates random answers and ranks them",
+    "Compresses documents into one summary"
+   ],
+   "answer": 1,
+   "why": "Retrieval grounds the answer in real passages, which reduces made-up answers."
+  },
+  {
+   "q": "What makes Project A 'agentic'?",
+   "options": [
+    "It uses a GPU",
+    "It has a web interface",
+    "It checks its evidence and can rewrite a weak query and retry",
+    "It answers in several languages"
+   ],
+   "answer": 2,
+   "why": "A grader decides whether passages suffice. If not, the graph rewrites the query and searches again."
+  },
+  {
+   "q": "A user at Dunmore Legal sees passages from a document they are not allowed to read. What was missed?",
+   "options": [
+    "Filtering retrieval by the ACL stored with each chunk",
+    "Using a bigger generation model",
+    "Raising the similarity threshold",
+    "Adding more chunks per query"
+   ],
+   "answer": 0,
+   "why": "Each chunk stores the groups allowed to see it. Retrieval must filter by the user's groups before generation."
+  },
+  {
+   "q": "You demo Project A to a hiring manager. What makes it most convincing?",
+   "options": [
+    "A long list of libraries used",
+    "Screenshots of the code",
+    "A live chat with no measurements",
+    "Numbers: faithfulness, p95 latency and cost per 1,000 queries"
+   ],
+   "answer": 3,
+   "why": "Evaluations turn a demo into evidence. Have baseline vs. improved numbers ready."
+  },
+  {
+   "q": "Your agent keeps rewriting and retrying a query forever on hard questions. What is the missing safeguard?",
+   "options": [
+    "A larger embedding model",
+    "A retry cap on the rewrite loop",
+    "More documents in the index",
+    "A faster database"
+   ],
+   "answer": 1,
+   "why": "Without a cap, loops can run forever and burn cost. Cap retries and then answer with what you have or say you do not know."
+  }
+ ],
+ "projectb": [
+  {
+   "q": "Why does the Project B agent use search and read tools instead of pasting the repo into the prompt?",
+   "options": [
+    "Repos are too large, and pasting wastes tokens and buries useful lines",
+    "Tools make the agent slower on purpose",
+    "LLMs cannot read code",
+    "Pasting code is against licensing rules"
+   ],
+   "answer": 0,
+   "why": "grep_files then open_file brings in only the relevant lines, saving tokens and improving focus."
+  },
+  {
+   "q": "In LangGraph, what is a node?",
+   "options": [
+    "A GPU server",
+    "A saved prompt template",
+    "A Python function that reads state and returns the fields it changed",
+    "A test file in the repo"
+   ],
+   "answer": 2,
+   "why": "Nodes are steps, edges are allowed moves, and LangGraph merges each node's update into the shared state."
+  },
+  {
+   "q": "After each task, your agent should learn a lesson for next time. Which ACE role writes down what went well or wrong?",
+   "options": [
+    "Generator",
+    "Reflector",
+    "Retriever",
+    "Router"
+   ],
+   "answer": 1,
+   "why": "The Generator solves the task, the Reflector analyses the attempt, and the Curator updates the playbook."
+  },
+  {
+   "q": "After several rounds the playbook keeps getting shorter and loses specific tips. What is happening and what helps?",
+   "options": [
+    "The model is too small; switch models",
+    "Tests are failing; skip them",
+    "Nothing, shorter is always better",
+    "Context collapse; apply small incremental updates instead of full rewrites"
+   ],
+   "answer": 3,
+   "why": "Rewriting the whole context each round compresses it and drops hard-won detail. Add or edit individual bullets instead."
+  },
+  {
+   "q": "Which is a Project B design trap?",
+   "options": [
+    "Logging tokens per task",
+    "Recording pass rate per round",
+    "Letting the Generator and test loop retry with no cap",
+    "Using focused prompts per role"
+   ],
+   "answer": 2,
+   "why": "An uncapped fix-and-test loop can run forever and burn tokens. Set a retry limit."
+  }
+ ]
+}

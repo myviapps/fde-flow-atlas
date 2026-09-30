@@ -1,0 +1,230 @@
+{
+ "mlworkflow": [
+  {
+   "q": "What is the test set for?",
+   "options": [
+    "Choosing hyperparameters such as tree depth",
+    "Training the model's weights",
+    "Measuring final performance once, after all choices are made",
+    "Filling in missing values"
+   ],
+   "answer": 2,
+   "why": "The test set is opened once at the end. Using it to tune settings turns it into another validation set and makes the final number optimistic."
+  },
+  {
+   "q": "A model scores 0.99 on training data and 0.72 on validation data. What is the most likely diagnosis?",
+   "options": [
+    "Overfitting: it memorised noise in the training rows",
+    "Underfitting: the model is too simple",
+    "The validation set is too large",
+    "The learning rate is too small"
+   ],
+   "answer": 0,
+   "why": "A big gap with a high training score is the classic sign of overfitting. Underfitting shows low scores on both."
+  },
+  {
+   "q": "A customer says their fraud model has 98 percent accuracy. Fraud is 2 percent of transactions. What do you ask for first?",
+   "options": [
+    "A bigger training set",
+    "The baseline and recall on fraud cases",
+    "A switch to a neural network",
+    "The model's training time"
+   ],
+   "answer": 1,
+   "why": "Always predicting 'not fraud' also scores 98 percent. Compare with that baseline and check how much fraud is actually caught."
+  },
+  {
+   "q": "You are predicting next month's sales from three years of monthly data. How should you split?",
+   "options": [
+    "Random 80/20 split with shuffle",
+    "Stratify by product category",
+    "Use the whole dataset for training and test",
+    "Train on earlier months, validate and test on later months"
+   ],
+   "answer": 3,
+   "why": "The model will predict the future, so the split must too. A random split lets it learn from months after the ones it is scored on."
+  },
+  {
+   "q": "Spot the mistake: 'We scaled all rows with StandardScaler, then ran 5-fold cross-validation on the scaled data.'",
+   "options": [
+    "StandardScaler should be MinMaxScaler",
+    "5 folds is too few",
+    "The scaler learned from validation rows; it should sit inside a Pipeline",
+    "Cross-validation should never be used with scaling"
+   ],
+   "answer": 2,
+   "why": "Fitting any transformer before splitting leaks information from validation rows into training. Inside a Pipeline it is refitted on each training fold."
+  }
+ ],
+ "featureeng": [
+  {
+   "q": "What does one-hot encoding do to a column with values basic, pro and team?",
+   "options": [
+    "Replaces them with 1, 2 and 3",
+    "Makes three 0/1 columns, one per value",
+    "Replaces each value with its churn rate",
+    "Drops the column because models cannot use text"
+   ],
+   "answer": 1,
+   "why": "One-hot makes one indicator column per category. Numbering them 1, 2, 3 would invent an order that does not exist."
+  },
+  {
+   "q": "Why add a was_missing flag when you impute a column?",
+   "options": [
+    "Because the fact a value was missing can itself predict the outcome",
+    "Because scikit-learn requires it",
+    "To make the model train faster",
+    "To remove outliers"
+   ],
+   "answer": 0,
+   "why": "Missing values are often not random, for example applicants refusing to give income. The flag lets the model use that signal."
+  },
+  {
+   "q": "A store_id column has 3,000 distinct values. Which encoding is the most sensible first try?",
+   "options": [
+    "One-hot encoding with 3,000 columns",
+    "Numbering stores 1 to 3,000",
+    "Smoothed, cross-fitted target encoding",
+    "Dropping the column without testing it"
+   ],
+   "answer": 2,
+   "why": "Target encoding keeps one column and captures each store's typical outcome. Smoothing and cross fitting stop small stores and leakage from fooling it."
+  },
+  {
+   "q": "Your live scoring job crashes when a new plan type appears. What is the fix?",
+   "options": [
+    "Retrain the model every hour",
+    "Delete rows with new plans",
+    "Switch to a tree model",
+    "Use OneHotEncoder(handle_unknown=\"ignore\") inside the saved Pipeline"
+   ],
+   "answer": 3,
+   "why": "handle_unknown=\"ignore\" encodes an unseen category as all zeros instead of raising an error, and the Pipeline applies it the same way in training and live."
+  },
+  {
+   "q": "Spot the trap: a churn feature is 'days since last login', computed on the day the data was exported.",
+   "options": [
+    "It should be in weeks, not days",
+    "It includes time after the prediction moment, so it leaks the outcome",
+    "It needs one-hot encoding",
+    "It should be scaled with MinMaxScaler"
+   ],
+   "answer": 1,
+   "why": "Customers who already left have large values only because they left. Compute durations as of each prediction date."
+  }
+ ],
+ "linreg": [
+  {
+   "q": "In y = w * x + b, what does w mean?",
+   "options": [
+    "The prediction when x is zero",
+    "The average of all y values",
+    "The size of the error",
+    "How much y changes when x rises by one unit"
+   ],
+   "answer": 3,
+   "why": "w is the slope, the change in prediction per unit of x. b is the intercept, the prediction at x = 0."
+  },
+  {
+   "q": "What does least squares minimise?",
+   "options": [
+    "The sum of squared residuals",
+    "The largest single error",
+    "The number of wrong predictions",
+    "The sum of the weights"
+   ],
+   "answer": 0,
+   "why": "Least squares picks weights that make the total of squared gaps between actual and predicted values as small as possible."
+  },
+  {
+   "q": "Your gradient descent loss jumps up and down and then grows each step. What do you try first?",
+   "options": [
+    "Add more features",
+    "Increase the learning rate",
+    "Lower the learning rate and check features are scaled",
+    "Remove the intercept"
+   ],
+   "answer": 2,
+   "why": "Steps that are too big overshoot the bottom of the loss bowl. A smaller learning rate and scaled features make descent stable."
+  },
+  {
+   "q": "A courier asks how accurate your delivery time model is. Which number do you lead with?",
+   "options": [
+    "The training R squared",
+    "MAE in minutes on validation data",
+    "The number of coefficients",
+    "The learning rate"
+   ],
+   "answer": 1,
+   "why": "MAE is in the customer's units ('typically 11 minutes off') and measured on unseen data. Training R squared can flatter the model."
+  },
+  {
+   "q": "Spot the mistake: 'Removing one broken-down van trip changed our slope from 12.8 to 4.0 minutes per km, but it is only one row, so it cannot matter.'",
+   "options": [
+    "One extreme outlier can drag least squares a lot because errors are squared",
+    "The slope should not change at all",
+    "The model needs lasso instead",
+    "The intercept is wrong, not the slope"
+   ],
+   "answer": 0,
+   "why": "Squaring makes a huge error dominate the loss. Check residuals, investigate outliers, or use a robust model such as HuberRegressor."
+  }
+ ],
+ "logreg": [
+  {
+   "q": "What does the sigmoid function do in logistic regression?",
+   "options": [
+    "Picks the most important feature",
+    "Squashes any score into a probability between 0 and 1",
+    "Removes missing values",
+    "Chooses the threshold"
+   ],
+   "answer": 1,
+   "why": "The sigmoid maps the weighted sum z to 1 / (1 + e^-z), which is always between 0 and 1. z = 0 gives exactly 0.5."
+  },
+  {
+   "q": "The model gives 0.01 probability to a case that really was positive. What happens to log loss?",
+   "options": [
+    "Nothing, it only counts wrong classes",
+    "It drops, because the model was confident",
+    "It rises sharply, because the model was confidently wrong",
+    "It becomes exactly 0.5"
+   ],
+   "answer": 2,
+   "why": "Log loss for that row is -log(0.01), about 4.6. Confident mistakes are punished far more than hesitant ones."
+  },
+  {
+   "q": "A fraud team can review 70 cases a day. The model flags 45 at threshold 0.5. What do you suggest?",
+   "options": [
+    "Lower the threshold until about 70 cases are flagged",
+    "Keep 0.5, because it is the standard",
+    "Raise the threshold to improve precision",
+    "Retrain with more features before any change"
+   ],
+   "answer": 0,
+   "why": "The threshold is a business choice. Lowering it uses the team's capacity to catch more fraud, at some cost in precision."
+  },
+  {
+   "q": "A coefficient for 'support tickets' is 0.7. How do you explain it to a customer?",
+   "options": [
+    "Each ticket adds 0.7 percent churn probability",
+    "Each ticket causes churn 70 percent of the time",
+    "Tickets are 0.7 times as important as other features",
+    "Each extra ticket roughly doubles the odds of churn, other things equal"
+   ],
+   "answer": 3,
+   "why": "exp(0.7) is about 2.0, the odds ratio. It is an association in this data, not proof that tickets cause churn."
+  },
+  {
+   "q": "Spot the trap: churn is 2 percent, the model has 98 percent accuracy, so the team ships it at threshold 0.5.",
+   "options": [
+    "98 percent is too low for production",
+    "It may flag no churners at all; check recall and choose a lower threshold or class weights",
+    "Logistic regression cannot do binary problems",
+    "The threshold should be 0.98 to match accuracy"
+   ],
+   "answer": 1,
+   "why": "With rare positives, always saying no scores 98 percent. Check recall and precision, and use threshold tuning or class_weight=\"balanced\"."
+  }
+ ]
+}

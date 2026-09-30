@@ -1,0 +1,15 @@
+    <section class="cs" id="casestudy" aria-label="Case study" hidden>
+      <div class="cs-top"><span class="fmt">Illustrative case study</span><h3 id="cstitle"></h3></div>
+      <div class="co" id="cscompany"></div>
+      <div class="grid2">
+        <div><h4 class="lesson-h">Situation</h4><p id="cssituation"></p></div>
+        <div><h4 class="lesson-h">Problem</h4><p id="csproblem"></p></div>
+      </div>
+      <div><h4 class="lesson-h">What the FDE did</h4><ol class="appr" id="csapproach"></ol></div>
+      <div id="csartifact"></div>
+      <div class="outcome"><h4 class="lesson-h">Outcome</h4><p id="csoutcome"></p></div>
+      <div class="cols">
+        <div class="panel"><h4>Takeaways</h4><ul id="cslessons"></ul></div>
+        <div class="panel"><h4>Think about it</h4><ul id="csdiscuss"></ul></div>
+      </div>
+    </section>

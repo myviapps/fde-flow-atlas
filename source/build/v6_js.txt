@@ -1,0 +1,36 @@
+function curProfile(){return 'Me'}
+function profiles(){try{const p=JSON.parse(localStorage.getItem('fde-atlas-profiles')||'[]');return p.length?p:['Me']}catch(e){return ['Me']}}
+function pk(k){return k;}
+function progressStats(){const s=store(),q=qstore();let tot=0,done=0,topics=0,topicsDone=0,qTaken=0,qRight=0,qTot=0;
+  C.forEach(c=>{const m=microTopics(c);if(!m.length)return;topics++;let d=0;m.forEach((_,i)=>{tot++;if(s['mt:'+c.id+':'+i]){done++;d++}});if(d===m.length)topicsDone++;
+    if(QUIZ[c.id]){if(q[c.id]!=null){qTaken++;qRight+=q[c.id];qTot+=QUIZ[c.id].length}}});
+  return {tot,done,topics,topicsDone,qTaken,qRight,qTot,quizTopics:Object.keys(QUIZ).length};}
+function renderProgress(){document.querySelectorAll('.prog').forEach(box=>{const st=progressStats();const pct=st.tot?Math.round(100*st.done/st.tot):0;box.innerHTML='';
+  const h=document.createElement('h4');h.textContent='My progress (only you)';const p=document.createElement('div');p.className='pct';p.textContent=pct+'%';
+  const bar=document.createElement('div');bar.className='pbar';const fill=document.createElement('span');fill.style.width=pct+'%';bar.appendChild(fill);
+  const s=document.createElement('div');s.className='pstats';
+  s.textContent=st.done+' of '+st.tot+' micro topics, '+st.topicsDone+' of '+st.topics+' topics complete. Quizzes: '+st.qTaken+' of '+st.quizTopics+' taken'+(st.qTot?', '+Math.round(100*st.qRight/st.qTot)+'% correct.':'.');
+  const row=document.createElement('div');row.className='prow';
+  const rst=document.createElement('button');rst.type='button';rst.textContent='Reset';rst.onclick=()=>{if(rst.dataset.arm){saveStore({});qsave({});rst.dataset.arm='';renderProgress();if(!document.getElementById('syllabusView').hidden)renderSyllabus();else if(cur)load(cur.id,false);progMsg('Your progress was cleared.');}else{rst.dataset.arm='1';rst.textContent='Click again to clear';setTimeout(()=>{rst.dataset.arm='';rst.textContent='Reset'},4000);}};
+  const exp=document.createElement('button');exp.type='button';exp.textContent='Save to file';exp.onclick=exportProgress;
+  const imp=document.createElement('button');imp.type='button';imp.textContent='Open file';imp.onclick=importProgress;
+  row.append(rst);
+  const note=document.createElement('div');note.className='pnote';note.textContent='Saved automatically in this browser and loaded every time you open the page. Private to you.';
+  box.append(h,p,bar,s,row,note);});}
+function exportProgress(){const data={profile:curProfile(),exported:new Date().toISOString(),done:store(),quiz:qstore()};
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,1)],{type:'application/json'}));a.download='fde-atlas-progress.json';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);}
+function importProgress(){const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';inp.onchange=()=>{const f=inp.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{const d=JSON.parse(r.result);if(typeof d.done!=='object'||typeof d.quiz!=='object')throw 0;saveStore(Object.assign(store(),d.done));qsave(Object.assign(qstore(),d.quiz));renderProgress();if(cur)load(cur.id,false);progMsg('Progress loaded from file.');}catch(e){progMsg('That file is not an FDE Atlas progress backup.')}};r.readAsText(f);};inp.click();}
+function progMsg(t){document.querySelectorAll('.prog .pnote').forEach(n=>n.textContent=t);}
+function navState(off){const sh=document.querySelector('.shell');sh.classList.toggle('navoff',off);const b=document.getElementById('navtoggle');if(b){b.setAttribute('aria-expanded',String(!off));b.lastChild.textContent=off?'Show topics':'Hide topics';}try{localStorage.setItem('fde-atlas-navoff',off?'1':'')}catch(e){}}
+function initV6(){const bar=document.createElement('div');bar.className='topbar';const b=document.createElement('button');b.type='button';b.className='navtoggle';b.id='navtoggle';b.setAttribute('aria-controls','index');
+  b.innerHTML='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M2 8h12M2 13h12" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg><span></span>';
+  b.onclick=()=>navState(!document.querySelector('.shell').classList.contains('navoff'));bar.appendChild(b);const sh=document.querySelector('.shell');sh.parentNode.insertBefore(bar,sh);
+  let off=false;try{off=!!localStorage.getItem('fde-atlas-navoff')}catch(e){}navState(off);
+  const nav=document.getElementById('index');const pg=document.createElement('div');pg.className='prog';nav.insertBefore(pg,nav.firstChild);
+  const sh2=document.querySelector('#syllabusView .syl-head');if(sh2){const pg2=document.createElement('div');pg2.className='prog';sh2.appendChild(pg2);}
+  renderProgress();}
+function lblPos(a,b,mid,label,off){const dx=Math.abs(b[0]-a[0]),dy=Math.abs(b[1]-a[1]),lw=label.length*6.4;
+  if(dy<12&&lw+10>dx-W)return mid[1]>a[1]+1?[mid[0],Math.max(a[1],b[1])+H/2+15,'middle']:[mid[0],Math.min(a[1],b[1])-H/2-7,'middle'];
+  if(dx<12&&dy-H<24)return [mid[0]+8,mid[1]+4,'start'];
+  return [mid[0],mid[1]+off,'middle'];}

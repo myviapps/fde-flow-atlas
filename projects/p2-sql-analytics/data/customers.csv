@@ -1,0 +1,23 @@
+customer_id,name,email,signup_date,country
+1,Ben Silva,ben.silva1@example.com,2023-10-09,GB
+2,Dara Li,dara.li2@example.com,2023-04-15,JP
+3,Ivan Okafor,ivan.okafor3@example.com,2024-03-08,US
+4,Ana Okafor,ana.okafor4@example.com,2023-08-12,GB
+5,Ivan Silva,ivan.silva5@example.com,2023-07-23,JP
+6,Ivan Moreau,ivan.moreau6@example.com,2023-08-14,DE
+7,Juno Haddad,juno.haddad7@example.com,2023-01-07,GB
+8,Goran Kim,goran.kim8@example.com,2023-10-12,GB
+9,Dara Kim,dara.kim9@example.com,2023-04-15,US
+10,Goran Okafor,goran.okafor10@example.com,2024-01-03,IN
+11,Juno Haddad,juno.haddad11@example.com,2023-02-14,JP
+12,Hana Okafor,hana.okafor12@example.com,2024-01-23,US
+13,Ivan Haddad,ivan.haddad13@example.com,2024-01-06,BR
+14,Dara Okafor,dara.okafor14@example.com,2023-02-16,JP
+15,Dara Haddad,dara.haddad15@example.com,2023-03-23,GB
+16,Ben Moreau,ben.moreau16@example.com,2023-10-12,DE
+17,Fatima Li,fatima.li17@example.com,2024-01-15,IN
+18,Dara Haddad,dara.haddad18@example.com,2023-03-15,BR
+19,Chen Novak,chen.novak19@example.com,2023-06-17,DE
+20,Goran Haddad,goran.haddad20@example.com,2023-08-13,JP
+21,Rosa Diaz,rosa.diaz@example.com,2024-03-05,US
+30,Ivy Nash,ivy.nash@example.com,2024-06-05,GB

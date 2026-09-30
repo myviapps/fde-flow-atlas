@@ -1,0 +1,659 @@
+{
+ "exec": {
+  "plain": "Executive communication is how you talk to senior customer leaders, such as a CIO (Chief Information Officer, the person responsible for a company's technology), when the stakes are high. Executives have little time and care about outcomes: money, risk, customers and deadlines. Good executive communication means giving the answer first, translating technical numbers into business effects, and asking for one clear decision. It also covers calming an escalation, which is when an unhappy customer takes a problem over your head to someone more senior.",
+  "analogy": "Think of a hospital doctor talking to a worried family. The surgeon does the technical work, but the family needs a short, honest update: how the patient is, what happens next, and when they will hear again. Nobody wants a lecture on suturing technique while they are scared.",
+  "why": "FDEs sit inside the customer, so when something breaks, the executive often hears about it before your own company does. Picture an insurer's claims assistant slowing down on a Tuesday morning and the CIO emailing your sponsor that it is 'completely broken' and the renewal is in doubt. How you handle the next few hours, technically and in writing, decides whether the account grows or shrinks.",
+  "subtopics": [
+   {
+    "title": "Two tracks during an incident",
+    "body": "An incident is any event where the system stops doing what users need. During an incident you run two tracks in parallel. Track one is technical: find the cause and restore service. Track two is human: keep the people affected informed and calm.\n\nNew FDEs often drop track two because the technical problem feels more urgent. The result is silence, and silence makes executives assume the worst. A short message every hour or so, even when nothing has changed, keeps trust intact while you debug.\n\nIf your pod has two people available, split the tracks between them. One person debugs. The other writes updates, fields calls and keeps a timeline. When you are alone, set a timer so you remember to send updates.",
+    "example": "An insurer's claims assistant slows from 2 seconds to 8 seconds per answer at 10:00. You post a holding note to the CIO at 10:20, start pulling logs, and find at 11:05 that a vendor API is rate limiting your calls (refusing requests because you sent too many). You switch to cached results as a workaround at 13:40. Between 10:20 and 13:40 the CIO received three short updates, so the escalation never grew.",
+    "code": "INCIDENT TIMELINE  (keep this open in a shared doc)\ntime   track   entry\n10:00  tech    p95 latency alert fires: 8.1s (normal 2s)\n10:20  people  Holding note to CIO + sponsor. Next update 11:30.\n10:45  tech    Scope: all regions, started 09:58, no deploy today\n11:05  tech    Logs show HTTP 429 from policy-lookup vendor API\n11:30  people  Update 2: cause found, workaround in progress, ETA 14:00\n13:40  tech    Cached policy lookups enabled, p95 back to 1.3s\n13:50  people  Update 3: resolved, full write-up by Wed 12:00\n# Rule: every 'people' entry states the next update time.",
+    "lang": "Text"
+   },
+   {
+    "title": "Listen and restate before you explain",
+    "body": "Active listening means showing the other person you understood them before you respond. The simplest technique is to restate their problem in their own business terms: 'So the claims team is falling behind and customers are waiting longer for answers. That is the priority.'\n\nRestating does two things. It lowers the emotional temperature, because the executive feels heard. It also checks that you are solving the right problem. Sometimes the executive's real worry turns out to be a board meeting on Thursday, which changes what you should prioritise.\n\nAfter restating, say three things: what you are doing now, when they will hear from you next, and who to call in the meantime. Avoid technical explanations at this stage. You do not know the cause yet, and guessing out loud creates promises you may have to take back.",
+    "example": "A hospital's COO calls because nurses cannot see tomorrow's shift schedule in the new AI scheduling tool. You say: 'Nurses on three wards cannot see tomorrow's shifts, and that risks gaps in cover tonight. I am looking at it now with our engineer, and I will call you back by 15:00 with either a fix or a manual fallback.' You have not explained anything technical, and the COO knows exactly what happens next.",
+    "code": "Subject: Scheduling tool - looking at it now\n\nHi Priya,\n\nThank you for flagging this quickly. My understanding: nurses on\nWards 4, 7 and 9 cannot see tomorrow's shifts, which risks gaps\nin cover tonight.\n\nWhat we are doing now: checking the data sync from your rostering\nsystem, which is the most likely source.\nNext update: by 15:00 today, with a fix or a manual fallback.\nIf urgent before then: call me on 07700 900123.\n\nSam (FDE)",
+    "lang": "Text"
+   },
+   {
+    "title": "Translate metrics into business outcomes",
+    "body": "Engineers measure things like latency (how long a request takes), recall (the share of relevant documents a search finds) and uptime. Executives measure throughput (work done per hour), cost, risk and customer experience. Your job is to convert one into the other.\n\nThe method is a chain: technical metric, then effect on a person's work, then effect on money or risk. For example, faster answers mean an agent handles more claims per hour, which means fewer overtime hours or a smaller backlog. Write each link down with a real number from the customer's own data.\n\nBe honest about uncertainty. Use 'about' and give the assumption. An executive will forgive a rough estimate with a stated assumption. They will not forgive a precise-looking number that turns out to be invented.",
+    "example": "At the insurer, 40 claims agents work 7 productive hours a day. Before the fix, each claim took 12 minutes, partly spent waiting on the assistant. After the fix it takes 10 minutes. That is 5 claims per agent-hour rising to 6, a 20% uplift. At the same claim volume, the team saves about 47 agent-hours a day, worth roughly 2,100 pounds a day at a loaded cost of 45 pounds per hour.",
+    "code": "# Turn a latency improvement into a business number\nagents = 40\nhours_per_day = 7\nmin_per_claim_before = 12.0\nmin_per_claim_after = 10.0      # measured after the latency fix\ncost_per_hour_gbp = 45          # loaded cost of one agent-hour\n\nrate_before = 60 / min_per_claim_before   # claims per agent-hour\nrate_after = 60 / min_per_claim_after\nuplift = rate_after / rate_before - 1\n\ndaily_claims = agents * hours_per_day * rate_before   # current volume\nminutes_saved = daily_claims * (min_per_claim_before - min_per_claim_after)\nhours_saved = minutes_saved / 60\n\nprint(f\"Throughput uplift: {uplift:.0%}\")                  # 20%\nprint(f\"Agent-hours saved per day: {hours_saved:.0f}\")     # 47\nprint(f\"Value per day: GBP {hours_saved * cost_per_hour_gbp:,.0f}\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Answer first: pyramid principle and SCQA",
+    "body": "The pyramid principle, popularised by Barbara Minto, says to start with your main conclusion and then give the supporting points. Executives often read only the first two lines of a message, so those lines must carry the answer.\n\nSCQA is a way to order the rest: Situation (what was happening), Complication (what went wrong), Question (what the reader wants to know) and Answer. In an incident update you usually put the Answer at the very top, then Situation, Complication, cause, prevention, and your ask.\n\nKeep it to five to seven lines. Use plain words and numbers. End with one specific request, such as a 30-minute meeting with a named person, so the executive has something concrete to do.",
+    "example": "The CIO receives this at 13:50: 'Fixed at 13:40, no data lost.' The next lines explain that about 1,100 claims took three times longer between 10:00 and 13:40, that a vendor began rate limiting, that caching and an alert are now in place, and that you would like 30 minutes with their vendor manager. The CIO forwards it to the board unchanged, which is the sign of a good update.",
+    "code": "ANSWER-FIRST UPDATE TEMPLATE\nAnswer:       <status in one line: fixed / workaround / still open>\nSituation:    <what users were doing, when, which team>\nComplication: <impact in business units: claims, patients, orders>\nCause:        <one sentence, or \"under investigation, update at HH:MM\">\nPrevention:   <test, alert or change you have made or will make>\nAsk:          <one decision or meeting you need, with a name>\n\nChecks before sending:\n[ ] First line makes sense if it is the only line read\n[ ] No acronyms the reader would not use themselves\n[ ] Every number has a unit and a time window",
+    "lang": "Text"
+   },
+   {
+    "title": "Storytelling in reviews and presentations",
+    "body": "Beyond incidents, you will present progress to executives in steering meetings and quarterly business reviews (QBRs), which are regular meetings where a vendor shows a customer the value delivered. The same answer-first rule applies at the level of a whole presentation.\n\nA reliable structure has three parts. First, the result against the agreed success metric. Second, the story of how you got there, including one real user quote. Third, what comes next and the decision you need. Put the detail in an appendix so people can find it if they ask.\n\nRehearse the first 60 seconds. If the meeting is cut short, the executive should still leave knowing whether the project is working and what you need from them.",
+    "example": "For a retailer's demand forecasting pilot, your first slide says: 'Forecast error for fresh produce fell from 31% to 22% in 6 stores, cutting waste by an estimated 9 tonnes a month.' Slide two shows the store manager who now orders from the forecast. Slide three asks the COO to approve rollout to 40 more stores.",
+    "code": "QBR OUTLINE (3 slides + appendix)\n1. RESULT      Metric vs. target, baseline -> now, one sentence of impact\n2. STORY       What changed for users; one quote; one chart\n3. NEXT        Plan for next quarter; risks; THE DECISION WE NEED\nAppendix       Method, data sources, detailed metrics, open issues\n\nRehearsal rule: say slide 1 aloud in under 60 seconds.",
+    "lang": "Text"
+   },
+   {
+    "title": "Negotiating scope with trades",
+    "body": "Negotiation in FDE work is mostly about scope: what gets built, by when, at what quality. A useful model is a triangle of scope, time and quality. If a customer adds scope, something else must move. Protect quality, because a buggy release damages trust more than a later one.\n\nAnchor every conversation on the success metric agreed at the start. Ask: 'Does this new feature move the metric?' If it does, offer a trade, such as moving a lower-value item to phase 2. If it does not, put it on a backlog list that the sponsor has approved.\n\nLet the executive sponsor choose between the options you present, and confirm their choice in writing. That way scope decisions are owned by the customer and cannot later turn into 'you promised'.",
+    "example": "Two weeks before go-live, a bank's operations head asks for three extra reports. You check each against the agreed metric (reduce manual reconciliation hours by 50%). One report helps the metric, two do not. You offer: add the useful report and move go-live by three days, or keep the date and deliver it in phase 2. The sponsor picks phase 2 and you confirm by email the same day.",
+    "code": "Subject: Go-live scope - decision needed by Thursday\n\nHi Dana,\n\nYou asked for three new reports. Against our target (cut manual\nreconciliation hours by 50%):\n  - Exceptions report: helps the target\n  - Branch summary, Audit export: do not affect the target\n\nOptions:\n  A) Add Exceptions report, go-live moves 14 Mar -> 17 Mar\n  B) Keep 14 Mar, deliver Exceptions report in phase 2 (by 4 Apr)\nBranch summary and Audit export go on the phase 2 list either way.\n\nWhich do you prefer? I will update the plan the same day.",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "CIO",
+    "Chief Information Officer, the executive responsible for a company's technology systems."
+   ],
+   [
+    "Escalation",
+    "When a problem is raised to a more senior person because the people handling it could not resolve it."
+   ],
+   [
+    "Incident",
+    "An event where a system stops working as users need, such as an outage or severe slowdown."
+   ],
+   [
+    "p95 latency",
+    "The response time that 95% of requests are faster than, a common way to describe slow-tail performance."
+   ],
+   [
+    "Workaround",
+    "A temporary fix that restores service while the real cause is investigated."
+   ],
+   [
+    "Root cause",
+    "The underlying reason a problem happened, as opposed to its visible symptom."
+   ],
+   [
+    "Pyramid principle",
+    "A writing method that states the main conclusion first and supporting points after."
+   ],
+   [
+    "SCQA",
+    "Situation, Complication, Question, Answer: a structure for ordering a short business story."
+   ],
+   [
+    "QBR",
+    "Quarterly business review, a regular meeting to show a customer the value delivered and agree next steps."
+   ],
+   [
+    "Executive sponsor",
+    "The senior customer leader who owns the project's success and makes final scope decisions."
+   ]
+  ],
+  "practice": [
+   "Take a technical result from a project you know (for example, 'query time dropped from 3s to 0.4s') and write the three-link chain from metric to user effect to business value, with your stated assumptions.",
+   "Rewrite a long status email you once sent (or a made-up one) into the six-line answer-first template. Ask a non-technical friend to read only the first line and tell you what happened.",
+   "Role-play a 10-minute escalation call with a friend playing an angry CIO whose dashboard is showing wrong numbers. Record it, then list every moment you explained technology before restating their impact."
+  ]
+ },
+ "moat": {
+  "plain": "Product judgment is deciding where a piece of work should live: in one customer's setup, or in the core product that every customer uses. A moat is a lasting advantage that makes it hard for competitors to take your customers, named after the water-filled ditch around a castle. In AI products, one of the strongest moats is proprietary process data: records of how real work gets done, such as the corrections users make, which you can use to improve your models. This concept is about making good 'build it where?' calls and turning deployments into that kind of advantage.",
+  "analogy": "A restaurant chef gets a request for a special dish. If one diner asks once, the chef makes it as a one-off without changing the menu. If many diners ask for it, it goes on the menu. Over the years the kitchen also learns which dishes people send back and why, and that knowledge is something a new restaurant across the street cannot copy.",
+  "why": "Every FDE hears 'can you just build this for us?' A logistics customer might want a special approval step for its EMEA team. If you fork the product for each such request, your company ends up maintaining dozens of slightly different versions, and the FDE team turns into an expensive consulting shop. If you route requests well, the field work becomes cheap product research and the product gets harder to compete with.",
+  "subtopics": [
+   {
+    "title": "The build-it-where decision",
+    "body": "When a customer asks for something new, you have three places to put it. Configuration means settings the product already supports, such as a threshold or a list of approvers. An adapter is a small piece of code at the edge that connects the product to one customer's systems without changing the product itself. Core means the shared product code that every customer runs.\n\nThe default is configuration first, then an adapter, and core only with evidence. Evidence usually means two or more customers need something similar, and a general version fits where the product is heading.\n\nWrite down your reasoning each time. A short note ('config, because only Acme needs it; revisit if a second customer asks') makes it easy to spot repetition later.",
+    "example": "A freight company asks for invoices over 10,000 euros from its EMEA team to need a second approver. The product already supports approval rules, so this is configuration. A month later a retailer asks the same thing, and a third customer asks for approval chains by region. Now there is repetition, so you bring the product team a proposal for regional approval chains in core.",
+    "code": "def where_should_it_live(req):\n    \"\"\"Rough triage for a customer request.\"\"\"\n    if req[\"supported_by_existing_settings\"]:\n        return \"config\"                     # no code change at all\n    if req[\"customers_asking\"] >= 2 and req[\"fits_roadmap\"]:\n        return \"core (propose to product with evidence)\"\n    return \"adapter (own it, test it, log it)\"\n\nrequests = [\n    {\"name\": \"EMEA 2nd approver\", \"supported_by_existing_settings\": True,\n     \"customers_asking\": 1, \"fits_roadmap\": True},\n    {\"name\": \"Regional approval chains\", \"supported_by_existing_settings\": False,\n     \"customers_asking\": 3, \"fits_roadmap\": True},\n    {\"name\": \"Legacy AS/400 export\", \"supported_by_existing_settings\": False,\n     \"customers_asking\": 1, \"fits_roadmap\": False},\n]\nfor r in requests:\n    print(f\"{r['name']:<26} -> {where_should_it_live(r)}\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Isolating one-offs with config and adapters",
+    "body": "Isolation means a customer-specific change cannot break anything else. Configuration does this naturally. Adapters do it by sitting between the customer's system and a clean interface the product already expects.\n\nA good adapter has an owner (a named person), tests, and a record in a registry so people know it exists. Without those three things, adapters quietly become tech debt: code that costs more to maintain over time than it saved.\n\nNever copy the core code into a customer branch to change one line. That is called forking, and it means every future product update has to be merged by hand into that customer's copy.",
+    "example": "A hospital exports patient appointments as a fixed-width text file instead of JSON. Rather than teaching the core scheduler to read that format, you write a 40-line adapter that converts the file into the standard appointment objects. The scheduler never knows the hospital is different.",
+    "code": "# tenants/stmarys.yaml  - configuration, no code\ntenant: stmarys\napprovals:\n  second_approver_over_eur: 10000\n  approver_group: finance-emea\ningest:\n  adapter: fixed_width_appointments   # registered adapter name\n  owner: sam.k@vendor.example\n  tests: tests/adapters/test_fixed_width.py\n\n# adapters/fixed_width_appointments.py\n# def parse(line: str) -> Appointment:\n#     return Appointment(\n#         patient_id=line[0:10].strip(),\n#         start=datetime.strptime(line[10:22], \"%Y%m%d%H%M\"),\n#         clinic=line[22:30].strip(),\n#     )",
+    "lang": "YAML"
+   },
+   {
+    "title": "The dark side: sprawl, crutches, bottlenecks",
+    "body": "Custom-solution sprawl is what happens when one-off changes pile up without owners. Each deployment becomes unique, upgrades get slow, and new FDEs need weeks to understand an account.\n\nTwo related failure modes are common. An escalation crutch is when customers and internal teams send every problem to the FDE instead of using normal support, so the FDE stops building. A discovery bottleneck is when only one person understands an account, so everything waits for them.\n\nThe cure is visibility. Keep a registry of every customisation with its owner, tests and last change date, and review it monthly. Track how many tickets go to FDEs directly versus through support.",
+    "example": "Your team reviews its customisation registry and finds 14 adapters across 9 customers. Three have no owner because the engineer left, and two have no tests. You assign owners, add tests, and notice that four adapters all parse the same ERP export. That becomes a product proposal for a standard connector.",
+    "code": "-- Find customisations that are turning into sprawl\nSELECT customer,\n       name,\n       owner,\n       has_tests,\n       last_changed,\n       CURRENT_DATE - last_changed AS days_since_change\nFROM customisations\nWHERE owner IS NULL\n   OR has_tests = FALSE\n   OR last_changed < CURRENT_DATE - INTERVAL '180 days'\nORDER BY customer, name;\n\n-- Spot repetition: the same source system handled more than once\nSELECT source_system, COUNT(DISTINCT customer) AS customers\nFROM customisations\nGROUP BY source_system\nHAVING COUNT(DISTINCT customer) >= 2;",
+    "lang": "SQL"
+   },
+   {
+    "title": "R&D versus COGS",
+    "body": "COGS (cost of goods sold) is the cost of delivering the product to a specific customer, such as hosting and people time spent on that account. R&D (research and development) is spending that improves the product for everyone. Investors and finance teams treat them very differently.\n\nBespoke FDE work for one customer is COGS. It lowers gross margin, which is revenue minus COGS, divided by revenue. Work that becomes a shared feature is closer to R&D, because it benefits every future customer.\n\nThis is why FDE organisations describe themselves as an R&D engine. Field work is paid discovery: the customer pays while you learn what the product should do. The trade only works if the learning actually flows back into the product.",
+    "example": "A customer pays 400,000 dollars a year. Hosting costs 60,000 and FDE time spent on bespoke work costs 180,000, so gross margin is 40%. In year two, half the bespoke work has become product features, FDE cost on the account drops to 90,000, and margin rises to about 62%. The next customer gets those features with no bespoke cost at all.",
+    "code": "def gross_margin(revenue, hosting, fde_bespoke_cost):\n    cogs = hosting + fde_bespoke_cost\n    return (revenue - cogs) / revenue\n\nrevenue = 400_000\nyear1 = gross_margin(revenue, hosting=60_000, fde_bespoke_cost=180_000)\nyear2 = gross_margin(revenue, hosting=60_000, fde_bespoke_cost=90_000)\n\nprint(f\"Year 1 gross margin: {year1:.0%}\")   # 40%\nprint(f\"Year 2 gross margin: {year2:.0%}\")   # 62%\n# The 90k of work moved into the product is now R&D:\n# every future customer benefits without paying for it again.",
+    "lang": "Python"
+   },
+   {
+    "title": "Process data as a moat",
+    "body": "Features are easy to copy. A competitor can watch a demo and build something similar in months. What they cannot copy is data they do not have.\n\nProcess data is the record of how work actually happens inside customers: which suggestions users accepted, which they corrected, what the correct answer turned out to be, and which exceptions came up. It is created as a side effect of people using your product in real workflows.\n\nTo make it useful, capture it deliberately. Log each model suggestion together with what the user did and the final outcome, in a consistent format. Respect the contract: customers must agree to how their data is used, often in anonymised or aggregated form.",
+    "example": "An insurance claims product suggests a damage category for each claim. When an adjuster changes 'minor collision' to 'total loss', the product logs the original suggestion, the correction, and the final payout. After a year across 12 insurers, the vendor has hundreds of thousands of expert-labelled corrections that no new entrant can buy.",
+    "code": "{\n  \"event\": \"suggestion_corrected\",\n  \"tenant\": \"insurer_07\",\n  \"timestamp\": \"2026-03-14T10:22:05Z\",\n  \"model_version\": \"damage-cls-2026-02\",\n  \"input_ref\": \"claim/88213/photos\",\n  \"suggested\": {\"label\": \"minor_collision\", \"confidence\": 0.71},\n  \"final\": {\"label\": \"total_loss\", \"set_by_role\": \"senior_adjuster\"},\n  \"outcome\": {\"payout_band\": \"high\", \"reopened\": false},\n  \"consent_scope\": \"aggregate_model_training\"\n}",
+    "lang": "JSON"
+   },
+   {
+    "title": "The MLOps feedback loop",
+    "body": "MLOps (machine learning operations) is the set of practices for training, evaluating, deploying and monitoring models in production. The feedback loop connects process data to better models: collect corrections, turn them into labelled training data, retrain, evaluate against a fixed test set, and deploy only if the new model is better.\n\nThe evaluation gate is the important part. A fixed holdout set (examples never used for training) lets you compare old and new models fairly. Without it, a retrain can make things worse and nobody notices.\n\nEach turn of the loop makes the product better for every customer, which attracts more customers, which creates more data. That self-reinforcing cycle is the moat.",
+    "example": "Each month the claims vendor retrains its damage classifier on new corrections. In March the candidate model scores 0.89 accuracy on the holdout set against the current 0.86, with no drop on any insurer's subset, so it is promoted. In April the candidate scores lower on motorcycle claims, so it is held back and the team investigates.",
+    "code": "def promotion_gate(current, candidate, min_gain=0.01, max_segment_drop=0.02):\n    \"\"\"Decide whether a retrained model replaces the live one.\"\"\"\n    if candidate[\"overall\"] - current[\"overall\"] < min_gain:\n        return False, \"not enough overall gain\"\n    for seg, score in candidate[\"segments\"].items():\n        if current[\"segments\"][seg] - score > max_segment_drop:\n            return False, f\"regression on segment {seg}\"\n    return True, \"promote\"\n\ncurrent = {\"overall\": 0.86, \"segments\": {\"car\": 0.88, \"motorcycle\": 0.81}}\nmarch = {\"overall\": 0.89, \"segments\": {\"car\": 0.91, \"motorcycle\": 0.83}}\napril = {\"overall\": 0.90, \"segments\": {\"car\": 0.93, \"motorcycle\": 0.77}}\n\nprint(promotion_gate(current, march))   # (True, 'promote')\nprint(promotion_gate(current, april))   # (False, 'regression on segment motorcycle')",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Configuration",
+    "Settings the product already supports, changed without writing new code."
+   ],
+   [
+    "Adapter",
+    "A small piece of code at the edge that converts one customer's system into the interface the product expects."
+   ],
+   [
+    "Fork",
+    "A copy of the codebase changed for one customer, which then has to be kept in sync by hand."
+   ],
+   [
+    "Tech debt",
+    "Shortcuts in code that make future changes slower or riskier until they are cleaned up."
+   ],
+   [
+    "Custom-solution sprawl",
+    "The build-up of unowned, one-off customer changes that make every deployment unique."
+   ],
+   [
+    "Escalation crutch",
+    "When every problem is routed to the FDE instead of the product or support team."
+   ],
+   [
+    "COGS",
+    "Cost of goods sold: the cost of delivering the product to a specific customer."
+   ],
+   [
+    "Gross margin",
+    "Revenue minus COGS, divided by revenue; how much of each dollar is left after delivery costs."
+   ],
+   [
+    "Process data",
+    "Records of how real work happens in the product, such as user corrections and outcomes."
+   ],
+   [
+    "MLOps",
+    "Practices for training, evaluating, deploying and monitoring machine learning models in production."
+   ]
+  ],
+  "practice": [
+   "List five feature requests you have heard (from work, school projects or a product you use). Classify each as config, adapter or core using the triage function, and write one sentence of reasoning for each.",
+   "Design a customisation registry table (columns, types) and write the SQL to find entries with no owner and source systems handled for two or more customers. Load 10 fake rows and run it.",
+   "Pick a product you know (for example, an email spam filter). Write a one-page note describing what process data it could capture, what event schema you would log, and the promotion gate you would use before shipping a retrained model."
+  ]
+ },
+ "arc": {
+  "plain": "The engagement arc is the standard shape of an FDE project with one customer, from first meeting to handover. The course uses a 12-week, four-phase version: scope (weeks 1-2), prototype (weeks 3-6), harden (weeks 7-10) and hand over (weeks 11-12). Each phase has a clear output, such as agreed success criteria at the end of scoping or a trained customer team at the end of handover. Following the arc keeps a project from drifting and gives everyone a shared calendar.",
+  "analogy": "It is like renovating a kitchen. First you measure the room and agree what 'done' looks like. Then you mock up the layout with the family who will cook there. Then the electrician and plumber make it safe and up to code. Finally you hand over the keys, the warranty papers and a note on how the new oven works.",
+  "why": "Customers buy outcomes on a deadline. An FDE sent to a regional insurer that wants 'AI for claims' needs a plan that turns that vague wish into a measured result in about a quarter. Without the arc, projects stay stuck as demos that never go live, or they go live with nobody on the customer side able to run them.",
+  "subtopics": [
+   {
+    "title": "Weeks 1-2: find the pain and the baseline",
+    "body": "Scoping starts with discovery: interviewing the people who do the work and the leaders who pay for it. You map the workflow step by step, note which systems hold the data, and learn who makes decisions.\n\nThe most important output of discovery is a baseline, which is a measured number describing how things work today. Without a baseline you cannot prove improvement later. Get it from the customer's own systems where possible, because they will trust their own data.\n\nStart data access requests on day one. In large companies, getting access to a database can take weeks, and it often becomes the critical path (the chain of tasks that sets the earliest finish date).",
+    "example": "At a motor insurer, handlers say triage is slow. You pull timestamps from the claims system and find the median time from 'claim received' to 'claim triaged' is 4.1 hours over the last 90 days, and 6.8 hours on Mondays. That number becomes the baseline for the whole engagement.",
+    "code": "-- Baseline: median and p90 time to triage, last 90 days (PostgreSQL)\nSELECT\n  team,\n  COUNT(*) AS claims,\n  percentile_cont(0.5) WITHIN GROUP (\n    ORDER BY EXTRACT(EPOCH FROM triaged_at - received_at) / 3600\n  ) AS median_hours,\n  percentile_cont(0.9) WITHIN GROUP (\n    ORDER BY EXTRACT(EPOCH FROM triaged_at - received_at) / 3600\n  ) AS p90_hours\nFROM claims\nWHERE received_at >= CURRENT_DATE - INTERVAL '90 days'\n  AND triaged_at IS NOT NULL\nGROUP BY team\nORDER BY median_hours DESC;",
+    "lang": "SQL"
+   },
+   {
+    "title": "SMART criteria and choosing one pilot",
+    "body": "SMART stands for Specific, Measurable, Achievable, Relevant and Time-bound. A SMART success criterion names the team, the metric, the baseline, the target, the deadline and where the number comes from.\n\nChoose one pilot, meaning one workflow and one team, and keep it narrow. A good pilot has high value, available data, a willing user group and a clear metric. Score candidates on these and discuss the scores with the sponsor.\n\nAlso write down non-goals: things you will deliberately not do in this engagement. Non-goals are the easiest way to push back on scope creep later, because everyone already agreed to them.",
+    "example": "You compare three pilot options at the insurer. Motor claims triage scores highest because data is clean and the team lead is keen. Home claims fraud detection is valuable, but labels are poor. You agree: 'Reduce median triage time for the motor team from 4.1 hours to 1 hour by the end of week 10, measured from claims system timestamps.'",
+    "code": "# Score candidate pilots with the sponsor (1 = poor, 5 = strong)\ncandidates = {\n    \"Motor triage\":        {\"value\": 4, \"data\": 5, \"users\": 5, \"metric\": 5},\n    \"Home fraud detection\": {\"value\": 5, \"data\": 2, \"users\": 3, \"metric\": 3},\n    \"Broker email routing\": {\"value\": 3, \"data\": 4, \"users\": 3, \"metric\": 4},\n}\nweights = {\"value\": 0.35, \"data\": 0.25, \"users\": 0.2, \"metric\": 0.2}\n\nfor name, s in sorted(candidates.items(),\n                      key=lambda kv: -sum(kv[1][k] * w for k, w in weights.items())):\n    score = sum(s[k] * w for k, w in weights.items())\n    print(f\"{name:<22} {score:.2f}\")\n\nSMART = (\"Reduce median motor-claim triage time from 4.1h to 1h \"\n         \"by end of week 10, measured from claims system timestamps.\")\nNON_GOALS = [\"Home claims\", \"Fraud scoring\", \"Changes to the payments system\"]",
+    "lang": "Python"
+   },
+   {
+    "title": "Weeks 3-6: prototype with users",
+    "body": "Rapid prototyping means building a working version quickly and improving it through frequent feedback. Speed matters more than elegance here, because you are still learning what users need.\n\nWork beside the end users, on real data. Sit with a claims handler while they use the prototype. Demo at least weekly, and keep a feedback log with each request, who asked, and what you decided.\n\nUse real data from the start. Fake data hides the problems that matter most, such as messy fields and edge cases, and a demo on fake data will not convince the customer.",
+    "example": "In week 3 you ship a simple screen that suggests a triage category for each new motor claim. Handlers ignore it because it hides the policy number. In week 4 you add the policy number and a one-line reason. By week 6, handlers accept 70% of suggestions and triage time in the pilot group is already down to about 2 hours.",
+    "code": "PROTOTYPE FEEDBACK LOG\ndate    who            request / observation                decision\nWk3 Tue Aisha (handler) \"Can't see policy no. so I ignore it\" Add policy no. (done Wk3 Thu)\nWk3 Fri Tom (lead)      Wants suggestions ranked by urgency   Add urgency sort (Wk4)\nWk4 Wed Aisha           Wrong category for glass-only claims  Add rule + test case\nWk5 Mon Priya (sponsor) Asks for home claims too              Non-goal, phase 2 list\nWk6 Thu Team demo       Acceptance 70%, median triage ~2.0h   Continue to hardening\n\nWeekly ritual: 30-min demo on real claims, then update this log.",
+    "lang": "Text"
+   },
+   {
+    "title": "Weeks 7-10: harden for production",
+    "body": "Hardening turns a prototype into something people can depend on. It covers error handling (what happens when a call fails), logging (recording what happened for later debugging), data-quality checks, latency and caching, security review, and SLAs (service level agreements, the promised uptime and response times).\n\nA common pattern is to wrap every call to an external system with retries and a timeout, log each attempt in a structured format, and check incoming data before using it. Bad data should be rejected loudly at the edge instead of producing wrong answers quietly.\n\nAlso agree who is on call, meaning who gets woken up if something breaks, and write that into a runbook (a step-by-step guide for operating and fixing the system).",
+    "example": "During hardening you find that the policy lookup service times out about once per 500 calls, and that 2% of claims arrive with an empty vehicle registration. You add three retries with exponential backoff and route claims with a missing registration to a manual queue. Both show up as counts on the monitoring dashboard.",
+    "code": "import logging\nimport httpx\nfrom tenacity import retry, stop_after_attempt, wait_exponential\n\nlog = logging.getLogger(\"triage\")\n\n@retry(stop=stop_after_attempt(3),\n       wait=wait_exponential(multiplier=0.5, max=8))   # 0.5s, 1s, 2s ...\ndef get_policy(policy_id: str) -> dict:\n    r = httpx.get(f\"https://policy.internal/api/policies/{policy_id}\", timeout=5.0)\n    r.raise_for_status()\n    return r.json()\n\ndef check_claim(claim: dict) -> list[str]:\n    \"\"\"Return a list of data-quality problems (empty list = OK).\"\"\"\n    problems = []\n    if not claim.get(\"vehicle_reg\"):\n        problems.append(\"missing vehicle_reg\")\n    if claim.get(\"estimated_cost\", 0) < 0:\n        problems.append(\"negative estimated_cost\")\n    if problems:\n        log.warning(\"dq_fail\", extra={\"claim_id\": claim[\"id\"], \"problems\": problems})\n    return problems",
+    "lang": "Python"
+   },
+   {
+    "title": "Measure against the criteria",
+    "body": "At the end of hardening, measure the result the same way you measured the baseline: same query, same data source, same definition. Changing the definition midway makes the comparison meaningless and the customer will notice.\n\nReport the number, the comparison to the target, and anything that affected it, such as a holiday week or a system outage. If you missed the target, say so plainly and explain what you learned. A clear miss with a credible plan is better than a fuzzy success.\n\nThis measured result is the evidence your account team uses to renew and expand the contract.",
+    "example": "Using the week-1 query restricted to the pilot team and weeks 9-10, the median motor triage time is 0.9 hours against a 4.1-hour baseline and a 1-hour target. The p90 dropped from 9.5 to 3.2 hours. You present both numbers to the sponsor along with the list of claims still handled manually.",
+    "code": "-- Same definition as the baseline, before vs. after\nWITH t AS (\n  SELECT\n    CASE WHEN received_at < DATE '2026-01-05' THEN 'baseline'\n         WHEN received_at >= DATE '2026-03-02' THEN 'pilot_wk9_10'\n    END AS period,\n    EXTRACT(EPOCH FROM triaged_at - received_at) / 3600 AS hours\n  FROM claims\n  WHERE team = 'motor' AND triaged_at IS NOT NULL\n)\nSELECT period,\n       COUNT(*) AS claims,\n       percentile_cont(0.5) WITHIN GROUP (ORDER BY hours) AS median_hours,\n       percentile_cont(0.9) WITHIN GROUP (ORDER BY hours) AS p90_hours\nFROM t\nWHERE period IS NOT NULL\nGROUP BY period;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Weeks 11-12: handover and a client CoE",
+    "body": "Handover means the customer can run, fix and extend the system without you. The course calls the receiving team a client Center of Excellence (CoE): a small group of trained owners inside the customer who become the local experts.\n\nA handover package includes documentation, a runbook, access and credentials transferred to customer owners, a training session with a recorded walkthrough, and a support path for the first few weeks.\n\nFinally, write up what you learned for your own product team. Which parts did you have to build that the product should have had? This is the discovery half of the dual-value loop: delivery for the customer, and discovery for your company.",
+    "example": "In week 11 you train two engineers and one claims lead at the insurer. They run the weekly retraining themselves while you watch, then fix a staged failure using the runbook. In week 12 you hand over on-call and send your product team a note: three other customers will need the same policy-lookup connector.",
+    "code": "handover:\n  coe_members:\n    - {name: \"R. Osei\", role: \"platform engineer\", trained: 2026-03-17}\n    - {name: \"L. Chen\", role: \"data engineer\", trained: 2026-03-17}\n    - {name: \"T. Hale\", role: \"claims lead (business owner)\", trained: 2026-03-18}\n  documents:\n    - architecture.md\n    - runbook.md            # alerts, first checks, rollback steps\n    - retraining_guide.md\n  access_transferred: [cloud_project, monitoring, model_registry]\n  drills:\n    - \"Policy API outage: CoE restored service in 18 min using runbook\"\n  on_call_owner_from: 2026-03-23\n  hypercare_until: 2026-04-20   # vendor support window after go-live\nproduct_feedback:\n  - \"Policy lookup connector: 3 more customers use the same system\"\n  - \"Manual-queue routing rules should be configurable, not coded\"",
+    "lang": "YAML"
+   }
+  ],
+  "glossary": [
+   [
+    "Engagement",
+    "A defined project where an FDE team works with one customer toward agreed outcomes."
+   ],
+   [
+    "Baseline",
+    "A measured number describing how a process performs before any change."
+   ],
+   [
+    "SMART criteria",
+    "Goals that are Specific, Measurable, Achievable, Relevant and Time-bound."
+   ],
+   [
+    "Pilot",
+    "A small, real-world first deployment with one team and one workflow."
+   ],
+   [
+    "Non-goals",
+    "Things deliberately left out of scope, written down and agreed early."
+   ],
+   [
+    "Hardening",
+    "Making a prototype reliable and safe enough for daily production use."
+   ],
+   [
+    "SLA",
+    "Service level agreement: promised levels of uptime, response time or support."
+   ],
+   [
+    "Runbook",
+    "A step-by-step guide for operating a system and responding to common failures."
+   ],
+   [
+    "Center of Excellence (CoE)",
+    "A trained group inside the customer that owns and extends the system after handover."
+   ]
+  ],
+  "practice": [
+   "Pick a process you know (a library's book returns, a clinic's appointment booking). Write the baseline metric, how you would measure it, one SMART success criterion and three non-goals.",
+   "Build a 12-week plan in a spreadsheet for a made-up retailer pilot, with one row per week, the phase, the main deliverable and the customer people involved. Mark the critical path items.",
+   "Take a small script you have written that calls an external API. Harden it: add retries with backoff, a timeout, structured logging and one data-quality check, then write a half-page runbook for it."
+  ]
+ },
+ "pod": {
+  "plain": "A pod is the small team that runs an FDE engagement. In the course's model, a pod has one Echo, a Deployment Strategist who owns the customer relationship and scoping, and two Deltas, the forward deployed engineers who write the code. Leadership tells the pod what outcome to achieve and why it matters, and the pod decides how. Success is measured by time-to-value (TTV), the time from signing a contract to the customer getting measurable value.",
+  "analogy": "Think of a small film crew sent to shoot a documentary abroad. The producer handles permits, schedules and the relationship with local contacts. The two camera operators focus on filming. The studio back home says what story to tell and why, and trusts the crew on location to decide which shots to take.",
+  "why": "FDE work happens far from headquarters, in conditions that change weekly. A pod at a logistics company may find on day three that the data it planned to use does not exist. If every technical decision needed central approval, the pod would stall, and if engineers spent half their week in status meetings, nothing would ship. The pod model is designed to avoid both problems.",
+  "subtopics": [
+   {
+    "title": "Pod anatomy: one Echo, two Deltas",
+    "body": "The Echo is the Deployment Strategist. They own the customer relationship, run scoping, manage stakeholders, write status reports, chase access requests and handle contracts and scheduling. They are technical enough to understand trade-offs but spend most of their time with people.\n\nThe Deltas are the engineers. They build, integrate, debug and deploy. Two engineers give the pod enough capacity to build and cover for each other, while staying small enough that coordination is cheap.\n\nA clear split of responsibilities avoids confusion. A RACI chart is a simple tool for this: for each activity it names who is Responsible (does the work), Accountable (owns the outcome), Consulted and Informed.",
+    "example": "A pod starts at a national grocery chain. The Echo, Maya, runs the weekly steering meeting with the supply chain director and handles the security questionnaire. The Deltas, Ravi and Jo, build the demand forecast pipeline. When the director asks for a new report, Maya takes the request, checks it against the success metric and decides with the sponsor before it reaches the engineers.",
+    "code": "# RACI for one pod (R = does it, A = owns outcome, C = consulted, I = informed)\nactivity:                 echo   delta_1  delta_2  customer_sponsor\n  scoping_and_metrics:     A,R     C        C        C\n  stakeholder_updates:     A,R     I        I        I\n  access_and_security:     A,R     C        C        C\n  data_pipeline:           I       A,R      R        I\n  model_and_app:           I       R        A,R      I\n  weekly_user_demo:        A       R        R        C\n  scope_changes:           R       C        C        A",
+    "lang": "YAML"
+   },
+   {
+    "title": "Mission-type tactics (Auftragstaktik)",
+    "body": "Auftragstaktik is a German term usually translated as mission-type tactics or mission command. It comes from 19th-century Prussian military doctrine. Commanders state the objective and the reason for it, and subordinates choose how to achieve it based on what they see on the ground.\n\nIn FDE terms, leadership writes an intent: the outcome, why it matters, the constraints (budget, security rules, deadlines) and what done looks like. Inside those limits, the pod picks the architecture, tools and order of work without central sign-off.\n\nThis only works if the intent is clear and the constraints are real. A vague intent leads to pods building the wrong thing. Too many constraints bring back central control by another name.",
+    "example": "Leadership's intent for a hospital pod: 'Cut outpatient no-shows at the two pilot clinics by a quarter within 12 weeks, because each no-show wastes a paid clinical slot. Constraints: patient data stays in the hospital's cloud tenant, and no changes to the booking system itself.' The pod chooses to build SMS reminders with a simple risk model, without asking headquarters to approve the design.",
+    "code": "INTENT STATEMENT (leadership -> pod)\nObjective:   Cut outpatient no-shows at Clinics A and B by 25%\nWhy:         Each no-show wastes a paid clinical slot and delays care\nEnd state:   Hospital staff run the reminder process themselves\nConstraints: - Patient data stays in the hospital cloud tenant\n             - No changes to the booking system\n             - Budget: 1 pod, 12 weeks\nDecided by pod (no sign-off needed):\n             architecture, model choice, order of work, tooling\nEscalate to leadership only if:\n             a constraint blocks the objective",
+    "lang": "Text"
+   },
+   {
+    "title": "Protecting engineers from admin drag",
+    "body": "Admin drag is the time engineers lose to non-engineering work: status meetings, access tickets, reporting, travel logistics and chasing approvals. The course cites estimates that this can take 40 to 60% of an engineer's time when nobody protects them.\n\nThe Echo's job is to absorb as much of this as possible. They attend the steering meetings, write the reports and chase the tickets, so the Deltas get long blocks of focused time.\n\nMeasure it instead of guessing. A quick look at calendars and ticket queues shows how much time goes to building versus everything else. If the build share is falling, fix it before it hurts delivery.",
+    "example": "In week 2 at the grocery chain, Ravi's calendar shows 18 hours of meetings out of 40, plus about 4 hours chasing database access. That is 55% admin. Maya takes over two recurring meetings and the access tickets, and in week 4 Ravi's admin share is down to about 20%.",
+    "code": "# Estimate admin share from a calendar export (CSV: title,hours)\nimport csv\n\nADMIN_WORDS = (\"status\", \"sync\", \"steering\", \"access\", \"report\", \"travel\")\n\ndef admin_share(path, week_hours=40):\n    admin = 0.0\n    with open(path, newline=\"\") as f:\n        for row in csv.DictReader(f):\n            if any(w in row[\"title\"].lower() for w in ADMIN_WORDS):\n                admin += float(row[\"hours\"])\n    return admin / week_hours\n\nshare = admin_share(\"ravi_week2.csv\")\nprint(f\"Admin share: {share:.0%}\")\nif share > 0.3:\n    print(\"Action: Echo takes over recurring meetings and access chasing\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Darwinistic adoption: ship small, keep what lives",
+    "body": "Darwinistic adoption is the course's name for letting users decide which features survive. The pod ships small features quickly to real users, measures who uses them, keeps the ones that get adopted and removes the rest.\n\nThis replaces a big up-front roadmap inside the account. Instead of predicting what users want, you observe it. It requires instrumentation, meaning the product logs events like 'feature opened' or 'suggestion accepted' so you can count usage.\n\nSet a rule before shipping, such as 'kill it if fewer than 20% of eligible users try it twice within three weeks'. Deciding the threshold in advance stops the team from keeping pet features alive.",
+    "example": "At the grocery chain the pod ships three features in two weeks: a forecast chart, a suggested order quantity and an email alert for likely stockouts. After three weeks, 78% of store managers use suggested orders weekly, 41% open the chart and 6% open the email. The email is removed and suggested orders get the next round of work.",
+    "code": "-- Weekly adoption per feature over the last 3 weeks\nWITH eligible AS (\n  SELECT COUNT(*) AS n FROM users WHERE role = 'store_manager'\n),\nactive AS (\n  SELECT feature, user_id\n  FROM (\n    SELECT feature, user_id, date_trunc('week', ts) AS wk\n    FROM events\n    WHERE ts >= now() - INTERVAL '21 days'\n    GROUP BY feature, user_id, date_trunc('week', ts)\n  ) w\n  GROUP BY feature, user_id\n  HAVING COUNT(*) >= 2          -- used in at least 2 of the 3 weeks\n)\nSELECT feature,\n       COUNT(*)::float / (SELECT n FROM eligible) AS adoption,\n       CASE WHEN COUNT(*)::float / (SELECT n FROM eligible) < 0.2\n            THEN 'remove' ELSE 'keep' END AS decision\nFROM active\nGROUP BY feature\nORDER BY adoption DESC;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Time-to-value and supporting metrics",
+    "body": "Time-to-value (TTV) is the number of days from contract signature to the first moment the customer gets measurable value, for example the first week the pilot team hits its target. It is the pod's headline metric because it captures both speed and real impact.\n\nThe course lists supporting metrics from its Blueprint deck. Usage uplift is the growth in usage over time. Adoption depth is how many different features or workflows a customer relies on. Revenue protection is revenue at risk (such as an unhappy renewal) that the pod helped keep.\n\nDefine the value milestone before the engagement starts. If 'value' is defined after the fact, TTV becomes whatever makes the team look good.",
+    "example": "The grocery contract is signed on 6 January. The agreed value milestone is 'pilot stores reduce fresh produce waste by 10% for two consecutive weeks'. That happens in the week ending 30 March, so TTV is 83 days. Weekly active managers grew from 12 in February to 31 in March, a usage uplift of about 158%.",
+    "code": "from datetime import date\n\ncontract_signed = date(2026, 1, 6)\nvalue_milestone_hit = date(2026, 3, 30)   # agreed definition, set in week 1\nttv_days = (value_milestone_hit - contract_signed).days\nprint(f\"Time-to-value: {ttv_days} days\")                 # 83\n\nwau_feb, wau_mar = 12, 31                                # weekly active managers\nprint(f\"Usage uplift: {wau_mar / wau_feb - 1:.0%}\")      # 158%\n\nfeatures_used = {\"suggested_orders\", \"forecast_chart\", \"waste_report\"}\nfeatures_available = 5\nprint(f\"Adoption depth: {len(features_used)}/{features_available} features\")",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Pod",
+    "A small, self-contained FDE team assigned to one customer engagement."
+   ],
+   [
+    "Echo",
+    "The course's name for the Deployment Strategist, who owns the customer relationship and admin."
+   ],
+   [
+    "Delta",
+    "The course's name for a forward deployed engineer in a pod, focused on building."
+   ],
+   [
+    "RACI",
+    "A chart naming who is Responsible, Accountable, Consulted and Informed for each activity."
+   ],
+   [
+    "Auftragstaktik",
+    "Mission-type tactics: leaders set the objective and reason, teams choose the method."
+   ],
+   [
+    "Intent statement",
+    "A short note giving the objective, the reason, the constraints and what done looks like."
+   ],
+   [
+    "Admin drag",
+    "Engineering time lost to meetings, tickets, reporting and approvals."
+   ],
+   [
+    "Instrumentation",
+    "Code that logs user and system events so usage and performance can be measured."
+   ],
+   [
+    "Time-to-value (TTV)",
+    "Days from contract signature to the customer's first measurable value."
+   ],
+   [
+    "Adoption depth",
+    "How many different features or workflows a customer actually relies on."
+   ]
+  ],
+  "practice": [
+   "Write a one-page intent statement for a made-up engagement (for example, reducing late deliveries for a courier firm), with objective, why, end state, constraints and what the pod decides alone.",
+   "Export one week of your own calendar, classify each entry as build or admin, and compute your admin share with the Python script. Propose two changes that would lower it.",
+   "Create a small events table with fake data for three features and 50 users, run the adoption query, and write a short keep-or-remove recommendation for each feature with the numbers."
+  ]
+ },
+ "lastmile": {
+  "plain": "Last-mile onboarding is the work of getting a product that already works in demos to work inside one specific customer's messy environment. The name borrows from delivery companies, where the final stretch to the customer's door is often the hardest and most expensive part. Onboarding typically stalls on three things: undocumented APIs (interfaces with no reliable description), broken schemas (data structures that do not match what the product expects) and workflow exceptions (special cases in how the customer works). FDEs fix these in real time and capture each fix so the next customer is faster.",
+  "analogy": "Moving into a new flat with furniture that fit perfectly in the showroom. On moving day, the stairwell is narrow, one wall is not straight, and the building has a rule about when you can use the lift. Someone has to measure, adjust and work around each problem, and a good mover writes down the tricks for the next job in the same building.",
+  "why": "The sale assumed clean integrations, but real customers run old systems with no documentation, data that means different things in different regions, and rules like 'claims over 50,000 pounds go to Jane'. The customer's R&D team is usually too busy to help. If onboarding stalls, the customer never reaches value and the renewal is at risk, so this is where FDEs earn their keep.",
+  "subtopics": [
+   {
+    "title": "Why onboarding stalls: the delivery gap",
+    "body": "The delivery gap is the distance between what the product does in a clean demo and what it must do inside a real customer. The course's Blueprint deck names three causes: AI complexity, messy data and stretched R&D teams.\n\nIn practice, most blockers fall into the three buckets above: APIs, schemas and exceptions. A useful first step is an integration inventory, a list of every system the product must talk to, with how it connects, who owns it, and what is known about it.\n\nThe inventory turns an overwhelming 'nothing works' into a list of specific problems, each with an owner and a next step. It also shows which problems you have seen before at other customers.",
+    "example": "At a regional insurer, onboarding the claims assistant touches five systems. The inventory shows the policy database is fine, the document store has an API with no docs, the claims system exports CSVs where the 'status' column means different things in two regions, and there are three unwritten routing rules. Now there are four concrete work items instead of one vague delay.",
+    "code": "INTEGRATION INVENTORY - Northshire Insurance\nsystem          connects via      owner          docs?   known issues            status\npolicy_db       Postgres read     IT (K. Lowe)   yes     none                    DONE\ndoc_store       REST API          vendor, legacy NO      auth unclear, paging?   PROBE\nclaims_export   nightly CSV (S3)  Claims ops     partial 'status' differs N/S    REPAIR\nrouting_rules   people's heads    Claims leads   NO      >50k to Jane, fraud flag ENCODE\nsso             SAML              IT security    yes     group names TBC         WAITING\n# Every row gets an owner and a next action before the weekly sync.",
+    "lang": "Text"
+   },
+   {
+    "title": "Probing an undocumented API",
+    "body": "When an API has no documentation, you learn it by observation. Ask for a sandbox (a test copy of the system) or permission to read-only call production. Watch real traffic if another application already uses it.\n\nMake small, careful requests and save every response to a file. These saved responses are called fixtures. They show the real field names, types, pagination (how results are split across pages) and error formats.\n\nWrite down what you learn as you go, including surprises, and confirm unclear points with the customer's engineers. Your notes become the documentation that did not exist.",
+    "example": "The insurer's document store has a /documents endpoint and nobody knows its parameters. You call it with a test claim ID, find the results come 50 at a time with a next_cursor field, discover that dates are strings in day/month/year order, and see it returns HTTP 200 with an error field instead of a proper error code when a claim is missing. Each finding goes into your notes and fixtures.",
+    "code": "#!/usr/bin/env bash\n# Probe an undocumented API and save responses as fixtures\nset -euo pipefail\nBASE=\"https://docstore.sandbox.northshire.example/api\"\nAUTH=\"Authorization: Bearer ${DOCSTORE_TOKEN}\"\nmkdir -p fixtures\n\n# 1. Normal request\ncurl -sS -H \"$AUTH\" \"$BASE/documents?claim_id=C-10442\" \\\n  | tee fixtures/documents_ok.json | jq 'keys'\n\n# 2. Follow pagination: which field holds the next page?\njq -r '.next_cursor // \"none\"' fixtures/documents_ok.json\n\n# 3. A claim that does not exist: what does an error look like?\ncurl -sS -o fixtures/documents_missing.json -w \"HTTP %{http_code}\\n\" \\\n  -H \"$AUTH\" \"$BASE/documents?claim_id=DOES-NOT-EXIST\"\njq '.' fixtures/documents_missing.json",
+    "lang": "bash"
+   },
+   {
+    "title": "A typed wrapper with retries and tests",
+    "body": "A wrapper is a small module that hides a messy API behind a clean, predictable interface. The product calls the wrapper, and only the wrapper knows about the API's quirks.\n\nTyped means the wrapper returns well-defined objects with checked fields. In Python, Pydantic models do this: they validate incoming data and convert types, so a date string becomes a real date. Add retries for temporary failures and turn the API's odd error format into a normal exception.\n\nTest the wrapper against the fixtures you saved. Those tests keep working even when the sandbox is down, and they catch it if someone changes the parsing logic by mistake.",
+    "example": "Your wrapper for the insurer's document store follows the cursor to collect all pages, converts '14/03/2026' into a date, and raises DocumentNotFound when the body contains an error field. The claims assistant now just calls list_documents('C-10442') and gets a clean list.",
+    "code": "from datetime import date, datetime\nimport httpx\nfrom pydantic import BaseModel, field_validator\n\nclass DocumentNotFound(Exception): ...\n\nclass Document(BaseModel):\n    id: str\n    title: str\n    created: date\n\n    @field_validator(\"created\", mode=\"before\")\n    @classmethod\n    def parse_uk_date(cls, v):               # API sends \"14/03/2026\"\n        return datetime.strptime(v, \"%d/%m/%Y\").date() if isinstance(v, str) else v\n\ndef list_documents(client: httpx.Client, claim_id: str) -> list[Document]:\n    docs, cursor = [], None\n    while True:\n        params = {\"claim_id\": claim_id, **({\"cursor\": cursor} if cursor else {})}\n        body = client.get(\"/documents\", params=params).json()\n        if \"error\" in body:                  # API returns 200 with an error field\n            raise DocumentNotFound(body[\"error\"])\n        docs += [Document.model_validate(d) for d in body[\"items\"]]\n        cursor = body.get(\"next_cursor\")\n        if not cursor:\n            return docs",
+    "lang": "Python"
+   },
+   {
+    "title": "Repairing broken schemas at the boundary",
+    "body": "A schema is the expected structure of data: which columns exist, their types, and what values mean. Broken schemas include columns that mean different things by region, nulls (missing values) in key fields, and types that drift, such as a number column that sometimes contains text.\n\nRepair data at the boundary, the point where it enters your system. Map codes to one shared meaning, convert types, and validate. Rows that cannot be repaired go to a quarantine table with a reason, so nothing is silently dropped.\n\nKeep the mapping rules in a readable table that the customer can review. They know what their codes mean better than you do.",
+    "example": "In the insurer's claims export, status 'C' means 'closed' in the North region and 'contested' in the South. Some rows have a blank claim_id and some amounts contain '1,250.00' as text. You map status by region, convert amounts, and quarantine the 0.4% of rows with no claim_id for the claims ops team to review.",
+    "code": "import pandas as pd\n\nSTATUS_MAP = {                          # reviewed with Claims ops\n    (\"North\", \"C\"): \"closed\",\n    (\"South\", \"C\"): \"contested\",\n    (\"North\", \"O\"): \"open\", (\"South\", \"O\"): \"open\",\n}\n\ndef repair(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:\n    df = df.copy()\n    df[\"status\"] = [STATUS_MAP.get((r, s), \"unknown\")\n                    for r, s in zip(df[\"region\"], df[\"status\"])]\n    df[\"amount\"] = pd.to_numeric(\n        df[\"amount\"].astype(str).str.replace(\",\", \"\"), errors=\"coerce\")\n\n    bad = df[\"claim_id\"].isna() | df[\"amount\"].isna() | (df[\"status\"] == \"unknown\")\n    quarantine = df[bad].assign(reason=\"missing id, bad amount or unknown status\")\n    return df[~bad], quarantine\n\nclean, quarantine = repair(pd.read_csv(\"claims_export.csv\"))\nprint(len(clean), \"clean rows;\", len(quarantine), \"quarantined\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Encoding workflow exceptions as rules",
+    "body": "Workflow exceptions are special cases in how a customer does its work, such as 'claims over 50,000 pounds go to Jane' or 'anything flagged for fraud skips the fast track'. They are often unwritten and only discovered when users say 'that is wrong'.\n\nEncode them as data-driven rules in the pipeline, kept in a configuration file that is separate from product code. Each rule has a condition and an action. The product reads the rules; it does not contain them.\n\nOrder matters, so evaluate rules top to bottom and stop at the first match. Keep a test case for every rule, taken from a real example the users gave you.",
+    "example": "Claims leads at the insurer tell you three rules: claims over 50,000 pounds go to the senior handler, anything with a fraud flag goes to the investigations queue, and glass-only claims are auto-approved under 500 pounds. You put these in a YAML file and the router picks them up without any change to the claims assistant.",
+    "code": "import yaml\n\nRULES_YAML = \"\"\"\n- name: fraud_first\n  when: {fraud_flag: true}\n  route: investigations\n- name: large_claims\n  when: {amount_gt: 50000}\n  route: senior_handler_jane\n- name: glass_fast_track\n  when: {claim_type: glass, amount_lt: 500}\n  route: auto_approve\n\"\"\"\nRULES = yaml.safe_load(RULES_YAML)\n\ndef matches(claim, cond):\n    if \"fraud_flag\" in cond and claim.get(\"fraud_flag\") != cond[\"fraud_flag\"]: return False\n    if \"claim_type\" in cond and claim.get(\"claim_type\") != cond[\"claim_type\"]: return False\n    if \"amount_gt\" in cond and not claim[\"amount\"] > cond[\"amount_gt\"]: return False\n    if \"amount_lt\" in cond and not claim[\"amount\"] < cond[\"amount_lt\"]: return False\n    return True\n\ndef route(claim):\n    for rule in RULES:                         # first match wins\n        if matches(claim, rule[\"when\"]):\n            return rule[\"route\"]\n    return \"standard_queue\"\n\nprint(route({\"amount\": 72000, \"fraud_flag\": False, \"claim_type\": \"motor\"}))",
+    "lang": "Python"
+   },
+   {
+    "title": "Playbooks, portals and PSA automation",
+    "body": "Each fix is only valuable once if you throw it away. A playbook is a reusable onboarding plan made of templates: task lists, connector code, mapping tables and rules that worked before. A dynamic playbook adapts to the customer, for example adding the document-store tasks only if the customer uses that system.\n\nPSA stands for professional services automation: software for running client projects, including plans, resourcing and time tracking. Tools in this space, such as Rocketlane, which focuses on customer onboarding, offer shared workspaces, reusable project templates, client-facing portals and AI features that help draft plans and updates.\n\nA client portal gives the customer a live view of plan, status and their own open tasks. That removes many status meetings and makes it obvious when a delay is waiting on the customer's side.",
+    "example": "After Northshire, your team saves the document-store wrapper, the regional status mapping and the routing rule template into the playbook. When a second insurer running the same document store signs, the plan starts with those tasks pre-filled and the wrapper already tested. Their integration takes 4 days instead of 3 weeks.",
+    "code": "playbook: insurance_claims_onboarding\nversion: 3\nphases:\n  - name: integrate\n    tasks:\n      - {id: inv, title: \"Integration inventory\", owner: echo, days: 2}\n      - id: docstore\n        title: \"Connect legacy document store (reuse wrapper v2)\"\n        include_if: \"customer.systems contains 'docstore_legacy'\"\n        template: connectors/docstore_legacy/\n        days: 2\n      - {id: map, title: \"Review status mapping with claims ops\",\n         owner: customer, template: mappings/claims_status.csv, days: 3}\n      - {id: rules, title: \"Capture routing exceptions\",\n         template: rules/claims_routing.yaml, days: 2}\nportal:\n  visible_to_customer: [plan, milestones, customer_tasks, blockers]\n  weekly_update: auto_draft   # reviewed by Echo before sending",
+    "lang": "YAML"
+   }
+  ],
+  "glossary": [
+   [
+    "Last mile",
+    "The final, customer-specific stretch of getting a product working in a real environment."
+   ],
+   [
+    "Undocumented API",
+    "An interface to a system with no reliable description of its endpoints, fields or errors."
+   ],
+   [
+    "Fixture",
+    "A saved real response or data sample used to test code without calling the live system."
+   ],
+   [
+    "Wrapper",
+    "A small module that hides a messy interface behind a clean, predictable one."
+   ],
+   [
+    "Schema",
+    "The expected structure of data: columns, types and meanings."
+   ],
+   [
+    "Quarantine table",
+    "A holding place for rows that failed validation, kept with a reason for review."
+   ],
+   [
+    "Workflow exception",
+    "A special case in how a customer works, such as a threshold that routes work to a named person."
+   ],
+   [
+    "Playbook",
+    "A reusable onboarding plan made of task lists and templates from previous customers."
+   ],
+   [
+    "PSA",
+    "Professional services automation: software for planning, running and tracking client projects."
+   ],
+   [
+    "Client portal",
+    "A shared view where the customer sees the plan, status and their own open tasks."
+   ]
+  ],
+  "practice": [
+   "Pick a free public API with thin documentation. Probe three endpoints with curl, save fixtures, and write a one-page 'what we learned' note covering fields, pagination and error format.",
+   "Create a messy CSV of 30 rows (mixed date formats, text in number columns, a code that means different things by region). Write a repair function that returns clean and quarantined rows, with a test for each problem.",
+   "Write a YAML onboarding playbook for a made-up SaaS product with two phases and at least one conditional task. Then write a short script that prints the task list for a customer given which systems they use."
+  ]
+ },
+ "interview": {
+  "plain": "An interview loop is the series of interviews a company runs before making an offer. FDE loops test more than coding puzzles. The course's blueprint weights four pillars: deep technical understanding (40%), practical implementation (30%), customer scenario and communication (20%) and business acumen (10%). Preparing well means spending your time roughly in proportion to those weights and having a portfolio and stories that prove each one.",
+  "analogy": "It is like a driving test that includes a theory exam, a practical drive, a section where you give directions to a lost tourist, and a few questions on the cost of running a car. Practising only parallel parking would leave you unprepared for most of it.",
+  "why": "Many engineers prepare only with LeetCode-style algorithm puzzles and then struggle when an FDE interviewer plays a vague customer or asks them to build against a real API in 90 minutes. Knowing what is scored lets you practise the right things, and it lets you show why an FDE role suits you instead of a standard software engineering role.",
+  "subtopics": [
+   {
+    "title": "How the loop is scored",
+    "body": "Algorithm puzzles, often called DSA (data structures and algorithms) questions, are a small part of an FDE loop. Keep them warm with light practice, but most of the score comes from the four pillars.\n\nA simple way to plan is to split your available prep hours by the pillar weights, then subtract what you are already strong at. Someone with a strong backend background might shift hours from implementation toward customer role-play.\n\nTrack your practice. After each mock interview, score yourself per pillar from 1 to 5 and write one improvement. Over a few weeks you will see which pillar is holding you back.",
+    "example": "You have 60 hours before your onsite. By weight that is 24 hours of technical depth, 18 of timed builds, 12 of customer role-play and 6 of business reading. Since you already build APIs daily, you move 6 build hours to customer role-play, which is your weakest area.",
+    "code": "weights = {\"deep_technical\": 0.40, \"implementation\": 0.30,\n           \"customer\": 0.20, \"business\": 0.10}\ntotal_hours = 60\n\nplan = {p: round(total_hours * w) for p, w in weights.items()}\nprint(\"By weight:\", plan)          # 24 / 18 / 12 / 6\n\n# Adjust for your own strengths and weaknesses\nplan[\"implementation\"] -= 6        # already strong: build APIs daily\nplan[\"customer\"] += 6              # weakest pillar in mock interviews\nprint(\"Adjusted:\", plan)\n\nmock_scores = {\"deep_technical\": 3, \"implementation\": 4, \"customer\": 2, \"business\": 3}\nweakest = min(mock_scores, key=mock_scores.get)\nprint(\"Focus next mock on:\", weakest)",
+    "lang": "Python"
+   },
+   {
+    "title": "Deep technical: surviving follow-ups",
+    "body": "The technical depth pillar checks whether you understand how the tools you use work underneath. Interviewers ask a question, then keep asking 'why' and 'what if' until they reach the edge of your knowledge.\n\nA good way to prepare is a layered answer. Layer one is a one-sentence summary. Layer two is the mechanism. Layer three is failure modes and trade-offs. Layer four is a real example with numbers from your own work.\n\nWhen you reach the limit of what you know, say so and reason out loud: 'I have not measured that, but I would expect X because Y, and I would check it by Z.' That scores better than bluffing.",
+    "example": "Asked 'Why does RAG sometimes give wrong answers?', you say it retrieves text and then generates from it. You explain chunking and embedding search, then list failure modes: the right chunk is never retrieved, the chunk is retrieved but ranked too low, or the model ignores it. You finish with how your own project's grounding check caught unsupported answers.",
+    "code": "LAYERED ANSWER TEMPLATE  (practise for 10 core topics)\nTopic: Why does retrieval-augmented generation (RAG) fail?\nL1 Summary:   It answers from retrieved text; if retrieval or use of\n              that text fails, the answer is wrong.\nL2 Mechanism: chunk docs -> embed -> vector search -> top-k into prompt\nL3 Failures:  (a) right chunk never retrieved (bad chunking/embedding)\n              (b) retrieved but ranked low (needs hybrid search/rerank)\n              (c) model ignores or contradicts context (needs grounding check)\n              (d) stale index (needs refresh pipeline)\nL4 Evidence:  \"In my project, adding keyword search to vectors raised\n              retrieval hit rate on my test set; grounding check flagged\n              unsupported answers before users saw them.\"\nIf stuck:     \"I have not measured that. I'd expect ... because ...\n              I'd verify by ...\"",
+    "lang": "Text"
+   },
+   {
+    "title": "The practical build round",
+    "body": "In the implementation round you usually get 60 to 90 minutes to build something small against a real API or dataset. Interviewers look for working code, sensible structure, handling of failure paths and clear talk about trade-offs.\n\nA reliable approach: restate the task and ask two or three clarifying questions, get the simplest end-to-end version working, then add error handling and tests, then improve. Talk as you go, especially when you choose not to do something because of time.\n\nPractise under a timer. Timed practice reveals the things that slow you down, such as setting up a project or remembering library syntax.",
+    "example": "The task: 'Given an orders API that pages results and sometimes returns 429, compute total revenue per customer.' You first write a loop that follows pages, then add a retry on 429, then write two tests with a fake client: one for pagination and one for a rate-limited page. You mention that for large data you would stream results instead of holding them all in memory.",
+    "code": "import time\nfrom collections import defaultdict\n\ndef fetch_all(client, max_retries=3):\n    \"\"\"Yield orders from every page, retrying on HTTP 429.\"\"\"\n    page = 1\n    while page:\n        for attempt in range(max_retries):\n            status, body = client.get_orders(page)\n            if status != 429:\n                break\n            time.sleep(2 ** attempt)            # back off: 1s, 2s, 4s\n        else:\n            raise RuntimeError(f\"page {page} still rate limited\")\n        yield from body[\"orders\"]\n        page = body.get(\"next_page\")\n\ndef revenue_by_customer(client):\n    totals = defaultdict(float)\n    for o in fetch_all(client):\n        totals[o[\"customer_id\"]] += o[\"amount\"]\n    return dict(totals)\n\n# pytest\nclass FakeClient:\n    def __init__(self): self.calls = 0\n    def get_orders(self, page):\n        self.calls += 1\n        if self.calls == 1: return 429, {}\n        pages = {1: {\"orders\": [{\"customer_id\": \"a\", \"amount\": 10.0}], \"next_page\": 2},\n                 2: {\"orders\": [{\"customer_id\": \"a\", \"amount\": 5.0}], \"next_page\": None}}\n        return 200, pages[page]\n\ndef test_retries_and_pages(monkeypatch):\n    monkeypatch.setattr(time, \"sleep\", lambda s: None)\n    assert revenue_by_customer(FakeClient()) == {\"a\": 15.0}",
+    "lang": "Python"
+   },
+   {
+    "title": "The customer scenario round",
+    "body": "Here an interviewer role-plays a customer with a vague request, such as 'We want to use AI to improve our supply chain.' You are scored on discovery questions, scoping, and explaining trade-offs to someone who is not an engineer.\n\nResist the urge to propose a solution in the first five minutes. Ask about the business goal, who feels the pain, how it is measured today, what data exists, and who decides. Then summarise what you heard and propose a thin first slice with a metric.\n\nWhen you explain trade-offs, use the customer's words. Say 'faster answers but slightly more wrong ones' instead of 'lower precision at higher recall'.",
+    "example": "The interviewer, playing a logistics director, says late deliveries are hurting them. You ask what 'late' means, how often it happens, and where the delay starts. You learn 14% of deliveries miss their window and most delays start at the depot. You propose a 6-week pilot at one depot predicting which loads will miss their window, measured against that 14%.",
+    "code": "CUSTOMER ROUND: DISCOVERY CHECKLIST\nGoal      \"What would success look like in six months?\"\nPain      \"Who feels this most? Can you walk me through a bad day?\"\nBaseline  \"How do you measure it today? What is the number?\"\nData      \"Where does that data live? Who owns it? How fresh is it?\"\nDecision  \"Who signs off? Who could block this?\"\nLimits    \"Budget, deadlines, compliance rules I should know about?\"\n---\nSummarise: \"So the core problem is ___, measured by ___, currently ___.\"\nPropose:   \"A ___-week pilot on ___, aiming to move ___ from ___ to ___.\"\nTrade-off: explain in their terms (time, cost, risk, customer impact)",
+    "lang": "Text"
+   },
+   {
+    "title": "Business acumen: the numbers FDE leaders watch",
+    "body": "The business pillar checks that you understand why a company funds FDEs. The key terms are NRR, TTV, margin-for-moat and custom sprawl.\n\nNRR (net revenue retention) measures how much revenue you keep and grow from existing customers over a year, including expansions and after losses. Above 100% means existing customers are spending more than a year ago. FDE work aims to raise it by making customers successful enough to expand.\n\nMargin-for-moat is the idea of accepting lower early margins on hands-on delivery in exchange for larger, stickier accounts and product learning. Custom sprawl is the risk that undoes it. Be ready to explain both with a short example.",
+    "example": "A company starts the year with 10 million dollars of annual recurring revenue (ARR) from existing customers. During the year those customers expand by 2.5 million, downgrade by 0.4 million and 0.6 million churns (cancels). NRR is (10 + 2.5 - 0.4 - 0.6) / 10 = 115%.",
+    "code": "def nrr(start_arr, expansion, contraction, churn):\n    \"\"\"Net revenue retention for a cohort of existing customers.\"\"\"\n    return (start_arr + expansion - contraction - churn) / start_arr\n\nvalue = nrr(start_arr=10_000_000, expansion=2_500_000,\n            contraction=400_000, churn=600_000)\nprint(f\"NRR: {value:.0%}\")      # 115%\n\n# Interview talking point: how an FDE moves each term\nlevers = {\n    \"expansion\":   \"measured pilot results unlock new teams and use cases\",\n    \"contraction\": \"adoption work keeps seats and usage from shrinking\",\n    \"churn\":       \"incident handling and TTV protect renewals\",\n}",
+    "lang": "Python"
+   },
+   {
+    "title": "Portfolio, STAR stories and the offer",
+    "body": "A portfolio is proof. The course suggests two projects: Project A, an agentic RAG service with a fine-tuned open model and evaluations, and Project B, a coding agent built with LangGraph. What makes them strong is measured results: faithfulness, latency, cost and the failures you fixed.\n\nSTAR stories are short answers to behavioural questions, structured as Situation, Task, Action, Result. Prepare one or two per pillar from your own work, such as Vukti, DATAVORE or your MCP projects. Use 'I' for what you did, and end with a number.\n\nBefore recruiter calls, research compensation for FDE roles at your target companies using public salary-sharing sites and people you know in the field. Negotiate on total compensation, which combines base salary, bonus and equity.",
+    "example": "For the customer pillar, you might prepare: Situation, a client's data pipeline kept failing overnight. Task, you owned making it reliable. Action, you interviewed the ops team, found a schema change upstream, and added validation and alerts. Result, failed nightly runs dropped from several a week to none over the following month, with the actual figures taken from your own logs.",
+    "code": "STAR STORY BANK  (fill with your real numbers)\npillar          story                          S/T (1 line)        A (what I did)            R (number)\ndeep_technical  Vukti retrieval quality        ...                 ...                       ...\nimplementation  DATAVORE pipeline rebuild      ...                 ...                       ...\ncustomer        MCP integration for a user     ...                 ...                       ...\nbusiness        Cost cut on inference          ...                 ...                       ...\n\nChecks per story:\n[ ] Under 2 minutes spoken\n[ ] \"I\", not \"we\", for the actions\n[ ] Ends with a measured result and what I would do differently\nOffer prep:\n[ ] Researched ranges for target companies and level\n[ ] Know my number for base, bonus, equity (total comp)",
+    "lang": "Text"
+   }
+  ],
+  "glossary": [
+   [
+    "Interview loop",
+    "The full set of interviews a candidate goes through before an offer decision."
+   ],
+   [
+    "DSA",
+    "Data structures and algorithms, the topic of most LeetCode-style puzzles."
+   ],
+   [
+    "Pillar",
+    "One of the four scored areas in the course's FDE interview blueprint."
+   ],
+   [
+    "STAR",
+    "Situation, Task, Action, Result: a structure for telling a work story."
+   ],
+   [
+    "NRR",
+    "Net revenue retention: revenue kept and grown from existing customers over a period."
+   ],
+   [
+    "ARR",
+    "Annual recurring revenue: the yearly value of subscription contracts."
+   ],
+   [
+    "T-shaped",
+    "Broad skills across the stack plus deep expertise in one area."
+   ],
+   [
+    "Anthropic 4Ds",
+    "An AI fluency framework: Delegation, Description, Discernment and Diligence."
+   ],
+   [
+    "Total compensation",
+    "The full value of an offer: base salary, bonus and equity together."
+   ]
+  ],
+  "practice": [
+   "Write layered answers (four layers) for three topics you claim to know well, then ask a friend to push with 'why' follow-ups for 10 minutes each. Note where you hit the edge.",
+   "Do one timed 75-minute build: pick a public paginated API, compute an aggregate, handle rate limits and write two tests. Afterwards write down what slowed you down.",
+   "Build a STAR story bank with at least one story per pillar from your own projects, each ending in a real number. Record yourself telling two of them and cut each to under two minutes."
+  ]
+ },
+ "projecta": {
+  "plain": "Project A is a portfolio project: an agentic RAG service. RAG (retrieval-augmented generation) means the system first searches a document collection for relevant passages and then asks a language model to answer using them. Agentic means the system can check its own work and choose what to do next, such as rewriting a weak search query and trying again. The project combines a vector database, a fine-tuned open model, an agent graph, an API and evaluations that report quality, speed and cost.",
+  "analogy": "It is like a careful research librarian. They search the shelves, look at what they found, and if it does not answer the question they rephrase and search again. Before handing you an answer, they check that every claim is backed by a page they can point to, and they keep a log of how long each request took.",
+  "why": "Enterprise customers ask FDEs for 'a chatbot over our documents' more than almost anything else, and the hard parts are exactly the ones this project covers: permissions, weak retrieval, hallucinations and cost. An FDE who can show a deployed service with real evaluation numbers, for example for an insurer's policy documents, has a concrete story for every interview pillar.",
+  "subtopics": [
+   {
+    "title": "The architecture at a glance",
+    "body": "The service has five parts. A FastAPI endpoint receives questions. A LangGraph state machine controls the steps. PostgreSQL with the pgvector extension stores document chunks and their embeddings (lists of numbers that represent meaning). A generation model writes the answer. A metrics log records quality, latency and cost for every request.\n\nKeeping everything in one Postgres database is a deliberate simplification. Pinecone or Milvus are dedicated vector databases that also work, but pgvector means one system to run and back up, and permissions can live next to the data.\n\nDraw the architecture before writing code. Interviewers will ask you to walk through it, and a clear diagram also helps you decide what to build first.",
+    "example": "A mock scenario: an insurer wants staff to ask questions about 3,000 policy documents. Underwriters may see all documents; call-centre staff may only see customer-facing ones. The diagram shows where each of these requirements is handled: permissions in retrieval, citations in generation, and a grounding check before the answer is returned.",
+    "code": "            +-------------------+\n user  ---> |  FastAPI /ask     |  auth -> user groups\n            +---------+---------+\n                      v\n            +-------------------+      +---------------------------+\n            | LangGraph agent   | ---> | Postgres + pgvector        |\n            | retrieve          |      | chunks, embeddings, ACLs   |\n            | grade -> rewrite  | <--- | hybrid search (vec + text) |\n            | generate          |      +---------------------------+\n            | grounding check   | ---> generation model (QLoRA-tuned)\n            +---------+---------+\n                      v\n            metrics log: faithfulness, latency_ms, tokens, cost",
+    "lang": "Text"
+   },
+   {
+    "title": "Hybrid retrieval with permissions in pgvector",
+    "body": "Documents are split into chunks of a few hundred words, each stored with its embedding and a list of groups allowed to see it. That list is an ACL (access control list).\n\nHybrid search combines vector similarity, which finds passages with similar meaning, and keyword search, which finds exact terms like policy codes that embeddings can miss. A common way to merge the two ranked lists is reciprocal rank fusion (RRF): each result scores 1 / (k + rank) in each list, and the scores are summed.\n\nApply the permission filter inside the search queries so a user can never retrieve a chunk they are not allowed to see, even indirectly through the model's answer.",
+    "example": "A call-centre agent asks 'Is flood damage covered under HX-200?' Vector search finds chunks about water damage in general. Keyword search finds the exact 'HX-200' schedule. RRF puts the HX-200 flood clause first. An underwriting-only annex is excluded because the agent's group is not in its ACL.",
+    "code": "CREATE EXTENSION IF NOT EXISTS vector;\n\nCREATE TABLE chunks (\n  id             bigserial PRIMARY KEY,\n  doc_id         text NOT NULL,\n  allowed_groups text[] NOT NULL,                  -- ACL\n  content        text NOT NULL,\n  tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,\n  embedding      vector(1024)\n);\nCREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops);\nCREATE INDEX ON chunks USING gin (tsv);\n\n-- $1 query embedding, $2 query text, $3 user's groups (text[])\nWITH semantic AS (\n  SELECT id, row_number() OVER (ORDER BY embedding <=> $1) AS r\n  FROM chunks WHERE allowed_groups && $3\n  ORDER BY embedding <=> $1 LIMIT 20\n), keyword AS (\n  SELECT id, row_number() OVER (ORDER BY ts_rank(tsv, q) DESC) AS r\n  FROM chunks, plainto_tsquery('english', $2) AS q\n  WHERE tsv @@ q AND allowed_groups && $3\n  ORDER BY ts_rank(tsv, q) DESC LIMIT 20\n)\nSELECT c.id, c.doc_id, c.content, SUM(1.0 / (60 + s.r)) AS rrf_score\nFROM (SELECT * FROM semantic UNION ALL SELECT * FROM keyword) s\nJOIN chunks c USING (id)\nGROUP BY c.id, c.doc_id, c.content\nORDER BY rrf_score DESC LIMIT 5;",
+    "lang": "SQL"
+   },
+   {
+    "title": "The agent graph in LangGraph",
+    "body": "LangGraph lets you describe the agent as a graph: nodes are steps (functions), edges say what runs next, and a shared state dictionary carries data between steps. A conditional edge chooses the next node based on the state.\n\nThe key loop is retrieve, grade, and either generate or rewrite and retrieve again. Always cap the number of attempts. Without a cap, a question with no good answer in the documents can loop forever and burn tokens.\n\nWhen attempts run out, the generate step should say it could not find support in the documents instead of guessing. That behaviour is often more valuable to an enterprise than a confident wrong answer.",
+    "example": "The question 'What is the excess for HX-200 flood claims?' first retrieves general flood text. The grader marks it not relevant. The rewrite step produces 'HX-200 policy schedule flood excess amount', the second retrieval finds the schedule table, the grader marks it relevant, and generation answers with a citation. Total attempts: 2.",
+    "code": "from typing import TypedDict\nfrom langgraph.graph import StateGraph, START, END\n\nMAX_ATTEMPTS = 3\n\nclass RAGState(TypedDict, total=False):\n    question: str\n    query: str\n    chunks: list[dict]\n    relevant: bool\n    attempts: int\n    answer: str\n    grounded: bool\n\n# search, grade_chunks, rewrite_query, call_generator, grounding_check\n# are your own functions (see the other subtopics).\ndef retrieve(s):  return {\"chunks\": search(s[\"query\"]), \"attempts\": s[\"attempts\"] + 1}\ndef grade(s):     return {\"relevant\": grade_chunks(s[\"question\"], s[\"chunks\"])}\ndef rewrite(s):   return {\"query\": rewrite_query(s[\"question\"], s[\"query\"])}\ndef generate(s):  return {\"answer\": call_generator(s[\"question\"], s[\"chunks\"], s[\"relevant\"])}\ndef check(s):     return {\"grounded\": grounding_check(s[\"answer\"], s[\"chunks\"])}\n\ndef route(s):\n    if s[\"relevant\"] or s[\"attempts\"] >= MAX_ATTEMPTS:   # retry cap\n        return \"generate\"\n    return \"rewrite\"\n\ng = StateGraph(RAGState)\nfor name, fn in [(\"retrieve\", retrieve), (\"grade\", grade), (\"rewrite\", rewrite),\n                 (\"generate\", generate), (\"check\", check)]:\n    g.add_node(name, fn)\ng.add_edge(START, \"retrieve\")\ng.add_edge(\"retrieve\", \"grade\")\ng.add_conditional_edges(\"grade\", route, {\"generate\": \"generate\", \"rewrite\": \"rewrite\"})\ng.add_edge(\"rewrite\", \"retrieve\")\ng.add_edge(\"generate\", \"check\")\ng.add_edge(\"check\", END)\nagent = g.compile()\n# agent.invoke({\"question\": q, \"query\": q, \"attempts\": 0})",
+    "lang": "Python"
+   },
+   {
+    "title": "Grading evidence with structured output",
+    "body": "The grader is a small, cheap model call that answers one question: do these passages contain what is needed to answer? You want a yes or no you can branch on, so ask the model for structured output.\n\nWith the Anthropic Messages API, one reliable way is to define a tool with a JSON schema and force the model to call it using tool_choice. The tool is never actually executed; its input is simply the structured answer you read back.\n\nThe same pattern works for the grounding check: give the answer and the passages, and ask for a list of claims with a supported flag for each. Store the result so you can compute faithfulness later.",
+    "example": "For the HX-200 question with general flood passages, the grader returns relevant: false with the reason 'passages describe flood cover generally but do not mention HX-200 or an excess amount'. That reason is logged, which later helps you see that most retries come from product codes missing in embeddings.",
+    "code": "import anthropic\n\nclient = anthropic.Anthropic()          # reads ANTHROPIC_API_KEY\nMODEL = \"MODEL\"                         # placeholder: a small, cheap model\n\nGRADE_TOOL = {\n    \"name\": \"record_grade\",\n    \"description\": \"Record whether the passages answer the question.\",\n    \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n            \"relevant\": {\"type\": \"boolean\"},\n            \"reason\": {\"type\": \"string\"},\n        },\n        \"required\": [\"relevant\", \"reason\"],\n    },\n}\n\ndef grade_chunks(question: str, chunks: list[dict]) -> bool:\n    passages = \"\\n---\\n\".join(c[\"content\"] for c in chunks)\n    resp = client.messages.create(\n        model=MODEL,\n        max_tokens=300,\n        tools=[GRADE_TOOL],\n        tool_choice={\"type\": \"tool\", \"name\": \"record_grade\"},   # force structured output\n        messages=[{\"role\": \"user\",\n                   \"content\": f\"Question: {question}\\n\\nPassages:\\n{passages}\"}],\n    )\n    for block in resp.content:\n        if block.type == \"tool_use\":\n            return bool(block.input[\"relevant\"])\n    return False",
+    "lang": "Python"
+   },
+   {
+    "title": "QLoRA fine-tuning the generator",
+    "body": "Fine-tuning means training an existing model further on your own examples so it learns a style or format. Full fine-tuning of a large model needs a lot of GPU memory. LoRA (low-rank adaptation) trains only small added matrices instead of all the weights. QLoRA does the same on top of a model loaded in 4-bit precision, which cuts memory enough to fine-tune a 7 to 8 billion parameter model on a single large GPU.\n\nThe course suggests an open model such as Llama 3 or Mistral. Train it on a few thousand examples of the answer format you want, for example 'answer, then cited clause numbers'. Fine-tuning teaches format and tone; the facts should still come from retrieval.\n\nAlways compare the tuned model against the base model on the same evaluation set. If the tuned model is not measurably better on your metrics, use the base model and say so in your write-up.",
+    "example": "You build 2,000 question and answer pairs from policy documents, each answer ending with clause citations in the insurer's house style. After QLoRA training, the share of answers with correctly formatted citations on your test set rises well above the base model's, and you report the exact figures from your own run.",
+    "code": "import torch\nfrom transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig\nfrom peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training\n\nBASE_MODEL = \"BASE_MODEL\"          # placeholder: an open Llama 3 or Mistral checkpoint\n\nbnb = BitsAndBytesConfig(\n    load_in_4bit=True,             # the \"Q\" in QLoRA\n    bnb_4bit_quant_type=\"nf4\",\n    bnb_4bit_compute_dtype=torch.bfloat16,\n    bnb_4bit_use_double_quant=True,\n)\ntokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)\nmodel = AutoModelForCausalLM.from_pretrained(BASE_MODEL, quantization_config=bnb,\n                                             device_map=\"auto\")\nmodel = prepare_model_for_kbit_training(model)\n\nlora = LoraConfig(\n    r=16, lora_alpha=32, lora_dropout=0.05,\n    target_modules=[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\"],   # attention layers\n    task_type=\"CAUSAL_LM\",\n)\nmodel = get_peft_model(model, lora)\nmodel.print_trainable_parameters()   # a small fraction of the total\n# Next: train with transformers Trainer or TRL's SFTTrainer on your Q&A pairs,\n# then save only the adapter: model.save_pretrained(\"adapters/policy-qa\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Evaluation and serving: the numbers that matter",
+    "body": "Evaluations turn a demo into evidence. Track three things per request. Faithfulness is the share of claims in the answer that are supported by the retrieved passages. Latency is time per request; report p95, the time 95% of requests beat. Token cost is input and output tokens multiplied by the model's prices.\n\nBuild a fixed evaluation set of 100 to 200 real-looking questions with expected source documents. Run it after every change, such as adding keyword search or the grader, and keep a table of results over time.\n\nServe the agent behind a FastAPI endpoint that times each request and logs the metrics. Package it with Docker so anyone can run it, and deploy it to show you can take it to production.",
+    "example": "Your results table might show that adding keyword search to vector search raised the share of questions whose correct document appeared in the top 5, and that the grader added some latency per retry. You report faithfulness, p95 latency and cost per 1,000 queries for each version, using the numbers your own runs produced.",
+    "code": "import statistics, time\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel\n\napp = FastAPI()\nPRICE_IN, PRICE_OUT = 0.0, 0.0      # fill in per-million-token prices for your model\nLOG: list[dict] = []\n\nclass Ask(BaseModel):\n    question: str\n\n@app.post(\"/ask\")\ndef ask(req: Ask):\n    t0 = time.perf_counter()\n    out = agent.invoke({\"question\": req.question, \"query\": req.question, \"attempts\": 0})\n    ms = (time.perf_counter() - t0) * 1000\n    LOG.append({\"latency_ms\": ms, \"grounded\": out[\"grounded\"],\n                \"tok_in\": out.get(\"tok_in\", 0), \"tok_out\": out.get(\"tok_out\", 0)})\n    return {\"answer\": out[\"answer\"], \"grounded\": out[\"grounded\"], \"latency_ms\": round(ms)}\n\ndef report(log: list[dict]) -> dict:\n    lat = [r[\"latency_ms\"] for r in log]\n    cost = sum(r[\"tok_in\"] * PRICE_IN + r[\"tok_out\"] * PRICE_OUT for r in log) / 1e6\n    return {\n        \"faithfulness\": sum(r[\"grounded\"] for r in log) / len(log),\n        \"p95_ms\": statistics.quantiles(lat, n=20)[18],   # 95th percentile\n        \"cost_per_1k_queries\": cost / len(log) * 1000,\n    }",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "RAG",
+    "Retrieval-augmented generation: search documents first, then have a model answer using what was found."
+   ],
+   [
+    "Agentic",
+    "Able to inspect intermediate results and choose the next step, such as retrying a search."
+   ],
+   [
+    "Embedding",
+    "A list of numbers representing the meaning of text, used to find similar passages."
+   ],
+   [
+    "pgvector",
+    "A PostgreSQL extension that stores embeddings and runs similarity search."
+   ],
+   [
+    "Hybrid search",
+    "Combining vector similarity search with keyword search to get better results."
+   ],
+   [
+    "ACL",
+    "Access control list: which users or groups may see a given item."
+   ],
+   [
+    "LangGraph",
+    "A library for building agents as graphs of steps that share a state."
+   ],
+   [
+    "QLoRA",
+    "Fine-tuning small adapter matrices on top of a model loaded in 4-bit precision to save memory."
+   ],
+   [
+    "Faithfulness",
+    "The share of an answer's claims that are supported by the retrieved sources."
+   ],
+   [
+    "p95 latency",
+    "The response time that 95% of requests are faster than."
+   ]
+  ],
+  "practice": [
+   "Load 50 documents of your choice into Postgres with pgvector, create the chunks table with an ACL column, and run the hybrid RRF query for five questions. Show that a user without the right group never sees restricted chunks.",
+   "Build the LangGraph agent with stub functions first (search returns fixed chunks, grader returns False twice then True). Confirm the retry cap works, then swap in real retrieval and the tool-based grader.",
+   "Create a 100-question evaluation set, run it against two versions of your service (vector-only vs. hybrid), and publish a results table with faithfulness, p95 latency and cost per 1,000 queries plus the biggest failure category you found."
+  ]
+ }
+}

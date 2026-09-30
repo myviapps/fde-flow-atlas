@@ -1,0 +1,22 @@
+ticket_id,created_at,customer,tier,subject,body,status
+T-1001,2026-09-13,Contoso,pro,Export button shows an error,"Clicking export gives an error message, other features fine.",closed
+T-1002,2026-09-18,Acme Corp,enterprise,Cannot log in after password reset,Several staff cannot log in after resetting passwords.,open
+T-1003,2026-09-02,Contoso,pro,Data loss after import,After importing the CSV some records disappeared. Data loss is serious for us.,closed
+T-1004,2026-09-03,Bluebird Cafe,free,Site is down for all users,Our whole dashboard returns 500 since 9am. Outage for every user.,open
+T-1005,2026-09-08,Dune Labs,pro,Cannot log in after password reset,Several staff cannot log in after resetting passwords.,open
+T-1006,2026-09-02,Evergreen Bank,enterprise,Possible security issue with shared links,Shared links seem to work without login. Could be a security problem.,closed
+T-1007,2026-09-21,Acme Corp,enterprise,Reports are slow to load,The monthly report takes two minutes to load.,closed
+T-1008,2026-09-19,Evergreen Bank,enterprise,Site is down for all users,Our whole dashboard returns 500 since 9am. Outage for every user.,closed
+T-1009,2026-09-08,Dune Labs,pro,Site is down for all users,Our whole dashboard returns 500 since 9am. Outage for every user.,open
+T-1010,2026-09-10,Evergreen Bank,enterprise,Export button shows an error,"Clicking export gives an error message, other features fine.",open
+T-1011,2026-09-04,Bluebird Cafe,free,Question about user limits,How many users can we add on our plan?,closed
+T-1012,2026-09-06,Contoso,pro,Question about user limits,How many users can we add on our plan?,open
+T-1099,not-a-date,Fable Books,free,Broken row,This row has a bad date on purpose.,open
+T-1013,2026-09-21,Evergreen Bank,enterprise,Data loss after import,After importing the CSV some records disappeared. Data loss is serious for us.,open
+T-1014,2026-09-18,Contoso,pro,Cannot log in after password reset,Several staff cannot log in after resetting passwords.,closed
+T-1015,2026-09-02,Acme Corp,enterprise,Data loss after import,After importing the CSV some records disappeared. Data loss is serious for us.,closed
+T-1016,2026-09-18,Bluebird Cafe,free,Sync job failed overnight,The nightly sync failed with a timeout error.,open
+T-1017,2026-09-19,Contoso,pro,Sync job failed overnight,The nightly sync failed with a timeout error.,open
+T-1018,2026-09-08,Contoso,pro,How do I change my invoice address?,Where can I update the billing address on invoices?,open
+T-1019,2026-09-03,Fable Books,free,Reports are slow to load,The monthly report takes two minutes to load.,closed
+T-1020,2026-09-16,Contoso,pro,Question about user limits,How many users can we add on our plan?,open

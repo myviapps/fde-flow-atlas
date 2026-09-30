@@ -1,0 +1,121 @@
+{
+ "cxagents": {
+  "title": "Pindlebury Home: an agent that looked great on containment and failed on returns",
+  "company": "Pindlebury Home (made up), an online furniture and homeware retailer with about 900 staff in the United Kingdom; vendor Tessavale AI (made up)",
+  "situation": "Pindlebury's 45-person care team handled about 60,000 chats a month, 38 percent of them about returns and refunds. A first version of an AI agent, built quickly by an internal team, reported 74 percent containment in its first month. The Customer Care director was still seeing complaints rise, and the CSAT for returns chats had dropped from 82 percent to 69 percent.",
+  "problem": "The agent answered returns questions by quoting the policy page, then ended the chat, so the chat counted as contained even when the customer still had no return label. The refund rules also lived only in the prompt, and a red-team test got it to promise a full refund outside the return window. Simply tuning the prompt would not fix either problem, because the agent had no action to create a label and nothing in code enforced the rules.",
+  "approach": [
+   "The Tessavale FDE collected the returns SOP, 22 care-team macros and the refund approval matrix, and sorted 17 rules into prompt instructions, tool checks and handoff triggers, resolving two conflicts with the care director.",
+   "She built two tools, create_return_label and issue_refund, that took the customer ID from the verified session and enforced the 30-day window, order ownership and a 150 pound auto-approve limit in code.",
+   "She redesigned the handoff: damaged items, injury and legal words went to a returns queue with a summary, tool results and photos attached, and after 6pm the agent created a ticket with a promised reply time.",
+   "She built a 120-case simulated suite from transcripts, SOP rules and red-team prompts, with per-intent pass rates, and made it a release gate.",
+   "She changed the dashboard to show resolution of contained chats (no recontact in 7 days) and abandonment next to containment, sliced by intent.",
+   "The new version ran in shadow mode for 10 days, then 10 percent and 50 percent of returns chats by stable customer hash before full rollout."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "RELEASE GATE  agent v2.3  (run 14 Aug)\n\nIntent            cases  pass  v2.2   gate\norder_status         30    30    30   ok\nreturns              38    37    31   ok (was 82%)\nrefund_policy        22    22    18   ok\ndamage_handoff       15    15    15   ok\nred_team             15    15    12   ok, 0 policy violations\n-------------------------------------------\nTotal               120   119   106\n\nOne failure: returns #27, customer asks to return a sofa on day 30\n  expected: label created   got: handoff (off-by-one in window check)\nDecision: fix window check (<= 30 days), re-run, then ship to shadow."
+  },
+  "outcome": "After full rollout, containment settled at 66 percent, lower than before, but resolution of contained returns chats rose from 48 percent to 79 percent and returns CSAT recovered to 84 percent. Recontact about returns fell by about a third, and the red-team suite has shown no policy violations in 12 weekly runs.",
+  "lessons": [
+   "Containment alone rewards an agent for ending chats; pair it with resolution and recontact.",
+   "Rules that move money or data belong in tool code, where a clever message cannot talk past them.",
+   "An agent that can only quote policy will contain chats without solving them; the fix is often a new action.",
+   "A simulated suite with per-intent results is the gate that makes every later change safe."
+  ],
+  "discuss": [
+   "The care director is measured on containment. How would you explain why the new version's lower containment is better?",
+   "Which Pindlebury rules would you keep as handoff triggers forever, even if the agent could handle them?",
+   "How would you decide the auto-approve limit for refunds, and who should own that number?"
+  ]
+ },
+ "expansion": {
+  "title": "Carrowmoor Mutual: saving a renewal the dashboard said was fine",
+  "company": "Carrowmoor Mutual (made up), a home and motor insurer with about 3,000 staff in Ireland; vendor Quillstone AI (made up), which sells a claims-triage assistant",
+  "situation": "Carrowmoor had used Quillstone's assistant for 10 months to read first notice of loss emails and route claims. The vendor's dashboard showed 94 percent uptime and steady message volume. Renewal of a 310,000 euro annual contract was due in 4 months, and the executive sponsor, the claims director, had just moved to a new role.",
+  "problem": "Nobody had reported value since go-live, so the new claims director saw only a cost line. Volume looked steady because one large team used the assistant heavily, while two smaller regional teams had quietly stopped after a form change. A discount offer from the account executive would not fix the real issue, which was that nobody at Carrowmoor could say what the system was worth.",
+  "approach": [
+   "The FDE and CSM rebuilt the success plan from the original statement of work: routing time per claim, misrouted claims and time to first contact, with the baselines measured in discovery.",
+   "The FDE pulled the same three measures from system logs and the claims platform, and the claims finance analyst agreed the method and a loaded cost per hour.",
+   "Usage broken down by team showed the two regional teams had stopped in month 7; the FDE traced it to a new claim form field the assistant did not map, and fixed it in 4 days.",
+   "The CSM booked a 30-minute introduction with the new claims director, then a 45-minute executive business review with a pre-read agreed by finance.",
+   "In the review they showed value realised, admitted the regional drop and the fix, and proposed one next use case: triaging motor glass claims with the same email integration."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "EBR PRE-READ  Carrowmoor Mutual  (agreed with claims finance, 3 June)\n\nGoal (success plan)          Baseline     Today        Target\nRouting time per claim       11 min       2.5 min      4 min     met\nMisrouted claims             9.0%         3.1%         4.0%      met\nTime to first contact        26 hours     14 hours     12 hours  close\n\nValue realised (10 months):  about 402,000 euro at 41 euro per hour\nContract cost (annual):      310,000 euro\n\nWhat went wrong: regional teams stopped in month 7 after a claim\nform change (unmapped field). Fixed 28 May; both teams back to\nfull use this week.\n\nProposed next: motor glass claims triage, same email integration,\n6-week pilot, estimated 90,000 euro a year.\nDecision needed: approve pilot; confirm renewal by 30 July."
+  },
+  "outcome": "The new claims director approved the renewal a month early and a 6-week motor glass pilot, which later became a 70,000 euro annual expansion. Regional team usage returned to its earlier level within three weeks of the fix. Quillstone added per-team usage and value numbers to its monthly account review for every customer.",
+  "lessons": [
+   "Uptime and total volume can hide a team that stopped using the system; slice usage by team.",
+   "Value numbers agreed by the customer's finance team end arguments before they start.",
+   "When a sponsor changes, treat the account as at risk and re-sell the value to the new person.",
+   "The easiest expansion reuses an integration the customer already trusts."
+  ],
+  "discuss": [
+   "Who should have noticed the regional drop in month 7, and what process would have caught it?",
+   "The account executive wanted to offer a 15 percent discount. When is a discount the right tool for a renewal?",
+   "How would you handle the review if one of the three goals had been clearly missed?"
+  ]
+ },
+ "psa": {
+  "title": "Orrinside AI: fixed-fee onboardings that quietly lost money",
+  "company": "Orrinside AI (made up), a 220-person software company selling an AI contract-review product to legal teams in the United States, with a 14-person FDE and services team",
+  "situation": "Orrinside sold every onboarding as a 60,000 dollar fixed fee planned at 300 hours. Customers were happy and projects mostly hit their dates. But the finance team reported services margin had fallen from 38 percent to 9 percent over three quarters, and two FDEs were working evenings to keep up.",
+  "problem": "Plans lived in spreadsheets, time was logged loosely and nobody compared planned with actual hours by phase, so no one could say where the hours went. Raising the price for everyone would have hurt sales without fixing the cause, and asking the team to 'work faster' would have made burnout worse.",
+  "approach": [
+   "The lead FDE exported six months of time entries and tagged each to a phase, then compared actual and planned hours for 11 projects.",
+   "The data showed two phases overran: integrating with customers' document management systems (planned 40 hours, median 110) and UAT (planned 30, median 70), while other phases were close to plan.",
+   "The team moved plans into a PSA platform with a dynamic playbook: the document-system integration became a conditional task priced by system type, and UAT got customer-owned tasks with due dates in the client portal.",
+   "They changed the SOW template: a paid 2-week discovery for customers with an unlisted document system, clear assumptions about customer UAT testers, and a change-request process the FDEs were trained to use.",
+   "They built reusable connectors for the two most common document systems during low-utilisation weeks and tracked that time as internal investment.",
+   "A Monday risk report flagged projects whose budget burn ran more than 15 points ahead of progress."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "PHASE REVIEW  11 onboarding projects, Jan-Jun  (hours)\n\nPhase                 Planned  Median actual  Worst   Action\nKickoff and access       30          34          52    keep\nDoc system integration   40         110         190    conditional task,\n                                                        priced by system;\n                                                        build 2 connectors\nConfiguration            90          96         130    keep\nUAT                      30          70         120    customer tasks in\n                                                        portal, testers in SOW\nTraining and go-live     60          58          75    keep\nHypercare                50          47          80    keep\n--------------------------------------------------------\nTotal                   300         415                 margin 9% -> target 30%"
+  },
+  "outcome": "Over the next two quarters the median onboarding used 320 hours, services margin recovered to about 31 percent, and the median time to go-live fell from 11 to 9 weeks because UAT stopped waiting on unnamed testers. Change requests, previously almost never raised, covered about 40,000 dollars of extra scope that had been done for free before.",
+  "lessons": [
+   "Fixed fees hide overruns until you compare planned and actual hours by phase.",
+   "The fix is usually in two or three phases, not everywhere.",
+   "Customer-side tasks with owners and dates are the cheapest way to speed up UAT and access.",
+   "Time spent building reusable connectors lowers utilisation this month and raises margin for every later project."
+  ],
+  "discuss": [
+   "Should Orrinside have switched to time and materials instead? What would customers have said?",
+   "How would you explain a change request to a customer who believes the fixed fee covers everything?",
+   "What utilisation target would you set for FDEs who also support sales and build connectors?"
+  ]
+ },
+ "lowcode": {
+  "title": "Brackenfold Mutual: an HR agent that had to live in Teams",
+  "company": "Brackenfold Mutual (made up), a 3,200-person insurance company in the United Kingdom, working with an AI vendor's FDE",
+  "situation": "Brackenfold's HR service desk answered about 2,400 employee questions a month by email, with a median reply time of 26 hours. About 60 percent were policy questions or leave-balance lookups. The vendor had proposed a custom web app with its own chat interface.",
+  "problem": "Brackenfold's IT security team would take about four months to review a new externally hosted app, and staff did not want another site to sign in to. Their policy allowed agents built in Copilot Studio in approved environments, but the leave-balance data sat in an old HR database with no prebuilt connector, and eligibility rules for special leave were too complex to maintain as a visual flow.",
+  "approach": [
+   "The FDE switched the plan to a Copilot Studio agent published in Teams, using the HR policy pages in SharePoint as its knowledge source.",
+   "For leave balances, Brackenfold's integration team built a small API in front of the HR database, and the FDE wrote its OpenAPI file and created a custom connector from it, reached through the on-premises data gateway.",
+   "Before building further, the FDE read the DLP policy and asked the admin to classify the new connector as Business, so it could sit beside SharePoint in the same flow.",
+   "Special-leave eligibility, with 40 rules and many exceptions, moved into the same API with unit tests, instead of a 70-step flow.",
+   "The build lived in one solution, went dev to test to production through a pipeline, and used a service account for the production connection.",
+   "A 120-question test set from real HR emails ran before every publish, and two HR operations analysts were trained to add topics and publish changes themselves."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "HANDOVER SUMMARY  HR Help agent (Teams)\n\nComponent            Owner                 Who may change it\nPolicy topics (18)   HR operations         Citizen developers\nKnowledge: SharePoint HR ops, page owners  Citizen developers\nLeave Balance API    Integration team      Engineers only, versioned\nCustom connector     Integration team      Engineers only\nDLP classification   Platform admin        Change request\nProduction publish   HR ops via pipeline   After test set passes\n\nTest set: 120 questions, pass mark 95%, run before every publish\nConnection: svc-hrhelp (service account), not a personal login\nKnown limits: no answers on pay disputes; hands off to HR desk\nEscalation: HR desk queue in ServiceDesk, same day"
+  },
+  "outcome": "The agent went live in 7 weeks instead of an estimated 5 months for the custom app. In the first two months it answered about 55 percent of HR questions without an email, and the median reply time for the remaining emails fell from 26 to 11 hours. HR operations published 9 new topics themselves in the following quarter without calling the vendor.",
+  "lessons": [
+   "The customer's approved platform can be the fastest path to production, even when custom code looks cleaner.",
+   "Read the DLP policy and environment rules before you build, not on launch day.",
+   "Move only the hard logic into code, behind a custom connector, and keep the platform as the front door.",
+   "Handover works when the split between citizen developers and engineers is written down."
+  ],
+  "discuss": [
+   "What would have made the custom web app the better choice for Brackenfold?",
+   "How would you convince a platform admin to classify a new custom connector as Business?",
+   "What should happen if HR operations wants to change an eligibility rule that lives in the API?"
+  ]
+ }
+}

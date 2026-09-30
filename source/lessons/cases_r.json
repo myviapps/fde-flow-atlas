@@ -1,0 +1,62 @@
+{
+ "llmapi": {
+  "title": "Maplestone Building Society: a flaky policy assistant moved onto the society's cloud",
+  "company": "Maplestone Building Society (made up), savings and mortgages, about 1,400 staff, United Kingdom",
+  "situation": "Branch staff used a prototype assistant to answer questions about mortgage policy. It called a model vendor's API with a key on a developer's laptop account, and about 6 percent of questions returned an error or a cut-off answer. Risk and compliance then ruled that all model calls must run through the society's existing Google Cloud account in a UK or EU region.",
+  "problem": "The prototype had no logging of stop reasons or token counts, retried nothing, used a floating model alias and mixed a high temperature with long answers. Simply moving the same code to the cloud would carry the same failures over and add new ones, because quotas, model ids and authentication all differ on the cloud platform.",
+  "approach": [
+   "Added one log line per call with model id, stop reason, input and output tokens and latency, and ran the prototype for two days. It showed 4 percent of answers ended with max_tokens and 2 percent were 429 errors at the 9 a.m. peak.",
+   "Moved to the SDK's Vertex AI client with a service account, after confirming with the cloud team that the chosen model was enabled in the required region and asking for a tokens-per-minute quota sized from the logged peak.",
+   "Pinned an exact model id in a config file and recorded the provider's retirement date for it in the team calendar.",
+   "Raised max_tokens from 300 to 1,000, asked for answers under 150 words in the system prompt, and made the app show a 'shortened answer' notice if the stop reason was still max_tokens.",
+   "Where the model accepted it, lowered temperature for this factual task, and kept the same settings in the 60-question evaluation set so results were comparable.",
+   "Set SDK retries to 3 with the default backoff, enabled streaming so staff saw text in about a second, and added a fallback message pointing to the policy manual when retries ran out."
+  ],
+  "artifact": {
+   "lang": "YAML",
+   "code": "# config/assistant.yaml\nplatform: vertex\nproject_id: maplestone-ai-prod\nregion: europe-west2\nmodel: MODEL_PINNED        # exact id, reviewed quarterly\nretires_on: 2027-06-30     # from provider notice\nmax_tokens: 1000\nstream: true\nsdk:\n  max_retries: 3\n  timeout_seconds: 60\nlogging:\n  fields: [model, stop_reason, input_tokens, output_tokens, latency_ms]\nfallback:\n  on_exhausted_retries: \"Show link to policy manual section and log incident\"\neval:\n  set: evals/mortgage_policy_60.jsonl\n  must_pass: 0.90"
+  },
+  "outcome": "Over the next month the error and cut-off rate fell from about 6 percent to 0.4 percent, and median time to first text dropped from 7 seconds to under 1 second. The evaluation score held at 55 of 60 questions correct, and compliance signed off because every call now ran and was logged inside the society's own cloud account.",
+  "lessons": [
+   "Log stop reason and usage from the first call; they explain most 'the bot is broken' reports.",
+   "Moving to a cloud platform changes authentication, model ids, regions and quotas, not the basic request shape.",
+   "Pin the model and track its retirement date, so upgrades happen on your schedule.",
+   "Handle max_tokens and 429 explicitly instead of hoping they are rare."
+  ],
+  "discuss": [
+   "If the needed model were not yet available in the required region, what options would you put to the risk team?",
+   "How would you decide the fallback: a second model, a queue, or a human answer path?",
+   "What would you monitor weekly after go-live, and who should see it?"
+  ]
+ },
+ "aicoding": {
+  "title": "Tarnbrook Water: shipping a meter-data integration in three weeks with a coding agent",
+  "company": "Tarnbrook Water (made up), regional water utility, about 900 staff, Ireland",
+  "situation": "Tarnbrook needed smart-meter readings from a vendor's API loaded into its billing warehouse every night, and had asked for it within three weeks. The FDE had never seen the utility's 180,000-line integration codebase, and its only maintainer was on leave for two of those weeks.",
+  "problem": "Writing everything by hand would not fit the deadline, but letting an agent generate the integration freely risked code nobody understood, broken conventions and, worst of all, customer meter data (which is personal data under GDPR) leaking into prompts. The security team had approved exactly one coding tool, in the development environment, with no production access.",
+  "approach": [
+   "Spent day one using the approved agent read-only to map the codebase: how existing connectors were structured, where schedules lived and how tests ran. Every claim was checked in the files and written into a NOTES.md.",
+   "Turned the confirmed notes into a CLAUDE.md with build and test commands, the connector pattern, and hard rules: synthetic fixtures only, never edit generated code, never change a test to pass.",
+   "Wrote a one-page spec for the connector with eight edge cases, including missing readings, duplicate readings, meter replacements and daylight saving changes, and had the agent write failing tests for them first.",
+   "Built the connector in small commits of under 150 lines each, reading every diff. Review caught one invented pagination parameter and one bare except that hid authentication errors.",
+   "Kept real meter exports out of the working directory, used a masked sample of 200 meters for local runs, and approved every shell command that touched the network.",
+   "Asked the returning maintainer to review the final pull request against the notes, then ran it in parallel with the manual process for five nights before switching over."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "SPEC: vendor meter readings -> billing warehouse (nightly)\n\nInput : vendor API /readings?since=<ts>, paged, JSON\nOutput: rows in staging.meter_readings (meter_id, read_at_utc, kwh_m3, source)\nDone  : all tests pass; 5 parallel nights match manual totals within 0.1%\n\nEdge cases (tests first)\n 1. Page with zero readings -> no error, no rows\n 2. Duplicate reading (same meter, same time) -> keep one\n 3. Meter replaced mid-month -> both meter ids kept, linked by premise\n 4. Local time in DST change hour -> converted to UTC correctly\n 5. Negative or absurd value (> 10,000) -> quarantine table, alert\n 6. API returns 429 -> backoff and resume from last page\n 7. API returns 401 -> fail fast, no retry, page on-call\n 8. Rerun same night -> idempotent, no double rows\n\nRules: synthetic fixtures only; no production credentials in dev."
+  },
+  "outcome": "The connector went live on day 17. During the five parallel nights its totals matched the manual process within 0.05 percent, and in the first two months it had one incident, a vendor outage handled by the retry path. The maintainer's review found two naming issues and no logic defects, and security's audit found no customer data in any prompt or test fixture.",
+  "lessons": [
+   "Use the agent first to learn the codebase, and verify each claim before building on it.",
+   "A spec with edge cases and tests written first gives the agent a target and gives you an objective check.",
+   "Small diffs that you actually read catch the plausible-looking mistakes agents make.",
+   "Data and permission rules come before speed; they are what let the customer trust the result."
+  ],
+  "discuss": [
+   "Which parts of this work would you still refuse to hand to an agent, and why?",
+   "How would you explain to the customer's security team what the agent can and cannot access?",
+   "If an agent's change passes all tests but you cannot explain one part of it, what do you do?"
+  ]
+ }
+}

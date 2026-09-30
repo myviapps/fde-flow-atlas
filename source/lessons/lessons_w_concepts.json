@@ -1,0 +1,646 @@
+[
+ {
+  "id": "neuralnets",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Neural networks",
+  "title": "Neural networks from scratch: forward pass, loss and backpropagation",
+  "thesis": "A neural network is layers of weighted sums followed by simple bends. It learns by measuring how wrong it is, using the chain rule to find which way each weight should move, and taking many small steps downhill. Everything from a spam filter to an LLM is trained with this same loop.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "batch",
+    90,
+    70,
+    "Batch of data",
+    "32 examples"
+   ],
+   [
+    "hidden",
+    265,
+    70,
+    "Hidden layer",
+    "weights + tanh"
+   ],
+   [
+    "output",
+    440,
+    70,
+    "Output layer",
+    "a probability"
+   ],
+   [
+    "loss",
+    615,
+    70,
+    "Loss",
+    "how wrong"
+   ],
+   [
+    "gout",
+    615,
+    220,
+    "Output gradient",
+    "error signal"
+   ],
+   [
+    "ghid",
+    440,
+    220,
+    "Hidden gradient",
+    "chain rule"
+   ],
+   [
+    "opt",
+    265,
+    220,
+    "Optimizer",
+    "SGD or Adam"
+   ],
+   [
+    "weights",
+    90,
+    220,
+    "Updated weights",
+    "slightly better"
+   ]
+  ],
+  "edges": [
+   [
+    "batch",
+    "hidden"
+   ],
+   [
+    "hidden",
+    "output"
+   ],
+   [
+    "output",
+    "loss"
+   ],
+   [
+    "loss",
+    "gout"
+   ],
+   [
+    "gout",
+    "ghid"
+   ],
+   [
+    "ghid",
+    "opt"
+   ],
+   [
+    "opt",
+    "weights"
+   ],
+   [
+    "weights",
+    "batch",
+    0,
+    "next batch"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Take a batch",
+    "n": [
+     "batch"
+    ],
+    "e": [],
+    "d": "Training data is split into small batches, often 32 to 256 examples. The network learns from one batch at a time, and one full pass over all batches is called an epoch.",
+    "l": [
+     14,
+     15
+    ]
+   },
+   {
+    "t": "Hidden layer",
+    "n": [
+     "batch",
+     "hidden"
+    ],
+    "e": [
+     "batch>hidden"
+    ],
+    "d": "Each hidden unit computes a weighted sum of the inputs and passes it through an activation function such as tanh or ReLU. The bend is what lets the network learn curved patterns.",
+    "l": [
+     3
+    ]
+   },
+   {
+    "t": "Output layer",
+    "n": [
+     "hidden",
+     "output"
+    ],
+    "e": [
+     "hidden>output"
+    ],
+    "d": "The output layer combines the hidden units into one score, and a sigmoid turns it into a probability between 0 and 1. This whole left-to-right trip is the forward pass.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "Measure the loss",
+    "n": [
+     "output",
+     "loss"
+    ],
+    "e": [
+     "output>loss"
+    ],
+    "d": "The loss compares the prediction with the true label. Cross-entropy is small when the network is confident and right, and very large when it is confident and wrong.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Error at the output",
+    "n": [
+     "loss",
+     "gout"
+    ],
+    "e": [
+     "loss>gout"
+    ],
+    "d": "Backpropagation starts at the end. For sigmoid with cross-entropy the error signal is simply prediction minus label, which says how the output score should move.",
+    "l": [
+     6,
+     7
+    ]
+   },
+   {
+    "t": "Chain rule backwards",
+    "n": [
+     "gout",
+     "ghid"
+    ],
+    "e": [
+     "gout>ghid"
+    ],
+    "d": "The chain rule passes the error back through the output weights and the tanh bend, so every hidden weight learns its share of the blame.",
+    "l": [
+     8,
+     9
+    ]
+   },
+   {
+    "t": "Optimizer step",
+    "n": [
+     "ghid",
+     "opt"
+    ],
+    "e": [
+     "ghid>opt"
+    ],
+    "d": "The optimizer moves every weight a small step against its gradient. Plain SGD uses a fixed learning rate; Adam adapts the step size for each weight.",
+    "l": [
+     10,
+     11
+    ]
+   },
+   {
+    "t": "Repeat",
+    "n": [
+     "opt",
+     "weights",
+     "batch"
+    ],
+    "e": [
+     "opt>weights",
+     "weights>batch"
+    ],
+    "d": "With slightly better weights the network takes the next batch. Thousands of these small steps turn random weights into a working model.",
+    "l": [
+     14,
+     15,
+     16
+    ]
+   }
+  ],
+  "ideas": [
+   "A neuron is a weighted sum plus a bias, passed through an activation function.",
+   "Without a nonlinear activation, stacking layers is no better than one layer.",
+   "The loss turns 'how wrong' into one number that training pushes down.",
+   "Backpropagation is the chain rule applied layer by layer, from the loss back to every weight.",
+   "Dropout, early stopping and weight decay are the everyday defences against overfitting."
+  ],
+  "traps": [
+   "Judging a network on its training loss. Only loss on held-out validation data tells you if it generalises.",
+   "Picking a learning rate once and never revisiting it. Too high and the loss jumps around; too low and nothing seems to happen.",
+   "Leaving dropout switched on at prediction time. Frameworks need an explicit eval mode."
+  ],
+  "qa": [
+   [
+    "Explain backpropagation to a non-technical manager.",
+    "The network makes a guess and we measure how wrong it is. Then we work backwards through the layers asking how much each weight contributed to the error, which is what the chain rule computes. Each weight gets nudged a little in the direction that reduces the error, and we repeat this over thousands of examples."
+   ],
+   [
+    "Your model's training loss keeps falling but validation loss started rising at epoch 12. What do you do?",
+    "That is overfitting. I would keep the checkpoint from around epoch 12 (early stopping), then try more regularisation such as dropout or weight decay, more or augmented data, or a smaller network, and compare on the validation set."
+   ],
+   [
+    "Why do we need activation functions?",
+    "A layer without one is a linear function, and a chain of linear functions is still linear, so the network could only draw straight boundaries. The nonlinear bend lets stacked layers represent curved boundaries such as XOR."
+   ]
+  ],
+  "code": "import numpy as np\n# One training step for a network with one hidden layer\ndef train_step(X, y, W1, W2, lr=0.5):\n    h = np.tanh(X @ W1)                    # forward: hidden layer\n    p = 1 / (1 + np.exp(-(h @ W2)))        # forward: output probability\n    loss = -np.mean(y*np.log(p) + (1-y)*np.log(1-p))  # how wrong we are\n    dz2 = (p - y) / len(X)                 # backward: error at the output\n    dW2 = h.T @ dz2                        # gradient for output weights\n    dh = dz2 @ W2.T * (1 - h**2)           # chain rule back through tanh\n    dW1 = X.T @ dh                         # gradient for hidden weights\n    W1 -= lr * dW1                         # optimizer: small step downhill\n    W2 -= lr * dW2\n    return loss\n\nfor epoch in range(3000):                  # one epoch = one pass over the data\n    for Xb, yb in batches(X, y, size=32):  # the data arrives in batches\n        loss = train_step(Xb, yb, W1, W2)",
+  "codeTitle": "One training step in numpy"
+ },
+ {
+  "id": "dlarch",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Deep learning architectures",
+  "title": "Deep learning architectures: CNNs, RNNs, attention and transfer learning",
+  "thesis": "Each deep learning architecture builds an assumption about the data into its wiring: CNNs assume nearby pixels matter together, RNNs read in order, and transformers let every token look at every other. Knowing why each was invented, and why pretrained models plus GPUs now dominate, lets an FDE pick a sensible starting point for a customer.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "mlp",
+    90,
+    70,
+    "Dense network",
+    "every input linked"
+   ],
+   [
+    "cnn",
+    265,
+    70,
+    "CNN",
+    "local image filters"
+   ],
+   [
+    "rnn",
+    440,
+    70,
+    "RNN",
+    "reads in order"
+   ],
+   [
+    "lstm",
+    615,
+    70,
+    "LSTM",
+    "gated memory"
+   ],
+   [
+    "attn",
+    615,
+    220,
+    "Attention",
+    "look at any token"
+   ],
+   [
+    "tf",
+    440,
+    220,
+    "Transformer",
+    "attention only"
+   ],
+   [
+    "pre",
+    265,
+    220,
+    "Pretrained model",
+    "trained once, big"
+   ],
+   [
+    "ft",
+    90,
+    220,
+    "Fine-tune",
+    "transfer learning"
+   ]
+  ],
+  "edges": [
+   [
+    "mlp",
+    "cnn",
+    0,
+    "share filters"
+   ],
+   [
+    "cnn",
+    "rnn",
+    0,
+    "for sequences"
+   ],
+   [
+    "rnn",
+    "lstm",
+    0,
+    "fix forgetting"
+   ],
+   [
+    "lstm",
+    "attn",
+    0,
+    "fix bottleneck"
+   ],
+   [
+    "attn",
+    "tf",
+    0,
+    "drop recurrence"
+   ],
+   [
+    "tf",
+    "pre",
+    0,
+    "scale on GPUs"
+   ],
+   [
+    "cnn",
+    "pre",
+    0,
+    "image models"
+   ],
+   [
+    "pre",
+    "ft"
+   ]
+  ],
+  "note": "Read the top row left to right as the early architectures and the bottom row right to left as the path to today's large pretrained models. Edge labels say what problem each step solved.",
+  "ideas": [
+   "A CNN slides small learned filters over an image, so the same edge detector works anywhere in the picture.",
+   "RNNs read one step at a time and struggled with long sequences because the training signal fades or explodes as it travels back.",
+   "LSTMs added gates to keep memory longer, but still processed words one after another, which is slow to train.",
+   "Attention lets every token look directly at every other token, and transformers are built from attention alone, which runs in parallel on GPUs.",
+   "Transfer learning reuses a model pretrained on huge data and adapts it with a small labelled set, which is how most customer projects start."
+  ],
+  "traps": [
+   "Training a large model from scratch on a few thousand labelled images when a pretrained model would reach better accuracy in hours.",
+   "Assuming a transformer is always the right choice. For small tabular data, gradient boosted trees usually win.",
+   "Forgetting the GPU memory budget. A model that does not fit on the card cannot run, however fast the chip is."
+  ],
+  "qa": [
+   [
+    "Why did transformers replace RNNs for language?",
+    "RNNs read tokens one at a time, so training cannot run in parallel and the signal from early tokens fades over long texts. Attention connects every pair of tokens directly and the whole sequence is processed at once on GPUs, so transformers train faster on far more data and handle long-range links better."
+   ],
+   [
+    "A customer has 3,000 labelled photos of product defects. How would you start?",
+    "I would start from a pretrained image model, replace its final layer with one for their defect classes, train only that head first, then optionally unfreeze more layers with a small learning rate. I would hold out a test set by production batch and compare against a simple baseline."
+   ]
+  ]
+ },
+ {
+  "id": "rlhf",
+  "mod": 3,
+  "sec": "3.4",
+  "name": "RL and RLHF",
+  "title": "Reinforcement learning and RLHF: rewards, bandits and aligning LLMs",
+  "thesis": "Reinforcement learning trains an agent by trial, error and reward. RLHF applies the idea to language models: humans compare answers, a reward model learns their taste, and the model is tuned to score well without drifting too far. An FDE rarely runs it, but must explain the behaviour it creates and the tuning options it opens.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "base",
+    90,
+    70,
+    "Pretrained model",
+    "predicts next token"
+   ],
+   [
+    "sft",
+    265,
+    70,
+    "SFT model",
+    "follows instructions"
+   ],
+   [
+    "sample",
+    440,
+    70,
+    "Sample answers",
+    "2+ per prompt"
+   ],
+   [
+    "human",
+    615,
+    70,
+    "Human ranking",
+    "A better than B"
+   ],
+   [
+    "rm",
+    615,
+    220,
+    "Reward model",
+    "scores answers"
+   ],
+   [
+    "ppo",
+    440,
+    220,
+    "RL update",
+    "e.g. PPO"
+   ],
+   [
+    "kl",
+    265,
+    220,
+    "KL penalty",
+    "stay near SFT"
+   ],
+   [
+    "aligned",
+    90,
+    220,
+    "Aligned model",
+    "helpful, harmless"
+   ]
+  ],
+  "edges": [
+   [
+    "base",
+    "sft"
+   ],
+   [
+    "sft",
+    "sample"
+   ],
+   [
+    "sample",
+    "human"
+   ],
+   [
+    "human",
+    "rm"
+   ],
+   [
+    "rm",
+    "ppo"
+   ],
+   [
+    "ppo",
+    "sample",
+    0,
+    "new answers"
+   ],
+   [
+    "ppo",
+    "kl"
+   ],
+   [
+    "kl",
+    "aligned"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start from a pretrained model",
+    "n": [
+     "base"
+    ],
+    "e": [],
+    "d": "Pretraining on huge amounts of text teaches the model to continue text. It knows a lot but does not reliably follow instructions or stay polite.",
+    "l": []
+   },
+   {
+    "t": "Supervised fine-tuning",
+    "n": [
+     "base",
+     "sft"
+    ],
+    "e": [
+     "base>sft"
+    ],
+    "d": "People write example answers to prompts and the model is fine-tuned on them. This SFT model now follows instructions, but only as well as the demonstrations cover.",
+    "l": [
+     1
+    ]
+   },
+   {
+    "t": "Sample several answers",
+    "n": [
+     "sft",
+     "sample"
+    ],
+    "e": [
+     "sft>sample"
+    ],
+    "d": "For each prompt the model generates two or more candidate answers. Comparing is easier and more consistent for people than writing a perfect answer.",
+    "l": [
+     3,
+     4
+    ]
+   },
+   {
+    "t": "Humans compare",
+    "n": [
+     "sample",
+     "human"
+    ],
+    "e": [
+     "sample>human"
+    ],
+    "d": "Labelers pick which answer is better, following written guidelines about helpfulness, honesty and harm. Each choice becomes a chosen and rejected pair.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Train a reward model",
+    "n": [
+     "human",
+     "rm"
+    ],
+    "e": [
+     "human>rm"
+    ],
+    "d": "A separate model learns to give a higher score to the chosen answer than the rejected one. It becomes a fast, automatic stand-in for human taste.",
+    "l": [
+     6
+    ]
+   },
+   {
+    "t": "Reinforcement learning",
+    "n": [
+     "rm",
+     "ppo",
+     "sample"
+    ],
+    "e": [
+     "rm>ppo",
+     "ppo>sample"
+    ],
+    "d": "The model being tuned (the policy) writes new answers, the reward model scores them, and an RL algorithm such as PPO makes high-scoring answers more likely. This loop runs many times.",
+    "l": [
+     8,
+     9,
+     10,
+     12
+    ]
+   },
+   {
+    "t": "Keep it on a leash",
+    "n": [
+     "ppo",
+     "kl"
+    ],
+    "e": [
+     "ppo>kl"
+    ],
+    "d": "A KL penalty subtracts reward when the policy drifts far from the SFT model. Without it the policy learns to exploit quirks of the reward model instead of getting better.",
+    "l": [
+     11
+    ]
+   },
+   {
+    "t": "The aligned model",
+    "n": [
+     "kl",
+     "aligned"
+    ],
+    "e": [
+     "kl>aligned"
+    ],
+    "d": "The result follows instructions, refuses clearly harmful requests and matches the labelers' style. Its habits, good and bad, trace back to these preferences.",
+    "l": []
+   }
+  ],
+  "ideas": [
+   "RL has four parts: an agent takes actions in an environment, receives rewards, and learns a policy that maps situations to actions.",
+   "Exploration versus exploitation: try new options to learn, or use the best one known so far. Bandits are the simplest version of this trade-off.",
+   "RLHF turns human comparisons into a reward model, then tunes the LLM to score well while a KL penalty keeps it close to the original.",
+   "DPO skips the separate reward model and the RL loop, training directly on chosen and rejected pairs.",
+   "Constitutional-style methods use written principles and AI feedback to produce many of the preference labels."
+  ],
+  "traps": [
+   "Telling a customer they can 'just RLHF the model' on their data. Hosted models are aligned by the provider; customers usually adjust behaviour with prompts, examples, evals and, where offered, fine-tuning.",
+   "Treating the reward model score as truth. Optimise it too hard and the policy finds loopholes, a problem called reward hacking.",
+   "Blaming the customer's data for traits like over-agreeing or long answers, which often come from preference training itself."
+  ],
+  "qa": [
+   [
+    "What is RLHF, in two sentences?",
+    "Humans compare pairs of model answers, and a reward model is trained to predict which one they prefer. The language model is then tuned with reinforcement learning to produce answers the reward model scores highly, with a penalty for drifting far from the original model."
+   ],
+   [
+    "How does DPO differ from classic RLHF?",
+    "DPO uses the same chosen and rejected pairs but skips training a separate reward model and running an RL loop. It adjusts the model directly so the chosen answer becomes more likely than the rejected one, relative to a frozen reference model, which is simpler and more stable to run."
+   ],
+   [
+    "A customer says the assistant agrees with users even when they are wrong. What do you tell them?",
+    "That tendency, often called sycophancy, is a known side effect of training on human preferences, because people tend to rate agreeable answers highly. I would add explicit instructions and examples to the system prompt, build an eval set of cases where the user is wrong, measure it, and only then consider fine-tuning if the provider supports it."
+   ]
+  ],
+  "code": "# RLHF in outline (pseudocode, not a real library API)\nsft = finetune(base_model, demonstrations)       # stage 1: supervised fine-tuning\npairs = []\nfor prompt in prompts:\n    a, b = sft.generate(prompt), sft.generate(prompt)\n    pairs.append(human_pick(prompt, a, b))       # (chosen, rejected)\nreward_model = train_pairwise(pairs)             # stage 2: reward model\npolicy, reference = copy(sft), frozen_copy(sft)\nfor prompt in prompts:                           # stage 3: RL, e.g. PPO\n    answer = policy.generate(prompt)\n    r = reward_model.score(prompt, answer)\n    r -= beta * kl(policy, reference, prompt, answer)  # stay close to SFT\n    policy.update(prompt, answer, r)             # make high-reward answers likelier",
+  "codeTitle": "RLHF pipeline in pseudocode"
+ }
+]

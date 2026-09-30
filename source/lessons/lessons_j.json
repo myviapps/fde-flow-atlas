@@ -1,0 +1,851 @@
+{
+ "sysdesign": {
+  "plain": "System design is the skill of choosing and connecting the parts of a software system so it works for a given number of users, amount of data and budget. A client is the program the user touches, such as a browser. A server is a program on another machine that answers the client's requests. Between them sit a few standard parts: a load balancer that spreads requests across several servers, databases that store data permanently, caches that keep recent answers in fast memory, and queues that hold work to be done later. System design means picking which of these you need, how many, and how data moves between them.",
+  "analogy": "Think of a busy restaurant. The host at the door is the load balancer seating guests at any free table, the waiters are interchangeable app servers, the pantry is the database, the counter of ready-made desserts is the cache, and the ticket rail in the kitchen is the queue that lets cooks work through orders at their own pace.",
+  "why": "Customers ask FDEs questions like 'will this handle our 5,000 staff on Monday morning?' or 'what happens if your AI provider goes down?'. You need to sketch the architecture on a whiteboard, estimate the load, and explain the trade-offs in plain words. FDE interviews also include a system design round that tests exactly this.",
+  "subtopics": [
+   {
+    "title": "Clients, load balancers, stateless servers",
+    "body": "A request starts at a client: a browser, a mobile app or another program. It travels over the internet to a public address. That address usually belongs to a load balancer, a component whose only job is to forward each request to one of several app servers and to stop sending traffic to any server that fails its health check (a small 'are you alive?' request it sends every few seconds).\n\nAn app server runs your code, for example a FastAPI service. It is stateless when it keeps nothing important in its own memory or disk between requests. Logged-in sessions go in a shared store such as Redis, uploaded files go in object storage such as S3, and records go in the database.\n\nStateless servers are interchangeable. You can run three, then ten, and the load balancer can send any request to any of them. If one crashes, nothing is lost.",
+    "example": "An insurer's claims portal runs on one server that stores login sessions in memory. When the team adds a second server behind a load balancer, users get logged out at random, because half their requests land on the server that never saw them log in. Moving sessions into Redis makes both servers stateless and the problem disappears.",
+    "code": "# FastAPI app server that stays stateless.\n# Session data lives in Redis, shared by every server copy.\nimport os, redis\nfrom fastapi import FastAPI, Header\n\napp = FastAPI()\nstore = redis.Redis.from_url(os.environ[\"REDIS_URL\"])  # shared, not local memory\n\n@app.get(\"/health\")                 # the load balancer calls this every few seconds\ndef health():\n    return {\"ok\": True}\n\n@app.get(\"/me\")\ndef me(session_id: str = Header(...)):\n    user = store.get(f\"session:{session_id}\")   # works on ANY server copy\n    return {\"user\": user.decode() if user else None}",
+    "lang": "Python"
+   },
+   {
+    "title": "Databases, replicas and caches",
+    "body": "The database is the source of truth. A relational database such as PostgreSQL stores tables and guarantees that committed writes survive a crash. Usually one primary database accepts all writes.\n\nA read replica is a copy of the primary that receives every change a moment later. You send read-only queries to replicas to take load off the primary, and you can promote a replica if the primary dies. The catch is replication lag: a replica may be a fraction of a second behind, so a user who just saved something may not see it if the next read goes to a replica.\n\nA cache is a small, fast store in memory, often Redis, that keeps answers you computed recently. The pattern is called cache-aside: check the cache, and on a miss read from the database and save the result with an expiry time (TTL, time to live). The two hard parts are choosing the TTL and removing entries when the underlying data changes.",
+    "example": "A retailer's product page reads the same 2,000 popular products all day. Each database read takes 20 ms and a cache read takes about 1 ms. With a 5 minute TTL, 95 percent of reads hit the cache, the database sees one twentieth of the traffic, and a price change shows up within 5 minutes, which the business agreed was acceptable.",
+    "code": "import json, redis\ncache = redis.Redis()\n\ndef get_product(product_id: int, db) -> dict:\n    key = f\"product:{product_id}\"\n    hit = cache.get(key)\n    if hit:                                   # cache hit: about 1 ms\n        return json.loads(hit)\n    row = db.fetch_one(                       # cache miss: go to the database\n        \"SELECT id, name, price FROM products WHERE id = %s\", (product_id,))\n    cache.set(key, json.dumps(row), ex=300)   # keep for 300 seconds (TTL)\n    return row\n\ndef update_price(product_id: int, price: float, db):\n    db.execute(\"UPDATE products SET price = %s WHERE id = %s\", (price, product_id))\n    cache.delete(f\"product:{product_id}\")     # invalidate so readers see the change",
+    "lang": "Python"
+   },
+   {
+    "title": "Queues and background workers",
+    "body": "Some work is too slow to do while the user waits: converting a 300 page PDF, sending 10,000 emails, or embedding documents for search. A queue is a list of jobs that one part of the system adds to and another part takes from. Common choices are Amazon SQS, RabbitMQ, Redis-based queues and Kafka.\n\nThe web server puts a job on the queue and immediately replies 'accepted, here is your job id'. Workers, which are separate processes, pull jobs one at a time and do the work. If a worker crashes, the job becomes visible again and another worker retries it. If a thousand uploads arrive at once, they wait in the queue instead of overwhelming the servers.\n\nBecause jobs can be retried, workers must be idempotent: running the same job twice must give the same result as running it once. A job that fails repeatedly goes to a dead-letter queue for a person to inspect.",
+    "example": "A law firm uploads 40,000 contracts on the first day of a pilot. Without a queue, each upload request would time out after 30 seconds while parsing. With a queue, uploads return in under a second, 8 workers process roughly 2 documents per second each, and the whole backlog clears in under an hour while the site stays responsive.",
+    "code": "# Producer (web server) and consumer (worker) using Amazon SQS via boto3\nimport boto3, json\nsqs = boto3.client(\"sqs\")\nQUEUE_URL = \"https://sqs.eu-west-1.amazonaws.com/123456789012/ingest\"\n\ndef enqueue(doc_id: str):                          # called by the web server\n    sqs.send_message(QueueUrl=QUEUE_URL, MessageBody=json.dumps({\"doc_id\": doc_id}))\n\ndef worker_loop(process):                          # runs in a separate process\n    while True:\n        resp = sqs.receive_message(QueueUrl=QUEUE_URL, MaxNumberOfMessages=10,\n                                   WaitTimeSeconds=20)    # long polling\n        for msg in resp.get(\"Messages\", []):\n            job = json.loads(msg[\"Body\"])\n            process(job[\"doc_id\"])                 # must be safe to run twice\n            sqs.delete_message(QueueUrl=QUEUE_URL,\n                               ReceiptHandle=msg[\"ReceiptHandle\"])  # done",
+    "lang": "Python"
+   },
+   {
+    "title": "Scaling, availability and CAP",
+    "body": "Vertical scaling means moving to a bigger machine with more CPU and memory. It needs no code changes, but it has a ceiling and the machine is still a single point of failure. Horizontal scaling means adding more machines. It has no hard ceiling, but only works cleanly for stateless parts; databases are much harder to spread across machines.\n\nAvailability is the percentage of time a system answers correctly. 99.9 percent allows about 43 minutes of downtime a month; 99.99 percent allows about 4 minutes. You raise availability by removing single points of failure: two or more app servers, a database replica ready to take over, and servers in more than one availability zone (separate data centers in the same cloud region).\n\nThe CAP theorem says that when the network between parts of a distributed data store breaks (a partition), the store must choose: keep answering with data that might be out of date (favoring availability), or refuse some requests until it can be sure the data is current (favoring consistency). A bank balance usually favors consistency. A product review count can favor availability.",
+    "example": "A travel booking site runs one large database server. At 99.9 percent availability it is allowed about 43 minutes of downtime a month, and a single 2 hour hardware failure blows the budget. Adding a standby replica in a second availability zone that takes over automatically turns that 2 hour outage into a failover of a minute or two, while the app servers, being stateless, simply scale out from two to six copies during a holiday sale.",
+    "table": {
+     "headers": [
+      "Question",
+      "Vertical scaling",
+      "Horizontal scaling"
+     ],
+     "rows": [
+      [
+       "What changes",
+       "Bigger machine",
+       "More machines"
+      ],
+      [
+       "Code changes needed",
+       "Usually none",
+       "Servers must be stateless"
+      ],
+      [
+       "Upper limit",
+       "Largest instance size",
+       "Very high"
+      ],
+      [
+       "Failure impact",
+       "One box down, all down",
+       "One of many down"
+      ],
+      [
+       "Good first move for",
+       "Databases, early stage",
+       "Web and API servers"
+      ]
+     ]
+    },
+    "code": "# Downtime allowed per 30-day month for common availability targets\nminutes_per_month = 30 * 24 * 60           # 43,200 minutes\n\nfor target in [0.99, 0.999, 0.9999]:\n    allowed = minutes_per_month * (1 - target)\n    print(f\"{target:.2%} uptime -> {allowed:6.1f} minutes of downtime per month\")\n\n# 99.00% uptime ->  432.0 minutes\n# 99.90% uptime ->   43.2 minutes\n# 99.99% uptime ->    4.3 minutes",
+    "lang": "Python"
+   },
+   {
+    "title": "Worked design: document Q&A for 5,000 staff",
+    "body": "The brief: an engineering company wants an internal assistant that answers questions from its policies, manuals and project documents, for 5,000 employees. Start with numbers, because they decide how big the design needs to be. Assume 40 percent use it on a given day, asking 10 questions each. That is 20,000 questions a day, under 1 per second on average during office hours, and roughly 3 per second at the Monday 9 a.m. peak. That is a small load. Three app servers are plenty, and two would be enough if it were not for availability.\n\nNext, the data. Say 50,000 documents averaging 10 pages. At roughly 500 words per page and 500-word chunks, that is about 500,000 chunks. With 1,536-number embeddings stored as 4-byte floats, the vectors take about 3 GB, which fits comfortably in Postgres with the pgvector extension or a managed vector database.\n\nThe design: the browser talks to a load balancer, then stateless FastAPI servers. For each question the server checks a cache of recent answers, searches the vector index filtered by the groups the user belongs to (so nobody sees a document they could not open), sends the best chunks and the question to the LLM API, returns the answer with source links, and logs everything to Postgres for evaluation. Uploads go to object storage and a queue; workers parse, chunk and embed them. Add a timeout and a friendly fallback message for when the LLM API is slow.",
+    "example": "Walk the peak: about 3 questions per second, each needing about 1 retrieval query (around 50 ms) and 1 LLM call (3 to 8 seconds, mostly waiting on the network). Waiting time costs little CPU when the server uses async code, so each app server handles many requests at once. The limit is more likely the LLM provider's rate limit on tokens per minute, so that is the number to confirm with the customer's account team.",
+    "code": "# Back-of-envelope sizing for the document Q&A service\nemployees        = 5_000\ndaily_active     = 0.40\nquestions_each   = 10\noffice_seconds   = 8 * 3600\npeak_factor      = 4            # Monday morning rush vs. average\n\nq_per_day  = employees * daily_active * questions_each\navg_qps    = q_per_day / office_seconds\npeak_qps   = avg_qps * peak_factor\nprint(f\"{q_per_day:,.0f} questions/day, {avg_qps:.2f} avg qps, {peak_qps:.1f} peak qps\")\n\ndocs, pages, words_per_page, words_per_chunk = 50_000, 10, 500, 500\nchunks  = docs * pages * words_per_page // words_per_chunk\nvec_gb  = chunks * 1536 * 4 / 1e9          # 1,536 float32 numbers per chunk\nprint(f\"{chunks:,} chunks, about {vec_gb:.1f} GB of vectors\")\n\ntokens_per_q = 4_000                        # question + retrieved chunks + answer\nprint(f\"{q_per_day * tokens_per_q / 1e6:.0f} million LLM tokens per day\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Running a system design interview",
+    "body": "A system design interview is usually 45 to 60 minutes with an open prompt such as 'design a URL shortener' or 'design a support chatbot for an airline'. The interviewer is watching how you think: whether you ask the right questions, make sensible estimates, and explain trade-offs. There is no single correct answer.\n\nUse a fixed order so you do not freeze. Spend the first 5 to 10 minutes on requirements and numbers. Then draw the simplest design that works end to end. Then go deep on one or two parts the interviewer cares about, and finish with failure modes, monitoring and what you would do next.\n\nFor FDE roles, bring the customer into it. Say who the users are, what data they are allowed to see, how you would roll it out to a pilot group first, and how you would measure whether it is working. That practical angle is what separates FDE candidates from pure backend candidates.",
+    "example": "Prompt: 'Design a chatbot that answers questions about a hospital's internal procedures.' A strong opening: 'Who are the users, clinicians or all staff? Roughly how many? Must answers cite the procedure document? Is any patient data involved, and where must the data stay? What response time is acceptable on a ward tablet?' Only after the answers does the candidate draw the first box.",
+    "checklist": [
+     "Restate the problem and name the users",
+     "Ask for scale: users, requests per second, data size, growth",
+     "Ask about constraints: latency, security, data location, budget",
+     "Write down the core features and what is out of scope",
+     "Do a quick back-of-envelope estimate out loud",
+     "Draw the simple end-to-end design first",
+     "Go deep on the hardest part (retrieval, permissions, data model)",
+     "Cover failures: what breaks, how you detect it, how you recover",
+     "Mention monitoring, cost and a phased rollout",
+     "Summarize trade-offs and what you would do with more time"
+    ],
+    "code": "",
+    "lang": ""
+   }
+  ],
+  "glossary": [
+   [
+    "Load balancer",
+    "A component that spreads incoming requests across several servers and skips servers that fail health checks."
+   ],
+   [
+    "Stateless server",
+    "A server that keeps no user data between requests, so any copy can handle any request."
+   ],
+   [
+    "Read replica",
+    "A copy of a database that follows the primary's changes and serves read-only queries."
+   ],
+   [
+    "Cache",
+    "Fast, usually in-memory storage for recently used results, with an expiry time."
+   ],
+   [
+    "TTL",
+    "Time to live: how long a cached entry stays before it expires."
+   ],
+   [
+    "Queue",
+    "A list of jobs that producers add to and workers take from, so slow work happens in the background."
+   ],
+   [
+    "Idempotent",
+    "Safe to run more than once with the same end result."
+   ],
+   [
+    "Availability",
+    "The share of time a system is up and answering correctly, often written as a number of nines."
+   ],
+   [
+    "CAP theorem",
+    "During a network partition a distributed store must choose between consistency and availability."
+   ],
+   [
+    "QPS",
+    "Queries per second, the usual unit for request load."
+   ]
+  ],
+  "practice": [
+   "Draw the document Q&A design on paper from memory, labeling every box with one sentence about what it stores or does. Compare with the flowchart and list anything you missed.",
+   "Change the numbers in the sizing script to 50,000 employees and 1 million documents. Write three sentences on which parts of the design would need to change and which would not.",
+   "Do a timed 45 minute mock interview with a friend or on your own with a recording: 'Design a support chatbot for an airline with 2 million customers.' Follow the checklist and note where you ran out of time."
+  ]
+ },
+ "warehouse": {
+  "plain": "A data warehouse is a database built for analysis: answering questions like 'what were sales by region each month for three years?'. It differs from the database that runs an application, which handles many small updates such as 'add this order'. Warehouses store data by column instead of by row, which makes scanning and summing millions of rows fast. dbt (data build tool) is a popular open source tool where you write each transformation as a SQL SELECT statement, and dbt runs them in the right order inside the warehouse, tests the results and documents how tables depend on each other.",
+  "analogy": "The application database is a shop's till: fast at recording one sale at a time. The warehouse is the accountant's ledger, organized so you can total every sale for the year in one sweep. dbt is the accountant's written, checked procedure for turning the till receipts into that ledger.",
+  "why": "AI projects depend on clean, trusted data, and most enterprise data for reporting already lives in Snowflake, BigQuery, Redshift or Databricks. An FDE at a retailer may need to join the customer's sales mart to a new model's predictions, or explain why the AI's revenue numbers do not match finance's dashboard. You cannot do that without reading their star schema and their dbt project.",
+  "subtopics": [
+   {
+    "title": "OLTP versus OLAP",
+    "body": "OLTP stands for online transaction processing. It is the database behind an application: PostgreSQL, MySQL, SQL Server or Oracle recording orders, bookings and payments. Each operation touches a few rows and must be fast and safe. Tables are normalized, meaning each fact is stored once, to keep writes consistent.\n\nOLAP stands for online analytical processing. It serves reports, dashboards, data science and increasingly AI tools. A typical query reads millions of rows but only a few columns, and summarizes them. Speed of a single insert matters little; speed of a big scan matters a lot.\n\nMixing the two causes trouble. A heavy report on the live database competes with customers checking out. So companies copy data from OLTP systems into an OLAP warehouse through a pipeline, usually every hour or every night.",
+    "example": "An online grocer's Postgres database handles 300 orders a minute. The finance team runs a 'margin by category by week' query that scans 80 million order lines and takes 4 minutes, and during that time checkout slows down. Moving the report to a warehouse fed nightly from the database fixes both problems.",
+    "table": {
+     "headers": [
+      "",
+      "OLTP",
+      "OLAP"
+     ],
+     "rows": [
+      [
+       "Purpose",
+       "Run the application",
+       "Analyze the business"
+      ],
+      [
+       "Typical query",
+       "Read or write one order",
+       "Sum 3 years of orders"
+      ],
+      [
+       "Rows per query",
+       "A few",
+       "Millions to billions"
+      ],
+      [
+       "Storage layout",
+       "Row by row",
+       "Column by column"
+      ],
+      [
+       "Schema style",
+       "Normalized",
+       "Star schema, denormalized"
+      ],
+      [
+       "Examples",
+       "Postgres, MySQL",
+       "Snowflake, BigQuery"
+      ]
+     ]
+    },
+    "code": "",
+    "lang": ""
+   },
+   {
+    "title": "Why columnar storage is fast",
+    "body": "A row store keeps each record together on disk: order 1 with all its fields, then order 2 with all its fields. That is ideal for 'fetch order 1', because one read gets everything.\n\nA column store keeps each column together: all the order dates, then all the amounts, then all the regions. A query that sums amount by region only reads those two columns and skips the other 40. Values in one column also look alike (many repeated region names), so they compress very well, often several times smaller, which means even less to read.\n\nWarehouses add other tricks. They keep small statistics such as the minimum and maximum value for each block of data, so a filter like 'order_date in September' can skip blocks that cannot match. This is called pruning. Because many warehouses charge by data scanned or by compute time, selecting only needed columns and filtering on the partition or cluster column directly saves money.",
+    "example": "An orders table has 45 columns and 500 million rows, about 400 GB. A query summing amount by region for one month reads 2 columns out of 45 and, with date pruning, one thirty-sixth of the blocks. On a per-byte priced warehouse that is the difference between scanning hundreds of gigabytes and scanning well under one.",
+    "code": "-- Costly: reads every column of every row\nSELECT * FROM analytics.orders;\n\n-- Cheap: reads two columns, and only the September blocks\nSELECT region, SUM(amount) AS revenue\nFROM analytics.orders\nWHERE order_date >= '2026-09-01' AND order_date < '2026-10-01'   -- enables pruning\nGROUP BY region\nORDER BY revenue DESC;",
+    "lang": "SQL"
+   },
+   {
+    "title": "The main platforms and the lakehouse",
+    "body": "Four names come up constantly. Snowflake is a cloud warehouse that separates storage from compute: data sits in cloud storage and you start 'virtual warehouses' of different sizes to query it. Google BigQuery is serverless: you do not size machines at all and can pay per data scanned or reserve capacity. Amazon Redshift is AWS's warehouse, available as provisioned clusters or a serverless option. Databricks started from Apache Spark and runs SQL, Python and machine learning over data in open file formats.\n\nA data lake is cheap object storage (S3, Azure Data Lake Storage, Google Cloud Storage) full of files, often Parquet, a columnar file format. Lakes are cheap and flexible but plain files lack transactions and can become messy.\n\nA lakehouse puts a table format such as Delta Lake or Apache Iceberg on top of the lake. The table format adds transactions, schema rules and time travel (querying a table as it was earlier), so files in object storage behave like warehouse tables. Databricks is built around this idea, and Snowflake, BigQuery and Redshift can also read Iceberg tables. For an FDE, the practical lesson is to learn which platform the customer uses and work inside it.",
+    "example": "A retailer keeps clickstream events as Parquet files in S3 and sales data in Snowflake. Instead of copying billions of click rows into Snowflake, the data team registers the S3 files as an Iceberg table, and the same SQL joins clicks to sales, while their Databricks notebooks read the very same Iceberg table for model training.",
+    "table": {
+     "headers": [
+      "Platform",
+      "Model in one line",
+      "You will hear"
+     ],
+     "rows": [
+      [
+       "Snowflake",
+       "Separate storage and sized compute",
+       "virtual warehouse, credits"
+      ],
+      [
+       "BigQuery",
+       "Serverless, per-query or reserved",
+       "bytes scanned, slots"
+      ],
+      [
+       "Redshift",
+       "AWS clusters or serverless",
+       "RA3 nodes, Spectrum"
+      ],
+      [
+       "Databricks",
+       "Spark-based lakehouse",
+       "Delta Lake, Unity Catalog"
+      ]
+     ]
+    },
+    "code": "-- The same analytical SQL runs on all four with small dialect differences.\n-- BigQuery names tables project.dataset.table\nSELECT store_id, COUNT(*) AS orders\nFROM `acme-prod.sales.orders`\nWHERE DATE(order_ts) = CURRENT_DATE()\nGROUP BY store_id;\n\n-- Snowflake names tables database.schema.table\nSELECT store_id, COUNT(*) AS orders\nFROM ACME.SALES.ORDERS\nWHERE order_ts::DATE = CURRENT_DATE()\nGROUP BY store_id;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Star schema: facts and dimensions",
+    "body": "Analytics data is usually modeled as a star schema. In the middle is a fact table: one row per business event, such as one line of one sale, with numeric measures (quantity, amount) and keys pointing outward. Around it are dimension tables that describe the who, what, where and when: customers, products, stores and dates.\n\nThe grain of a fact table is the precise meaning of one row, for example 'one product on one receipt'. Decide the grain first. Mixing grains, such as putting order totals and line items in one table, is the most common modeling mistake and leads to double counting.\n\nDimensions are wide and descriptive (a product has name, brand, category, size) and change slowly. Facts are narrow and very long. Queries join the fact to the dimensions they need and group by dimension attributes. This shape is easy for people, BI tools and AI text-to-SQL agents to understand.",
+    "example": "A pharmacy chain has fact_sales (grain: one product on one receipt, 2 billion rows), dim_product (40,000 rows), dim_store (900 rows), dim_customer (12 million loyalty members) and dim_date (one row per day). 'Revenue from vitamins in Scottish stores last quarter' is one fact table joined to three small dimensions.",
+    "code": "-- Revenue by category and region for Q3, using a star schema\nSELECT\n    p.category,\n    s.region,\n    SUM(f.quantity)      AS units,\n    SUM(f.net_amount)    AS revenue\nFROM fact_sales   AS f                       -- one row per product per receipt\nJOIN dim_product  AS p ON f.product_key = p.product_key\nJOIN dim_store    AS s ON f.store_key   = s.store_key\nJOIN dim_date     AS d ON f.date_key    = d.date_key\nWHERE d.year = 2026 AND d.quarter = 3\nGROUP BY p.category, s.region\nORDER BY revenue DESC;",
+    "lang": "SQL"
+   },
+   {
+    "title": "dbt models, tests and lineage",
+    "body": "In dbt, each model is a .sql file containing one SELECT. dbt wraps it in the CREATE VIEW or CREATE TABLE statement for you, based on the model's materialization setting. Instead of hard-coding table names, a model refers to raw tables with source('shop', 'orders') and to other models with ref('stg_orders').\n\nThose ref() calls are how dbt learns the dependency graph, also called lineage. dbt runs models in the right order, can run just one model and everything downstream of it, and draws the graph in its generated documentation. Projects are usually layered: staging models clean one source table each, intermediate models combine them, and marts are the final facts and dimensions people query.\n\nTests are declared in YAML next to the models. The four built-in generic tests are unique, not_null, accepted_values and relationships (every foreign key exists in the parent table). 'dbt build' runs models and their tests together and stops downstream models when a test fails, so bad data does not reach the dashboard.",
+    "example": "A subscription software company's dbt project has stg_stripe__invoices, stg_hubspot__companies, int_revenue_by_company and fct_monthly_revenue. When the AI forecasting model starts producing odd numbers, the lineage graph shows fct_monthly_revenue depends on the Stripe staging model, and a failing not_null test there reveals a new currency field arriving empty.",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "src",
+       90,
+       70,
+       "Raw sources",
+       "source()"
+      ],
+      [
+       "stg",
+       265,
+       70,
+       "Staging models",
+       "stg_ · clean 1:1"
+      ],
+      [
+       "int",
+       440,
+       70,
+       "Intermediate",
+       "int_ · joins"
+      ],
+      [
+       "tests",
+       615,
+       70,
+       "Tests",
+       "unique · not_null"
+      ],
+      [
+       "marts",
+       615,
+       220,
+       "Marts",
+       "fct_ · dim_"
+      ],
+      [
+       "docs",
+       440,
+       220,
+       "Docs + lineage",
+       "dbt docs"
+      ],
+      [
+       "bi",
+       265,
+       220,
+       "BI and AI",
+       "dashboards · agents"
+      ]
+     ],
+     "edges": [
+      [
+       "src",
+       "stg",
+       0,
+       "source()"
+      ],
+      [
+       "stg",
+       "int",
+       0,
+       "ref()"
+      ],
+      [
+       "int",
+       "tests"
+      ],
+      [
+       "tests",
+       "marts",
+       0,
+       "pass"
+      ],
+      [
+       "marts",
+       "docs"
+      ],
+      [
+       "marts",
+       "bi",
+       80
+      ]
+     ]
+    },
+    "code": "-- models/staging/stg_shop__orders.sql\nselect\n    id                          as order_id,\n    customer_id,\n    cast(created_at as date)    as order_date,\n    amount_cents / 100.0        as amount,\n    lower(status)               as status\nfrom {{ source('shop', 'orders') }}          -- raw table declared in YAML\n\n-- models/staging/_shop__models.yml  (tests; dbt 1.10+ style with arguments)\n-- models:\n--   - name: stg_shop__orders\n--     columns:\n--       - name: order_id\n--         data_tests: [unique, not_null]\n--       - name: status\n--         data_tests:\n--           - accepted_values:\n--               arguments: {values: ['placed', 'shipped', 'returned']}\n--       - name: customer_id\n--         data_tests:\n--           - relationships:\n--               arguments: {to: \"ref('stg_shop__customers')\", field: customer_id}\n\n-- Run it:  dbt build --select stg_shop__orders+    (model, tests, and everything downstream)",
+    "lang": "SQL"
+   },
+   {
+    "title": "Slowly changing dimensions",
+    "body": "Dimension attributes change: a customer moves city, a product changes category, a sales rep switches region. The question is what historical reports should show. That is the slowly changing dimension (SCD) problem.\n\nType 1 overwrites the old value. It is simple, but last year's sales now appear under the customer's new region. Type 2 keeps history: when an attribute changes, the current row is closed by setting valid_to, and a new row is added with a new valid_from. Each version gets its own surrogate key, and each fact row points to the version that was true when the event happened, or is joined by date range.\n\ndbt snapshots implement Type 2 for you. On each run dbt compares the source to the snapshot table and, for changed rows, closes the old version and inserts the new one, adding dbt_valid_from and dbt_valid_to columns. The current version has dbt_valid_to empty (null), unless you configure a far-future date instead.",
+    "example": "A B2B distributor moves the client Harbor Foods from the North region to the South region on 1 July 2026. With Type 1, all of Harbor Foods' first-half revenue jumps to South in every report, and the North sales manager's bonus report changes after the fact. With Type 2, January to June stays in North and July onward counts in South.",
+    "code": "-- snapshots/customers_snapshot.sql  (classic dbt snapshot block)\n{% snapshot customers_snapshot %}\n{{ config(\n    target_schema='snapshots',\n    unique_key='customer_id',\n    strategy='timestamp',          -- detect changes using updated_at\n    updated_at='updated_at'\n) }}\nselect customer_id, name, region, updated_at\nfrom {{ source('crm', 'customers') }}\n{% endsnapshot %}\n\n-- Joining facts to the version that was valid on the order date\nselect f.order_id, f.amount, c.region\nfrom {{ ref('fct_orders') }} f\njoin {{ ref('customers_snapshot') }} c\n  on  f.customer_id = c.customer_id\n  and f.order_date >= c.dbt_valid_from\n  and (f.order_date < c.dbt_valid_to or c.dbt_valid_to is null)",
+    "lang": "SQL"
+   }
+  ],
+  "glossary": [
+   [
+    "OLTP",
+    "Online transaction processing: databases that run applications with many small reads and writes."
+   ],
+   [
+    "OLAP",
+    "Online analytical processing: systems built for large scans and aggregations over history."
+   ],
+   [
+    "Columnar storage",
+    "Storing each column's values together so queries read only the columns they use."
+   ],
+   [
+    "Lakehouse",
+    "Object storage files plus a table format such as Delta Lake or Iceberg that adds transactions and schema."
+   ],
+   [
+    "Fact table",
+    "A table with one row per business event and numeric measures, at a stated grain."
+   ],
+   [
+    "Dimension table",
+    "A table describing entities such as customers, products or dates, joined to facts by keys."
+   ],
+   [
+    "Grain",
+    "The exact meaning of one row in a fact table."
+   ],
+   [
+    "dbt model",
+    "A SELECT statement in a .sql file that dbt turns into a view or table."
+   ],
+   [
+    "Lineage",
+    "The graph of which tables and models feed which others."
+   ],
+   [
+    "SCD Type 2",
+    "Keeping every historical version of a dimension row with valid-from and valid-to dates."
+   ]
+  ],
+  "practice": [
+   "Install dbt-duckdb, create a project with one source CSV of 50 orders, one staging model and unique plus not_null tests. Deliverable: a passing 'dbt build' output and the lineage graph from 'dbt docs generate'.",
+   "Design a star schema for a gym chain (members, clubs, classes, check-ins). Deliverable: the fact table's grain in one sentence, plus column lists for the fact and three dimensions.",
+   "Add a dbt snapshot on a customers CSV, change one customer's region, run 'dbt snapshot' again and write the date-range join that assigns an order to the correct region version."
+  ]
+ },
+ "dsa": {
+  "plain": "A data structure is a way of organizing data in memory, such as a list, a dictionary or a queue. An algorithm is a step-by-step method for solving a problem with that data, such as sorting or searching. Big O notation describes how the running time or memory grows as the input gets bigger: O(n) means time grows in step with the input size n, and O(n squared) means doubling the input quadruples the time. FDE coding interviews usually test a short list of these ideas on practical problems, often in Python, and expect you to explain your choices out loud.",
+  "analogy": "Data structures are the storage in a workshop: a pegboard where every tool has a labeled hook (a hash map), a stack of trays where you only take from the top (a stack), and a sorted drawer of screws by size (a sorted list you can binary search). Picking the right storage decides whether finding something takes a second or an afternoon.",
+  "why": "Many FDE loops still include one or two coding rounds, often framed around real data such as log files, transactions or API responses. On the job the same patterns appear when you deduplicate 2 million customer records or find the slowest endpoints in a day of logs, and a quadratic loop that worked on the sample file can take hours on the customer's real data.",
+  "subtopics": [
+   {
+    "title": "Arrays, strings and hash maps",
+    "body": "A Python list is an array: items stored in order, reachable by position in O(1) time. Checking whether a value is in a list, though, means looking at every item, which is O(n). Strings behave like lists of characters and cannot be changed in place, so building a long string with += in a loop is slow; collect parts in a list and join them once.\n\nA hash map, a dict in Python, stores key and value pairs and finds a key in O(1) time on average. A set is a hash map with keys only. Whenever you catch yourself searching a list inside a loop, ask whether a dict or set would remove the inner search.\n\nThe classic example is two-sum: find two numbers that add up to a target. Checking every pair is O(n squared). Walking once and remembering what you have seen in a dict is O(n).",
+    "example": "A payments company wants to flag pairs of refunds that together equal a disputed charge of 250.00. With 100,000 refunds, the pairwise approach checks about 5 billion pairs. The dict approach makes one pass of 100,000 steps.",
+    "code": "def two_sum(amounts: list[int], target: int) -> tuple[int, int] | None:\n    seen = {}                                # value -> index where we saw it\n    for i, x in enumerate(amounts):\n        need = target - x\n        if need in seen:                     # O(1) lookup instead of a second loop\n            return seen[need], i\n        seen[x] = i\n    return None\n\nprint(two_sum([120, 75, 130, 40], 250))      # (0, 2): 120 + 130\n\nfrom collections import Counter\nwords = \"the cat and the hat and the bat\".split()\nprint(Counter(words).most_common(2))         # [('the', 3), ('and', 2)]",
+    "lang": "Python"
+   },
+   {
+    "title": "Two pointers and sliding window",
+    "body": "Two pointers means keeping two positions in a list and moving them toward each other or in the same direction, instead of nesting two loops. It works well on sorted data: to find a pair with a given sum in a sorted list, start one pointer at each end, and move the left one right if the sum is too small or the right one left if it is too big.\n\nA sliding window is a stretch of consecutive items defined by a left and right edge. You grow the window by moving the right edge and shrink it by moving the left edge, updating a running total or a count as you go. Each item enters and leaves the window at most once, so the whole thing is O(n).\n\nSignals in a problem statement: 'contiguous', 'substring', 'subarray', 'longest', 'shortest', 'within k'. Those usually mean sliding window.",
+    "example": "A monitoring team wants the busiest 5 minute stretch in a day of per-minute request counts (1,440 numbers). Summing every 5 minute window from scratch repeats work. A sliding window adds the new minute and subtracts the minute that dropped out, one step per minute.",
+    "code": "def longest_unique_substring(s: str) -> int:\n    last_seen = {}                 # char -> last index\n    left = best = 0\n    for right, ch in enumerate(s):\n        if ch in last_seen and last_seen[ch] >= left:\n            left = last_seen[ch] + 1          # shrink: jump past the repeat\n        last_seen[ch] = right\n        best = max(best, right - left + 1)    # window is s[left:right+1]\n    return best\n\ndef busiest_window(counts: list[int], k: int) -> int:\n    window = sum(counts[:k])\n    best = window\n    for i in range(k, len(counts)):\n        window += counts[i] - counts[i - k]   # slide: add new, drop old\n        best = max(best, window)\n    return best\n\nprint(longest_unique_substring(\"abcabcbb\"))   # 3 (\"abc\")\nprint(busiest_window([3, 9, 4, 12, 7, 1, 8], 3))  # 25 (9 + 4 + 12)",
+    "lang": "Python"
+   },
+   {
+    "title": "Sorting and binary search",
+    "body": "Python's sorted() and list.sort() run in O(n log n) and accept a key function, which covers almost every interview need. Sorting first often turns a hard problem into an easy one: merging overlapping time ranges, finding duplicates next to each other, or grouping records.\n\nBinary search finds an item in a sorted list by checking the middle, then throwing away the half that cannot contain the answer. Each step halves the search, so a million items take about 20 steps: O(log n). Python's bisect module does it for you.\n\nBinary search also works on answers, not only on lists. If you can ask 'is capacity X enough?' and the answer flips from no to yes at some point, you can binary search for the smallest X that works.",
+    "example": "A hospital has 3,000 operating theatre bookings as (start, end) times and wants the list of busy periods with overlaps merged. Sort by start time, then walk once, extending the current period while the next booking starts before it ends.",
+    "code": "import bisect\n\ndef merge_intervals(bookings: list[tuple[int, int]]) -> list[list[int]]:\n    merged = []\n    for start, end in sorted(bookings):            # O(n log n) sort by start\n        if merged and start <= merged[-1][1]:      # overlaps the last period\n            merged[-1][1] = max(merged[-1][1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nprint(merge_intervals([(9, 11), (13, 15), (10, 12), (15, 16)]))\n# [[9, 12], [13, 16]]\n\nprices = [5, 9, 14, 20, 31, 47]                    # must be sorted\ni = bisect.bisect_left(prices, 20)                 # O(log n)\nprint(i, prices[i] == 20)                          # 3 True",
+    "lang": "Python"
+   },
+   {
+    "title": "Stacks and queues",
+    "body": "A stack is last in, first out: you push onto the top and pop from the top. In Python a list works as a stack with append() and pop(). Stacks fit anything nested: matching brackets, undo history, or walking a folder tree depth-first.\n\nA queue is first in, first out: items leave in the order they arrived. Use collections.deque with append() and popleft(), both O(1). Do not use list.pop(0), which shifts every remaining item and is O(n).\n\nThe signal for a stack is 'most recent unmatched thing' or 'nesting'. The signal for a queue is 'in order of arrival' or 'level by level', which is why breadth-first search uses one.",
+    "example": "A config validator at an energy company checks that every opening bracket in a customer's rule expressions has a matching closing bracket in the right order, for example '(load > 5 and [zone in {A, B}])'. Push each opener onto a stack and pop when a closer arrives; a mismatch or a leftover opener means the rule is invalid.",
+    "code": "from collections import deque\n\ndef balanced(expr: str) -> bool:\n    pairs = {\")\": \"(\", \"]\": \"[\", \"}\": \"{\"}\n    stack = []\n    for ch in expr:\n        if ch in \"([{\":\n            stack.append(ch)                       # push opener\n        elif ch in pairs:\n            if not stack or stack.pop() != pairs[ch]:\n                return False                       # wrong or missing opener\n    return not stack                               # nothing left open\n\nprint(balanced(\"(load > 5 and [zone in {A, B}])\"))  # True\nprint(balanced(\"(a and [b)]\"))                      # False\n\ntickets = deque([\"T-101\", \"T-102\"])\ntickets.append(\"T-103\")                            # arrive at the back\nprint(tickets.popleft())                           # T-101 served first, O(1)",
+    "lang": "Python"
+   },
+   {
+    "title": "Graphs with BFS and DFS, heaps for top-k",
+    "body": "A graph is a set of nodes connected by edges: services that call each other, tasks that depend on others, people who report to managers. Store it as an adjacency list, a dict from each node to its neighbors.\n\nBreadth-first search (BFS) uses a queue and visits nodes in rings: all neighbors first, then their neighbors. In an unweighted graph the first time BFS reaches a node is along a shortest path. Depth-first search (DFS) uses a stack or recursion and follows one path as deep as it goes before backing up. It is the natural tool for 'visit everything reachable', finding cycles and ordering dependencies. Both need a visited set so you do not loop forever.\n\nA heap keeps the smallest item at the front and lets you add or remove in O(log n). Python's heapq is a min-heap. For the k largest items out of n, heapq.nlargest(k, items) keeps only k items in the heap, costing O(n log k), far cheaper than sorting everything when k is small.",
+    "example": "A logistics firm's microservices call each other. After the 'pricing' service fails, which services are affected and how many hops away? Reverse the call edges, run BFS from pricing, and the distance map lists every affected service with its hop count.",
+    "code": "from collections import deque\nimport heapq\n\ncallers = {                        # service -> services that call it\n    \"pricing\": [\"checkout\", \"quotes\"],\n    \"checkout\": [\"web\"], \"quotes\": [\"web\", \"partner-api\"],\n    \"web\": [], \"partner-api\": [],\n}\n\ndef bfs(start: str) -> dict[str, int]:\n    dist = {start: 0}\n    q = deque([start])\n    while q:\n        node = q.popleft()\n        for nxt in callers[node]:\n            if nxt not in dist:            # visited check\n                dist[nxt] = dist[node] + 1\n                q.append(nxt)\n    return dist\n\nprint(bfs(\"pricing\"))  # {'pricing': 0, 'checkout': 1, 'quotes': 1, 'web': 2, 'partner-api': 2}\n\nlatency_ms = {\"/search\": 840, \"/login\": 95, \"/export\": 2300, \"/cart\": 180}\nprint(heapq.nlargest(2, latency_ms.items(), key=lambda kv: kv[1]))\n# [('/export', 2300), ('/search', 840)]",
+    "lang": "Python"
+   },
+   {
+    "title": "Recognizing patterns and a practice plan",
+    "body": "The hard part in an interview is recognizing which tool fits. Read the problem for signal words, say the brute-force approach and its cost first, then improve it. Interviewers want to hear the path from 'check every pair, O(n squared)' to 'remember what I have seen in a dict, O(n)'.\n\nA steady plan beats cramming. Work pattern by pattern, a few problems each, in plain Python without an IDE's autocomplete. For each problem, write the complexity before you run it, test one normal case, one empty case and one edge case, and explain your solution aloud as if to an interviewer.\n\nFDE interviews often add a practical twist: parse a messy CSV, call a mock API, or process a log file. Practice reading files, handling bad rows and writing small functions with clear names, since that is what the role actually involves.",
+    "example": "A four week plan at one hour a day: week 1 hash maps, strings and sorting; week 2 two pointers, sliding window and binary search; week 3 stacks, queues, BFS, DFS and heaps; week 4 mixed timed problems plus two practical 'process this log file' exercises and two mock interviews.",
+    "table": {
+     "headers": [
+      "Pattern",
+      "Signal in the problem",
+      "Typical cost"
+     ],
+     "rows": [
+      [
+       "Hash map or set",
+       "seen before, count, duplicate",
+       "O(n)"
+      ],
+      [
+       "Two pointers",
+       "sorted, pair, from both ends",
+       "O(n)"
+      ],
+      [
+       "Sliding window",
+       "contiguous, substring, within k",
+       "O(n)"
+      ],
+      [
+       "Sort first",
+       "overlaps, group, order matters",
+       "O(n log n)"
+      ],
+      [
+       "Binary search",
+       "sorted, smallest X that works",
+       "O(log n)"
+      ],
+      [
+       "Stack",
+       "nested, matching, undo",
+       "O(n)"
+      ],
+      [
+       "BFS / DFS",
+       "dependencies, reachable, fewest steps",
+       "O(V + E)"
+      ],
+      [
+       "Heap",
+       "top k, k smallest, next earliest",
+       "O(n log k)"
+      ]
+     ]
+    },
+    "checklist": [
+     "Restate the problem and confirm input and output types",
+     "Work one small example by hand",
+     "State the brute-force idea and its Big O",
+     "Name the pattern that improves it and why",
+     "Write clean code with clear variable names",
+     "Test a normal case, an empty input and an edge case",
+     "State final time and memory cost"
+    ],
+    "code": "",
+    "lang": ""
+   }
+  ],
+  "glossary": [
+   [
+    "Big O",
+    "A way to describe how running time or memory grows as the input size grows."
+   ],
+   [
+    "Hash map",
+    "A structure that stores key and value pairs with average O(1) lookup; a dict in Python."
+   ],
+   [
+    "Two pointers",
+    "A technique that moves two indexes through a list instead of nesting loops."
+   ],
+   [
+    "Sliding window",
+    "A moving range of consecutive items updated incrementally as it slides."
+   ],
+   [
+    "Binary search",
+    "Finding a value in sorted data by repeatedly halving the search range."
+   ],
+   [
+    "Stack",
+    "A last in, first out collection."
+   ],
+   [
+    "Queue",
+    "A first in, first out collection; use collections.deque in Python."
+   ],
+   [
+    "Graph",
+    "Nodes connected by edges, often stored as an adjacency list."
+   ],
+   [
+    "BFS and DFS",
+    "Breadth-first search explores level by level; depth-first search follows one path deep first."
+   ],
+   [
+    "Heap",
+    "A structure that keeps the smallest (or largest) item at the front with O(log n) updates."
+   ]
+  ],
+  "practice": [
+   "Write a function that returns the first non-repeating character in a string using a Counter. Deliverable: code, three tests including an empty string, and the Big O in a comment.",
+   "Given a list of (timestamp, user_id) login events, return users who logged in 3 or more times within any 10 minute window. Deliverable: a sliding window solution per user and a note on its complexity.",
+   "Build a dependency graph from a dict of task -> prerequisites and return a valid run order (topological sort) using DFS or BFS, raising an error if there is a cycle. Deliverable: code plus a test with a cycle."
+  ]
+ },
+ "linux": {
+  "plain": "Linux is the operating system that runs most servers, cloud machines and containers. You usually control it through a shell, a text program where you type commands such as ls (list files) or cd (change directory). SSH (Secure Shell) lets you open that shell on a machine somewhere else over an encrypted connection. Once you are in, you need a few skills: moving around the filesystem, understanding who may read or change a file, seeing which programs are running, reading their log files, and calling web APIs from the command line.",
+  "analogy": "A Linux server is like an office building you enter with a key card (SSH). The filesystem is the floor plan, permissions are which doors your card opens, processes are the people working in each room, and log files are the visitors' book where everyone writes what they did and when.",
+  "why": "FDEs often deploy into a customer's own cloud or data center, where the only access is an SSH session to a Linux box, sometimes with a customer engineer watching. When the service does not start or the AI endpoint times out, finding the error in the logs and checking connectivity with curl quickly is what keeps a go-live on schedule.",
+  "subtopics": [
+   {
+    "title": "The filesystem and moving around",
+    "body": "Linux has one tree of folders (called directories) starting at the root, written /. There are no drive letters. A path like /var/log/nginx/error.log reads from the root down. A path that does not start with / is relative to where you are now, which pwd (print working directory) shows.\n\nA few directories matter every day. /etc holds configuration files. /var/log holds logs. /home/yourname is your home directory, shortened to ~. /tmp is scratch space that may be wiped. /opt and /srv often hold installed applications.\n\nThe basic commands are ls to list, cd to move, cat to print a file, less to page through one, cp and mv to copy and move, rm to delete, mkdir to make a directory, and find to search by name. df -h shows free disk space and du -sh shows how big a folder is. A full disk is one of the most common reasons a service suddenly stops.",
+    "example": "You SSH into a logistics customer's server where the Q&A service stopped overnight. df -h shows / at 100 percent. du -sh /var/log/* reveals a 38 GB debug log from the service. After copying the last hour off for analysis and truncating the file, the service starts again, and you add log rotation so it cannot happen twice.",
+    "table": {
+     "headers": [
+      "Path",
+      "What lives there",
+      "You go there to"
+     ],
+     "rows": [
+      [
+       "/etc",
+       "System and app config",
+       "Check nginx or service settings"
+      ],
+      [
+       "/var/log",
+       "Log files",
+       "Read errors"
+      ],
+      [
+       "/home/you (~)",
+       "Your files",
+       "Keep scripts and notes"
+      ],
+      [
+       "/opt, /srv",
+       "Installed apps",
+       "Find the customer's deployment"
+      ],
+      [
+       "/tmp",
+       "Temporary files",
+       "Scratch work, may be wiped"
+      ]
+     ]
+    },
+    "code": "pwd                          # where am I?  /home/deploy\nls -lah /opt/qa-service      # long listing, hidden files, human sizes\ncd /var/log                  # absolute path\ncd ..                        # up one level\nfind /opt -name \"*.env\"      # find files by name\ndf -h                        # free disk space per filesystem\ndu -sh /var/log/* | sort -h  # which logs take the most space\nless /etc/nginx/nginx.conf   # page through a file (q to quit, /word to search)",
+    "lang": "bash"
+   },
+   {
+    "title": "Users, groups and permissions",
+    "body": "Every file has an owner (a user), a group, and three sets of permissions: for the owner, for members of the group, and for everyone else. Each set is some mix of r (read), w (write) and x (execute, or for a directory, the right to enter it).\n\nls -l shows them as a string like -rw-r-----. The first character is the type (- for file, d for directory), then three letters each for owner, group and others. Permissions are also written as numbers where read is 4, write 2 and execute 1, added up per set. So rw-r----- is 6, 4, 0, written 640.\n\nchmod changes permissions and chown changes the owner. sudo runs one command as the administrator (root), and should be used sparingly. Secrets such as an .env file with API keys should be readable only by the service's own user, which means 600 or 640.",
+    "example": "A deployed Q&A service fails with 'Permission denied' reading /opt/qa-service/.env. ls -l shows the file is owned by root with mode 600, but the service runs as user qa. The fix is chown qa:qa on the file, keeping mode 600. Running chmod 777 would also make the error go away, and would let every user on the machine read and change the API keys.",
+    "code": "ls -l /opt/qa-service/.env\n# -rw------- 1 root root 212 Sep 27 09:14 /opt/qa-service/.env\n#  owner=rw  group=---  others=---     owner is root, so user 'qa' cannot read it\n\nsudo chown qa:qa /opt/qa-service/.env   # give it to the service user and group\nsudo chmod 600 /opt/qa-service/.env     # owner read/write only\nchmod +x deploy.sh                      # make a script executable\nid                                      # which user and groups am I?",
+    "lang": "bash"
+   },
+   {
+    "title": "Processes, services and signals",
+    "body": "A process is a running program. Each one has a process ID (PID), an owner and a parent. ps aux lists them all; pipe it to grep to find one by name. top (or the friendlier htop, if installed) shows a live view sorted by CPU, with memory use too.\n\nkill sends a signal to a process. The default is SIGTERM (15), a polite request to stop, which lets the program finish writes and close connections. SIGKILL (9) ends it immediately with no cleanup; use it only when SIGTERM has been ignored.\n\nOn most modern distributions, long-running services are managed by systemd. systemctl status shows whether a service is running and its last log lines, and systemctl restart restarts it. ss -ltnp lists which programs are listening on which network ports, which answers 'is anything actually on port 8000?'.",
+    "example": "Users report the assistant hangs. top shows a python process at 100 percent CPU and 7.5 of 8 GB memory. systemctl status qa-service shows it has been up for 9 days. journalctl reveals a background job reloading the full document index every hour without releasing memory. A restart buys time; the real fix goes into the code.",
+    "code": "ps aux | grep uvicorn             # find the process and its PID\ntop                                # live CPU and memory (q to quit)\nss -ltnp                           # listening TCP ports and which PID owns them\n\nkill 48213                         # SIGTERM: ask it to stop cleanly\nkill -9 48213                      # SIGKILL: last resort, no cleanup\n\nsudo systemctl status qa-service   # running? since when? last log lines\nsudo systemctl restart qa-service\nsudo systemctl enable qa-service   # start automatically at boot",
+    "lang": "bash"
+   },
+   {
+    "title": "SSH and copying files",
+    "body": "SSH connects you to a remote machine's shell over an encrypted channel. It normally uses a key pair: a private key that stays on your laptop and a public key that is added to ~/.ssh/authorized_keys on the server. ssh-keygen creates the pair. Never send the private key to anyone.\n\nThe command is ssh user@host. Often you cannot reach the server directly and must go through a jump host (also called a bastion), a single hardened machine that is the only way in; ssh -J handles that. A ~/.ssh/config file saves you from typing long options each time.\n\nscp copies files over SSH, in either direction. rsync does the same but only sends what changed, which is better for folders. ssh -L forwards a port, so a web page running on the server's port 8000 appears on your laptop at localhost:8000 without opening it to the internet.",
+    "example": "A bank gives you access to app-01, reachable only through bastion.bank.example. You add both to ~/.ssh/config, then 'ssh app01' takes you straight through. To check the internal admin page of the deployed service, ssh -L 8000:localhost:8000 app01 lets you open http://localhost:8000 in your own browser.",
+    "code": "ssh-keygen -t ed25519 -C \"you@company.com\"     # create a key pair (once)\n\n# ~/.ssh/config\n# Host bastion\n#     HostName bastion.bank.example\n#     User jdoe\n# Host app01\n#     HostName 10.20.3.14\n#     User deploy\n#     ProxyJump bastion              # go through the jump host\n\nssh app01                                      # connect using the config\nscp ./release.tar.gz app01:/opt/qa-service/    # copy a file up\nscp app01:/var/log/qa/app.log ./               # copy a file down\nrsync -avz ./config/ app01:/opt/qa-service/config/   # sync a folder\nssh -L 8000:localhost:8000 app01               # server port 8000 -> your localhost:8000",
+    "lang": "bash"
+   },
+   {
+    "title": "Reading logs quickly",
+    "body": "Logs are text files or journal entries where programs record what happened. Your first move is usually to look at the most recent lines and follow new ones as they arrive. tail -n 100 shows the last 100 lines and tail -f keeps printing new lines until you press Ctrl+C.\n\ngrep filters lines that match a pattern. -i ignores case, -C 3 shows 3 lines of context around each match, and -c counts matches. Pipes (|) chain commands, so you can grep, then cut out a field, then count with sort | uniq -c. less opens a big file for scrolling, with / to search and G to jump to the end.\n\nServices run under systemd write to the journal, read with journalctl. -u picks a service, --since limits the time, -f follows, and -p err shows only errors. Always note the time zone of the log timestamps before comparing them with what users reported.",
+    "example": "At 10:42 a customer reports errors. journalctl -u qa-service --since '10:30' shows repeated 'httpx.ReadTimeout' lines calling the LLM API. grep -c ReadTimeout on the app log shows 312 in the last 15 minutes against 0 the day before. That points at the network path or the provider, and you check the provider's status page and the proxy next.",
+    "checklist": [
+     "Confirm the time of the problem and the log's time zone",
+     "Check the service is running (systemctl status)",
+     "Read the last 100 lines (journalctl -n 100 or tail -n 100)",
+     "Search for ERROR, Exception, Traceback and timeout",
+     "Count how often the error happens and since when",
+     "Look at the lines just before the first error",
+     "Check disk (df -h) and memory (free -h)",
+     "Save the relevant lines to share with the team"
+    ],
+    "code": "tail -n 100 /var/log/qa/app.log               # last 100 lines\ntail -f /var/log/qa/app.log                   # follow live (Ctrl+C to stop)\ngrep -i -C 3 \"traceback\" /var/log/qa/app.log  # matches plus 3 lines of context\ngrep -c \"ReadTimeout\" /var/log/qa/app.log     # how many times?\n\n# Which HTTP status codes appear most in an nginx access log?\nawk '{print $9}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | head\n\njournalctl -u qa-service --since \"1 hour ago\" -p err   # errors from one service\njournalctl -u qa-service -f                            # follow the journal",
+    "lang": "bash"
+   },
+   {
+    "title": "curl, jq, environment variables and cron",
+    "body": "curl sends HTTP requests from the command line, so you can test an API without writing code. -i shows response headers, -s hides the progress bar, -X picks the method, -H adds a header and -d sends a body. jq is a small tool that pretty-prints JSON and pulls out fields, for example .items[].name.\n\nEnvironment variables are named values that programs read at startup, the usual place for configuration such as DATABASE_URL or an API key. export sets one in the current shell and env lists them. A service managed by systemd gets its variables from its unit file or an EnvironmentFile, not from your shell.\n\ncron runs commands on a schedule. Each line in a crontab has five time fields (minute, hour, day of month, month, day of week) followed by the command. cron uses a minimal environment, so use absolute paths and send output to a log file.",
+    "example": "Before blaming the app, you test from the server itself: curl the local health endpoint, then curl the LLM provider's API with the key from the environment. If the local call works and the external one hangs, the customer's firewall or proxy is blocking outbound traffic, and you now have exact evidence to give their network team.",
+    "code": "curl -s http://localhost:8000/health | jq .          # local health check\ncurl -i https://api.example.com/v1/status            # show status line and headers\n\nexport API_TOKEN=\"$(cat ~/.secrets/token)\"           # avoid typing secrets inline\ncurl -s -X POST http://localhost:8000/ask \\\n     -H \"Authorization: Bearer $API_TOKEN\" \\\n     -H \"Content-Type: application/json\" \\\n     -d '{\"question\": \"What is the travel policy?\"}' \\\n  | jq -r '.answer, .sources[].title'                # pull out fields\n\nenv | grep -i proxy                                  # any proxy settings?\n\n# crontab -e   (min hour day month weekday command)\n# 15 2 * * * /opt/qa-service/venv/bin/python /opt/qa-service/reindex.py >> /var/log/qa/reindex.log 2>&1",
+    "lang": "bash"
+   }
+  ],
+  "glossary": [
+   [
+    "Shell",
+    "A text program that runs the commands you type, such as bash."
+   ],
+   [
+    "Root (/)",
+    "The top of the Linux directory tree; also the name of the administrator user."
+   ],
+   [
+    "Permissions",
+    "Read, write and execute rights for a file's owner, group and everyone else."
+   ],
+   [
+    "Process",
+    "A running program, identified by a process ID (PID)."
+   ],
+   [
+    "Signal",
+    "A message sent to a process, such as SIGTERM to stop politely or SIGKILL to stop at once."
+   ],
+   [
+    "systemd",
+    "The service manager on most Linux distributions, controlled with systemctl."
+   ],
+   [
+    "SSH",
+    "Secure Shell: an encrypted way to log in to and run commands on a remote machine."
+   ],
+   [
+    "Jump host",
+    "A hardened server you must pass through to reach internal machines."
+   ],
+   [
+    "Environment variable",
+    "A named value in a process's environment, often used for configuration and secrets."
+   ],
+   [
+    "cron",
+    "A scheduler that runs commands at set times from a crontab file."
+   ]
+  ],
+  "practice": [
+   "Start a free Linux VM or use WSL or a Docker container. Create a user 'app', a file owned by it with mode 640, and show with ls -l and a failed cat as another user that the permissions work. Deliverable: the commands and their output.",
+   "Run a tiny Python HTTP server (python3 -m http.server 8000) in one terminal, then find it with ps and ss, curl it, follow its output, and stop it with SIGTERM. Deliverable: a short log of each command and what it showed.",
+   "Download a public nginx sample access log, and with one pipeline each find the top 5 IP addresses, the count of 5xx responses, and the busiest minute. Then schedule a cron job that writes the 5xx count to a file every 5 minutes."
+  ]
+ },
+ "frontend": {
+  "plain": "The front end is the part of an application that runs in the user's browser. It is built from three languages: HTML describes the content and structure of a page, CSS describes how it looks, and JavaScript makes it respond to clicks and typing and talk to servers. TypeScript is JavaScript with types added, and React is a popular JavaScript library for building interfaces from reusable pieces called components. For quick demos, Python tools such as Streamlit let you build a working web page without writing HTML or JavaScript at all.",
+  "analogy": "A web page is like a stage play. HTML is the script and the set pieces, CSS is the costumes, lighting and paint, and JavaScript is the stage crew who move things and fetch props from backstage (the server) while the show runs.",
+  "why": "Customers judge AI systems by what they can see and try. An FDE often has a few days to put a usable screen on top of a model, for example a claims triage view for an insurer or a policy Q&A box for an HR team. Knowing enough front-end to build that, and to avoid mistakes like exposing an API key, makes the difference between a slide and a working demo.",
+  "subtopics": [
+   {
+    "title": "HTML, CSS and JavaScript roles",
+    "body": "HTML (HyperText Markup Language) uses tags such as <h1> for a heading, <p> for a paragraph, <input> for a text box and <button> for a button. Tags nest inside each other to form a tree that the browser calls the DOM (Document Object Model).\n\nCSS (Cascading Style Sheets) selects elements and sets properties such as color, font size, spacing and layout. Two layout systems handle most needs: flexbox for arranging items in a row or column, and grid for two-dimensional layouts.\n\nJavaScript runs in the browser. It can find elements in the DOM, listen for events like a click, change the page, and call servers. The three are usually separate files linked from the HTML page, though a small demo can keep them in one file.",
+    "example": "An HR team wants to try a policy question box. The HTML below gives a heading, a text box and a button; the CSS in the style block puts the box and button side by side; and one script tag loads app.js, which will make the button do something in the next two subtopics.",
+    "table": {
+     "headers": [
+      "Layer",
+      "Answers the question",
+      "Tiny example"
+     ],
+     "rows": [
+      [
+       "HTML",
+       "What is on the page?",
+       "<button>Ask</button>"
+      ],
+      [
+       "CSS",
+       "How does it look?",
+       "button { padding: 8px; }"
+      ],
+      [
+       "JavaScript",
+       "What does it do?",
+       "button.onclick = ask"
+      ],
+      [
+       "TypeScript",
+       "Is the data the right shape?",
+       "let n: number = 3"
+      ]
+     ]
+    },
+    "code": "<!doctype html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>Policy Q&amp;A</title>\n  <style>\n    body   { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; }\n    .row   { display: flex; gap: 8px; }          /* flexbox: items side by side */\n    input  { flex: 1; padding: 8px; }\n    #answer { margin-top: 16px; white-space: pre-wrap; }\n  </style>\n</head>\n<body>\n  <h1>Ask the HR policies</h1>\n  <div class=\"row\">\n    <input id=\"q\" placeholder=\"How many days of parental leave?\">\n    <button id=\"ask\">Ask</button>\n  </div>\n  <div id=\"answer\"></div>\n  <script src=\"app.js\"></script>   <!-- behavior lives in JavaScript -->\n</body>\n</html>",
+    "lang": "HTML"
+   },
+   {
+    "title": "JavaScript basics and the DOM",
+    "body": "JavaScript declares variables with const (cannot be reassigned) and let (can be). Functions can be written with the function keyword or as arrow functions, (x) => x * 2. Objects look like Python dicts, { name: 'Ana', age: 31 }, and arrays like Python lists.\n\nTo change the page, you first find an element with document.querySelector, using the same selectors as CSS ('#answer' for an id, '.row' for a class). Then you read or set its properties, such as .value for an input or .textContent for text.\n\nTo react to the user, attach an event listener: button.addEventListener('click', handler). The browser calls your handler function whenever the event happens. Use textContent rather than innerHTML when showing text from a model or a user, because innerHTML would run any HTML inside it, which is a security risk called cross-site scripting.",
+    "example": "In the HR demo, the page needs to show a character counter under the question box and disable the Ask button when the box is empty. That is two lines inside an 'input' event listener: update the counter's textContent and set button.disabled.",
+    "code": "// app.js (first version: no server yet)\nconst input  = document.querySelector(\"#q\");\nconst button = document.querySelector(\"#ask\");\nconst out    = document.querySelector(\"#answer\");\n\nbutton.disabled = true;\n\ninput.addEventListener(\"input\", () => {\n  button.disabled = input.value.trim() === \"\";   // no empty questions\n});\n\nbutton.addEventListener(\"click\", () => {\n  const question = input.value.trim();\n  out.textContent = `You asked: ${question}`;    // textContent, never innerHTML\n});",
+    "lang": "JavaScript"
+   },
+   {
+    "title": "What TypeScript adds",
+    "body": "JavaScript lets any variable hold any kind of value, and mistakes such as reading answer.text when the field is really answer.answer only show up when that line runs, often in front of the customer. TypeScript adds type annotations that a compiler checks before the code runs.\n\nYou describe the shape of data with a type or interface, for example that an API response has an answer string and a list of sources. If you then misspell a field or pass a number where a string is expected, the editor underlines it immediately. Editors also use the types to autocomplete field names.\n\nTypeScript files end in .ts or .tsx and compile to plain JavaScript, since browsers run JavaScript. Most modern React projects created with tools such as Vite offer a TypeScript template, so you mostly just start with it.",
+    "example": "A logistics demo shows shipment ETAs from an API that returns eta_minutes as a number. A teammate writes shipment.etaMinutes, which in plain JavaScript silently shows 'undefined' on screen. With a Shipment interface, TypeScript reports 'Property etaMinutes does not exist' before anyone opens the page.",
+    "code": "// types.ts\ninterface Source {\n  title: string;\n  url: string;\n}\n\ninterface AskResponse {\n  answer: string;\n  sources: Source[];          // an array of Source objects\n  confidence?: number;        // ? means optional\n}\n\nfunction render(res: AskResponse): string {\n  const list = res.sources.map((s) => `- ${s.title}`).join(\"\\n\");\n  return `${res.answer}\\n\\nSources:\\n${list}`;\n}\n\n// render({ answer: \"20 days\" });\n// Compile error: property \"sources\" is missing in type \"{ answer: string; }\"",
+    "lang": "TypeScript"
+   },
+   {
+    "title": "Calling an API with fetch",
+    "body": "fetch(url, options) sends an HTTP request from the browser. It returns a Promise, an object representing a result that will arrive later. Inside an async function you write await fetch(...) to pause until the response arrives, then await res.json() to parse the body.\n\nfetch only rejects on network failure. A 404 or 500 response still resolves, so check res.ok yourself. Show a loading state while waiting, since LLM calls can take several seconds, and show a clear message on errors.\n\nTwo rules matter for AI demos. First, never put a model provider's API key in browser code; anyone can read it in the developer tools. The browser calls your own backend, and the backend holds the key and calls the model. Second, browsers enforce CORS (Cross-Origin Resource Sharing): a page on one origin can only read responses from another origin if that server sends an Access-Control-Allow-Origin header allowing it. If your page is on localhost:5173 and your API on localhost:8000, the API must allow that origin.",
+    "example": "For the HR demo, the page calls POST /ask on a small FastAPI backend with the question. The backend retrieves policy passages, calls the model with the key from its environment, and returns answer and sources. FastAPI's CORSMiddleware lists http://localhost:5173 as an allowed origin during development.",
+    "code": "// app.js (calls our own backend, which holds the API key)\nconst API = \"http://localhost:8000\";\n\nasync function ask(question) {\n  out.textContent = \"Thinking...\";                     // loading state\n  button.disabled = true;\n  try {\n    const res = await fetch(`${API}/ask`, {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body: JSON.stringify({ question }),\n    });\n    if (!res.ok) throw new Error(`Server said ${res.status}`);  // 4xx/5xx\n    const data = await res.json();\n    out.textContent = data.answer + \"\\n\\n\" +\n      data.sources.map((s) => \"- \" + s.title).join(\"\\n\");\n  } catch (err) {\n    out.textContent = \"Sorry, something went wrong: \" + err.message;\n  } finally {\n    button.disabled = false;\n  }\n}\n\nbutton.addEventListener(\"click\", () => ask(input.value.trim()));",
+    "lang": "JavaScript"
+   },
+   {
+    "title": "React components at a glance",
+    "body": "React builds a page from components. A component is a function that returns JSX, an HTML-like syntax inside JavaScript. Components receive inputs called props from their parent and can keep their own data in state, created with the useState hook.\n\nWhen state changes, React calls the component again and updates only the parts of the page that changed. You do not touch the DOM yourself; you change state and describe what the page should look like for that state. This makes interfaces with many moving parts much easier to keep correct.\n\nOther hooks cover common needs: useEffect runs code after rendering, for example to load data when the component first appears. Frameworks such as Next.js add routing and server features on top of React. For a demo, a single-page app created with Vite is usually enough.",
+    "example": "An insurer's claims triage demo has a ClaimList component showing 20 claims and a ClaimDetail component showing the model's suggested priority and reasons. Clicking a claim sets selectedId in state; React re-renders ClaimDetail with the new claim's props, with no manual DOM code.",
+    "code": "// AskBox.tsx\nimport { useState } from \"react\";\n\ntype Props = { apiUrl: string };\n\nexport function AskBox({ apiUrl }: Props) {\n  const [question, setQuestion] = useState(\"\");\n  const [answer, setAnswer] = useState<string | null>(null);\n  const [loading, setLoading] = useState(false);\n\n  async function ask() {\n    setLoading(true);\n    const res = await fetch(`${apiUrl}/ask`, {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body: JSON.stringify({ question }),\n    });\n    const data = await res.json();\n    setAnswer(data.answer);               // state change -> React re-renders\n    setLoading(false);\n  }\n\n  return (\n    <div>\n      <input value={question} onChange={(e) => setQuestion(e.target.value)} />\n      <button onClick={ask} disabled={loading || !question}>Ask</button>\n      {loading ? <p>Thinking...</p> : answer && <p>{answer}</p>}\n    </div>\n  );\n}",
+    "lang": "TypeScript"
+   },
+   {
+    "title": "A quick demo UI in Streamlit",
+    "body": "Streamlit is a Python library that turns a script into a web app. You call functions such as st.title, st.text_input, st.file_uploader and st.button, and Streamlit draws the matching widgets. Run it with 'streamlit run app.py' and it opens in the browser.\n\nThe mental model is simple: every time the user interacts with a widget, Streamlit reruns the whole script from top to bottom with the new widget values. Use st.session_state to keep values between reruns, such as a chat history, and st.cache_resource or st.cache_data to avoid reloading a model or re-reading a file on every rerun.\n\nBecause the code runs on the server in Python, API keys stay out of the browser, and you can reuse the same retrieval and model code you wrote in a notebook. The trade-off is less control over layout and behavior than React. Use Streamlit for internal demos and pilots, and move to a proper front end when the design and scale requirements grow.",
+    "example": "On day one of an engagement with a manufacturer, the FDE loads 200 maintenance manuals into a vector index in a notebook. By the afternoon the same functions sit behind a Streamlit app with an upload box, a question box and an expandable 'Sources' section, and the plant's engineers are trying it on real questions.",
+    "table": {
+     "headers": [
+      "Need",
+      "Streamlit",
+      "React + API"
+     ],
+     "rows": [
+      [
+       "Time to first demo",
+       "Hours",
+       "A day or more"
+      ],
+      [
+       "Language",
+       "Python only",
+       "TypeScript + Python backend"
+      ],
+      [
+       "Layout control",
+       "Limited",
+       "Full"
+      ],
+      [
+       "Many concurrent users",
+       "Fine for pilots",
+       "Built for it"
+      ],
+      [
+       "Best for",
+       "Internal demos, pilots",
+       "Customer-facing products"
+      ]
+     ]
+    },
+    "code": "# app.py   run with:  streamlit run app.py\nimport streamlit as st\nfrom my_rag import load_index, answer_question   # your own notebook code\n\nst.title(\"Maintenance manual assistant\")\n\n@st.cache_resource                       # load once, reuse across reruns\ndef get_index():\n    return load_index(\"indexes/manuals\")\n\nif \"history\" not in st.session_state:    # survives reruns\n    st.session_state.history = []\n\nquestion = st.text_input(\"Ask about a machine or procedure\")\nif st.button(\"Ask\") and question:\n    with st.spinner(\"Searching manuals...\"):\n        result = answer_question(get_index(), question)   # key read from env on server\n    st.session_state.history.append((question, result[\"answer\"]))\n    st.write(result[\"answer\"])\n    with st.expander(\"Sources\"):\n        for src in result[\"sources\"]:\n            st.markdown(f\"- {src['title']} (page {src['page']})\")",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "HTML",
+    "The markup language that describes the structure and content of a web page."
+   ],
+   [
+    "CSS",
+    "The style language that controls how HTML elements look and are laid out."
+   ],
+   [
+    "DOM",
+    "The browser's tree of page elements that JavaScript can read and change."
+   ],
+   [
+    "TypeScript",
+    "JavaScript plus static type annotations checked by a compiler before the code runs."
+   ],
+   [
+    "Promise",
+    "A JavaScript object for a result that will arrive later, used with async and await."
+   ],
+   [
+    "fetch",
+    "The browser function for sending HTTP requests."
+   ],
+   [
+    "CORS",
+    "A browser rule that blocks reading responses from another origin unless that server allows it."
+   ],
+   [
+    "Component",
+    "In React, a function that takes props and state and returns what to display."
+   ],
+   [
+    "State",
+    "Data a component remembers between renders; changing it triggers a re-render."
+   ],
+   [
+    "Streamlit",
+    "A Python library that turns a script into an interactive web app."
+   ]
+  ],
+  "practice": [
+   "Build the single-file HTML policy Q&A page from this lesson, with the Ask button disabled when the box is empty and a fake answer shown on click. Deliverable: one index.html that works when opened in a browser.",
+   "Write a small FastAPI backend with POST /ask that returns a hard-coded answer and two sources, enable CORS for your page's origin, and connect the page to it with fetch, including a loading state and an error message when the server is stopped.",
+   "Rebuild the same demo in Streamlit with a file uploader, a question box, session-state history and a Sources expander. Deliverable: app.py plus three sentences on which version you would show a customer and why."
+  ]
+ }
+}

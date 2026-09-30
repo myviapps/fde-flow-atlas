@@ -1,0 +1,13 @@
+order_id,customer_id,order_date,status,total
+101,1,2024-01-05,completed,45.00
+102,1,2024-02-10,completed,10.00
+103,2,2024-01-20,completed,55.00
+104,3,2024-02-14,refunded,50.00
+105,3,2024-03-01,completed,50.00
+106,7,2024-03-03,completed,100.00
+107,9,2024-01-28,completed,50.00
+108,12,2024-02-02,pending,30.00
+109,21,2024-03-15,completed,45.00
+110,21,2024-03-20,completed,25.00
+111,30,2024-03-25,completed,80.00
+112,9,2024-03-30,completed,25.00

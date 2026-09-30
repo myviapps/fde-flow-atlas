@@ -1,0 +1,291 @@
+[
+ {
+  "id": "llmapi",
+  "mod": 3,
+  "sec": "3.1",
+  "name": "Calling LLM APIs",
+  "title": "Calling LLM APIs: messages, sampling, streaming and errors",
+  "thesis": "Every AI feature starts as an HTTP call: a list of role-tagged messages goes in, tokens stream back, and usage is billed. Knowing the request shape, the sampling knobs, the error codes and the enterprise access routes is the first practical skill of an AI FDE.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "app",
+    90,
+    70,
+    "Your app",
+    "builds messages"
+   ],
+   [
+    "sdk",
+    265,
+    70,
+    "SDK client",
+    "retries, timeouts"
+   ],
+   [
+    "gateway",
+    440,
+    70,
+    "Gateway",
+    "keys, logs, limits"
+   ],
+   [
+    "provider",
+    615,
+    70,
+    "Model provider",
+    "API, Bedrock, Vertex",
+    1
+   ],
+   [
+    "model",
+    615,
+    220,
+    "Model",
+    "samples tokens"
+   ],
+   [
+    "stream",
+    440,
+    220,
+    "Stream",
+    "tokens as they come"
+   ],
+   [
+    "usage",
+    265,
+    220,
+    "Usage record",
+    "tokens, stop reason"
+   ],
+   [
+    "user",
+    90,
+    220,
+    "End user",
+    "sees the answer"
+   ]
+  ],
+  "edges": [
+   [
+    "app",
+    "sdk"
+   ],
+   [
+    "sdk",
+    "gateway"
+   ],
+   [
+    "gateway",
+    "provider",
+    14
+   ],
+   [
+    "provider",
+    "gateway",
+    14,
+    "429 / 529"
+   ],
+   [
+    "provider",
+    "model"
+   ],
+   [
+    "model",
+    "stream"
+   ],
+   [
+    "stream",
+    "usage"
+   ],
+   [
+    "usage",
+    "user"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Build the request",
+    "n": [
+     "app"
+    ],
+    "e": [],
+    "d": "Your code builds a system prompt, a list of user and assistant messages, a pinned model id and max_tokens. This is the whole input the model will see.",
+    "l": [
+     5,
+     6,
+     7,
+     8,
+     9
+    ]
+   },
+   {
+    "t": "The SDK sends it",
+    "n": [
+     "app",
+     "sdk"
+    ],
+    "e": [
+     "app>sdk"
+    ],
+    "d": "The official SDK turns the call into an HTTPS request, adds your key, and applies a timeout and a small number of automatic retries.",
+    "l": [
+     2
+    ]
+   },
+   {
+    "t": "Through the gateway",
+    "n": [
+     "sdk",
+     "gateway"
+    ],
+    "e": [
+     "sdk>gateway"
+    ],
+    "d": "In many enterprises the call passes through an LLM gateway that holds the real keys, logs every request and enforces team budgets.",
+    "l": []
+   },
+   {
+    "t": "Provider answers or refuses",
+    "n": [
+     "gateway",
+     "provider"
+    ],
+    "e": [
+     "gateway>provider",
+     "provider>gateway"
+    ],
+    "d": "The provider may be the vendor's API or a cloud such as AWS Bedrock or Google Vertex AI. If you are over your rate limit it returns 429, and 529 when the service is overloaded; the SDK backs off and retries.",
+    "l": [
+     16,
+     17
+    ]
+   },
+   {
+    "t": "The model samples tokens",
+    "n": [
+     "provider",
+     "model"
+    ],
+    "e": [
+     "provider>model"
+    ],
+    "d": "The model predicts a probability for every possible next token and picks one, over and over. Sampling settings such as temperature decide how adventurous that pick is.",
+    "l": []
+   },
+   {
+    "t": "Tokens stream back",
+    "n": [
+     "model",
+     "stream"
+    ],
+    "e": [
+     "model>stream"
+    ],
+    "d": "With streaming, text arrives in small pieces as it is generated, so the user sees words within a second instead of waiting for the full answer.",
+    "l": [
+     11,
+     12
+    ]
+   },
+   {
+    "t": "Record usage and stop reason",
+    "n": [
+     "stream",
+     "usage"
+    ],
+    "e": [
+     "stream>usage"
+    ],
+    "d": "The final message says why generation stopped (end_turn, max_tokens, stop_sequence, tool_use) and how many input and output tokens were billed. Log both on every call.",
+    "l": [
+     13,
+     14,
+     15
+    ]
+   },
+   {
+    "t": "Answer reaches the user",
+    "n": [
+     "usage",
+     "user"
+    ],
+    "e": [
+     "usage>user"
+    ],
+    "d": "If the stop reason was max_tokens the answer was cut off, so your app should notice and handle it instead of showing half a sentence.",
+    "l": [
+     14
+    ]
+   }
+  ],
+  "ideas": [
+   "A request is a system prompt plus an ordered list of user and assistant messages; the model has no memory beyond what you send each time.",
+   "Sampling settings (temperature, top_p) change how varied the output is, max_tokens caps its length, and stop sequences end it early. Some newer models do not accept temperature or top_p at all.",
+   "Stream long answers so users see text quickly, and always read stop_reason and usage from the final message.",
+   "429 and 5xx errors are normal at scale: retry with backoff, respect retry-after, and have a fallback plan for long outages.",
+   "Enterprises often reach models through AWS Bedrock, Azure, Google Vertex AI or an internal gateway, and pin exact model versions so behaviour does not change under them."
+  ],
+  "traps": [
+   "Using a floating model alias in production, so an automatic upgrade silently changes answers the customer had already signed off.",
+   "Setting max_tokens too low and never checking stop_reason, so long answers are quietly cut off mid-sentence.",
+   "Retrying every error, including 400 and 401, which can never succeed and only burns time and quota."
+  ],
+  "qa": [
+   [
+    "A customer's chatbot sometimes returns half an answer. What do you check?",
+    "First the stop_reason in the logs. If it is max_tokens, the output hit the cap, so I raise max_tokens or ask for shorter answers, and make the app detect truncation. If logs are missing, I add stop_reason and usage logging to every call before changing anything else."
+   ],
+   [
+    "How would you handle rate limit errors during a nightly batch of 50,000 documents?",
+    "Limit concurrency to stay under the tokens-per-minute limit, let the SDK retry 429s with exponential backoff and jitter while respecting retry-after, and checkpoint progress so a restart skips finished items. If the job is not urgent, a batch API is often cheaper and avoids rate limit pressure."
+   ],
+   [
+    "The bank says it can only use models through its AWS account. What changes in your code?",
+    "The request shape stays mostly the same, but I switch to the provider-specific client, authenticate with AWS credentials instead of a vendor API key, use the Bedrock model id and check which models and features are available in their region. I also confirm quotas with them, because Bedrock limits are per account and region."
+   ]
+  ],
+  "code": "import anthropic\n\nclient = anthropic.Anthropic(max_retries=3)  # key from ANTHROPIC_API_KEY\n\ntry:\n    with client.messages.stream(\n        model=MODEL,                      # a pinned model id from config\n        max_tokens=1024,                  # hard cap on output tokens\n        system=\"You answer questions about Lumora Bank card fees.\",\n        messages=[{\"role\": \"user\", \"content\": \"Is there a fee abroad?\"}],\n    ) as stream:\n        for text in stream.text_stream:   # print tokens as they arrive\n            print(text, end=\"\", flush=True)\n        final = stream.get_final_message()\n    print(\"\\nstop:\", final.stop_reason)\n    print(\"in:\", final.usage.input_tokens, \"out:\", final.usage.output_tokens)\nexcept anthropic.RateLimitError:\n    print(\"429 after retries: queue it or fall back\")\nexcept anthropic.APIStatusError as e:\n    print(\"API error\", e.status_code)",
+  "codeTitle": "Streaming call with usage and errors (Python)"
+ },
+ {
+  "id": "aicoding",
+  "mod": 2,
+  "sec": "2.1",
+  "name": "Working with AI coding tools",
+  "title": "Working with AI coding tools, well and safely",
+  "thesis": "Coding agents such as Claude Code, Cursor and GitHub Copilot can make an FDE several times faster at reading and writing code, but only with good context, small verified steps and strict data rules. You stay responsible for every line that ships.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Agents are strong at boilerplate, tests, refactors, glue code and explaining unfamiliar code; they are weak at unstated business rules, novel design and knowing what they have not seen.",
+   "Context decides quality: a CLAUDE.md or rules file, a short spec, and tests written first turn vague requests into checkable work.",
+   "Work in small steps, read every diff, run the tests yourself and never merge code you cannot explain.",
+   "On customer systems, the customer's data and security rules come first: approved tools only, no secrets or real personal data in prompts, least-privilege access.",
+   "Agents are an excellent way to learn a new codebase fast, as long as you verify their explanations against the actual code."
+  ],
+  "traps": [
+   "Accepting a large generated change because it looks plausible and the happy path works, without reading it or running the edge cases.",
+   "Pasting production data, credentials or customer source code into a tool the customer has not approved.",
+   "Letting an agent run shell commands with broad permissions against a shared or production environment."
+  ],
+  "qa": [
+   [
+    "How do you use AI coding tools in your work?",
+    "I use an agent for exploration, boilerplate, tests and refactors. I give it context through a project rules file and a short spec, often write or ask for the tests first, work in small commits and read every diff. I only use tools the customer has approved and keep real data and secrets out of prompts. I never ship code I could not explain in a review."
+   ],
+   [
+    "The generated code passes your tests but a teammate finds a bug. What went wrong and what do you change?",
+    "The tests did not cover the case, and I trusted a green run over reading the logic. I add a failing test for the bug first, then fix it, and I change my habit: for each change I list edge cases up front and ask the agent to test them, and I review the diff for things tests rarely catch such as error handling and security."
+   ],
+   [
+    "You join a customer with a 300,000-line codebase you have never seen. How do you get productive in a week?",
+    "With the customer's approval I use an agent in read-only mode to map the repo: entry points, main modules, how a request flows, how to run the tests. I check each claim by opening the files and running the app locally. I write what I learn into a short notes file that becomes the project's rules file, and my first change is a small, well-tested fix."
+   ]
+  ]
+ }
+]

@@ -1,0 +1,790 @@
+[
+ {
+  "id": "oop",
+  "mod": 0,
+  "sec": "0.11",
+  "name": "Python classes and OOP",
+  "title": "Classes, objects and how Python projects are organized",
+  "thesis": "A class is a blueprint that bundles data (attributes) with the functions that act on it (methods). You create objects from it with __init__, reuse behavior through inheritance (is a) or, more often, composition (has a), and organize the code into modules and packages inside a virtual environment.",
+  "format": "flowchart",
+  "note": "The top row shows one class turning into objects: calling Order(...) runs __init__, which fills each object's attributes, and then you call methods on those objects. The lower rows show two ways to reuse code: EmailNotifier and SmsNotifier inherit from Notifier (is a), while OrderService holds a Notifier and uses it (has a).",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "cls",
+    90,
+    70,
+    "class Order",
+    "the blueprint"
+   ],
+   [
+    "init",
+    265,
+    70,
+    "__init__()",
+    "sets up self"
+   ],
+   [
+    "objs",
+    440,
+    70,
+    "Order objects",
+    "o1, o2, o3"
+   ],
+   [
+    "meth",
+    615,
+    70,
+    "o1.total()",
+    "method call"
+   ],
+   [
+    "svc",
+    615,
+    210,
+    "OrderService",
+    "has a Notifier"
+   ],
+   [
+    "base",
+    440,
+    210,
+    "Notifier",
+    "base class"
+   ],
+   [
+    "email",
+    440,
+    350,
+    "EmailNotifier",
+    "is a Notifier"
+   ],
+   [
+    "sms",
+    615,
+    350,
+    "SmsNotifier",
+    "is a Notifier"
+   ]
+  ],
+  "edges": [
+   [
+    "cls",
+    "init",
+    0,
+    "Order(...)"
+   ],
+   [
+    "init",
+    "objs",
+    0,
+    "fills attrs"
+   ],
+   [
+    "objs",
+    "meth",
+    0,
+    "call"
+   ],
+   [
+    "svc",
+    "objs",
+    0,
+    "works on"
+   ],
+   [
+    "svc",
+    "base",
+    0,
+    "has a"
+   ],
+   [
+    "email",
+    "base",
+    0,
+    "inherits"
+   ],
+   [
+    "sms",
+    "base",
+    0,
+    "inherits"
+   ]
+  ],
+  "ideas": [
+   "A class is a blueprint. An object (instance) is one thing built from it, with its own attribute values.",
+   "__init__ runs when you create an object. self is the object being built, so self.total = 0 stores data on that object.",
+   "Methods are functions defined inside a class. Calling o1.total() passes o1 in as self automatically.",
+   "Inheritance means 'is a' and shares behavior from a parent class. Composition means 'has a' and is usually easier to change.",
+   "@dataclass writes __init__, __repr__ and __eq__ for you, and type hints document what each field should hold."
+  ],
+  "traps": [
+   "Using a mutable default like items=[] in __init__ or a dataclass field. All objects end up sharing one list. Use None or field(default_factory=list).",
+   "Building deep inheritance trees (A inherits B inherits C) to reuse a few lines. Small classes composed together are easier to read and test.",
+   "Assuming type hints are enforced at runtime. Python ignores them when running; tools like mypy or Pydantic are what check them."
+  ],
+  "qa": [
+   [
+    "When would you use inheritance and when composition?",
+    "I use inheritance when the child truly is a kind of the parent and should work anywhere the parent works, for example several notifier types sharing one send() interface. For everything else I prefer composition: a class holds other objects and delegates to them. It keeps classes small, lets me swap parts (a fake notifier in tests) and avoids fragile hierarchies."
+   ],
+   [
+    "What does a dataclass give you over a plain class?",
+    "It generates __init__, __repr__ and __eq__ from the annotated fields, so a record type is a few lines. You can add frozen=True for immutability, defaults, and field(default_factory=list) for mutable defaults. It does not validate types at runtime, so for untrusted input like API payloads I would use Pydantic."
+   ],
+   [
+    "How would you structure a small customer integration in Python?",
+    "A package with modules by responsibility, for example client.py for the API wrapper, models.py for dataclasses, transform.py for pure functions and a cli.py entry point. Dependencies go in a virtual environment and a pinned requirements file or pyproject.toml, and tests sit in a tests folder that imports the package."
+   ]
+  ]
+ },
+ {
+  "id": "asyncpy",
+  "mod": 0,
+  "sec": "0.12",
+  "name": "Async Python",
+  "title": "Async Python: many API calls at once without waiting",
+  "thesis": "Most integration code spends its time waiting on the network. With async and await, one thread runs an event loop that switches to other work whenever a task is waiting, so 100 API calls can overlap. asyncio.gather starts them together and a semaphore keeps you inside the customer's rate limit.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "100 API calls, 10 at a time, with httpx and asyncio",
+  "code": "import asyncio\nimport httpx\n\nURLS = [f\"https://api.example.com/orders/{i}\" for i in range(1, 101)]\n\nasync def fetch(client, sem, url):\n    async with sem:                      # wait for a free slot (max 10)\n        r = await client.get(url)        # pause; the loop runs other tasks\n        r.raise_for_status()\n        return r.json()\n\nasync def main():\n    sem = asyncio.Semaphore(10)          # at most 10 requests in flight\n    async with httpx.AsyncClient(timeout=10.0) as client:\n        tasks = [fetch(client, sem, u) for u in URLS]\n        results = await asyncio.gather(*tasks, return_exceptions=True)\n    ok = [r for r in results if not isinstance(r, Exception)]\n    print(f\"{len(ok)} of {len(URLS)} succeeded\")\n\nasyncio.run(main())",
+  "nodes": [
+   [
+    "run",
+    90,
+    70,
+    "asyncio.run()",
+    "starts the loop"
+   ],
+   [
+    "main",
+    265,
+    70,
+    "main()",
+    "a coroutine"
+   ],
+   [
+    "gather",
+    440,
+    70,
+    "gather()",
+    "100 tasks at once"
+   ],
+   [
+    "sem",
+    615,
+    70,
+    "Semaphore(10)",
+    "10 free slots"
+   ],
+   [
+    "loop",
+    615,
+    220,
+    "Event loop",
+    "runs ready tasks"
+   ],
+   [
+    "await",
+    440,
+    220,
+    "await get()",
+    "task pauses"
+   ],
+   [
+    "api",
+    265,
+    220,
+    "Orders API",
+    "over the network",
+    1
+   ],
+   [
+    "res",
+    90,
+    220,
+    "Results list",
+    "same order as input"
+   ]
+  ],
+  "edges": [
+   [
+    "run",
+    "main"
+   ],
+   [
+    "main",
+    "gather"
+   ],
+   [
+    "gather",
+    "sem"
+   ],
+   [
+    "sem",
+    "loop"
+   ],
+   [
+    "loop",
+    "await",
+    14,
+    "run"
+   ],
+   [
+    "await",
+    "loop",
+    14,
+    "resume"
+   ],
+   [
+    "await",
+    "api",
+    14,
+    "request"
+   ],
+   [
+    "api",
+    "await",
+    14,
+    "reply"
+   ],
+   [
+    "api",
+    "res",
+    0,
+    "all done"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start the event loop",
+    "n": [
+     "run"
+    ],
+    "d": "asyncio.run creates an event loop, the scheduler that decides which piece of async code runs next, and hands it the main() coroutine.",
+    "l": [
+     19
+    ]
+   },
+   {
+    "t": "Create the client and the tasks",
+    "n": [
+     "main"
+    ],
+    "e": [
+     "run>main"
+    ],
+    "d": "main opens one shared httpx.AsyncClient so connections are reused, then builds 100 coroutine objects. Nothing has been sent yet; a coroutine only runs when the loop schedules it.",
+    "l": [
+     11,
+     13,
+     14
+    ]
+   },
+   {
+    "t": "gather schedules all 100",
+    "n": [
+     "gather"
+    ],
+    "e": [
+     "main>gather"
+    ],
+    "d": "asyncio.gather wraps every coroutine in a task and waits until all of them finish. return_exceptions=True means one failure is returned in the list instead of cancelling the rest.",
+    "l": [
+     15
+    ]
+   },
+   {
+    "t": "The semaphore limits concurrency",
+    "n": [
+     "sem"
+    ],
+    "e": [
+     "gather>sem"
+    ],
+    "d": "Each task must acquire the semaphore before calling the API. Ten get a slot; the other 90 wait their turn, which keeps you polite to the customer's server.",
+    "l": [
+     6,
+     12
+    ]
+   },
+   {
+    "t": "The loop runs a ready task",
+    "n": [
+     "loop",
+     "await"
+    ],
+    "e": [
+     "sem>loop",
+     "loop>await"
+    ],
+    "d": "The loop picks a task that is ready and runs it until it reaches an await. Only one task runs Python code at any instant; they take turns."
+   },
+   {
+    "t": "await pauses while the network works",
+    "n": [
+     "await",
+     "api"
+    ],
+    "e": [
+     "await>api"
+    ],
+    "d": "client.get sends the request and the task pauses at await. The loop immediately moves to another task, so ten requests are waiting on the network at the same time.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "A reply wakes the task",
+    "n": [
+     "api",
+     "await",
+     "loop"
+    ],
+    "e": [
+     "api>await",
+     "await>loop"
+    ],
+    "d": "When bytes come back, the loop resumes that task right after its await. It checks the status, parses JSON, returns and releases its slot so a waiting task can start.",
+    "l": [
+     8,
+     9
+    ]
+   },
+   {
+    "t": "Collect the results",
+    "n": [
+     "res"
+    ],
+    "e": [
+     "api>res"
+    ],
+    "d": "When all 100 tasks are done, gather returns their results in the same order as the input list. You separate successes from exceptions and report both.",
+    "l": [
+     15,
+     16,
+     17
+    ]
+   }
+  ],
+  "ideas": [
+   "I/O-bound work (waiting on networks, disks, databases) benefits from async. CPU-bound work (heavy maths) does not.",
+   "async def makes a coroutine. Calling it returns a coroutine object; await or a task is what actually runs it.",
+   "The event loop runs one task at a time and switches only at await points. That is why a blocking call like time.sleep or requests.get freezes everything.",
+   "asyncio.gather runs many coroutines concurrently and returns results in input order.",
+   "A semaphore caps how many requests are in flight. Pair it with retries and backoff when the API returns 429 Too Many Requests."
+  ],
+  "traps": [
+   "Calling a normal blocking library (requests, time.sleep, a sync database driver) inside async code. The whole loop stops while it waits. Use async libraries or asyncio.to_thread.",
+   "Firing 10,000 requests at once with gather and no limit. You get throttled, time out or knock over the customer's API.",
+   "Forgetting await, which leaves a coroutine that never runs and a 'coroutine was never awaited' warning."
+  ],
+  "qa": [
+   [
+    "Explain the difference between concurrency and parallelism.",
+    "Concurrency means several tasks are in progress at once and take turns, which asyncio does on one thread by switching at await points. Parallelism means tasks literally run at the same instant on different CPU cores, which needs multiple processes in Python for CPU-heavy work. Async gives concurrency, which is enough when the time is spent waiting on I/O."
+   ],
+   [
+    "You need to call a customer API 50,000 times and it allows 20 requests per second. How do you do it?",
+    "Use httpx.AsyncClient with asyncio, a semaphore to cap in-flight requests, and a simple rate limiter that spaces request starts to 20 per second. Add retries with exponential backoff on 429 and 5xx, respect Retry-After, log failures to a file for a rerun, and process in batches so progress survives a crash. At 20 per second the job takes about 42 minutes, so I would tell the customer that up front."
+   ],
+   [
+    "When would you pick threads or processes instead of asyncio?",
+    "Threads when I must use a blocking library that has no async version, such as an older SDK; the GIL is released while waiting on I/O so threads still overlap. Processes when the work is CPU-bound, such as parsing large files or computing features, because separate processes can use several cores. Asyncio when there are many network calls and good async libraries."
+   ]
+  ]
+ },
+ {
+  "id": "stats",
+  "mod": 0,
+  "sec": "0.13",
+  "name": "Statistics and A/B tests",
+  "title": "Statistics for decisions: spread, confidence and A/B tests",
+  "thesis": "Numbers from a sample are noisy, so every estimate needs a range. Variance and standard deviation measure spread, confidence intervals show how sure you are, and an A/B test with a pre-set sample size tells you whether a change really moved a metric or you just saw noise.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Analysing a checkout A/B test with numpy and scipy",
+  "code": "import numpy as np\nfrom scipy import stats\n\n# Checkout test: did the new page raise conversion?\nn_a, conv_a = 10_000, 520         # control: 5.20% converted\nn_b, conv_b = 10_000, 585         # variant: 5.85% converted\np_a, p_b = conv_a / n_a, conv_b / n_b\ndiff = p_b - p_a                  # observed lift\n\n# Two-proportion z-test (null hypothesis: no difference)\np_pool = (conv_a + conv_b) / (n_a + n_b)\nse_pool = np.sqrt(p_pool * (1 - p_pool) * (1/n_a + 1/n_b))\nz = diff / se_pool\np_value = 2 * stats.norm.sf(abs(z))           # two-sided\n\n# 95% confidence interval for the difference\nse = np.sqrt(p_a*(1-p_a)/n_a + p_b*(1-p_b)/n_b)\nlow, high = diff - 1.96*se, diff + 1.96*se\nprint(f\"lift {diff:.2%}  95% CI [{low:.2%}, {high:.2%}]  p={p_value:.3f}\")\n# lift 0.65%  95% CI [0.02%, 1.28%]  p=0.044",
+  "nodes": [
+   [
+    "hyp",
+    90,
+    70,
+    "Hypothesis",
+    "new page converts"
+   ],
+   [
+    "metric",
+    265,
+    70,
+    "Pick metric",
+    "conversion rate"
+   ],
+   [
+    "size",
+    440,
+    70,
+    "Sample size",
+    "set before start"
+   ],
+   [
+    "split",
+    615,
+    70,
+    "Random split",
+    "A: old, B: new"
+   ],
+   [
+    "collect",
+    615,
+    220,
+    "Run and collect",
+    "no peeking"
+   ],
+   [
+    "diff",
+    440,
+    220,
+    "Compute lift",
+    "B minus A"
+   ],
+   [
+    "ci",
+    265,
+    220,
+    "CI and p-value",
+    "is it noise?"
+   ],
+   [
+    "decide",
+    90,
+    220,
+    "Decide",
+    "ship, drop, rerun"
+   ]
+  ],
+  "edges": [
+   [
+    "hyp",
+    "metric"
+   ],
+   [
+    "metric",
+    "size"
+   ],
+   [
+    "size",
+    "split"
+   ],
+   [
+    "split",
+    "collect"
+   ],
+   [
+    "collect",
+    "diff"
+   ],
+   [
+    "diff",
+    "ci"
+   ],
+   [
+    "ci",
+    "decide"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "State a hypothesis",
+    "n": [
+     "hyp"
+    ],
+    "d": "Write down what you expect and why, for example: the shorter checkout page will raise the share of visitors who buy. The null hypothesis is the boring default that it changes nothing."
+   },
+   {
+    "t": "Choose one primary metric",
+    "n": [
+     "metric"
+    ],
+    "e": [
+     "hyp>metric"
+    ],
+    "d": "Pick the single number that decides the test, here conversion rate (orders divided by visitors). Choosing it in advance stops you from hunting through twenty metrics for one that looks good."
+   },
+   {
+    "t": "Fix the sample size first",
+    "n": [
+     "size"
+    ],
+    "e": [
+     "metric>size"
+    ],
+    "d": "From the baseline rate and the smallest lift worth detecting, compute how many visitors each group needs. Small lifts on small rates need tens of thousands of visitors."
+   },
+   {
+    "t": "Randomly split traffic",
+    "n": [
+     "split"
+    ],
+    "e": [
+     "size>split"
+    ],
+    "d": "Each visitor is randomly assigned to A (current page) or B (new page). Randomness makes the groups alike on everything else, so a difference can be credited to the page."
+   },
+   {
+    "t": "Run until the planned size",
+    "n": [
+     "collect"
+    ],
+    "e": [
+     "split>collect"
+    ],
+    "d": "Collect data until each group reaches the planned count, ideally covering full weeks. Stopping early the first time it looks good inflates false wins.",
+    "l": [
+     4,
+     5
+    ]
+   },
+   {
+    "t": "Compute the observed lift",
+    "n": [
+     "diff"
+    ],
+    "e": [
+     "collect>diff"
+    ],
+    "d": "Divide conversions by visitors in each group and subtract. Here B converted 5.85% and A 5.20%, an observed lift of 0.65 percentage points.",
+    "l": [
+     6,
+     7
+    ]
+   },
+   {
+    "t": "Check the confidence interval and p-value",
+    "n": [
+     "ci"
+    ],
+    "e": [
+     "diff>ci"
+    ],
+    "d": "The p-value asks how surprising this lift would be if there were no real effect. The 95% confidence interval gives the plausible range for the true lift; here it runs from about 0.02 to 1.28 points, so the effect is probably real but could be tiny.",
+    "l": [
+     9,
+     10,
+     11,
+     12,
+     13,
+     15,
+     16,
+     17,
+     18
+    ]
+   },
+   {
+    "t": "Make a decision",
+    "n": [
+     "decide"
+    ],
+    "e": [
+     "ci>decide"
+    ],
+    "d": "Combine the interval with business sense. If even the low end of the interval is worth the cost of the change, ship it. If the interval straddles zero, the test was inconclusive, which is a result too."
+   }
+  ],
+  "ideas": [
+   "Mean is the average and is pulled by outliers; median and percentiles describe the typical and tail cases.",
+   "Standard deviation is the typical distance of values from the mean, in the same units as the data.",
+   "A sample estimate always has error. A 95% confidence interval is a range built by a method that captures the true value in about 95% of repeated samples.",
+   "A p-value below 0.05 means the result would be unusual if there were no effect. It does not measure how big or important the effect is.",
+   "Correlation means two things move together. Only a randomized experiment, or careful causal analysis, shows that one causes the other."
+  ],
+  "traps": [
+   "Peeking at results every day and stopping as soon as p drops below 0.05. This greatly raises the chance of a false win.",
+   "Reporting a lift without its interval, for example '+12% conversion' from 40 orders per group, which is mostly noise.",
+   "Treating a correlation in historical data as proof, such as 'customers who used the chatbot spent more', when heavy spenders may simply use every feature."
+  ],
+  "qa": [
+   [
+    "A customer's A/B test shows +3% conversion with p = 0.04 after two days. Do you ship?",
+    "Not yet. I would check whether the sample size was planned, since two days may miss weekday and weekend patterns and early stopping inflates false positives. I would look at the confidence interval, check that the split was really random and the groups were balanced, and confirm no other change launched at the same time. If the plan says run two weeks, I let it run."
+   ],
+   [
+    "Explain a confidence interval to a non-technical stakeholder.",
+    "It is our honest range for the real effect. We measured a 0.65 point lift, but because we only saw a sample of visitors, the true lift could plausibly be anywhere from about 0.02 to 1.28 points. If the whole range is worth having, we can act; if it includes zero, we cannot yet tell."
+   ],
+   [
+    "What is the difference between statistical and practical significance?",
+    "Statistical significance says the effect is unlikely to be pure noise. Practical significance asks whether it is big enough to matter. With millions of users a 0.01 point lift can be statistically significant and still not pay for the engineering work, so I always report the size and interval next to the p-value."
+   ]
+  ]
+ },
+ {
+  "id": "mlmetrics",
+  "mod": 3,
+  "sec": "3.1",
+  "name": "ML evaluation metrics",
+  "title": "Measuring a model: from scores to business cost",
+  "thesis": "A classifier outputs scores, a threshold turns them into yes or no, and the confusion matrix counts the four kinds of right and wrong. Precision, recall, F1 and AUC summarize that table, and the right choice depends on what a false alarm and a miss each cost the customer.",
+  "format": "flowchart",
+  "note": "Follow the top row left to right: scores become labels at a threshold and are counted in the confusion matrix. Precision and recall come from that matrix and combine into F1. ROC/AUC skips the threshold and uses the raw scores. Business cost closes the loop by telling you where to move the threshold.",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "scores",
+    90,
+    70,
+    "Model scores",
+    "0.0 to 1.0 per row"
+   ],
+   [
+    "thr",
+    265,
+    70,
+    "Threshold",
+    "for example 0.5"
+   ],
+   [
+    "labels",
+    440,
+    70,
+    "Predictions",
+    "fraud or not"
+   ],
+   [
+    "cm",
+    615,
+    70,
+    "Confusion matrix",
+    "TP FP FN TN"
+   ],
+   [
+    "auc",
+    90,
+    210,
+    "ROC / AUC",
+    "all thresholds"
+   ],
+   [
+    "rec",
+    440,
+    210,
+    "Recall",
+    "TP / (TP+FN)"
+   ],
+   [
+    "prec",
+    615,
+    210,
+    "Precision",
+    "TP / (TP+FP)"
+   ],
+   [
+    "cost",
+    265,
+    350,
+    "Business cost",
+    "FP cost, FN cost"
+   ],
+   [
+    "f1",
+    615,
+    350,
+    "F1 score",
+    "balances P and R"
+   ]
+  ],
+  "edges": [
+   [
+    "scores",
+    "thr"
+   ],
+   [
+    "thr",
+    "labels"
+   ],
+   [
+    "labels",
+    "cm",
+    0,
+    "vs true labels"
+   ],
+   [
+    "cm",
+    "prec"
+   ],
+   [
+    "cm",
+    "rec"
+   ],
+   [
+    "prec",
+    "f1"
+   ],
+   [
+    "rec",
+    "f1"
+   ],
+   [
+    "scores",
+    "auc",
+    0,
+    "rank quality"
+   ],
+   [
+    "f1",
+    "cost"
+   ],
+   [
+    "auc",
+    "cost",
+    0,
+    "compare models"
+   ],
+   [
+    "cost",
+    "thr",
+    0,
+    "move threshold"
+   ]
+  ],
+  "ideas": [
+   "The confusion matrix has four cells: true positives, false positives, false negatives and true negatives. Every classification metric is built from them.",
+   "Precision answers 'when the model says yes, how often is it right?'. Recall answers 'of all real yes cases, how many did it find?'.",
+   "Raising the threshold usually raises precision and lowers recall. There is no free lunch, only a trade-off you choose.",
+   "Accuracy misleads on imbalanced data: a model that always says 'not fraud' is 99% accurate if 1% of claims are fraud.",
+   "For regression, MAE is the average miss in real units and RMSE punishes large misses more."
+  ],
+  "traps": [
+   "Reporting accuracy alone on a rare-event problem such as fraud, churn or equipment failure.",
+   "Keeping the default 0.5 threshold without asking what a false alarm and a missed case each cost the customer.",
+   "Tuning the threshold on the test set and then reporting test scores, which makes results look better than they will be in production."
+  ],
+  "qa": [
+   [
+    "A fraud model is 99% accurate. Is it good?",
+    "I cannot tell from accuracy. If 1% of transactions are fraud, predicting 'not fraud' every time also scores 99%. I would ask for the confusion matrix, precision and recall at the operating threshold, and the PR-AUC, and compare them with what the fraud team can review each day and what a missed fraud costs."
+   ],
+   [
+    "When would you favor recall over precision?",
+    "When missing a positive is much more expensive than a false alarm, for example flagging possible sepsis for a nurse to check, or catching safety defects. Then I lower the threshold to find more true cases and make sure the extra alerts stay within what the reviewers can handle. When false alarms are costly, such as auto-blocking a customer's card, I favor precision."
+   ],
+   [
+    "How do you choose a threshold?",
+    "On a validation set, I compute precision and recall at many thresholds, attach the customer's costs for a false positive and a false negative plus any capacity limit, such as 200 reviews a day, and pick the threshold with the lowest expected cost. Then I confirm it once on the untouched test set and monitor it in production because the base rate can drift."
+   ]
+  ]
+ }
+]

@@ -1,0 +1,230 @@
+{
+ "dataformats": [
+  {
+   "q": "A customer's names appear as 'MÃ¼ller' and 'CafÃ©'. What is the most likely cause?",
+   "options": [
+    "The database column is too short for the names",
+    "UTF-8 bytes were decoded as Windows-1252 or Latin-1",
+    "The file was compressed and not unzipped properly",
+    "The names were typed in with the wrong keyboard layout"
+   ],
+   "answer": 1,
+   "why": "That pattern of a capital A with a mark before another symbol is the classic sign of UTF-8 bytes read with a one-byte Western encoding."
+  },
+  {
+   "q": "Why should you store timestamps in UTC?",
+   "options": [
+    "UTC values take less space on disk than local times",
+    "Databases cannot store any other time zone",
+    "UTC is the local time of most cloud data centres",
+    "UTC avoids daylight saving gaps and repeats, so every moment has one value"
+   ],
+   "answer": 3,
+   "why": "UTC has no daylight saving changes, so each moment maps to exactly one value; you convert to local time only for display."
+  },
+  {
+   "q": "A UK supplier sends dates like 03/04/2026 and your US colleague loads them with default settings. What do you do first?",
+   "options": [
+    "Confirm the format is day first and parse it with an explicit format string",
+    "Nothing, date parsers detect the country automatically",
+    "Convert every date to Unix time before checking anything",
+    "Ask the supplier to switch to Excel serial numbers"
+   ],
+   "answer": 0,
+   "why": "03/04/2026 is 3 April in the UK and 4 March in the US. Confirm the format and parse it explicitly instead of relying on a default."
+  },
+  {
+   "q": "An ops team wants the order number pulled out of a free-text reference like 'paid ref ORD-004417 thanks'. Best approach?",
+   "options": [
+    "Split the text on spaces and take the third word",
+    "An LLM call for every row, with no checks on the output",
+    "A tested regex such as ORD-\\d{6} using search, with misses sent to review",
+    "Ask users to retype all old references by hand"
+   ],
+   "answer": 2,
+   "why": "A small regex tested on real examples extracts the ID reliably and cheaply, and a review queue catches the forms it misses."
+  },
+  {
+   "q": "Spot the mistake: 'I open Excel exports with errors=\"replace\" so the pipeline never crashes on encoding.'",
+   "options": [
+    "It is fine, because replacement characters are removed later",
+    "It hides lost characters, so names and addresses are silently corrupted",
+    "It only works for CSV files and not for JSON files",
+    "It makes the pipeline slower but is otherwise correct"
+   ],
+   "answer": 1,
+   "why": "Replacing undecodable bytes turns real characters into placeholders without warning. Decode with the right encoding and fail loudly on errors."
+  }
+ ],
+ "pytooling": [
+  {
+   "q": "What is pyproject.toml used for?",
+   "options": [
+    "Storing the project's secrets and API tokens",
+    "Recording the exact versions installed on one machine",
+    "Describing the project, its dependencies and tool settings",
+    "Holding the test results from the last CI run"
+   ],
+   "answer": 2,
+   "why": "pyproject.toml is the standard project description file. Exact installed versions live in a lock file, and secrets never belong in the repo."
+  },
+  {
+   "q": "Why commit a lock file for an application?",
+   "options": [
+    "It records exact versions so every install matches what was tested",
+    "It makes Python run the code faster",
+    "It stops other people from changing the code",
+    "It replaces the need for a virtual environment"
+   ],
+   "answer": 0,
+   "why": "Version ranges allow new releases to slip in. The lock file pins every library, including indirect ones, so installs are repeatable."
+  },
+  {
+   "q": "A job fails with 'No module named pydantic' on the server, though you installed it. What do you check first?",
+   "options": [
+    "Reinstall Python on the server from scratch",
+    "Whether pydantic has released a new major version",
+    "The server's CPU and memory usage",
+    "Which interpreter runs the job, by printing sys.executable"
+   ],
+   "answer": 3,
+   "why": "The library is usually installed in a different environment from the one the scheduler uses. sys.executable shows which Python is really running."
+  },
+  {
+   "q": "A customer's repo has 2,000 mypy errors under strict mode. What is a sensible plan?",
+   "options": [
+    "Turn mypy off because the codebase is too old",
+    "Start with default settings, fix real errors, then make new modules strict",
+    "Add # type: ignore to every line that has an error",
+    "Rewrite the whole codebase before shipping any feature"
+   ],
+   "answer": 1,
+   "why": "Gradual adoption keeps the tool useful. Strict settings go first to new or critical modules, and the strict area grows over time."
+  },
+  {
+   "q": "Spot the mistake: 'I put the API token in settings.py as a default value so the job always works.'",
+   "options": [
+    "Secrets in code end up in git history; read them from the environment",
+    "Nothing, defaults make the program easier to run",
+    "The token should be in pyproject.toml instead",
+    "Tokens should be logged at start-up so you can debug them"
+   ],
+   "answer": 0,
+   "why": "Anything in source code is copied to every clone and stays in git history. Read secrets from the environment or a secrets store and never log them."
+  }
+ ],
+ "entnetwork": [
+  {
+   "q": "What does TLS inspection on a corporate proxy do?",
+   "options": [
+    "It blocks every HTTPS site that is not on an allowlist",
+    "It speeds up HTTPS by caching certificates",
+    "It converts HTTPS traffic to plain HTTP inside the network",
+    "It decrypts traffic and re-encrypts it with the company's own CA"
+   ],
+   "answer": 3,
+   "why": "The proxy opens the encrypted traffic to scan it and re-signs it with a corporate certificate authority, which your program must then trust."
+  },
+  {
+   "q": "What is NO_PROXY for?",
+   "options": [
+    "Turning the proxy off for every request",
+    "Listing hosts that should be reached directly, without the proxy",
+    "Blocking hosts that the proxy refuses to reach",
+    "Storing the proxy's username and password"
+   ],
+   "answer": 1,
+   "why": "NO_PROXY lists internal hosts and domains that must bypass the proxy, such as localhost and internal services."
+  },
+  {
+   "q": "Your Python client gets CERTIFICATE_VERIFY_FAILED inside a bank, while the browser works. What do you do first?",
+   "options": [
+    "Check the certificate issuer, then trust the corporate root CA in your bundle",
+    "Set verify=False until the pilot is over",
+    "Ask the bank to turn off its proxy for your server",
+    "Switch from HTTPS to HTTP for the model API"
+   ],
+   "answer": 0,
+   "why": "The browser trusts the corporate CA through the OS store, and Python uses its own bundle. Adding the corporate root fixes it safely."
+  },
+  {
+   "q": "You need a customer's servers to call two vendor APIs. How should you ask for firewall access?",
+   "options": [
+    "Ask for general internet access for the AI servers",
+    "Send the vendor's marketing page and ask IT to work it out",
+    "List sources, hostnames, port 443, direction, purpose, data and an owner",
+    "Wait until go-live week so the rules are fresh"
+   ],
+   "answer": 2,
+   "why": "Specific, written requests with hostnames, ports, sources and purpose get approved much faster than vague ones, and should be sent early."
+  },
+  {
+   "q": "Spot the mistake: 'curl works on the host, so the network is fine for my container too.'",
+   "options": [
+    "Correct, containers always share the host's network settings",
+    "curl results only apply to Windows machines",
+    "The container needs a VPN of its own for every request",
+    "Containers may lack the host's proxy variables and trusted CAs"
+   ],
+   "answer": 3,
+   "why": "A container starts with its own environment and trust store. Pass the proxy variables in, add the CA bundle, and test with curl inside the container."
+  }
+ ],
+ "poc": [
+  {
+   "q": "What is the main difference between a POC and a pilot?",
+   "options": [
+    "A POC tests if it can work; a pilot tests value with real users",
+    "A POC is always paid and a pilot is always free",
+    "A pilot is shorter than a POC and uses sample data",
+    "They are the same thing with different names"
+   ],
+   "answer": 0,
+   "why": "A POC answers feasibility on sample or historical data. A pilot puts it in front of real users in daily work, usually paid and longer."
+  },
+  {
+   "q": "What does 'fixed time, variable scope' mean for a POC?",
+   "options": [
+    "The end date moves if the work takes longer",
+    "Scope is fixed and the team works overtime to finish",
+    "The end date holds, and lower-priority scope is dropped if needed",
+    "The customer can add scope at any time without changes"
+   ],
+   "answer": 2,
+   "why": "The time box protects the decision date. Ranking scope in advance makes it quick to decide what to drop."
+  },
+  {
+   "q": "A prospect wants a POC next week but cannot say what happens if it succeeds. What do you do?",
+   "options": [
+    "Start anyway, since any POC builds goodwill",
+    "Ask who decides and what next step success leads to, before agreeing",
+    "Offer a longer free trial so they have more time",
+    "Send a price list and wait for them to call back"
+   ],
+   "answer": 1,
+   "why": "Without a decision maker and a next step, a POC tends to drift. Clarify the decision and budget first, or propose a short discovery instead."
+  },
+  {
+   "q": "An RFP asks if your product runs fully on-premises. It does not. How do you answer?",
+   "options": [
+    "Mark it compliant and sort out the details later",
+    "Skip the question so it does not lower your score",
+    "Say it is on the roadmap to keep the deal alive",
+    "Mark it not compliant and describe the nearest alternative precisely"
+   ],
+   "answer": 3,
+   "why": "RFP answers often become contract terms. An honest 'not compliant' with a clear alternative is safer and usually more credible."
+  },
+  {
+   "q": "Spot the mistake: 'We planned the POC as 40 engineer-days of building work for our 40-day team.'",
+   "options": [
+    "Nothing, it uses the team's time efficiently",
+    "POCs should never be estimated in engineer-days",
+    "No time is left for waiting on access, data and reviews",
+    "The team is too large for any POC"
+   ],
+   "answer": 2,
+   "why": "Waiting on access and approvals often takes a large share of a first engagement. Plan a buffer and state your assumptions."
+  }
+ ]
+}

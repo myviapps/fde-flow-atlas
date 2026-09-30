@@ -1,0 +1,116 @@
+{
+ "llmapi": [
+  {
+   "q": "What does the system prompt do in a chat API request?",
+   "options": [
+    "It stores the conversation between calls on the server",
+    "It gives standing instructions such as role, rules and format",
+    "It sets the maximum number of output tokens",
+    "It selects which model version answers"
+   ],
+   "answer": 1,
+   "why": "The system prompt carries instructions that apply to every turn. The model keeps no memory between calls, so history must be re-sent in messages."
+  },
+  {
+   "q": "A response comes back with stop_reason set to max_tokens. What does that tell you?",
+   "options": [
+    "The model refused to answer the question",
+    "The request used too many input tokens",
+    "The answer hit the output cap and was cut off",
+    "The rate limit was reached during generation"
+   ],
+   "answer": 2,
+   "why": "max_tokens means generation stopped because it reached the output limit, so the answer is probably incomplete."
+  },
+  {
+   "q": "Bramwell Foods needs invoice fields extracted into JSON the same way every time. Which setting fits best, if the model allows it?",
+   "options": [
+    "A low temperature and a max_tokens that fits the JSON",
+    "A high temperature so the model explores more options",
+    "top_p of 1.0 and temperature of 1.0 together",
+    "A very small max_tokens to save money"
+   ],
+   "answer": 0,
+   "why": "Extraction needs focused, repeatable output, so low temperature helps. Too small a max_tokens would cut off the JSON."
+  },
+  {
+   "q": "A nightly job of 30,000 calls gets many 429 errors. What should you do first?",
+   "options": [
+    "Retry every failed call immediately in a tight loop",
+    "Switch to a larger model with more capacity",
+    "Reduce concurrency and retry with backoff, respecting retry-after",
+    "Treat 429 like a 400 and fix the request body"
+   ],
+   "answer": 2,
+   "why": "429 means you exceeded a rate limit. Lower parallelism and backoff retries fix it; immediate retries make it worse."
+  },
+  {
+   "q": "Spot the mistake: a team uses a floating model alias in production to 'always get the best model'. What is the risk?",
+   "options": [
+    "Aliases cost twice as much as pinned ids",
+    "Aliases do not support streaming",
+    "Aliases only work through a gateway",
+    "The model can change underneath them and alter approved outputs"
+   ],
+   "answer": 3,
+   "why": "An alias can move to a new version without any code change, so behaviour shifts silently. Pin an exact id and upgrade after running evals."
+  }
+ ],
+ "aicoding": [
+  {
+   "q": "Which task is a coding agent usually strongest at?",
+   "options": [
+    "Deciding the customer's unwritten business rules",
+    "Writing tests for an existing, well-defined function",
+    "Choosing the system architecture on its own",
+    "Knowing the performance limits of a private database"
+   ],
+   "answer": 1,
+   "why": "Tests for existing code have a clear target and are easy to check. Business rules and architecture need context the agent does not have."
+  },
+  {
+   "q": "What is a project rules file such as CLAUDE.md for?",
+   "options": [
+    "Giving the agent build commands, conventions and hard rules each session",
+    "Storing the API keys the agent needs to run",
+    "Logging every prompt sent to the model",
+    "Replacing the need for tests in the repository"
+   ],
+   "answer": 0,
+   "why": "The rules file is read at the start of a session so the agent knows how to build, test and what not to touch. Secrets never belong in it."
+  },
+  {
+   "q": "At Glenrock Energy you want an agent to debug a failing export. The folder holds a .env file and a customer data dump. What first?",
+   "options": [
+    "Let the agent read everything so it has full context",
+    "Paste only the first 100 rows of the dump into the prompt",
+    "Move secrets and real data out, use a masked sample, then start",
+    "Ask the agent to promise not to read those files"
+   ],
+   "answer": 2,
+   "why": "Agents read files in the working directory, so remove secrets and real personal data first and work from masked samples."
+  },
+  {
+   "q": "You join a customer with a large unfamiliar codebase. How should you use an agent in the first days?",
+   "options": [
+    "Ask it to rewrite the main module in a cleaner style",
+    "Give it production access so it can inspect live data",
+    "Skip reading code and rely on its summary alone",
+    "Ask read-only questions with file paths, then verify in the code"
+   ],
+   "answer": 3,
+   "why": "Read-only mapping with cited paths is fast and checkable. Agent explanations can be wrong, so confirm them by opening the files."
+  },
+  {
+   "q": "Spot the trap: the agent's change makes all tests pass. Which sign should worry you most?",
+   "options": [
+    "It edited an existing test's expected value",
+    "It added a docstring to a new function",
+    "It kept the diff under 50 lines",
+    "It used a helper already present in the repo"
+   ],
+   "answer": 0,
+   "why": "Changing a test to match the code can hide a real bug. Tests are the check, so edits to them need explicit review."
+  }
+ ]
+}

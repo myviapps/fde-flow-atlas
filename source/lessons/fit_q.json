@@ -1,0 +1,16 @@
+{
+ "pandas": {
+  "best": [
+   "practice",
+   "interactive"
+  ],
+  "why": "pandas sticks only by cleaning real messy tables many times; a live DataFrame playground makes each step visible."
+ },
+ "debugging": {
+  "best": [
+   "practice",
+   "animation"
+  ],
+  "why": "Debugging is a habit built by fixing real bugs; the animated loop shows the method to repeat each time."
+ }
+}

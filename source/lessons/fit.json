@@ -1,0 +1,669 @@
+{
+ "computers": {
+  "best": [
+   "interactive",
+   "animation"
+  ],
+  "why": "Watching a program move from disk to RAM to CPU in the tool makes invisible hardware concrete for a first-timer."
+ },
+ "terminal": {
+  "best": [
+   "practice",
+   "interactive"
+  ],
+  "why": "Commands stick only through repetition; a sandboxed fake shell lets beginners type cd, ls and pip without fear."
+ },
+ "python1": {
+  "best": [
+   "practice",
+   "reading"
+  ],
+  "why": "Syntax is learned by writing many small programs, with short explanations to unblock each exercise."
+ },
+ "python2": {
+  "best": [
+   "practice",
+   "reading"
+  ],
+  "why": "Lists, dicts and file handling become natural only after many small data-shaping exercises."
+ },
+ "internet": {
+  "best": [
+   "animation",
+   "reading"
+  ],
+  "why": "DNS, TCP and TLS are a sequence of hops; stepping through a request shows what happens at each layer."
+ },
+ "dbbasics": {
+  "best": [
+   "practice",
+   "reading"
+  ],
+  "why": "First SQL is best learned by running many tiny queries against a small table and seeing the rows change."
+ },
+ "mlbasics": {
+  "best": [
+   "reading",
+   "animation"
+  ],
+  "why": "The ideas are conceptual; a train-then-predict animation helps, but clear explanation carries most of the weight."
+ },
+ "mathbasics": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Dragging vectors and seeing dot products and softmax update builds intuition that formulas alone do not."
+ },
+ "linux": {
+  "best": [
+   "practice",
+   "reading"
+  ],
+  "why": "Permissions, processes and logs are muscle memory built by running commands on a real box repeatedly."
+ },
+ "frontend": {
+  "best": [
+   "project",
+   "reading"
+  ],
+  "why": "A small demo UI that calls an API teaches HTML, JS and fetch faster than reading about them."
+ },
+ "oop": {
+  "best": [
+   "reading",
+   "flowchart"
+  ],
+  "why": "Classes and composition are design ideas best explained with examples and a class diagram."
+ },
+ "asyncpy": {
+  "best": [
+   "animation",
+   "project"
+  ],
+  "why": "The event loop is a moving process; animating it, then parallelising real API calls, makes it click."
+ },
+ "stats": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Simulating A/B tests and watching p-values swing with sample size teaches significance better than proofs."
+ },
+ "genesis": {
+  "best": [
+   "reading",
+   "flowchart"
+  ],
+  "why": "Role history and Echo versus Delta split is narrative context, with a simple role map to anchor it."
+ },
+ "slg": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Tweaking margin and NRR in the calculator shows why services can still build a moat."
+ },
+ "http": {
+  "best": [
+   "interactive",
+   "practice"
+  ],
+  "why": "Building requests and reading real status codes and headers is the fastest way to learn API debugging."
+ },
+ "git": {
+  "best": [
+   "interactive",
+   "practice"
+  ],
+  "why": "A commit-graph playground shows what branch, merge and reset do before learners risk a real repo."
+ },
+ "tdd": {
+  "best": [
+   "practice",
+   "project"
+  ],
+  "why": "Red-green-refactor is a habit; it forms only by writing tests for many small functions."
+ },
+ "bigo": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Seeing runtime curves diverge as n grows makes complexity classes and the list-to-dict fix obvious."
+ },
+ "resilient": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Simulating timeouts, retries and jitter against a flaky API shows why each defence exists."
+ },
+ "sql": {
+  "best": [
+   "interactive",
+   "practice"
+  ],
+  "why": "Running queries and watching clauses apply in execution order builds correct SQL intuition."
+ },
+ "planner": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Toggling indexes and comparing EXPLAIN plans shows why a query is slow better than prose does."
+ },
+ "normalize": {
+  "best": [
+   "flowchart",
+   "practice"
+  ],
+  "why": "Schemas are static structures; ER diagrams plus exercises splitting a messy sheet into tables fit best."
+ },
+ "acid": {
+  "best": [
+   "animation",
+   "interactive"
+  ],
+  "why": "Isolation anomalies are timing problems; stepping two transactions side by side reveals them."
+ },
+ "spark": {
+  "best": [
+   "animation",
+   "interactive"
+  ],
+  "why": "Partitions, shuffles and skew are data movement across machines, which animation shows clearly."
+ },
+ "etl": {
+  "best": [
+   "flowchart",
+   "project"
+  ],
+  "why": "A pipeline is a staged structure; draw the layers, then build one with watermarks and MERGE."
+ },
+ "warehouse": {
+  "best": [
+   "reading",
+   "flowchart"
+  ],
+  "why": "OLAP, columnar storage and star schemas are concepts plus structure, not a moving process."
+ },
+ "fastapi": {
+  "best": [
+   "project",
+   "animation"
+  ],
+  "why": "An API framework is learned by building endpoints; the request lifecycle animation adds the mental model."
+ },
+ "deploy": {
+  "best": [
+   "project",
+   "animation"
+  ],
+  "why": "Containerising and deploying a real service teaches Docker and Kubernetes far better than reading."
+ },
+ "cloud": {
+  "best": [
+   "reading",
+   "flowchart"
+  ],
+  "why": "VPCs, IAM and Terraform are architecture concepts best shown as network and permission diagrams."
+ },
+ "security": {
+  "best": [
+   "animation",
+   "interactive"
+  ],
+  "why": "OAuth and SAML are multi-party redirect dances that only make sense when stepped through."
+ },
+ "compliance": {
+  "best": [
+   "document",
+   "reading"
+  ],
+  "why": "Compliance work is answering questionnaires and classifying data, so templates are the real skill."
+ },
+ "observability": {
+  "best": [
+   "interactive",
+   "document"
+  ],
+  "why": "Playing with SLOs and error budgets builds judgment; runbook and post-mortem templates make it real."
+ },
+ "caching": {
+  "best": [
+   "interactive",
+   "animation"
+  ],
+  "why": "Tuning TTL and hit rate and watching p95 latency move shows the tradeoffs directly."
+ },
+ "queues": {
+  "best": [
+   "interactive",
+   "animation"
+  ],
+  "why": "Simulating producers, workers and dead letters shows backlog and retry behaviour as it happens."
+ },
+ "sysdesign": {
+  "best": [
+   "interactive",
+   "flowchart"
+  ],
+  "why": "Designing is choosing boxes and arrows; a builder with load numbers teaches the tradeoffs."
+ },
+ "apistyles": {
+  "best": [
+   "flowchart",
+   "reading"
+  ],
+  "why": "REST, GraphQL, gRPC and webhooks compare best as side-by-side structures and a decision tree."
+ },
+ "nosql": {
+  "best": [
+   "flowchart",
+   "reading"
+  ],
+  "why": "Choosing a database is a decision tree over access patterns, explained with short examples."
+ },
+ "streaming": {
+  "best": [
+   "animation",
+   "interactive"
+  ],
+  "why": "Partitions, offsets and consumer groups are moving parts that animation makes visible."
+ },
+ "cicd": {
+  "best": [
+   "animation",
+   "project"
+  ],
+  "why": "A pipeline runs stage by stage; animate it, then wire up a real GitHub Actions workflow."
+ },
+ "integration": {
+  "best": [
+   "flowchart",
+   "reading"
+  ],
+  "why": "Legacy integration is a map of systems and file flows plus war stories, not a single process."
+ },
+ "bi": {
+  "best": [
+   "project",
+   "reading"
+  ],
+  "why": "Dashboards are learned by building one KPI query and chart against real data."
+ },
+ "embeddings": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Moving text in vector space and seeing similarity scores change makes embeddings intuitive."
+ },
+ "transformer": {
+  "best": [
+   "interactive",
+   "animation"
+  ],
+  "why": "Attention weights are easier to grasp when you can hover tokens and see what they attend to."
+ },
+ "prompting": {
+  "best": [
+   "interactive",
+   "practice"
+  ],
+  "why": "Prompting is iterative; editing a prompt and comparing outputs builds the skill fastest."
+ },
+ "context": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Filling a token budget with instructions, history and chunks shows context tradeoffs concretely."
+ },
+ "ace": {
+  "best": [
+   "animation",
+   "reading"
+  ],
+  "why": "Generator, Reflector and Curator form a loop that is clearest when animated step by step."
+ },
+ "skills": {
+  "best": [
+   "reading",
+   "project"
+  ],
+  "why": "Progressive disclosure is a design idea; reading plus writing one real SKILL.md fits best."
+ },
+ "rag": {
+  "best": [
+   "interactive",
+   "project"
+  ],
+  "why": "Tuning chunk size and top-k and seeing retrieval change teaches RAG; building one cements it."
+ },
+ "tools": {
+  "best": [
+   "animation",
+   "interactive"
+  ],
+  "why": "The tool-call round trip is a loop; animate it, then build a small agent with real tools."
+ },
+ "mcp": {
+  "best": [
+   "project",
+   "flowchart"
+  ],
+  "why": "MCP is learned by building a server; the host-client-server diagram gives the structure."
+ },
+ "multiagent": {
+  "best": [
+   "flowchart",
+   "reading"
+  ],
+  "why": "Orchestration patterns are structures of agents and handoffs, best shown as diagrams."
+ },
+ "finetune": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "VRAM and cost calculators for LoRA and QLoRA make the fine-tune versus RAG decision concrete."
+ },
+ "evals": {
+  "best": [
+   "interactive",
+   "document"
+  ],
+  "why": "Scoring outputs against a rubric teaches evals; the eval plan template carries it to real work."
+ },
+ "guardrails": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Trying injection attacks against layered defences shows why each layer matters."
+ },
+ "llmcost": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Pricing math is numbers; a calculator for tokens, routing and caching makes savings tangible."
+ },
+ "mlops": {
+  "best": [
+   "animation",
+   "reading"
+  ],
+  "why": "The model lifecycle is a loop from training to monitoring that animation traces clearly."
+ },
+ "mlmetrics": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "Moving a threshold and watching precision, recall and the confusion matrix shift is the core insight."
+ },
+ "docai": {
+  "best": [
+   "animation",
+   "project"
+  ],
+  "why": "Document AI is a pipeline from PDF to fields; animate it, then extract from real documents."
+ },
+ "serving": {
+  "best": [
+   "interactive",
+   "reading"
+  ],
+  "why": "GPU and VRAM math is best learned with a calculator over model size, quantization and batch."
+ },
+ "frameworks": {
+  "best": [
+   "reading",
+   "flowchart"
+  ],
+  "why": "Comparing frameworks is judgment; a comparison table and decision tree serve better than a tool."
+ },
+ "graphrag": {
+  "best": [
+   "animation",
+   "reading"
+  ],
+  "why": "Multi-hop graph traversal is a process that is clearer when you watch hops happen."
+ },
+ "multimodal": {
+  "best": [
+   "reading",
+   "project"
+  ],
+  "why": "Vision and voice are best learned by explanation plus calling the APIs on real inputs."
+ },
+ "responsibleai": {
+  "best": [
+   "document",
+   "reading"
+  ],
+  "why": "Governance work is model cards and checklists, so fill-in templates are the real skill."
+ },
+ "case": {
+  "best": [
+   "practice",
+   "flowchart"
+  ],
+  "why": "Case decomposition is a repeatable framework that improves only with timed practice cases."
+ },
+ "discovery": {
+  "best": [
+   "interactive",
+   "document"
+  ],
+  "why": "Practising open questions in the simulator, then using the interview guide template, builds real skill."
+ },
+ "exec": {
+  "best": [
+   "interactive",
+   "document"
+  ],
+  "why": "Rewriting tech-speak into business outcomes with feedback, plus the exec update template, fits best."
+ },
+ "docs": {
+  "best": [
+   "document",
+   "reading"
+  ],
+  "why": "SOWs, PRDs and design docs are learned by filling in the actual templates."
+ },
+ "demo": {
+  "best": [
+   "practice",
+   "document"
+  ],
+  "why": "Demos improve through rehearsal against a script; a demo script template guides the practice."
+ },
+ "moat": {
+  "best": [
+   "reading",
+   "flowchart"
+  ],
+  "why": "Product judgment and moats are strategic ideas, best explained with the build-it-where decision tree."
+ },
+ "change": {
+  "best": [
+   "document",
+   "reading"
+  ],
+  "why": "Adoption work runs on stakeholder maps, training and comms plans, which are documents."
+ },
+ "pm": {
+  "best": [
+   "interactive",
+   "document"
+  ],
+  "why": "Prioritising a backlog in the tool plus RAID and status templates mirror real delivery work."
+ },
+ "roi": {
+  "best": [
+   "interactive",
+   "document"
+  ],
+  "why": "Changing assumptions and watching ROI and payback move teaches sensitivity; the one-pager ships it."
+ },
+ "arc": {
+  "best": [
+   "interactive",
+   "flowchart"
+  ],
+  "why": "Walking a 12-week engagement and making phase decisions in the tool shows how the arc flows."
+ },
+ "pod": {
+  "best": [
+   "reading",
+   "flowchart"
+  ],
+  "why": "Team structure and mission-type tactics are organisational ideas best read with an org diagram."
+ },
+ "lastmile": {
+  "best": [
+   "project",
+   "reading"
+  ],
+  "why": "Wrapping an undocumented API and repairing schemas is hands-on work that must be practised."
+ },
+ "fluency": {
+  "best": [
+   "reading",
+   "document"
+  ],
+  "why": "A learning path is a plan; reading the options and filling in a personal route fits best."
+ },
+ "interview": {
+  "best": [
+   "interactive",
+   "practice"
+  ],
+  "why": "Mock rounds with scoring against the four pillars prepare for the real loop better than reading."
+ },
+ "dsa": {
+  "best": [
+   "practice",
+   "interactive"
+  ],
+  "why": "Pattern recognition for coding rounds comes only from many timed problems."
+ },
+ "builddrill": {
+  "best": [
+   "practice",
+   "project"
+  ],
+  "why": "A timed build is a performance skill trained by doing the drill repeatedly against the clock."
+ },
+ "casebank": {
+  "best": [
+   "practice",
+   "document"
+  ],
+  "why": "Case interviews improve through repeated timed cases scored against a rubric."
+ },
+ "sqlbank": {
+  "best": [
+   "practice",
+   "interactive"
+  ],
+  "why": "SQL interview fluency comes from graded exercises, ideally run live in the browser."
+ },
+ "career": {
+  "best": [
+   "document",
+   "reading"
+  ],
+  "why": "Resumes, STAR stories and outreach are documents you write and iterate on."
+ },
+ "projecta": {
+  "best": [
+   "project",
+   "reading"
+  ],
+  "why": "A portfolio agentic RAG system must be built end to end; the lesson explains the architecture."
+ },
+ "projectb": {
+  "best": [
+   "project",
+   "reading"
+  ],
+  "why": "The context-compiler agent is a build; reading covers the ACE design choices behind it."
+ },
+ "p0-setup": {
+  "best": [
+   "project",
+   "practice"
+  ],
+  "why": "Environment setup is learned by installing and verifying tools on your own machine."
+ },
+ "p1-csv-cleaner": {
+  "best": [
+   "project",
+   "practice"
+  ],
+  "why": "Cleaning messy CSVs is a hands-on data skill that improves with each new dirty file."
+ },
+ "p2-sql-analytics": {
+  "best": [
+   "project",
+   "practice"
+  ],
+  "why": "Answering business questions in SQL over a real dataset is best learned by doing it."
+ },
+ "p3-fastapi-service": {
+  "best": [
+   "project"
+  ],
+  "why": "Building and testing a small API service end to end is the only way to own the skill."
+ },
+ "p4-ingestion": {
+  "best": [
+   "project"
+  ],
+  "why": "A resilient ingestion job with retries and checkpoints must be built and broken to be understood."
+ },
+ "p5-docker-deploy": {
+  "best": [
+   "project"
+  ],
+  "why": "Containerising and deploying your own service is hands-on by nature."
+ },
+ "p6-tool-agent": {
+  "best": [
+   "project"
+  ],
+  "why": "A tool-calling agent is learned by wiring real tools, limits and failure handling yourself."
+ },
+ "p7-mcp-server": {
+  "best": [
+   "project"
+  ],
+  "why": "Shipping an MCP server and connecting it to a host is a concrete build task."
+ },
+ "p8-rag-evals": {
+  "best": [
+   "project",
+   "document"
+  ],
+  "why": "Building RAG with an eval harness, documented in an eval plan, mirrors real customer work."
+ },
+ "p9-capstone": {
+  "best": [
+   "project",
+   "document"
+  ],
+  "why": "The capstone is an end-to-end build plus the design doc and demo an employer will read."
+ },
+ "p10-drill": {
+  "best": [
+   "practice",
+   "project"
+  ],
+  "why": "A 90-minute timed build is interview rehearsal, so repeated timed attempts are the point."
+ }
+}

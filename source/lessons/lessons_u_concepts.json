@@ -1,0 +1,681 @@
+[
+ {
+  "id": "trees",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Trees and random forests",
+  "title": "Decision trees and random forests",
+  "thesis": "A decision tree predicts by asking a short chain of yes or no questions, chosen to make each group as pure as possible. One tree is readable but unstable; a random forest averages hundreds of varied trees into a strong, low-effort model for tabular data.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   420
+  ],
+  "note": "Read from the top. Each box asks one question about a customer; follow 'yes' or 'no' down to a leaf, which gives the prediction and the share of training customers in that leaf who churned.",
+  "nodes": [
+   [
+    "root",
+    265,
+    70,
+    "Month-to-month?",
+    "all 1,000 customers"
+   ],
+   [
+    "q2",
+    90,
+    210,
+    "Tenure < 6 mo?",
+    "600 monthly"
+   ],
+   [
+    "q3",
+    440,
+    210,
+    "Tickets > 3?",
+    "400 yearly"
+   ],
+   [
+    "l1",
+    90,
+    350,
+    "Churn",
+    "62% churned"
+   ],
+   [
+    "l2",
+    265,
+    350,
+    "Stay",
+    "24% churned"
+   ],
+   [
+    "l3",
+    440,
+    350,
+    "Churn",
+    "55% churned"
+   ],
+   [
+    "l4",
+    615,
+    350,
+    "Stay",
+    "6% churned"
+   ]
+  ],
+  "edges": [
+   [
+    "root",
+    "q2",
+    0,
+    "yes"
+   ],
+   [
+    "root",
+    "q3",
+    0,
+    "no"
+   ],
+   [
+    "q2",
+    "l1",
+    0,
+    "yes"
+   ],
+   [
+    "q2",
+    "l2",
+    0,
+    "no"
+   ],
+   [
+    "q3",
+    "l3",
+    0,
+    "yes"
+   ],
+   [
+    "q3",
+    "l4",
+    0,
+    "no"
+   ]
+  ],
+  "ideas": [
+   "Each split is chosen greedily to make the two child groups as pure as possible, measured by Gini impurity or entropy.",
+   "Depth is the main complexity dial: deep trees memorise noise, so limit depth or leaf size and tune with cross-validation.",
+   "A single tree is easy to read but changes a lot with small data changes; bagging and random forests average many varied trees to fix that.",
+   "Random forests add random feature choice at each split, give a free out-of-bag score, and need little tuning.",
+   "Built-in feature importance is biased toward high-cardinality columns; check with permutation importance on held-out data."
+  ],
+  "traps": [
+   "Growing a tree with no depth or leaf limit and reporting its near-perfect training accuracy.",
+   "Presenting impurity-based feature importance as proof of what drives the business, when an ID column can rank near the top.",
+   "Expecting a tree model to predict values beyond the range seen in training, such as record-high demand."
+  ],
+  "qa": [
+   [
+    "How does a decision tree choose where to split?",
+    "It tries every feature and many thresholds, computes the weighted impurity (Gini or entropy) of the two resulting groups, and keeps the split with the lowest value. It repeats this greedily inside each group until a stopping rule such as max depth or minimum leaf size is reached."
+   ],
+   [
+    "Why does a random forest usually beat a single tree?",
+    "One deep tree has high variance. A forest trains many trees on bootstrap samples and random feature subsets, so their errors are less correlated, and averaging them cuts variance while keeping low bias. The out-of-bag rows give a validation estimate for free."
+   ],
+   [
+    "A client's feature importance chart ranks customer_id second. What do you do?",
+    "Explain that impurity importance favours columns with many unique values, drop the ID since it carries no real signal, and recompute importance with permutation importance on a held-out set before presenting drivers."
+   ]
+  ]
+ },
+ {
+  "id": "boosting",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Gradient boosting",
+  "title": "Gradient boosting (XGBoost, LightGBM)",
+  "thesis": "Gradient boosting starts from a simple guess and adds small trees one at a time, each fitted to the errors that remain, scaled by a learning rate. With early stopping it is usually the most accurate model for business tables, and SHAP explains its individual predictions.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "data",
+    90,
+    70,
+    "Training data",
+    "features + target"
+   ],
+   [
+    "base",
+    265,
+    70,
+    "First guess",
+    "mean of target"
+   ],
+   [
+    "resid",
+    440,
+    70,
+    "Residuals",
+    "actual minus guess"
+   ],
+   [
+    "tree",
+    615,
+    70,
+    "Small tree",
+    "fits the residuals"
+   ],
+   [
+    "shrink",
+    615,
+    220,
+    "Learning rate",
+    "scale by 0.1"
+   ],
+   [
+    "model",
+    440,
+    220,
+    "Add to model",
+    "sum of all trees"
+   ],
+   [
+    "val",
+    265,
+    220,
+    "Validation check",
+    "still improving?"
+   ],
+   [
+    "final",
+    90,
+    220,
+    "Final model",
+    "best round kept"
+   ]
+  ],
+  "edges": [
+   [
+    "data",
+    "base"
+   ],
+   [
+    "base",
+    "resid"
+   ],
+   [
+    "resid",
+    "tree"
+   ],
+   [
+    "tree",
+    "shrink"
+   ],
+   [
+    "shrink",
+    "model"
+   ],
+   [
+    "model",
+    "resid",
+    0,
+    "next round"
+   ],
+   [
+    "model",
+    "val"
+   ],
+   [
+    "val",
+    "final",
+    0,
+    "stop"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start with data",
+    "n": [
+     "data"
+    ],
+    "e": [],
+    "d": "We have a table of rows with features, such as carrier and distance, and a target, such as delivery minutes.",
+    "l": [
+     0
+    ]
+   },
+   {
+    "t": "Make a first guess",
+    "n": [
+     "data",
+     "base"
+    ],
+    "e": [
+     "data>base"
+    ],
+    "d": "Boosting begins with the simplest prediction possible: the average of the target for every row.",
+    "l": [
+     10
+    ]
+   },
+   {
+    "t": "Measure what is wrong",
+    "n": [
+     "base",
+     "resid"
+    ],
+    "e": [
+     "base>resid"
+    ],
+    "d": "For each row, the residual is actual minus predicted. These errors are what the next tree will learn.",
+    "l": [
+     10
+    ]
+   },
+   {
+    "t": "Fit a small tree",
+    "n": [
+     "resid",
+     "tree"
+    ],
+    "e": [
+     "resid>tree"
+    ],
+    "d": "A shallow tree is trained to predict the residuals from the features. Keeping it small stops any one tree from overreacting.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Shrink its vote",
+    "n": [
+     "tree",
+     "shrink"
+    ],
+    "e": [
+     "tree>shrink"
+    ],
+    "d": "The tree's output is multiplied by the learning rate, for example 0.1, so the model moves only a small step toward the fix.",
+    "l": [
+     3
+    ]
+   },
+   {
+    "t": "Add it and repeat",
+    "n": [
+     "shrink",
+     "model",
+     "resid"
+    ],
+    "e": [
+     "shrink>model",
+     "model>resid"
+    ],
+    "d": "The scaled tree is added to the running model. New residuals are computed and the loop runs again, hundreds of times if needed.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "Check validation data",
+    "n": [
+     "model",
+     "val"
+    ],
+    "e": [
+     "model>val"
+    ],
+    "d": "After each round the model is scored on held-back rows. Training error keeps falling, but validation error eventually stops improving.",
+    "l": [
+     6,
+     7
+    ]
+   },
+   {
+    "t": "Stop early, keep the best",
+    "n": [
+     "val",
+     "final"
+    ],
+    "e": [
+     "val>final"
+    ],
+    "d": "When validation has not improved for, say, 20 rounds, training stops. The final prediction is the first guess plus the sum of all kept trees.",
+    "l": [
+     8,
+     11,
+     12
+    ]
+   }
+  ],
+  "code": "from sklearn.ensemble import HistGradientBoostingRegressor\n\nmodel = HistGradientBoostingRegressor(\n    learning_rate=0.1,        # shrink each new tree\n    max_iter=1000,            # ceiling on rounds\n    max_leaf_nodes=31,        # each tree stays small\n    early_stopping=True,      # watch a validation split\n    validation_fraction=0.1,  # 10% of rows held back\n    n_iter_no_change=20,      # patience in rounds\n)\nmodel.fit(X_train, y_train)   # mean first, then trees on residuals\nprint(model.n_iter_)          # rounds actually used\npred = model.predict(X_new)   # first guess + sum of trees",
+  "codeTitle": "Gradient boosting with early stopping",
+  "ideas": [
+   "Each new tree fits the residuals (more generally, the gradient of the loss) of the model so far.",
+   "The learning rate and the number of trees trade off: a smaller rate needs more trees but usually generalises better.",
+   "Early stopping on a validation set chooses the number of trees for you; still keep a separate test set.",
+   "Small trees, minimum leaf size, subsampling and L2 penalties are the main guards against overfitting.",
+   "Native handling of categories and missing values plus fast histogram training is why boosting dominates tabular problems."
+  ],
+  "traps": [
+   "Setting a high learning rate and thousands of trees without early stopping, then reporting validation scores that were used for tuning.",
+   "Using a random validation split on time-ordered data, which lets the model peek at the future.",
+   "Reading a large SHAP value as proof that the feature causes the outcome."
+  ],
+  "qa": [
+   [
+    "How does gradient boosting differ from a random forest?",
+    "A forest trains deep trees independently on bootstrap samples and averages them, mainly reducing variance. Boosting trains shallow trees in sequence, each fitted to the current errors and shrunk by a learning rate, mainly reducing bias. Boosting usually wins on accuracy but needs early stopping and more tuning."
+   ],
+   [
+    "Which hyperparameters would you tune first?",
+    "Fix the learning rate around 0.1 with early stopping so the number of trees is chosen automatically. Then tune tree size (max_leaf_nodes or num_leaves, max_depth) and minimum leaf size, then row and column subsampling and L2 regularisation, and finally lower the learning rate for a last small gain."
+   ],
+   [
+    "An operations lead asks why one shipment was flagged. How do you answer?",
+    "Compute SHAP values for that row with TreeExplainer. They show how each feature pushed the prediction up or down from the average, and they add up exactly to the prediction, so I can say in plain words which factors drove the flag, while noting it describes the model, not proven causes."
+   ]
+  ]
+ },
+ {
+  "id": "knnsvm",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "kNN, SVM, Naive Bayes",
+  "title": "kNN, SVM and Naive Bayes",
+  "thesis": "Three classic classifiers with clear niches: kNN predicts from the most similar known rows, an SVM draws the widest-margin boundary and bends it with kernels, and Naive Bayes multiplies word probabilities for fast text baselines. Knowing their assumptions tells you when each still fits.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "kNN stores the training data and votes among the k nearest rows; k controls smoothness and features must be scaled.",
+   "An SVM maximises the margin between classes; C trades margin width against training errors.",
+   "Kernels such as RBF let an SVM draw curved boundaries; gamma controls how local each point's influence is.",
+   "Multinomial Naive Bayes on word counts trains in one pass and is a strong, explainable text baseline.",
+   "For most tabular business problems gradient boosting wins; these models shine for similarity search, small high-dimensional data and quick text routing."
+  ],
+  "traps": [
+   "Running kNN or an SVM on unscaled features, so the feature with the largest units decides everything.",
+   "Fitting a kernel SVM on millions of rows and waiting hours, when LinearSVC or SGDClassifier would do.",
+   "Treating Naive Bayes probabilities as well calibrated odds; they are usually too extreme."
+  ],
+  "qa": [
+   [
+    "Why must features be scaled for kNN and SVMs?",
+    "Both rely on distances or dot products. A feature measured in thousands dominates one measured in fractions, so the model effectively ignores the small one. StandardScaler inside a Pipeline fixes this and learns the scaling from training folds only."
+   ],
+   [
+    "What do C and gamma do in an RBF SVM?",
+    "C is the penalty for points inside the margin or misclassified; a small C gives a wide, soft margin, a large C fits training points tightly. gamma sets how far each point's influence reaches; a large gamma gives wiggly boundaries that overfit. I tune both together with cross-validation on a log grid."
+   ],
+   [
+    "A client needs a ticket router this week with 300 labelled tickets. What do you try first?",
+    "A CountVectorizer or TF-IDF plus MultinomialNB baseline, evaluated with cross-validation, then LinearSVC or logistic regression for comparison. It trains in seconds, shows which words drive each category, and sets the bar any LLM-based router must beat."
+   ]
+  ]
+ },
+ {
+  "id": "clustering",
+  "mod": 3,
+  "sec": "3.0",
+  "name": "Clustering",
+  "title": "Clustering (k-means, DBSCAN)",
+  "thesis": "Clustering finds groups in unlabelled data. k-means alternates between assigning points to the nearest center and moving each center to its points' mean; DBSCAN grows clusters from dense regions and flags noise. The useful output is a profile of each group that a business can act on.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "data",
+    90,
+    70,
+    "Customer data",
+    "RFM per customer"
+   ],
+   [
+    "scale",
+    265,
+    70,
+    "Scale features",
+    "log, then standard"
+   ],
+   [
+    "init",
+    440,
+    70,
+    "Pick k centers",
+    "k-means++ start"
+   ],
+   [
+    "assign",
+    615,
+    70,
+    "Assign points",
+    "nearest center"
+   ],
+   [
+    "update",
+    615,
+    220,
+    "Move centers",
+    "mean of members"
+   ],
+   [
+    "check",
+    440,
+    220,
+    "Converged?",
+    "centers stop moving"
+   ],
+   [
+    "score",
+    265,
+    220,
+    "Score k",
+    "inertia, silhouette"
+   ],
+   [
+    "profile",
+    90,
+    220,
+    "Profile segments",
+    "name and act"
+   ]
+  ],
+  "edges": [
+   [
+    "data",
+    "scale"
+   ],
+   [
+    "scale",
+    "init"
+   ],
+   [
+    "init",
+    "assign"
+   ],
+   [
+    "assign",
+    "update",
+    14
+   ],
+   [
+    "update",
+    "assign",
+    14,
+    "repeat"
+   ],
+   [
+    "update",
+    "check"
+   ],
+   [
+    "check",
+    "score"
+   ],
+   [
+    "score",
+    "profile"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start from features",
+    "n": [
+     "data"
+    ],
+    "e": [],
+    "d": "Each customer is a row of numbers, here recency, frequency and spend. There are no labels: we want the data to suggest groups.",
+    "l": []
+   },
+   {
+    "t": "Scale first",
+    "n": [
+     "data",
+     "scale"
+    ],
+    "e": [
+     "data>scale"
+    ],
+    "d": "k-means uses distances, so a log transform tames long tails and scaling gives every feature equal weight.",
+    "l": [
+     3
+    ]
+   },
+   {
+    "t": "Choose starting centers",
+    "n": [
+     "scale",
+     "init"
+    ],
+    "e": [
+     "scale>init"
+    ],
+    "d": "We choose k and place k starting centers. k-means++ spreads them apart, and n_init repeats the whole run with different starts.",
+    "l": [
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "t": "Assign each point",
+    "n": [
+     "init",
+     "assign"
+    ],
+    "e": [
+     "init>assign"
+    ],
+    "d": "Every customer joins the cluster of its nearest center.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "Move the centers",
+    "n": [
+     "assign",
+     "update"
+    ],
+    "e": [
+     "assign>update"
+    ],
+    "d": "Each center moves to the average position of the customers assigned to it. Inertia, the total squared distance to centers, goes down.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "Repeat until stable",
+    "n": [
+     "update",
+     "assign"
+    ],
+    "e": [
+     "update>assign"
+    ],
+    "d": "Assign and update alternate. Points may switch clusters, centers move again, and inertia keeps falling or stays the same.",
+    "l": [
+     7
+    ]
+   },
+   {
+    "t": "Stop at convergence",
+    "n": [
+     "update",
+     "check"
+    ],
+    "e": [
+     "update>check"
+    ],
+    "d": "When no point changes cluster, the centers stop moving and the run ends at a local best. The best of the n_init runs is kept.",
+    "l": [
+     8
+    ]
+   },
+   {
+    "t": "Compare values of k",
+    "n": [
+     "check",
+     "score"
+    ],
+    "e": [
+     "check>score"
+    ],
+    "d": "Repeat for several k and compare the elbow in inertia and the silhouette score, then weigh how many segments the business can act on.",
+    "l": [
+     8
+    ]
+   },
+   {
+    "t": "Profile and name",
+    "n": [
+     "score",
+     "profile"
+    ],
+    "e": [
+     "score>profile"
+    ],
+    "d": "Summarise each cluster with counts and medians, give it a plain name such as 'lapsed' or 'trade buyers', and attach an action.",
+    "l": [
+     9
+    ]
+   }
+  ],
+  "code": "from sklearn.cluster import KMeans\nfrom sklearn.preprocessing import StandardScaler\n\nZ = StandardScaler().fit_transform(np.log1p(X))  # equal weight per feature\nkm = KMeans(n_clusters=4,          # k chosen up front\n            init=\"k-means++\",      # spread-out starts\n            n_init=10,             # 10 runs, keep best\n            random_state=0).fit(Z) # assign / update loop\nprint(km.inertia_)                 # squared distance total\nlabels = km.labels_                # segment id per row",
+  "codeTitle": "k-means on scaled customer data",
+  "ideas": [
+   "k-means alternates two steps, assign to nearest center and move centers to the mean, until nothing changes.",
+   "Inertia always falls as k grows, so choose k with the elbow, the silhouette score and business sense together.",
+   "DBSCAN needs no k, finds clusters of any shape and labels sparse points as noise, but one eps must suit all densities.",
+   "Hierarchical clustering builds a merge tree you can cut at any level; Ward linkage is a good default.",
+   "Scale features, handle long tails, check stability, and deliver named profiles rather than cluster numbers."
+  ],
+  "traps": [
+   "Clustering unscaled features so spend in dollars decides every segment.",
+   "Believing clusters are real groups because the algorithm returned them; k-means splits even random noise.",
+   "Reporting cluster ids that change between runs instead of stable, named profiles."
+  ],
+  "qa": [
+   [
+    "Walk me through the k-means algorithm.",
+    "Pick k and initial centers, ideally with k-means++. Assign each point to its nearest center, move each center to the mean of its points, and repeat until assignments stop changing. It converges to a local minimum of inertia, so run several initialisations and keep the best."
+   ],
+   [
+    "How do you choose the number of clusters?",
+    "Run a range of k, look for the elbow in inertia and the peak in average silhouette, check stability across seeds and time periods, and then weigh what the business can act on, usually 3 to 7 segments."
+   ],
+   [
+    "When would you use DBSCAN instead of k-means?",
+    "When clusters are not round, when I do not know k, or when outliers matter, for example spotting unusual transactions. DBSCAN groups dense regions of any shape and labels isolated points as noise, as long as the clusters have similar density."
+   ]
+  ]
+ }
+]

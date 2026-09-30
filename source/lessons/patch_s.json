@@ -1,0 +1,782 @@
+{
+ "evals": {
+  "add_subtopics": [
+   {
+    "title": "Evaluating agents: trajectories and tool-call accuracy",
+    "body": "An agent does not just answer. It takes a series of steps: it picks a tool, fills in the arguments, reads the result and decides what to do next. That series of steps is called the trajectory. Checking only the final answer hides many problems. An agent can reach the right answer by luck, after ten wasted calls, or after doing something it must never do.\n\nSo agent evals look at two layers. The outcome layer asks: did the task end in the right state? For example, was the refund recorded in the database with the correct amount? The trajectory layer asks: were the right tools called, with the right arguments, in a sensible order, within a step budget, and with no forbidden actions?\n\nTo grade trajectories you need expected tool calls for each test case, written by someone who knows the workflow. Compare them with the logged calls. Allow for harmless variation, such as reading two records in either order. Run each case a few times, because agents are not deterministic, and report the pass rate across runs as well as the average.",
+    "example": "Pellmore Home Goods tests a returns agent on 50 cases. The final reply is polite and correct in 46 of them. Trajectory checks tell a different story. In 7 cases the refund tool received the wrong amount because the agent used the order total instead of the returned item's price. In 3 cases it called lookup_order four times in a row. The team adds a rule to the tool description, caps steps at 6, and argument accuracy rises from 86% to 98%.",
+    "code": "# Compare what the agent did with what it should have done\nexpected = [\n    {\"tool\": \"lookup_order\", \"args\": {\"order_id\": \"PH-88213\"}},\n    {\"tool\": \"issue_refund\", \"args\": {\"order_id\": \"PH-88213\", \"amount\": 42.50}},\n]\nactual = [\n    {\"tool\": \"lookup_order\", \"args\": {\"order_id\": \"PH-88213\"}},\n    {\"tool\": \"lookup_order\", \"args\": {\"order_id\": \"PH-88213\"}},   # wasted repeat\n    {\"tool\": \"issue_refund\", \"args\": {\"order_id\": \"PH-88213\", \"amount\": 45.00}},\n]\nFORBIDDEN = {\"delete_customer\"}\n\ndef score_trajectory(expected, actual, max_steps=4):\n    exp_tools = [c[\"tool\"] for c in expected]\n    act_tools = [c[\"tool\"] for c in actual]\n    right_tools = sum(1 for t in set(act_tools) if t in exp_tools)\n    arg_ok = sum(1 for e in expected                  # same tool AND same args\n                 if any(a == e for a in actual))\n    return {\n        \"tool_recall\": right_tools / len(set(exp_tools)),\n        \"arg_accuracy\": arg_ok / len(expected),\n        \"no_forbidden\": not (set(act_tools) & FORBIDDEN),\n        \"within_budget\": len(actual) <= max_steps,\n        \"extra_steps\": len(actual) - len(expected),\n    }\n\nprint(score_trajectory(expected, actual))\n# tool_recall 1.0, arg_accuracy 0.5 (refund amount wrong), extra_steps 1",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Metric",
+      "Question it answers"
+     ],
+     "rows": [
+      [
+       "Task success",
+       "Is the end state correct in the system?"
+      ],
+      [
+       "Tool selection",
+       "Did it call the tools it needed and no others?"
+      ],
+      [
+       "Argument accuracy",
+       "Were the tool inputs exactly right?"
+      ],
+      [
+       "Step efficiency",
+       "How many calls beyond the minimum?"
+      ],
+      [
+       "Safety",
+       "Did it ever call a forbidden or risky tool?"
+      ],
+      [
+       "Consistency",
+       "Does it pass on every one of 3 to 5 repeat runs?"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "RAG metrics: faithfulness and context recall",
+    "body": "The rag lesson introduced recall@k and faithfulness. This subtopic shows the fuller set of metrics that RAG evaluation tools commonly report, and how they fit together. Most of them work at the level of claims: short factual statements pulled out of an answer.\n\nFaithfulness: split the model's answer into claims and check each one against the retrieved context. The score is the share of claims the context supports. A low score means the model is adding things the documents do not say.\n\nContext recall: split the reference answer from your golden set into claims and check whether the retrieved context contains each one. A low score means retrieval missed facts the answer needed, so no prompt can fix it.\n\nContext precision: of the chunks retrieved, how many were actually useful, and were the useful ones ranked near the top? Low precision fills the prompt with noise and cost.\n\nAnswer relevance: does the answer address the question that was asked?\n\nA judge model usually does the claim splitting and checking. Open source libraries such as Ragas package these metrics, but you must still calibrate the judge against human labels, as the earlier subtopic showed.",
+    "example": "A health insurer's member assistant is asked: 'Does Plan B cover physiotherapy, and do I need a referral?' The golden answer has two claims: up to 12 sessions per year, and a GP referral is required. Retrieval returns the coverage chunk but not the referral rule, so context recall is 0.5. The model then invents 'no referral is needed', so faithfulness is 0.5 too. The fix starts with retrieval: the referral rule sat in a footnote the chunker had dropped.",
+    "code": "# Claim-level RAG metrics. supports() stands in for a calibrated LLM judge.\ndef supports(text, claim):\n    return claim.lower() in text.lower()\n\ndef faithfulness(answer_claims, contexts):\n    joined = \" \".join(contexts)\n    ok = [c for c in answer_claims if supports(joined, c)]\n    return len(ok) / len(answer_claims)       # share of answer claims backed by context\n\ndef context_recall(reference_claims, contexts):\n    joined = \" \".join(contexts)\n    found = [c for c in reference_claims if supports(joined, c)]\n    return len(found) / len(reference_claims)  # share of needed facts that were retrieved\n\ncontexts = [\"Plan B covers physiotherapy up to 12 sessions per year.\",\n            \"Claims must be filed within 90 days.\"]\nreference = [\"up to 12 sessions per year\", \"a referral from a GP\"]   # from the golden answer\nanswer = [\"up to 12 sessions per year\", \"no referral is needed\"]      # split from the model answer\n\nprint(\"faithfulness:\", faithfulness(answer, contexts))        # 0.5\nprint(\"context recall:\", context_recall(reference, contexts))  # 0.5",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Metric",
+      "Compares",
+      "Low score means"
+     ],
+     "rows": [
+      [
+       "Faithfulness",
+       "Answer vs retrieved context",
+       "Model invents facts"
+      ],
+      [
+       "Context recall",
+       "Reference answer vs context",
+       "Retrieval misses facts"
+      ],
+      [
+       "Context precision",
+       "Retrieved chunks vs question",
+       "Noisy or badly ranked chunks"
+      ],
+      [
+       "Answer relevance",
+       "Answer vs question",
+       "Answer drifts off topic"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Trajectory",
+    "The full sequence of steps and tool calls an agent took to complete a task."
+   ],
+   [
+    "Argument accuracy",
+    "The share of tool calls whose inputs exactly match what the task required."
+   ],
+   [
+    "Context recall",
+    "The share of facts needed for the correct answer that appear in the retrieved context."
+   ],
+   [
+    "Context precision",
+    "How much of the retrieved context is relevant, and whether relevant chunks are ranked first."
+   ]
+  ]
+ },
+ "rag": {
+  "add_subtopics": [
+   {
+    "title": "Ingesting from SharePoint, Drive and Confluence with permission sync",
+    "body": "Enterprise knowledge rarely sits in one folder of PDFs. It lives in systems like Microsoft SharePoint, Google Drive and Atlassian Confluence. Each has an API that a connector uses to list documents, download content and read permissions.\n\nPermissions are the hard part. The rule is simple: a user must never get an answer built from a document they could not open themselves. To keep that rule, the connector must capture, for every document, who may read it. That is its access control list (ACL). ACLs are messy. Permissions are inherited from sites, spaces or parent folders. They name groups, and group membership lives in the identity provider, such as Microsoft Entra ID or Google Workspace. Some files are shared by link with anyone in the company.\n\nA common design stores the allowed users and group ids on every chunk. At query time you look up the user's current groups and filter chunks before ranking. You sync group membership often, every few minutes, because people change teams and leave. Permission changes on a document must trigger a re-sync of that document's chunks even when its text has not changed.",
+    "example": "Ferrowind Energy wants one assistant over its Confluence wiki and its finance SharePoint site. In testing, an engineer asks about bonuses and gets an answer quoting a finance-only page. The cause: the connector copied page text but ignored a page-level restriction set by the finance team. The FDE adds restriction capture, re-ingests, and writes a permission test: 20 known users, each with a list of pages they must and must not see.",
+    "code": "# Each chunk stores the principals allowed to read its source document.\nchunks = [\n    {\"id\": \"hr-12#0\", \"text\": \"Parental leave is 20 weeks.\", \"allowed\": {\"group:all-staff\"}},\n    {\"id\": \"fin-7#3\", \"text\": \"Q3 bonus pool is 4.1M.\",     \"allowed\": {\"group:finance-leads\"}},\n    {\"id\": \"eng-9#1\", \"text\": \"On-call pays a daily stipend.\", \"allowed\": {\"user:dara@ferrowind.io\",\n                                                                          \"group:eng\"}},\n]\n\n# Synced from the identity provider every few minutes (group expansion).\ngroup_members = {\n    \"group:all-staff\": {\"dara@ferrowind.io\", \"lin@ferrowind.io\"},\n    \"group:finance-leads\": {\"lin@ferrowind.io\"},\n    \"group:eng\": {\"dara@ferrowind.io\"},\n}\n\ndef principals_for(user):\n    groups = {g for g, members in group_members.items() if user in members}\n    return {\"user:\" + user} | groups\n\ndef search(user, candidate_chunks):\n    mine = principals_for(user)\n    # Filter BEFORE ranking and before anything reaches the prompt.\n    return [c[\"id\"] for c in candidate_chunks if c[\"allowed\"] & mine]\n\nprint(search(\"dara@ferrowind.io\", chunks))   # ['hr-12#0', 'eng-9#1']\nprint(search(\"lin@ferrowind.io\", chunks))    # ['hr-12#0', 'fin-7#3']",
+    "lang": "Python",
+    "flow": {
+     "vb": [
+      710,
+      290
+     ],
+     "nodes": [
+      [
+       "src",
+       90,
+       70,
+       "Source systems",
+       "SharePoint, Drive"
+      ],
+      [
+       "conn",
+       265,
+       70,
+       "Connector",
+       "content + ACLs"
+      ],
+      [
+       "parse",
+       440,
+       70,
+       "Parse and chunk",
+       "copy ACL to chunk"
+      ],
+      [
+       "idx",
+       615,
+       70,
+       "Vector index",
+       "chunks + allowed"
+      ],
+      [
+       "filter",
+       615,
+       220,
+       "ACL filter",
+       "before ranking"
+      ],
+      [
+       "groups",
+       440,
+       220,
+       "Group sync",
+       "every few minutes"
+      ],
+      [
+       "idp",
+       265,
+       220,
+       "Identity (IdP)",
+       "users, groups",
+       1
+      ]
+     ],
+     "edges": [
+      [
+       "src",
+       "conn"
+      ],
+      [
+       "conn",
+       "parse"
+      ],
+      [
+       "parse",
+       "idx"
+      ],
+      [
+       "idx",
+       "filter",
+       0,
+       "query"
+      ],
+      [
+       "idp",
+       "groups"
+      ],
+      [
+       "groups",
+       "filter"
+      ]
+     ]
+    },
+    "checklist": [
+     "Capture item-level and inherited permissions for every document",
+     "Resolve groups through the identity provider, not the source system alone",
+     "Decide how to treat 'anyone with the link' sharing and agree it with security",
+     "Re-sync a document when its permissions change, even if the text did not",
+     "Filter by permissions before ranking and before the prompt is built",
+     "Keep a permission test set of known users and must-not-see documents"
+    ]
+   },
+   {
+    "title": "Keeping the index fresh: updates and deletes",
+    "body": "A RAG index is a copy of the source documents. Copies go stale. A policy is edited, a page is deleted, a file moves. If the index lags behind, the assistant quotes old rules with full confidence, and users stop trusting it.\n\nFirst, detect changes. Most enterprise APIs offer a change feed or delta query that returns only items changed since a saved token. Where that does not exist, compare the last modified time or a content hash with what you stored.\n\nSecond, update correctly. Give each document a stable id and derive chunk ids from it, such as policy-4#0 and policy-4#1. When a document changes, delete all of its old chunks before inserting the new ones. If you only overwrite, a document that got shorter leaves orphan chunks behind. Skip re-embedding when the hash is unchanged, which saves cost.\n\nThird, handle deletes. Change feeds often report deletions, but not always reliably. Run a periodic reconciliation that lists every id at the source and removes anything missing. Also re-embed everything when you change the embedding model, because vectors from two models cannot be compared. Track freshness as a metric: time from source edit to searchable.",
+    "example": "Tallowbrook Retail cut its return window from 30 to 14 days. Two days later the store assistant still told customers 30 days. The index had the new chunk and an orphan old chunk from the longer version, and retrieval ranked the old one first. The FDE switched to delete-then-insert per document, added a nightly reconciliation job, and set an alert when the median source-to-index lag goes above 30 minutes.",
+    "code": "import hashlib\n\nindex = {}      # chunk_id -> {\"doc\": doc_id, \"text\": ...}\ndoc_hash = {}   # doc_id -> content hash from the last sync\n\ndef chunk(text, size=40):\n    return [text[i:i + size] for i in range(0, len(text), size)]\n\ndef upsert_doc(doc_id, text):\n    h = hashlib.sha256(text.encode()).hexdigest()\n    if doc_hash.get(doc_id) == h:\n        return \"unchanged\"                       # skip re-embedding\n    delete_doc(doc_id)                           # drop ALL old chunks first\n    for n, piece in enumerate(chunk(text)):\n        index[f\"{doc_id}#{n}\"] = {\"doc\": doc_id, \"text\": piece}   # embed here\n    doc_hash[doc_id] = h\n    return \"indexed\"\n\ndef delete_doc(doc_id):\n    for cid in [c for c, v in index.items() if v[\"doc\"] == doc_id]:\n        del index[cid]\n    doc_hash.pop(doc_id, None)\n\ndef reconcile(source_ids):\n    # Nightly safety net: remove anything the source no longer has.\n    for doc_id in set(doc_hash) - set(source_ids):\n        delete_doc(doc_id)\n\nprint(upsert_doc(\"policy-4\", \"Returns accepted within 30 days with receipt. Store credit after that.\"))\nprint(upsert_doc(\"policy-4\", \"Returns accepted within 14 days with receipt.\"))  # shorter: fewer chunks\nprint(sorted(index))            # ['policy-4#0', 'policy-4#1'] and no stale #2\nreconcile(source_ids=[])        # doc deleted at the source\nprint(index)                    # {}",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "Connector",
+    "A component that reads documents and metadata from a source system's API into your pipeline."
+   ],
+   [
+    "Access control list (ACL)",
+    "The list of users and groups allowed to read a document."
+   ],
+   [
+    "Permission sync",
+    "Regularly copying document permissions and group memberships so search results respect them."
+   ],
+   [
+    "Delta query",
+    "An API call that returns only the items changed since a saved token or timestamp."
+   ],
+   [
+    "Orphan chunk",
+    "A chunk left in the index after its source document changed or was deleted."
+   ]
+  ]
+ },
+ "deploy": {
+  "add_subtopics": [
+   {
+    "title": "Debugging pods: kubectl logs, describe, CrashLoopBackOff",
+    "body": "When a deployment does not come up, work through the same few commands every time instead of guessing.\n\nStart with kubectl get pods. The STATUS and RESTARTS columns tell you which kind of problem you have. Next, run kubectl describe pod. Read the Events section at the bottom and the Last State of the container. Events show scheduling failures, image pull errors and failed probes. Last State shows the exit code and a reason such as OOMKilled.\n\nThen read the logs. kubectl logs shows the current container. When a container keeps crashing, the current one may have just started, so add --previous to see what the crashed one printed before it died.\n\nCrashLoopBackOff is not a cause. It only means the container keeps exiting and Kubernetes is waiting longer and longer before restarting it. The real cause is in the previous logs or the exit code. Common causes are a missing environment variable or secret, a wrong database address, a failing migration at startup, a liveness probe that fires before the app is ready, and a memory limit that is too low. Exit code 137 usually means the container was killed, often for memory.",
+    "example": "An FDE deploys a claims API into a customer's cluster and sees CrashLoopBackOff with 6 restarts. Describe shows exit code 1, not an OOM kill. The previous logs end with KeyError: 'DB_PASSWORD'. The Secret existed, but it was created in the default namespace instead of the claims namespace. After recreating it in the right namespace and restarting the deployment, the pod reaches Ready 1/1 in 20 seconds.",
+    "code": "# 1. What state are the pods in?\nkubectl get pods -n claims -l app=claims-api\n# NAME                         READY  STATUS             RESTARTS\n# claims-api-7d9f8c6b5-x2kqp   0/1    CrashLoopBackOff   6\n\n# 2. Why? Read the Events at the bottom and \"Last State\" (exit code, OOMKilled)\nkubectl describe pod claims-api-7d9f8c6b5-x2kqp -n claims\n\n# 3. What did the app print before it died? --previous = the crashed container\nkubectl logs claims-api-7d9f8c6b5-x2kqp -n claims --previous --tail=50\n\n# 4. Recent events across the namespace, newest last\nkubectl get events -n claims --sort-by=.lastTimestamp | tail -20\n\n# 5. If the container stays up, look inside it\nkubectl exec -it claims-api-7d9f8c6b5-x2kqp -n claims -- sh\nenv | grep DB_          # is the config you expect actually there?",
+    "lang": "bash",
+    "table": {
+     "headers": [
+      "Status",
+      "Usual meaning",
+      "Look at"
+     ],
+     "rows": [
+      [
+       "Pending",
+       "Cannot be scheduled: no room or missing volume",
+       "describe: Events"
+      ],
+      [
+       "ImagePullBackOff",
+       "Wrong image name or tag, or no registry access",
+       "describe: Events"
+      ],
+      [
+       "CreateContainerConfigError",
+       "Referenced Secret or ConfigMap is missing",
+       "describe: Events"
+      ],
+      [
+       "CrashLoopBackOff",
+       "App starts then exits, again and again",
+       "logs --previous, exit code"
+      ],
+      [
+       "OOMKilled (137)",
+       "Used more memory than its limit",
+       "describe: Last State"
+      ],
+      [
+       "Running, not Ready",
+       "Readiness probe failing",
+       "describe: probe events"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Packaging with Helm charts",
+    "body": "A real application needs several Kubernetes files: a Deployment, a Service, a ConfigMap, maybe an Ingress and an autoscaler. Each environment needs slightly different values: dev runs 1 replica, production runs 4, and the image tag changes on every release. Copying and hand-editing YAML for each case leads to mistakes.\n\nHelm is a package manager for Kubernetes. A Helm chart is a folder with three main parts. Chart.yaml holds the chart's name and version. values.yaml holds the default settings. The templates folder holds Kubernetes YAML with placeholders like {{ .Values.replicaCount }}. When you install the chart, Helm fills in the placeholders from values.yaml, plus any override file you pass with -f, and applies the result. Each install or upgrade becomes a numbered release revision.\n\nFor customer deployments this is useful in three ways. You ship one chart and the customer's team only edits a values file for their environment. helm template renders the final YAML so their platform team can review exactly what will be applied. helm rollback returns to a previous revision in one command. Keep secrets out of values files in git. Reference existing Kubernetes Secrets or the customer's secret manager instead.",
+    "example": "Quillfield Freight needs the same document agent in a staging and a production cluster. The FDE ships one chart with values-staging.yaml (1 replica, debug logging) and values-prod.yaml (3 replicas, 1 GiB memory limit, the customer's internal registry). The customer's platform team runs helm template in their pipeline, reviews the diff, and applies it. When release 5 has a bad config, helm rollback to revision 4 restores service in under a minute.",
+    "code": "# claims-api/                  <- a chart is just a folder\n#   Chart.yaml                  name, chart version, app version\n#   values.yaml                 defaults (below)\n#   templates/deployment.yaml   Kubernetes YAML with {{ }} placeholders\n\n# values.yaml\nreplicaCount: 2\nimage:\n  repository: registry.example.internal/claims-api\n  tag: \"1.4.3\"\nresources:\n  limits: {memory: 512Mi}\n\n# templates/deployment.yaml (excerpt)\nspec:\n  replicas: {{ .Values.replicaCount }}\n  template:\n    spec:\n      containers:\n        - name: api\n          image: \"{{ .Values.image.repository }}:{{ .Values.image.tag }}\"\n          resources: {{- toYaml .Values.resources | nindent 12 }}\n\n# Commands (bash):\n#   helm lint ./claims-api\n#   helm template ./claims-api -f values-prod.yaml      # render and review first\n#   helm upgrade --install claims-api ./claims-api -n claims -f values-prod.yaml\n#   helm history claims-api -n claims\n#   helm rollback claims-api 3 -n claims",
+    "lang": "YAML"
+   }
+  ],
+  "add_glossary": [
+   [
+    "CrashLoopBackOff",
+    "A pod status meaning the container keeps exiting and Kubernetes is delaying each restart longer."
+   ],
+   [
+    "kubectl describe",
+    "A command that shows an object's full state, including recent events."
+   ],
+   [
+    "Exit code 137",
+    "A container was killed by a signal, most often for exceeding its memory limit."
+   ],
+   [
+    "Helm chart",
+    "A packaged, templated set of Kubernetes manifests with configurable values."
+   ],
+   [
+    "Helm release",
+    "One installed instance of a chart, with numbered revisions you can roll back to."
+   ]
+  ]
+ },
+ "cloud": {
+  "add_subtopics": [
+   {
+    "title": "Managed AI services: Bedrock, Azure OpenAI, Vertex AI",
+    "body": "Many enterprises will not send data to a model provider's public API directly. They prefer to call models through the cloud they already use. Each big cloud offers a managed AI service that serves foundation models inside the customer's own account.\n\nAmazon Bedrock on AWS offers models from several providers, including Anthropic, Meta, Mistral and Amazon's own models, through one runtime API. Azure OpenAI, part of Microsoft's Azure AI Foundry, serves OpenAI models, and Foundry also offers models from other providers. Google Cloud's Vertex AI serves Google's Gemini models and partner models, including Anthropic's, through its Model Garden.\n\nWhy customers choose these: requests use the cloud's identity system (IAM roles, Entra ID, service accounts) instead of a shared API key. Traffic can stay on private network paths. Data stays in a chosen region. Spend counts against the customer's existing cloud commitment, and the security team has already approved the cloud.\n\nWhat trips FDEs up: some models need a one-time access request or a named deployment in each account and region before use. Not every model or feature is in every region. Quotas, often measured in tokens per minute, start low and need a request to raise. Model ids and feature support can differ from the provider's direct API, so check the cloud's own documentation.",
+    "example": "Harrowgate Mutual, an insurer, runs on AWS in Frankfurt and will only allow model calls through Bedrock. The FDE's prototype used a direct API. Moving it takes one day: confirm model access in the customer's account and region, attach an IAM policy allowing bedrock:InvokeModel on that model, switch the client to Bedrock's Converse API, and file a quota increase because the default limit fails the load test at 30 requests per minute.",
+    "code": "import boto3\n\n# Runs inside the customer's AWS account, using its IAM role and region.\nclient = boto3.client(\"bedrock-runtime\", region_name=\"eu-central-1\")\n\nMODEL = \"MODEL\"   # a model id the customer has enabled in this region\n\ndef summarize(ticket_text):\n    resp = client.converse(\n        modelId=MODEL,\n        system=[{\"text\": \"Summarize the support ticket in two sentences.\"}],\n        messages=[{\"role\": \"user\", \"content\": [{\"text\": ticket_text}]}],\n        inferenceConfig={\"maxTokens\": 200, \"temperature\": 0.2},\n    )\n    usage = resp[\"usage\"]   # log tokens for cost tracking\n    print(\"tokens in/out:\", usage[\"inputTokens\"], usage[\"outputTokens\"])\n    return resp[\"output\"][\"message\"][\"content\"][0][\"text\"]",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "",
+      "AWS",
+      "Azure",
+      "Google Cloud"
+     ],
+     "rows": [
+      [
+       "Service",
+       "Amazon Bedrock",
+       "Azure OpenAI / AI Foundry",
+       "Vertex AI"
+      ],
+      [
+       "Auth",
+       "IAM role",
+       "Entra ID or key",
+       "Service account"
+      ],
+      [
+       "Private access",
+       "VPC endpoint",
+       "Private endpoint",
+       "Private Service Connect"
+      ],
+      [
+       "Before first call",
+       "Check model access",
+       "Create a deployment",
+       "Enable model in Model Garden"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Managed AI service",
+    "A cloud service that hosts foundation models behind an API inside the customer's cloud account."
+   ],
+   [
+    "Model access",
+    "The per-account, per-region enablement a cloud may require before a model can be called."
+   ],
+   [
+    "Tokens per minute (TPM)",
+    "A common quota unit limiting how many tokens an account can process each minute."
+   ]
+  ]
+ },
+ "demo": {
+  "add_subtopics": [
+   {
+    "title": "Demo environments and seeded data",
+    "body": "Never demo on production and never demo on your laptop's development setup. Build a separate demo environment: its own deployment, its own database and its own logins, that nobody else changes.\n\nFill it with seeded data. Seeding means loading a known set of records with a script. The data should look real to the audience, with plausible names, amounts and dates from their industry, but contain no real customer or personal data. If you use customer data at all, get written approval and mask anything sensitive.\n\nDesign the data around the story. Your demo script needs specific records: the claim that gets flagged, the invoice with the mismatch, the long policy the agent summarizes. Put those records in the seed on purpose, with memorable ids, so you can find them fast.\n\nMake the seed script repeatable. Use a fixed random seed so every reset produces identical data, and write a reset command that wipes and reloads the environment in minutes. Run it before every demo, because the last demo changed the data. Pin versions of the app, the prompts and the model settings too, so a colleague's change does not alter the story the night before.",
+    "example": "For a motor insurer, the FDE builds a demo tenant with 40 synthetic claims across three invented repair shops, plus one planted claim, DEMO-2001, with an estimate far above the norm. The script's aha moment is the agent flagging DEMO-2001. A make demo-reset command drops and reloads the data in 90 seconds, and it runs automatically one hour before each meeting.",
+    "code": "import csv, random, io\n\nrandom.seed(7)          # same data every reset, so the demo never surprises you\nSHOPS = [\"Kestrel Motors\", \"Halden Body Works\", \"Juniper Auto Glass\"]\n\ndef seed_claims(n=40):\n    rows = []\n    for i in range(1, n + 1):\n        rows.append({\"claim_id\": f\"DEMO-{1000 + i}\",\n                     \"policyholder\": f\"Test Customer {i:02d}\",   # no real names\n                     \"shop\": random.choice(SHOPS),\n                     \"estimate\": round(random.uniform(400, 3500), 2),\n                     \"status\": random.choice([\"open\", \"open\", \"review\", \"paid\"])})\n    # The \"story\" record the demo script depends on: a clear overcharge.\n    rows.append({\"claim_id\": \"DEMO-2001\", \"policyholder\": \"Test Customer 99\",\n                 \"shop\": \"Halden Body Works\", \"estimate\": 9800.00, \"status\": \"open\"})\n    return rows\n\nbuf = io.StringIO()\nw = csv.DictWriter(buf, fieldnames=[\"claim_id\", \"policyholder\", \"shop\", \"estimate\", \"status\"])\nw.writeheader(); w.writerows(seed_claims())\nprint(buf.getvalue().splitlines()[-1])   # DEMO-2001,Test Customer 99,Halden Body Works,9800.0,open",
+    "lang": "Python",
+    "checklist": [
+     "Separate demo deployment, database and logins",
+     "Synthetic or approved, masked data only",
+     "Story records planted with easy-to-find ids",
+     "Seed script uses a fixed random seed",
+     "One-command reset, run before every demo",
+     "App, prompt and model versions pinned for demo day"
+    ]
+   },
+   {
+    "title": "Rehearsal and a recorded backup",
+    "body": "A demo that has only been run in your head will run long and break in new places. Rehearse it out loud, timed, at least twice.\n\nThe first rehearsal is for the story and the clock. Run the whole thing with a colleague acting as the audience. Most first runs are 20 to 30 percent too long, so decide what to cut. The second rehearsal is for the setup: the same laptop, screen sharing tool, network, browser zoom and logins you will use on the day. The last check, an hour before, is a short smoke test: log in, run one request, confirm the answer.\n\nIf two people present, split roles. One drives the screen, the other talks to the audience and watches the clock. Agree on a signal for switching to the fallback.\n\nRecord a backup video during the second rehearsal, once the demo runs cleanly. Record the full flow at a readable resolution with large fonts, and note the timestamps of each step so you can jump to one step. Keep it open in a background tab. Freeze the demo environment after this point. No new deploys until the demo is over.",
+    "example": "Two FDEs prepare a 20-minute demo for Quillfield Freight. Rehearsal 1 runs 24 minutes, so they cut a secondary feature. Rehearsal 2, on the venue's guest wifi, reveals that the video tool blocks the upload widget; they switch to a browser-based share. They record the clean run. On the day, the customs lookup times out, and they jump to 01:10 in the video without losing the room.",
+    "code": "RUN OF SHOW: Quillfield Freight POC demo, 20 min slot\nTime   Who     What                                   Fallback\n0:00   Priya   Context and success criteria (2 min)   slide 2\n2:00   Sam     Live: upload 3 bills of lading         video 00:00-01:10\n5:00   Sam     Live: agent flags customs mismatch     video 01:10-02:30\n8:00   Priya   Before/after numbers (2 min)           slide 5\n10:00  Priya   Questions                              FAQ doc\n17:00  Priya   The ask and next steps                 slide 7\n\nRehearsal 1 (T-3 days): full run, timed. Result: 24 min. Cut step 4.\nRehearsal 2 (T-1 day): on demo laptop + guest wifi. Record backup video.\nRehearsal 3 (T-1 hour): smoke test only: log in, one upload, one answer.\nCode freeze on demo environment: T-1 day, 17:00.",
+    "lang": "Text"
+   },
+   {
+    "title": "Running the POC readout",
+    "body": "A proof of concept (POC) is a short project that tests whether a solution works for this customer. The readout is the meeting at its end where you report results and ask for a decision. It is not a demo with extra slides. It is a decision meeting.\n\nStart from the success criteria you agreed at the start of the POC. Restate them, then show each one's target and measured result, including the ones you missed. Being first to name a miss, with a clear reason and a fix or a limit, builds more trust than hiding it.\n\nKeep the demo short and on the real workflow. Then cover what production would take: run cost, integration work, the customer team's time, and the risks you still see.\n\nFinish with one clear recommendation and a specific ask: a decision, a date, a budget owner, a named data owner. Make sure the people who can say yes are in the room. Send a one-page written summary within a day, with the results table and next steps, so the sponsor can forward it to people who were not there.",
+    "example": "A three-week POC for Linwell Health aimed to cut prior-authorization drafting time. Criteria: 50% time saved, 90% of drafts accepted with light edits, no PHI leaving the tenant. Results: 58% saved, 84% accepted, PHI check passed. The FDE explains the miss: drafts for one specialty used an outdated form. The recommendation is a 10-week rollout with that form fixed, and the ask is a go decision by 14 November.",
+    "code": "POC READOUT AGENDA (45 min, sponsor + decision maker + IT lead)\n1. What we set out to prove (3 min)\n   - Restate the 3 success criteria signed off in week 1.\n2. Results against each criterion (10 min)\n   - Table: criterion, target, measured result, met / not met.\n3. Two-minute demo of the real workflow (5 min)\n4. What did not work and why (5 min)\n   - Be first to say it. Show the fix or the limit.\n5. Cost and effort to go to production (7 min)\n   - Run cost per month, integration work, customer team time.\n6. Risks and open questions (5 min)\n7. Recommendation and the ask (5 min)\n   - \"We recommend a 10-week production rollout to the Leeds site.\n      We need a decision by 14 November and a named data owner.\"\n8. Next steps with owners and dates (5 min)",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "Criterion",
+      "Target",
+      "Result",
+      "Status"
+     ],
+     "rows": [
+      [
+       "Drafting time saved",
+       "50%",
+       "58%",
+       "Met"
+      ],
+      [
+       "Drafts accepted with light edits",
+       "90%",
+       "84%",
+       "Not met, fix known"
+      ],
+      [
+       "No PHI leaves tenant",
+       "0 incidents",
+       "0 incidents",
+       "Met"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Demo environment",
+    "A separate, stable deployment used only for demos, with its own data and logins."
+   ],
+   [
+    "Seeded data",
+    "A known set of records loaded by a repeatable script."
+   ],
+   [
+    "Proof of concept (POC)",
+    "A short, scoped project that tests whether a solution works for a specific customer."
+   ],
+   [
+    "Readout",
+    "The meeting at the end of a POC where results are reported against agreed criteria and a decision is requested."
+   ],
+   [
+    "Code freeze",
+    "A period when no changes are deployed, to keep an environment stable."
+   ]
+  ]
+ },
+ "genesis": {
+  "add_subtopics": [
+   {
+    "title": "FDEs at AI labs and SaaS companies today",
+    "body": "Palantir created the FDE role, but the title has spread widely since generative AI arrived. Several AI model labs, including OpenAI and Anthropic, have publicly posted Forward Deployed Engineer roles, as have many AI startups and software companies. The details differ by company, so read each job description closely. The patterns below are general.\n\nAt an AI lab, the product is a model and its API. Customers need help turning it into a working system: designing agents and retrieval, writing evals, fitting security rules, and reaching production. An FDE there works with a few large customers at a time and passes what they learn about model gaps and missing features back to research and product teams.\n\nAt a vertical AI startup, which sells an AI product for one industry such as law, insurance or logistics, FDEs often configure and extend the product for each new customer. They connect data sources, adapt workflows and prove value quickly. Their field work shapes a product that is still forming.\n\nAt a more mature software company, the role may focus on large enterprise accounts where integration is complex, and it may sit next to solutions engineers and professional services.\n\nWhatever the setting, the core stays the same: write production code with the customer, and feed what you learn into the product.",
+    "example": "Imagine three postings with the same title. A model lab asks for agent design, evals and experience presenting to executives. A legal AI startup asks for Python, document pipelines and willingness to travel to law firms. A data platform company asks for Spark, Kubernetes and enterprise networking. Reading them side by side shows you which of your projects to lead with for each one.",
+    "code": "",
+    "lang": "Text",
+    "table": {
+     "headers": [
+      "",
+      "AI model lab",
+      "Vertical AI startup",
+      "Mature software company"
+     ],
+     "rows": [
+      [
+       "Product",
+       "Model and API",
+       "AI app for one industry",
+       "Platform or suite"
+      ],
+      [
+       "Typical FDE work",
+       "Agents, RAG, evals, architecture",
+       "Configure, integrate, extend",
+       "Complex enterprise integration"
+      ],
+      [
+       "Feedback goes to",
+       "Research and API teams",
+       "Core product team",
+       "Product and services teams"
+      ],
+      [
+       "Skills stressed",
+       "LLM depth, evals",
+       "Speed, domain data",
+       "Infrastructure, security"
+      ]
+     ]
+    }
+   },
+   {
+    "title": "Diagnostic: does this company need FDEs?",
+    "body": "FDEs are expensive. Each one serves a handful of customers. So a company should use them only where the economics and the product make sense. Knowing the signals helps you judge a job offer and explain the role in interviews.\n\nStrong signals: customers get value only after the product is wired into their own systems and data. That data is messy, spread out or locked behind strict security. Contracts are large enough to pay for engineers per account. Customers lack the engineering capacity to do the last mile themselves. The product is still changing, so what engineers learn in the field is worth a lot. Mistakes are costly, as in health, finance or defence.\n\nWeak signals: the product works out of the box after a sign-up. Contracts are small and numerous. Integrations are standard and covered by documentation. In that case, good docs, templates, support engineers and self-serve onboarding scale better.\n\nMany companies land in the middle. They use FDEs for their largest or most strategic accounts, and turn repeated field work into product features so the next customer needs less help. If FDE work never turns into product, the company is running a consulting business with software margins at risk.",
+    "example": "Two companies both call themselves AI companies. Sorrelgate sells a writing assistant at 20 dollars per seat to thousands of small teams, and setup takes five minutes. It does not need FDEs. Kilnmore builds claims automation for insurers, with contracts over one million dollars a year, and every insurer has its own legacy policy system. It scores 10 out of 12 on the screen below and is a strong fit.",
+    "code": "# A rough screen, not a formula. Each signal scores 0 (no), 1 (partly), 2 (yes).\nSIGNALS = {\n    \"value_needs_custom_integration\": \"Value appears only after wiring into customer systems\",\n    \"large_contracts\": \"Deals are large enough to fund engineers per customer\",\n    \"messy_customer_data\": \"Customer data is scattered, dirty or locked down\",\n    \"customer_lacks_capacity\": \"Customer teams cannot build the last mile themselves\",\n    \"product_still_forming\": \"Field learnings still change the core product\",\n    \"high_stakes_domain\": \"Errors are costly (health, finance, defence, safety)\",\n}\n\ndef fde_fit(scores):\n    total = sum(scores.values())\n    top = 2 * len(SIGNALS)\n    if total >= 0.7 * top:\n        verdict = \"strong case for FDEs\"\n    elif total >= 0.4 * top:\n        verdict = \"FDEs for the largest accounts only; keep a self-serve path\"\n    else:\n        verdict = \"invest in docs, product and support engineers instead\"\n    return total, top, verdict\n\nvertical_ai_startup = {\"value_needs_custom_integration\": 2, \"large_contracts\": 2,\n                       \"messy_customer_data\": 2, \"customer_lacks_capacity\": 1,\n                       \"product_still_forming\": 2, \"high_stakes_domain\": 1}\nprint(fde_fit(vertical_ai_startup))   # (10, 12, 'strong case for FDEs')",
+    "lang": "Python"
+   }
+  ],
+  "add_glossary": [
+   [
+    "AI model lab",
+    "A company that trains foundation models and sells access to them, usually through an API."
+   ],
+   [
+    "Vertical AI",
+    "An AI product built for one industry, such as law or insurance."
+   ],
+   [
+    "Annual contract value (ACV)",
+    "The average yearly revenue from one customer contract."
+   ]
+  ]
+ },
+ "etl": {
+  "add_subtopics": [
+   {
+    "title": "Detecting and handling schema drift",
+    "body": "A schema is the list of columns in a dataset and the type of each one. Schema drift happens when the source changes that shape without telling you. A column is added, removed or renamed. A number arrives as text. A new value appears in a status field. A nested JSON field moves.\n\nDrift is dangerous because it often fails silently. A renamed column may simply load as all nulls, and next week's revenue report quietly drops by a third.\n\nDetect drift on every run, before loading. Compare the incoming schema with an expected schema you store in code, often called a data contract. Check column names, types, nullability, and for key fields the set of allowed values.\n\nThen apply a policy per kind of change. New columns are usually safe: load the known ones and flag the new ones for review. Removed, renamed or retyped columns are breaking: stop, quarantine the batch in a separate area, keep yesterday's good tables in place, and alert the data owner. Record every schema change with a date, so later questions about a number can be traced. Agree this policy and a named owner with the customer early, since they control the source.",
+    "example": "Every night Quillfield Freight's pipeline loads orders from a partner's CSV export. One morning the check reports: amount removed, amount_gross added, customer_id changed from int to str, and a new channel column. The pipeline quarantines the batch instead of loading it. The FDE confirms with the partner that amount_gross includes tax, maps it with a tax adjustment, updates the contract, and reloads. No dashboard ever showed a wrong number.",
+    "code": "# Compare today's incoming schema with the agreed contract.\ncontract = {\"order_id\": \"int\", \"customer_id\": \"int\", \"amount\": \"float\",\n            \"currency\": \"str\", \"created_at\": \"timestamp\"}\nincoming = {\"order_id\": \"int\", \"customer_id\": \"str\", \"amount_gross\": \"float\",\n            \"currency\": \"str\", \"created_at\": \"timestamp\", \"channel\": \"str\"}\n\ndef detect_drift(contract, incoming):\n    added = sorted(set(incoming) - set(contract))\n    removed = sorted(set(contract) - set(incoming))\n    retyped = sorted(c for c in set(contract) & set(incoming)\n                     if contract[c] != incoming[c])\n    return {\"added\": added, \"removed\": removed, \"retyped\": retyped}\n\ndef decide(drift):\n    if drift[\"removed\"] or drift[\"retyped\"]:\n        return \"FAIL: quarantine the batch, alert the owner, keep yesterday's tables\"\n    if drift[\"added\"]:\n        return \"WARN: load known columns, log new ones for review\"\n    return \"OK\"\n\nd = detect_drift(contract, incoming)\nprint(d)   # added: amount_gross, channel; removed: amount; retyped: customer_id\nprint(decide(d))",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Change",
+      "Risk",
+      "Default action"
+     ],
+     "rows": [
+      [
+       "Column added",
+       "Low",
+       "Load known columns, flag new one"
+      ],
+      [
+       "Column removed or renamed",
+       "High",
+       "Fail and quarantine, alert owner"
+      ],
+      [
+       "Type changed",
+       "High",
+       "Fail and quarantine, alert owner"
+      ],
+      [
+       "Column becomes nullable",
+       "Medium",
+       "Warn, check downstream joins"
+      ],
+      [
+       "New category value",
+       "Medium",
+       "Load, flag for mapping"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Schema drift",
+    "An unannounced change in the columns or types of incoming data."
+   ],
+   [
+    "Data contract",
+    "An agreed, versioned description of a dataset's schema and rules between producer and consumer."
+   ],
+   [
+    "Quarantine",
+    "Holding a suspicious batch in a separate area instead of loading it into trusted tables."
+   ]
+  ]
+ },
+ "transformer": {
+  "add_subtopics": [
+   {
+    "title": "Decoding: greedy, temperature and top_p",
+    "body": "At each step the model outputs a logit, a raw score, for every token in its vocabulary. Softmax turns the logits into probabilities. Decoding is the rule for picking the next token from those probabilities.\n\nGreedy decoding always picks the most likely token. It is predictable, but over long outputs it can become repetitive, and it never explores a second-best phrasing.\n\nSampling picks a token at random, weighted by probability. Temperature controls how spread out the choice is: the logits are divided by the temperature before softmax. A temperature below 1 sharpens the distribution toward the top token. Near 0, sampling behaves almost like greedy decoding. Above 1, the distribution flattens and unlikely tokens get picked more often.\n\nTop_p, also called nucleus sampling, keeps only the smallest set of top tokens whose probabilities add up to p, such as 0.9, and samples from those. This cuts off the long tail of odd tokens. Top_k keeps a fixed number of top tokens instead.\n\nIn practice, use a low temperature for extraction, classification and code, and a higher one for brainstorming or varied drafts. Many providers advise tuning temperature or top_p, not both. A temperature of 0 still does not guarantee identical outputs across calls, so evals should not assume it.",
+    "example": "An FDE building an invoice extractor for Tallowbrook Retail sees the vendor name field vary between runs at the default settings. Setting temperature to 0 makes the output far more stable, and a JSON schema check catches the rest. For the same customer's marketing tool, which drafts five subject lines, a temperature of 1.0 gives useful variety where 0 gave five near-identical lines.",
+    "code": "import numpy as np\n\ntokens = [\"Paris\", \"Lyon\", \"the\", \"France\", \"banana\"]\nlogits = np.array([5.0, 3.0, 2.5, 2.0, -1.0])     # raw scores from the model\n\ndef probs(logits, temperature=1.0):\n    z = logits / temperature                      # T < 1 sharpens, T > 1 flattens\n    e = np.exp(z - z.max())\n    return e / e.sum()\n\ndef top_p_filter(p, top_p=0.9):\n    order = np.argsort(p)[::-1]                   # most likely first\n    cum = np.cumsum(p[order])\n    keep = order[: np.searchsorted(cum, top_p) + 1]   # smallest set reaching top_p\n    q = np.zeros_like(p); q[keep] = p[keep]\n    return q / q.sum()\n\nprint(\"greedy:\", tokens[int(np.argmax(logits))])  # always \"Paris\"\nfor T in (0.5, 1.0, 1.5):\n    print(f\"T={T}\", {t: round(float(x), 3) for t, x in zip(tokens, probs(logits, T))})\n\np = top_p_filter(probs(logits, 1.0), top_p=0.9)\nprint(\"kept by top_p=0.9:\", [t for t, x in zip(tokens, p) if x > 0])\nrng = np.random.default_rng(0)\nprint(\"sampled:\", tokens[rng.choice(len(tokens), p=p)])",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Task",
+      "Suggested setting"
+     ],
+     "rows": [
+      [
+       "Extraction, classification, SQL",
+       "Temperature 0 to 0.2"
+      ],
+      [
+       "Chat assistant answers",
+       "Temperature around 0.3 to 0.7"
+      ],
+      [
+       "Brainstorming, varied drafts",
+       "Temperature 0.8 to 1.0"
+      ],
+      [
+       "Cutting odd tail tokens",
+       "top_p around 0.9, leave temperature at default"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Logit",
+    "The raw score a model gives each possible next token before softmax."
+   ],
+   [
+    "Greedy decoding",
+    "Always choosing the single most likely next token."
+   ],
+   [
+    "Temperature",
+    "A number that divides logits before softmax, making choices sharper (low) or more varied (high)."
+   ],
+   [
+    "Top_p (nucleus sampling)",
+    "Sampling only from the smallest set of top tokens whose probabilities add up to p."
+   ]
+  ]
+ },
+ "linux": {
+  "add_subtopics": [
+   {
+    "title": "Writing small bash scripts safely",
+    "body": "Once you type the same five commands twice, put them in a script. Bash scripts are quick to write and easy to get wrong, so a few habits matter.\n\nStart with a shebang line, #!/usr/bin/env bash, so the right shell runs it. Add set -euo pipefail. -e stops the script when a command fails. -u treats an unset variable as an error, instead of silently using an empty string. pipefail makes a pipeline fail if any part fails, not only the last command.\n\nQuote every variable: \"$file\", not $file. Unquoted variables split on spaces, so a file named 'Q3 report.csv' becomes two arguments. For the same reason, loop over find output with -print0 and read -d '', rather than over ls output.\n\nCheck arguments at the top and print a usage line if they are wrong. Send messages meant for humans to stderr with >&2, so stdout stays clean for data. Create temporary files with mktemp and remove them with trap ... EXIT, which runs even when the script fails. For anything that deletes or overwrites, add a --dry-run option that prints what would happen. Finally, run the free tool shellcheck on your script. It catches most of these mistakes automatically.",
+    "example": "On a customer's jump host, an FDE needs to archive the previous day's CSV exports before a disk clean-up. The first draft, cp $SRC/*.csv $DEST, fails on a file named 'EU orders.csv' and, when SRC is unset, tries to copy from /*.csv. The safe version below checks its arguments, handles spaces, supports --dry-run and cleans up its temporary folder. They run it with --dry-run first and share the output with the customer's admin before running it for real.",
+    "code": "#!/usr/bin/env bash\n# backup_exports.sh: copy yesterday's CSV exports to an archive folder\nset -euo pipefail            # stop on errors, unset variables and pipe failures\n\nusage() { echo \"usage: $0 SRC_DIR DEST_DIR [--dry-run]\" >&2; exit 2; }\n[[ $# -lt 2 ]] && usage\n\nsrc=\"$1\"; dest=\"$2\"; dry=\"${3:-}\"\n[[ -d \"$src\" ]] || { echo \"error: $src is not a directory\" >&2; exit 1; }\n\ntmp=\"$(mktemp -d)\"\ntrap 'rm -rf \"$tmp\"' EXIT    # clean up even if the script fails midway\n\ncount=0\nwhile IFS= read -r -d '' f; do          # safe with spaces in file names\n  if [[ \"$dry\" == \"--dry-run\" ]]; then\n    echo \"would copy: $f\"\n  else\n    cp -- \"$f\" \"$tmp/\"\n  fi\n  count=$((count + 1))\ndone < <(find \"$src\" -name '*.csv' -mtime -1 -print0)\n\nif [[ \"$dry\" != \"--dry-run\" && $count -gt 0 ]]; then\n  mkdir -p \"$dest\"\n  tar -czf \"$dest/exports_$(date +%F).tar.gz\" -C \"$tmp\" .\nfi\necho \"done: $count file(s)\" >&2",
+    "lang": "bash",
+    "checklist": [
+     "Shebang and set -euo pipefail at the top",
+     "Every variable quoted",
+     "Arguments checked, usage printed on error",
+     "Human messages go to stderr",
+     "Temp files from mktemp, removed by trap",
+     "--dry-run for anything destructive",
+     "shellcheck passes with no warnings"
+    ]
+   }
+  ],
+  "add_glossary": [
+   [
+    "Shebang",
+    "The first line of a script, starting with #!, that names the program to run it."
+   ],
+   [
+    "set -euo pipefail",
+    "Bash options that stop a script on errors, unset variables and failed pipeline parts."
+   ],
+   [
+    "trap",
+    "A bash command that runs cleanup code when the script exits or receives a signal."
+   ],
+   [
+    "shellcheck",
+    "A free static analysis tool that finds common bugs in shell scripts."
+   ]
+  ]
+ },
+ "observability": {
+  "add_subtopics": [
+   {
+    "title": "The Python logging module in practice",
+    "body": "The structured logging subtopic showed a JSON formatter. This one covers the everyday rules of Python's built-in logging module, which trip up many teams.\n\nThere are four parts. A logger is the object your code calls, such as log.info(...). A handler decides where records go: the console, a file, a log shipper. A formatter decides how each record looks. A level filters by importance: DEBUG, INFO, WARNING, ERROR, CRITICAL.\n\nIn every module, create one logger with logging.getLogger(__name__). Loggers form a tree by name, so billing.invoices passes its records up to billing and then to the root logger. Configure handlers once, at the program's entry point, for example with logging.config.dictConfig. Library code should never configure logging, since that is the application's choice. A common bug is adding handlers in several places, which prints every line twice. Another is calling basicConfig after something else already configured the root logger: it then does nothing.\n\nPass values as arguments, log.info(\"charged %s\", invoice_id), rather than building the string first. The string is only built if the level is enabled. Inside an except block, use log.exception, which logs at ERROR and adds the full traceback. Raise noisy libraries to WARNING instead of turning your own logs down.",
+    "example": "A customer reports that their FDE-built sync job 'fails silently'. The code used print for progress and except Exception: pass for errors, so nothing reached their log system. The fix: a logger per module, one dictConfig in main.py sending INFO to stdout, where the container platform collects it, and log.exception in each except block. The next failure shows a full traceback pointing to an expired API token.",
+    "code": "import logging\nimport logging.config\n\n# Configure ONCE, at the program's entry point (main.py), never in library code.\nlogging.config.dictConfig({\n    \"version\": 1,\n    \"disable_existing_loggers\": False,\n    \"formatters\": {\"plain\": {\"format\": \"%(asctime)s %(levelname)s %(name)s %(message)s\"}},\n    \"handlers\": {\"console\": {\"class\": \"logging.StreamHandler\", \"formatter\": \"plain\"}},\n    \"root\": {\"level\": \"INFO\", \"handlers\": [\"console\"]},\n    \"loggers\": {\"urllib3\": {\"level\": \"WARNING\"}},      # quiet a noisy dependency\n})\n\n# In every module: one logger named after the module.\nlog = logging.getLogger(\"billing.invoices\")          # normally logging.getLogger(__name__)\n\ndef charge(invoice_id, amount):\n    log.debug(\"charging %s amount=%s\", invoice_id, amount)   # hidden at INFO\n    try:\n        if amount <= 0:\n            raise ValueError(\"amount must be positive\")\n        log.info(\"charged invoice=%s amount=%.2f\", invoice_id, amount)\n    except ValueError:\n        log.exception(\"charge failed invoice=%s\", invoice_id)  # ERROR + traceback\n\ncharge(\"INV-3107\", 120.0)\ncharge(\"INV-3108\", -5)",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Level",
+      "Use it for"
+     ],
+     "rows": [
+      [
+       "DEBUG",
+       "Detail for developers, off in production"
+      ],
+      [
+       "INFO",
+       "Normal milestones: job started, 120 rows loaded"
+      ],
+      [
+       "WARNING",
+       "Something odd that the code handled"
+      ],
+      [
+       "ERROR",
+       "An operation failed; someone may need to act"
+      ],
+      [
+       "CRITICAL",
+       "The service cannot continue"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "Logger",
+    "The named object code calls to emit log records, arranged in a dot-separated tree."
+   ],
+   [
+    "Handler",
+    "The part of the logging module that sends records to a destination such as the console or a file."
+   ],
+   [
+    "Log level",
+    "The importance of a record, used to filter what is emitted."
+   ]
+  ]
+ },
+ "pm": {
+  "add_subtopics": [
+   {
+    "title": "Estimating effort and T-shirt sizing",
+    "body": "Customers and managers will ask how long something takes. You cannot know exactly, but you can give an honest range and improve it as you learn.\n\nEarly on, use T-shirt sizes: XS, S, M, L, XL. Each maps to a rough range of effort, agreed with your team. Sizing is fast and avoids false precision when the work is still vague. Anything XL is too large to estimate well, so split it into smaller pieces.\n\nWhen a piece becomes concrete, break it into tasks and use a three-point estimate for each: best case, most likely and worst case. The common PERT formula weights the most likely value: (best + 4 x likely + worst) / 6. The gap between best and worst shows your uncertainty.\n\nFDE work has special sources of delay. Access to systems, security reviews, customer data owners and change windows are often slower than the coding. List these dependencies next to the estimate, and state assumptions plainly: 'assuming VPN access by Monday'.\n\nGive estimates as ranges with a confidence level. Re-estimate at each milestone and tell people early when the range moves. Finally, compare estimates with actual time after each project. That record is the only reliable way to get better.",
+    "example": "Linwell Health asks how long it will take to add their SharePoint policies to the assistant. The FDE first says 'M, about one week of work, but access approval is the big unknown'. After a discovery call, they break it into four tasks and get a PERT total of about 16 engineer-days. They present 3 to 5 weeks, assuming SSO access within one week, and flag the SharePoint ingestion task as the riskiest.",
+    "code": "# Three-point (PERT) estimate per task, in engineer-days\ntasks = {\n    \"SSO login (customer IdP)\":        (1, 2, 6),    # (best, likely, worst)\n    \"Ingest 3 SharePoint sites\":       (3, 5, 12),\n    \"Eval set + judge (60 cases)\":     (2, 3, 5),\n    \"Deploy to customer Kubernetes\":   (2, 4, 10),\n}\n\ndef pert(o, m, p):\n    return (o + 4 * m + p) / 6, (p - o) / 6       # expected, rough std dev\n\ndef tshirt(days):\n    for size, limit in ((\"XS\", 1), (\"S\", 3), (\"M\", 5), (\"L\", 10)):\n        if days <= limit:\n            return size\n    return \"XL: split it\"\n\ntotal = 0\nfor name, (o, m, p) in tasks.items():\n    exp, sd = pert(o, m, p)\n    total += exp\n    print(f\"{name:32} {exp:5.1f} d  +/-{sd:.1f}  {tshirt(exp)}\")\nprint(f\"{'Total':32} {total:5.1f} d\")",
+    "lang": "Python",
+    "table": {
+     "headers": [
+      "Size",
+      "Rough effort",
+      "Example"
+     ],
+     "rows": [
+      [
+       "XS",
+       "Under 1 day",
+       "Add a field to an API response"
+      ],
+      [
+       "S",
+       "1 to 3 days",
+       "New prompt plus 20 eval cases"
+      ],
+      [
+       "M",
+       "3 to 5 days",
+       "Connector for one well-documented API"
+      ],
+      [
+       "L",
+       "1 to 2 weeks",
+       "SSO plus role-based access"
+      ],
+      [
+       "XL",
+       "Over 2 weeks",
+       "Too big: split before estimating"
+      ]
+     ]
+    }
+   }
+  ],
+  "add_glossary": [
+   [
+    "T-shirt sizing",
+    "Rough effort estimation using sizes like S, M and L instead of exact numbers."
+   ],
+   [
+    "Three-point estimate",
+    "An estimate built from best-case, most-likely and worst-case values."
+   ],
+   [
+    "PERT",
+    "A formula that weights the most likely value: (best + 4 x likely + worst) / 6."
+   ]
+  ]
+ }
+}

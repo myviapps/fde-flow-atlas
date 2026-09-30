@@ -1,0 +1,235 @@
+[
+ {
+  "id": "regulated",
+  "mod": 2,
+  "sec": "2.3",
+  "name": "Regulated industries",
+  "title": "Regulated industries and compliance frameworks",
+  "thesis": "Healthcare, finance and government customers bring rules that decide where data may live, who may see it and what evidence you must keep. An FDE who learns which frameworks apply in week one, and designs so the fewest systems are in scope, turns compliance from a late blocker into a normal part of the build.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "HIPAA needs a signed BAA with every vendor that touches PHI, including the cloud host and the LLM provider, plus the minimum necessary rule.",
+   "PCI DSS covers every system that touches card numbers; tokenisation keeps your AI system out of scope.",
+   "SOX and bank model risk guidance (SR 11-7) mean reviewed changes, separated duties, and documented, validated, monitored models.",
+   "FedRAMP, DoD Impact Levels and CJIS decide which cloud regions, services and people you may use for government data.",
+   "Data residency covers every copy: logs, backups, vector indexes, eval sets and the model endpoint, plus a working deletion path."
+  ],
+  "traps": [
+   "Sending PHI to an LLM API before confirming a BAA covers that provider and that endpoint.",
+   "Saying 'we are compliant' without naming the framework, version and scope of the certificate.",
+   "Leaving compliance reviews until the pilot ends, so go-live waits weeks for security and model risk sign-off."
+  ],
+  "qa": [
+   [
+    "A hospital wants a RAG pilot on discharge notes. What do you check before any data moves?",
+    "Whether every vendor in the chain has a signed BAA: our company, the cloud host and the model provider. Then the minimum necessary data for the task, whether de-identified data would do for the pilot, where the data and logs live, and who at the hospital signs off on privacy and security."
+   ],
+   [
+    "A bank asks whether your support agent is in PCI scope. How do you answer and design?",
+    "If it sees or stores full card numbers, it is in scope along with everything connected to it. I design it to receive only a token and the last four digits from the payment provider, so the provider stays the only system in the cardholder data environment, and I show that on a data-flow diagram."
+   ],
+   [
+    "An EU insurer wants all personal data kept in the EU. What does that mean for an AI build?",
+    "Every copy stays in EU regions: database, vector store, logs, backups and the model endpoint. If any processing leaves the EU, there must be a transfer basis such as SCCs. I also confirm we can delete one person's chunks and logs on request, and that a DPIA is done if the processing is high risk."
+   ]
+  ]
+ },
+ {
+  "id": "fieldlife",
+  "mod": 5,
+  "sec": "5.2",
+  "name": "Life on site: first 90 days",
+  "title": "Life on site: the first 90 days",
+  "thesis": "Much of an FDE's success happens outside the code: getting access fast, reading who really decides, protecting scope with written trades, keeping several accounts moving, and working at a pace you can keep for years.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Submit every access request on day one and track the approver for each; access is usually the slowest part of week one.",
+   "A one-page 30/60/90 plan, reviewed with the sponsor by the end of week two, aligns expectations early.",
+   "Map sponsors, blockers and influencers, and use cognitive empathy to learn what each one is protecting.",
+   "Handle scope creep by writing each ask down, sizing it and letting the sponsor choose a trade.",
+   "Agree support hours, on-call and escalation in writing before the first crisis, so peaks stay short."
+  ],
+  "traps": [
+   "Saying yes to every 'while you are here' ask, until the agreed goal slips and nobody knows why.",
+   "Treating a blocker as an enemy instead of asking what risk they are protecting.",
+   "Becoming the customer's personal on-call line, which leads straight to burnout."
+  ],
+  "qa": [
+   [
+    "What do you do in your first week at a new customer?",
+    "Submit all access requests with a named approver for each and chase them, meet the sponsor, owner, users and gatekeepers and ask each what success means, shadow real users, and work on sample data while access lands. By the end of week two I review a one-page 30/60/90 plan with the sponsor."
+   ],
+   [
+    "A manager keeps adding small requests to your pilot. How do you respond?",
+    "I thank them, add each request to a shared list, give a rough size, and take options to the sponsor: add it and move the date, swap it for something planned, or move it to a later phase. I keep a small weekly budget for quick goodwill fixes and track those too."
+   ],
+   [
+    "You support three customers and one is in crisis. How do you manage?",
+    "I tell my manager and the other two customers early, move non-urgent work with new dates, and agree a war-room lead, update times and an end point for the crisis. After it, I write down what we changed so the next incident needs less of me."
+   ]
+  ]
+ },
+ {
+  "id": "interviewrounds",
+  "mod": 7,
+  "sec": "7.2",
+  "name": "Interview rounds",
+  "title": "FDE interview rounds, step by step",
+  "thesis": "An FDE loop tests several different skills in separate rounds: pitch and fit, live coding, debugging in unfamiliar code, customer-framed system design, a take-home, and behavioral stories. Preparing for each round's real filter beats generic practice.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "rec",
+    90,
+    70,
+    "Recruiter screen",
+    "pitch and basics"
+   ],
+   [
+    "hm",
+    265,
+    70,
+    "Hiring manager",
+    "ownership, projects"
+   ],
+   [
+    "code",
+    440,
+    70,
+    "Live coding",
+    "think aloud, tests"
+   ],
+   [
+    "debug",
+    615,
+    70,
+    "Debugging round",
+    "unfamiliar repo"
+   ],
+   [
+    "design",
+    615,
+    220,
+    "System design",
+    "customer constraints"
+   ],
+   [
+    "take",
+    440,
+    220,
+    "Take-home",
+    "some loops only",
+    1
+   ],
+   [
+    "behav",
+    265,
+    220,
+    "Behavioral",
+    "STAR stories"
+   ],
+   [
+    "offer",
+    90,
+    220,
+    "Offer",
+    "level, comp, travel"
+   ]
+  ],
+  "edges": [
+   [
+    "rec",
+    "hm"
+   ],
+   [
+    "hm",
+    "code"
+   ],
+   [
+    "code",
+    "debug"
+   ],
+   [
+    "debug",
+    "design"
+   ],
+   [
+    "design",
+    "take"
+   ],
+   [
+    "take",
+    "behav"
+   ],
+   [
+    "behav",
+    "offer"
+   ]
+  ],
+  "note": "Read the loop left to right on the top row, then right to left on the bottom row. The order varies by company and the dashed take-home only appears in some loops; ask the recruiter for the exact rounds and practise each one separately.",
+  "ideas": [
+   "Ask the recruiter for the exact rounds, their length and whether AI tools are allowed, then practise each round on its own.",
+   "A 90-second pitch with one measured story answers 'why FDE?' in the screens.",
+   "In live coding and debugging rounds, method is scored: restate, plan, think aloud, test, and make the smallest correct fix.",
+   "FDE system design starts with the customer's constraints (SSO, residency, legacy systems) before drawing boxes.",
+   "Behavioral answers use STAR with 'I' and a number; the reverse interview is your chance to judge travel, load and growth."
+  ],
+  "traps": [
+   "Preparing only algorithm puzzles and freezing in a debugging round inside an unfamiliar repo.",
+   "Drawing an architecture in the design round before asking about the customer's users, data and constraints.",
+   "Using an AI assistant in a coding round without asking whether it is allowed."
+  ],
+  "qa": [
+   [
+    "How do you approach a debugging round?",
+    "I skim the README and layout, reproduce the failure, read the full trace, and form one hypothesis at a time, checking it with a print, breakpoint or small test and saying each step aloud. I make the smallest correct fix and add a regression test."
+   ],
+   [
+    "What makes an FDE system design answer different from a generic one?",
+    "It starts from a customer: who the users are, what data and systems they have, and constraints like SSO, private cloud, residency or a legacy source. I clarify those first, design the simplest thing that fits, walk one request through it, and say where I would push back and how I would measure success."
+   ],
+   [
+    "What questions do you ask at the end of an FDE interview?",
+    "How success is measured at 6 and 12 months, how many accounts an FDE carries, how much travel there is, how field feedback reaches product, what on-call looks like, and what makes people struggle in the role."
+   ]
+  ]
+ },
+ {
+  "id": "portfolio",
+  "mod": 7,
+  "sec": "7.3",
+  "name": "Portfolio and proof",
+  "title": "Building a portfolio that gets interviews",
+  "thesis": "A portfolio is public proof that you can build for real users and explain it: a clean GitHub profile, three featured projects with READMEs that lead with results, a three-minute demo, a few measured posts and small open-source work, all without leaking confidential data.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Pin three or four strong repos and add a short profile README that links projects and demos.",
+   "Lead each README with the problem, a GIF, the headline result and a three-command setup.",
+   "Feature projects that match the role: evals and agents for AI labs, tested pipelines for data platforms, integrations for SaaS.",
+   "A scripted three-minute demo and a few specific, measured posts show how you explain work to customers.",
+   "Rebuild customer-style work with synthetic data and invented names instead of publishing anything confidential."
+  ],
+  "traps": [
+   "Pinning dozens of tutorial repos so the good work is hard to find.",
+   "A README that lists the tech stack but never says what problem it solves or how well.",
+   "Publishing code, data or screenshots from an employer or customer without written permission."
+  ],
+  "qa": [
+   [
+    "Walk me through your best portfolio project in two minutes.",
+    "Who the user is and what hurt, what I built in one sentence, how I measured it and the result, one hard problem I solved, and one honest limitation with what I would do next. Then I offer to show the demo or the eval script."
+   ],
+   [
+    "How do you show customer work you cannot share?",
+    "I describe it at a general level with results my contract allows, and I rebuild the same pattern publicly with synthetic data and an invented company, clearly labelled as a sample scenario."
+   ]
+  ]
+ }
+]

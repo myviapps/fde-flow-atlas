@@ -1,0 +1,607 @@
+[
+ {
+  "mod": 2,
+  "sec": "2.2",
+  "name": "Data quality and matching",
+  "title": "Data quality, matching and reconciliation",
+  "thesis": "Customer data is almost never clean. Before you build anything on it, you profile it, write down what good looks like as automatic checks, merge the records that describe the same real-world thing, and prove with counts and totals that nothing was lost on the way.",
+  "format": "animation",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "src",
+    90,
+    70,
+    "New source",
+    "CSV, API, database"
+   ],
+   [
+    "prof",
+    265,
+    70,
+    "Profile",
+    "nulls, types, dupes"
+   ],
+   [
+    "exp",
+    440,
+    70,
+    "Expectations",
+    "rules as code"
+   ],
+   [
+    "norm",
+    615,
+    70,
+    "Normalise",
+    "case, suffixes"
+   ],
+   [
+    "match",
+    615,
+    210,
+    "Block and match",
+    "score 0 to 100"
+   ],
+   [
+    "review",
+    440,
+    210,
+    "Human review",
+    "the grey zone"
+   ],
+   [
+    "recon",
+    265,
+    210,
+    "Reconcile",
+    "counts, sums, hash"
+   ],
+   [
+    "owner",
+    90,
+    210,
+    "Owning team",
+    "data contract",
+    1
+   ],
+   [
+    "quar",
+    265,
+    350,
+    "Quarantine",
+    "failed rows held",
+    1
+   ]
+  ],
+  "edges": [
+   [
+    "src",
+    "prof"
+   ],
+   [
+    "prof",
+    "exp",
+    0,
+    "rules"
+   ],
+   [
+    "exp",
+    "norm",
+    0,
+    "pass"
+   ],
+   [
+    "norm",
+    "match",
+    0,
+    "pairs"
+   ],
+   [
+    "match",
+    "review",
+    0,
+    "unsure"
+   ],
+   [
+    "review",
+    "recon",
+    0,
+    "merged"
+   ],
+   [
+    "exp",
+    "quar",
+    0,
+    "fail"
+   ],
+   [
+    "quar",
+    "owner",
+    0,
+    "report"
+   ],
+   [
+    "recon",
+    "owner",
+    0,
+    "sign-off"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "A new source arrives",
+    "n": [
+     "src"
+    ],
+    "e": [],
+    "d": "The customer sends an export from their CRM. You know nothing yet about how clean it is, so you do not load it anywhere important.",
+    "l": [
+     2
+    ]
+   },
+   {
+    "t": "Profile it first",
+    "n": [
+     "src",
+     "prof"
+    ],
+    "e": [
+     "src>prof"
+    ],
+    "d": "Count rows, empty cells, distinct values and odd formats in each column. Ten minutes of profiling tells you which questions to ask the data owner.",
+    "l": [
+     3
+    ]
+   },
+   {
+    "t": "Write the rules down as code",
+    "n": [
+     "prof",
+     "exp"
+    ],
+    "e": [
+     "prof>exp"
+    ],
+    "d": "Turn what you learned into expectations: this column is required, that one is unique, this one only holds four country codes. The checks run on every load, not just once.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "Hold back what fails",
+    "n": [
+     "exp",
+     "quar"
+    ],
+    "e": [
+     "exp>quar"
+    ],
+    "d": "Rows that break a rule go to a quarantine table with the reason attached. Good rows keep flowing, and nothing is silently dropped.",
+    "l": [
+     4
+    ]
+   },
+   {
+    "t": "Normalise before comparing",
+    "n": [
+     "exp",
+     "norm"
+    ],
+    "e": [
+     "exp>norm"
+    ],
+    "d": "Lower-case names, strip legal suffixes like Ltd and punctuation, so 'Fenwick Tiles Ltd' and 'fenwick tiles' look alike.",
+    "l": [
+     5
+    ]
+   },
+   {
+    "t": "Block, then match",
+    "n": [
+     "norm",
+     "match"
+    ],
+    "e": [
+     "norm>match"
+    ],
+    "d": "Blocking only compares records that share something cheap, like a first letter or a postcode, so you do not compare every row with every other row. Each remaining pair gets a similarity score.",
+    "l": [
+     6,
+     7,
+     8,
+     9
+    ]
+   },
+   {
+    "t": "People decide the grey zone",
+    "n": [
+     "match",
+     "review"
+    ],
+    "e": [
+     "match>review"
+    ],
+    "d": "High scores merge automatically, low scores are left apart, and the uncertain middle goes to a person who knows the business.",
+    "l": [
+     10
+    ]
+   },
+   {
+    "t": "Prove nothing was lost",
+    "n": [
+     "review",
+     "recon"
+    ],
+    "e": [
+     "review>recon"
+    ],
+    "d": "Compare source and target: row counts, money totals and per-row checksums. Every row is either loaded, merged or in quarantine.",
+    "l": [
+     11
+    ]
+   },
+   {
+    "t": "Close the loop with the owner",
+    "n": [
+     "quar",
+     "recon",
+     "owner"
+    ],
+    "e": [
+     "quar>owner",
+     "recon>owner"
+    ],
+    "d": "Send the quarantine report and the reconciliation to the team that owns the source. A data contract makes the fixes theirs, so the same errors stop coming back."
+   }
+  ],
+  "code": "import difflib\nimport pandas as pd\nsrc = pd.DataFrame({\"id\": [1, 2, 3], \"name\": [\"Fenwick Tiles Ltd\", \"fenwick tiles\", None]})\nprint(src.isna().sum().to_dict())                       # profile: nulls per column\ngood, bad = src[src[\"name\"].notna()], src[src[\"name\"].isna()]   # expectation: name required\nnorm = good[\"name\"].str.lower().str.replace(r\"\\bltd\\b\", \"\", regex=True).str.strip()\npairs = [(a, b) for a in norm.index for b in norm.index\n         if a < b and norm[a][0] == norm[b][0]]         # block on first letter\nfor a, b in pairs:\n    score = difflib.SequenceMatcher(None, norm[a], norm[b]).ratio()\n    print(a, b, round(score, 2), \"match\" if score > 0.9 else \"review\")\nprint(\"in\", len(src), \"= kept\", len(good), \"+ quarantined\", len(bad))   # reconcile\n# {'id': 0, 'name': 1}\n# 0 1 1.0 match\n# in 3 = kept 2 + quarantined 1",
+  "codeTitle": "The whole pipeline in 12 lines (Python, pandas)",
+  "ideas": [
+   "Data quality has named dimensions: completeness, validity, uniqueness, consistency and timeliness. Measure each as a percentage.",
+   "Profile a source before you trust it; the profile tells you what to ask the owner.",
+   "Write expectations as code that runs on every load, and quarantine failures instead of deleting them.",
+   "Entity resolution is normalise, block, score, then let people review the uncertain middle.",
+   "Reconcile with counts, sums and checksums so you can prove every row is accounted for."
+  ],
+  "traps": [
+   "Dropping bad rows quietly: the totals stop matching and nobody can explain why.",
+   "Setting one fuzzy-match threshold with no human review, which merges 'Kestrel Dental' with 'Kestrel Motors'.",
+   "Fixing the data by hand every week instead of agreeing a contract so the owning team fixes it at the source."
+  ],
+  "qa": [
+   [
+    "A customer says their data is clean. What do you do in the first hour?",
+    "I profile it anyway: row counts, nulls and blanks per column, distinct values, min and max, duplicate keys and a sample of odd values. Then I write the three or four surprising findings on one page and ask the data owner about each. That turns 'clean' into numbers we both agree on."
+   ],
+   [
+    "How would you deduplicate 200,000 company records from two systems?",
+    "Normalise names and addresses, block on something cheap like postcode so I only compare plausible pairs, score each pair with a string similarity measure, auto-merge above a high threshold, send a middle band to a business reviewer, and keep a mapping table from old ids to the merged id so every merge can be undone and audited."
+   ],
+   [
+    "The migration finished. How do you prove it worked?",
+    "Reconcile at three levels: row counts per table, control totals such as the sum of invoice amounts per month, and a checksum per row to find the exact rows that differ. Every source row must be loaded, merged or quarantined with a reason, and the customer signs the reconciliation report."
+   ]
+  ],
+  "id": "dataquality"
+ },
+ {
+  "mod": 2,
+  "sec": "2.2",
+  "name": "Spreadsheets and Excel",
+  "title": "Spreadsheets and Excel automation",
+  "thesis": "Business users run much of their work in Excel and Google Sheets. An FDE meets them there: reads their messy workbooks reliably, writes reports that look the way they expect, replaces fragile macros with scheduled scripts, and knows when a spreadsheet has become a database in disguise.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "src",
+    90,
+    70,
+    "Messy workbook",
+    "sheets, merged cells"
+   ],
+   [
+    "read",
+    265,
+    70,
+    "Read with pandas",
+    "skip rows, headers"
+   ],
+   [
+    "tidy",
+    440,
+    70,
+    "Tidy table",
+    "one row per record"
+   ],
+   [
+    "calc",
+    615,
+    70,
+    "Calculate",
+    "lookups, pivots"
+   ],
+   [
+    "write",
+    615,
+    220,
+    "Write report",
+    "openpyxl, xlsxwriter"
+   ],
+   [
+    "send",
+    440,
+    220,
+    "Deliver",
+    "email, shared drive"
+   ],
+   [
+    "sched",
+    265,
+    220,
+    "Scheduler",
+    "runs every morning"
+   ],
+   [
+    "db",
+    90,
+    220,
+    "Database",
+    "when it outgrows",
+    1
+   ]
+  ],
+  "edges": [
+   [
+    "src",
+    "read"
+   ],
+   [
+    "read",
+    "tidy",
+    0,
+    "clean"
+   ],
+   [
+    "tidy",
+    "calc"
+   ],
+   [
+    "calc",
+    "write"
+   ],
+   [
+    "write",
+    "send"
+   ],
+   [
+    "sched",
+    "src",
+    0,
+    "triggers"
+   ],
+   [
+    "tidy",
+    "db",
+    0,
+    "too big?"
+   ]
+  ],
+  "note": "Read the top row left to right, then the bottom row right to left. The scheduler starts the whole chain each morning without anyone opening Excel; the dashed database box is where the data should move once many people edit it or it needs rules a sheet cannot enforce.",
+  "ideas": [
+   "Read workbooks defensively: list the sheets, skip title rows, rename columns yourself and drop total rows, even hidden ones.",
+   "Keep numbers as numbers and change only the display format, so users can still sort, filter and sum your report.",
+   "Speak the user's formulas: XLOOKUP is a left join, SUMIFS is filter then sum, a pivot table is pivot_table.",
+   "A macro that one person runs by hand is a single point of failure; a scheduled, logged script is not.",
+   "Move to a database when you need many writers, rules that must never break, or history of every change."
+  ],
+  "traps": [
+   "Trusting cell positions like 'row 3 is the header'; the next file will have an extra title row.",
+   "Writing numbers as text (for example '£2,400'), which looks right but breaks every sum and filter.",
+   "Replacing a spreadsheet with an app the users did not ask for, when a cleaner sheet plus a script would do."
+  ],
+  "qa": [
+   [
+    "A finance team sends you a 30-tab workbook every week. How do you automate the report without breaking when the layout changes?",
+    "Read sheets by name, find the header row by searching for a known column name instead of a fixed row number, rename columns to a fixed schema, drop total and blank rows, and check required columns before processing. When a sheet does not fit, skip it with a clear log message and alert someone rather than crashing or silently producing a wrong total."
+   ],
+   [
+    "When would you tell a customer to move a process out of a spreadsheet?",
+    "When several people edit it at once and overwrite each other, when rules like 'no double booking' must never break, when they need an audit trail of who changed what, or when it has grown past what Excel handles comfortably. I would show them the specific incident it caused and propose the smallest step, such as a database with the same columns and a sheet or simple form on top."
+   ],
+   [
+    "How do you replace a VBA macro safely?",
+    "Read the macro and write down every step it does, including the hidden ones. Rewrite it as a script, run both in parallel on the same inputs for a couple of cycles and compare outputs, then schedule the script with logging and an alert on failure. Keep the business owner in the loop and switch off the macro only after they sign off."
+   ]
+  ],
+  "id": "spreadsheets"
+ },
+ {
+  "mod": 2,
+  "sec": "2.6",
+  "name": "Browser automation",
+  "title": "Browser automation and scraping",
+  "thesis": "Many customer systems are old web portals with no public API. An FDE first looks for the hidden JSON calls the page already makes, falls back to a Playwright script that clicks like a person, parses the HTML with BeautifulSoup, and checks the terms, logins and legal limits before anything runs on a schedule.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "need",
+    90,
+    70,
+    "Portal task",
+    "data, no API"
+   ],
+   [
+    "terms",
+    265,
+    70,
+    "Check terms",
+    "ToS, robots.txt"
+   ],
+   [
+    "net",
+    440,
+    70,
+    "Network tab",
+    "look for JSON"
+   ],
+   [
+    "api",
+    615,
+    70,
+    "Call the JSON",
+    "requests + session"
+   ],
+   [
+    "save",
+    615,
+    220,
+    "Save output",
+    "CSV or database"
+   ],
+   [
+    "bs",
+    440,
+    220,
+    "Parse HTML",
+    "BeautifulSoup"
+   ],
+   [
+    "pw",
+    265,
+    220,
+    "Playwright",
+    "locators, waits"
+   ],
+   [
+    "agent",
+    90,
+    220,
+    "Browser agent",
+    "last resort",
+    1
+   ]
+  ],
+  "edges": [
+   [
+    "need",
+    "terms"
+   ],
+   [
+    "terms",
+    "net",
+    0,
+    "allowed"
+   ],
+   [
+    "net",
+    "api",
+    0,
+    "JSON found"
+   ],
+   [
+    "api",
+    "save",
+    0,
+    "rows"
+   ],
+   [
+    "net",
+    "pw",
+    0,
+    "no JSON"
+   ],
+   [
+    "pw",
+    "bs",
+    0,
+    "page HTML"
+   ],
+   [
+    "bs",
+    "save"
+   ],
+   [
+    "pw",
+    "agent",
+    0,
+    "too varied"
+   ]
+  ],
+  "note": "Read the top row left to right: check you are allowed, then look for a JSON call you can reuse. Only if there is none, drop to the bottom row: a Playwright script drives the page and BeautifulSoup reads the HTML. The dashed browser agent is for rare tasks where every page is different; for a fixed daily job a script is cheaper and more predictable.",
+  "ideas": [
+   "API first: most modern portals load their data as JSON, and calling that JSON directly is faster and less fragile than clicking.",
+   "Playwright locators find elements by role and label, and they wait automatically, so you almost never need sleep().",
+   "BeautifulSoup turns HTML into a tree you can search with CSS selectors; treat blanks and total rows as data-cleaning problems.",
+   "Logins are the hard part: prefer a service account, reuse saved sessions, and never try to defeat MFA or CAPTCHAs.",
+   "Get written permission, respect robots.txt and rate limits, and use a browser agent only when a fixed script cannot cope."
+  ],
+  "traps": [
+   "Scraping pages when the same data is available as a JSON call or an export button one click away.",
+   "Using a person's own login and MFA for a scheduled job, so it breaks when they change password or leave.",
+   "Running without permission or rate limits and getting the customer's account locked or their IP blocked."
+  ],
+  "qa": [
+   [
+    "A customer's supplier portal has no API. How do you get the data out every morning?",
+    "First I ask whether there is an export, a report email or a partner API, and I check the portal's terms with the customer. Then I open the network tab and look for JSON calls; if the page loads its table from one, I call that with a session. Only if there is none do I write a Playwright script with role-based locators, save the session so it logs in rarely, parse the HTML, validate the rows and alert a person when the page changes."
+   ],
+   [
+    "How do you handle MFA in an automation?",
+    "I do not try to get around it. I ask the customer for a service account meant for automation, ideally with an API key or a login the security team has approved. If a person must do MFA, they log in once, I save the browser session and reuse it, and the job alerts them when it expires instead of retrying."
+   ],
+   [
+    "When would you use a browser agent instead of a script?",
+    "When the task is rare, the pages differ every time, and a person checks the result, such as filling in a different supplier form each week. For a fixed daily job a script is faster, cheaper and does the same thing every time, so I keep the agent for the long tail."
+   ]
+  ],
+  "id": "webauto"
+ },
+ {
+  "mod": 0,
+  "sec": "0.10",
+  "name": "JavaScript and TypeScript",
+  "title": "JavaScript and TypeScript essentials",
+  "thesis": "Many customers' engineering teams work in JavaScript and TypeScript, and so do most AI lab SDK examples. An FDE needs enough to read and ship a small Node service: npm and package.json, types that catch mistakes before the code runs, async/await, runtime validation with zod, a model call on the server, and tests with vitest.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Node runs JavaScript outside the browser; npm installs packages listed in package.json, and the lockfile pins exact versions.",
+   "TypeScript adds types that tsc checks before the code runs, then removes them; unions and optional fields make you handle every case.",
+   "Anything slow (network, files, timers) returns a Promise; await pauses for it, and Promise.all runs independent calls at the same time.",
+   "Types vanish at runtime, so validate outside input (requests, model output, files) with a schema library such as zod.",
+   "Keep the model call and the API key on the server, test the plain functions with vitest, and read tsc errors from the first one down."
+  ],
+  "traps": [
+   "Trusting a type annotation on data that came from outside: JSON.parse returns whatever arrived, whatever the type says.",
+   "Forgetting await, so the code logs 'Promise { <pending> }' or carries on before the call finished.",
+   "Calling the model from browser code, which exposes the API key to anyone who opens developer tools."
+  ],
+  "qa": [
+   [
+    "The customer's team only writes TypeScript. How do you deliver an AI feature they can own?",
+    "I build it in their stack: a small Node service in TypeScript with strict mode on, zod schemas for every input and for the model's JSON output, the model call on the server, and vitest tests that run in their CI. I match their package manager, lint rules and folder layout, and walk one of their engineers through it before I leave."
+   ],
+   [
+    "What is the difference between a TypeScript type and a zod schema?",
+    "A type exists only while compiling: tsc uses it to check my code, then it is erased. A zod schema is a real object that runs at runtime and checks actual data, such as a request body or a model's JSON. With z.infer I get the type from the schema, so both always agree."
+   ],
+   [
+    "Your Node service is slow because it calls three APIs one after another. What do you change?",
+    "If the calls do not depend on each other, I start them together and await Promise.all, so the total time is roughly the slowest call rather than the sum. If one failure should not sink the others, I use Promise.allSettled and handle each result, and I add timeouts so one stuck call cannot hang the request."
+   ]
+  ],
+  "id": "typescript"
+ }
+]

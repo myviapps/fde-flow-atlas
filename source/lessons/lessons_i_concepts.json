@@ -1,0 +1,996 @@
+[
+ {
+  "id": "security",
+  "mod": 2,
+  "sec": "2.4",
+  "name": "Auth, SSO and access control",
+  "format": "animation",
+  "title": "Who are you, and what may you do?",
+  "thesis": "Authentication proves who someone is. Authorization decides what they may do. In enterprise deployments the customer's identity provider does the first part through SSO, your app receives signed tokens, and your code enforces the second part on every request.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: OIDC login with PKCE",
+  "code": "# OIDC login: authorization code flow with PKCE\nmeta = requests.get(ISSUER + \"/.well-known/openid-configuration\").json()\n\ndef start_login(session):\n    session[\"state\"] = secrets.token_urlsafe(16)     # anti-CSRF value\n    session[\"verifier\"] = secrets.token_urlsafe(64)  # PKCE secret\n    q = {\"response_type\": \"code\", \"client_id\": CLIENT_ID,\n         \"redirect_uri\": REDIRECT_URI, \"scope\": \"openid email profile\",\n         \"state\": session[\"state\"],\n         \"code_challenge\": s256(session[\"verifier\"]),\n         \"code_challenge_method\": \"S256\"}\n    return redirect(meta[\"authorization_endpoint\"] + \"?\" + urlencode(q))\n\ndef callback(session, code, state):\n    if state != session.pop(\"state\", None): abort(400)  # same browser?\n    tokens = requests.post(meta[\"token_endpoint\"], data={\n        \"grant_type\": \"authorization_code\", \"code\": code,\n        \"redirect_uri\": REDIRECT_URI, \"client_id\": CLIENT_ID,\n        \"client_secret\": CLIENT_SECRET,             # from a secrets vault\n        \"code_verifier\": session.pop(\"verifier\")}).json()\n    key = jwks.get_signing_key_from_jwt(tokens[\"id_token\"]).key\n    claims = jwt.decode(tokens[\"id_token\"], key, algorithms=[\"RS256\"],\n                        audience=CLIENT_ID, issuer=ISSUER)\n    session[\"user\"] = claims[\"sub\"]                 # user is logged in\n    return tokens[\"access_token\"]                   # send as Bearer to APIs",
+  "nodes": [
+   [
+    "user",
+    90,
+    70,
+    "User",
+    "clicks Sign in"
+   ],
+   [
+    "app",
+    265,
+    70,
+    "Your app",
+    "the OAuth client"
+   ],
+   [
+    "idp",
+    440,
+    70,
+    "Okta / Entra ID",
+    "customer's IdP",
+    1
+   ],
+   [
+    "login",
+    615,
+    70,
+    "Login + MFA",
+    "on the IdP's page",
+    1
+   ],
+   [
+    "code",
+    615,
+    220,
+    "Auth code",
+    "one-time, short"
+   ],
+   [
+    "token",
+    440,
+    220,
+    "Token exchange",
+    "back-channel POST"
+   ],
+   [
+    "tokens",
+    265,
+    220,
+    "ID + access JWT",
+    "signed, expiring"
+   ],
+   [
+    "api",
+    90,
+    220,
+    "Your API",
+    "verify, then RBAC"
+   ]
+  ],
+  "edges": [
+   [
+    "user",
+    "app"
+   ],
+   [
+    "app",
+    "idp",
+    0,
+    "redirect"
+   ],
+   [
+    "idp",
+    "login"
+   ],
+   [
+    "login",
+    "code",
+    0,
+    "redirect back"
+   ],
+   [
+    "code",
+    "token"
+   ],
+   [
+    "token",
+    "tokens"
+   ],
+   [
+    "tokens",
+    "api",
+    0,
+    "Bearer"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "The user clicks Sign in",
+    "n": [
+     "user",
+     "app"
+    ],
+    "e": [
+     "user>app"
+    ],
+    "d": "Your app does not ask for a password. In an enterprise deal the customer wants their staff to log in with the company account they already have. That is single sign-on (SSO).",
+    "l": [
+     3
+    ]
+   },
+   {
+    "t": "Redirect to the identity provider",
+    "n": [
+     "app",
+     "idp"
+    ],
+    "e": [
+     "app>idp"
+    ],
+    "d": "The app sends the browser to the customer's identity provider (IdP), such as Okta or Microsoft Entra ID. The URL carries the client id, the scopes wanted, a random state value and a PKCE challenge.",
+    "l": [
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11
+    ]
+   },
+   {
+    "t": "The IdP authenticates",
+    "n": [
+     "idp",
+     "login"
+    ],
+    "e": [
+     "idp>login"
+    ],
+    "d": "The user types their password and passes multi-factor authentication (MFA) on the IdP's own page. Your app never sees the password. The IdP also checks whether this user is assigned to your app."
+   },
+   {
+    "t": "A one-time code comes back",
+    "n": [
+     "login",
+     "code"
+    ],
+    "e": [
+     "login>code"
+    ],
+    "d": "The IdP redirects the browser back to your registered redirect URI with a short-lived authorization code and the same state value. Checking state proves the reply belongs to the login this browser started.",
+    "l": [
+     13,
+     14
+    ]
+   },
+   {
+    "t": "Swap the code for tokens",
+    "n": [
+     "code",
+     "token"
+    ],
+    "e": [
+     "code>token"
+    ],
+    "d": "Your server calls the IdP's token endpoint directly, server to server, with the code, its client secret and the PKCE verifier. A stolen code is useless without those.",
+    "l": [
+     15,
+     16,
+     17,
+     18,
+     19
+    ]
+   },
+   {
+    "t": "Verify the ID token",
+    "n": [
+     "token",
+     "tokens"
+    ],
+    "e": [
+     "token>tokens"
+    ],
+    "d": "The ID token is a JWT: a signed JSON document saying who the user is. Check the signature with the IdP's public keys, and check issuer, audience and expiry. Then create a session for the user.",
+    "l": [
+     20,
+     21,
+     22,
+     23
+    ]
+   },
+   {
+    "t": "Call the API with the access token",
+    "n": [
+     "tokens",
+     "api"
+    ],
+    "e": [
+     "tokens>api"
+    ],
+    "d": "The access token goes in the Authorization: Bearer header. The API verifies it the same way on every request, because a token is only trusted after its signature and expiry are checked.",
+    "l": [
+     24
+    ]
+   },
+   {
+    "t": "Authorization: may they do this?",
+    "n": [
+     "api"
+    ],
+    "d": "Knowing who the user is does not mean they may do everything. The API maps groups or claims to roles (RBAC) or evaluates attributes (ABAC) and returns 403 Forbidden when the check fails."
+   }
+  ],
+  "ideas": [
+   "Authentication (AuthN) answers who you are. Authorization (AuthZ) answers what you may do. 401 means not authenticated, 403 means authenticated but not allowed.",
+   "OAuth 2.0 is for delegated access (access tokens). OpenID Connect (OIDC) adds identity on top (the ID token). SAML is an older XML-based SSO standard many enterprises still require.",
+   "The authorization code flow keeps tokens out of the browser URL. PKCE and the state parameter protect against stolen codes and forged callbacks.",
+   "A JWT is signed, not encrypted. Anyone can read its claims, so never put secrets in it, and always verify signature, issuer, audience and expiry.",
+   "Machines use service accounts with their own narrowly scoped credentials, stored in a secrets manager and rotated."
+  ],
+  "traps": [
+   "Decoding a JWT without verifying it. A decoded token proves nothing until the signature check passes.",
+   "Checking authorization only in the frontend. Hiding a button is not access control; the API must check every request.",
+   "Putting client secrets or API keys in code, in git, or in a Docker image instead of a secrets manager."
+  ],
+  "qa": [
+   [
+    "Walk me through what happens when a user logs in to your app with their company Okta account.",
+    "The app redirects to Okta with client id, scopes, state and a PKCE challenge. The user authenticates with MFA at Okta. Okta redirects back with a one-time code. The server exchanges the code plus secret and verifier for an ID token and access token, verifies the JWT signature, issuer, audience and expiry, then creates a session. Authorization happens after that, by mapping Okta groups to roles in the app."
+   ],
+   [
+    "RBAC or ABAC for a hospital app where nurses see only their ward's patients?",
+    "Pure RBAC would need a role per ward, which explodes. ABAC fits: the rule compares user.ward to patient.ward plus the role. In practice teams combine them: roles for coarse permissions, attributes for row-level filters."
+   ],
+   [
+    "How do you handle secrets for a pipeline running in the customer's cloud?",
+    "Use a service account or workload identity with least privilege, store secrets in the cloud's secrets manager or Vault, inject them at runtime, rotate them, and never commit them. Audit who read them."
+   ]
+  ]
+ },
+ {
+  "id": "compliance",
+  "mod": 2,
+  "sec": "2.4",
+  "name": "Privacy and compliance",
+  "format": "text",
+  "title": "Handling other people's data safely",
+  "thesis": "Enterprise customers can only deploy you if their data stays protected and their auditors are satisfied. Know what sensitive data is, how it is classified and encrypted, where it lives, which laws and audits apply, and how to answer a security questionnaire honestly.",
+  "vb": null,
+  "ideas": [
+   "PII is anything that identifies a person. PHI is health information tied to a person and is regulated by HIPAA in the US.",
+   "Classify data first (public, internal, confidential, restricted). The class decides the controls: encryption, access, retention and where it may be sent.",
+   "Encrypt in transit (TLS) and at rest (disk or database encryption with managed keys). Customers treat this as the minimum.",
+   "GDPR is a law, HIPAA is a law, SOC 2 is an audit report. They answer different questions and customers may ask for all three.",
+   "Least privilege plus audit logs lets you show who accessed what, when, and why they were allowed to."
+  ],
+  "traps": [
+   "Sending customer data to a new third-party service, including an LLM API, before checking the contract, the DPA and the data classification.",
+   "Claiming certifications or controls you do not have on a security questionnaire. Answers become contractual commitments.",
+   "Copying production PII into a laptop, a notebook or a test database to debug faster."
+  ],
+  "qa": [
+   [
+    "A hospital wants to use your LLM feature on clinical notes. What do you check before any data moves?",
+    "That the notes are PHI, so a Business Associate Agreement must be in place with the hospital and with every subprocessor that touches PHI, including the model provider. Then data residency, encryption, retention and whether the provider stores or trains on inputs. Minimize what is sent, for example de-identify where the use case allows, and log access."
+   ],
+   [
+    "What is the difference between SOC 2 Type I and Type II?",
+    "Type I says an auditor found the controls well designed at one point in time. Type II says the controls operated effectively over a period, commonly several months to a year. Enterprise buyers usually want Type II."
+   ],
+   [
+    "A European customer asks where their data is stored. Why does it matter?",
+    "Under GDPR, transferring personal data outside the EU needs a legal mechanism such as Standard Contractual Clauses, and many customers have internal policies requiring EU residency. You answer with regions for storage, processing, backups and logs, plus the subprocessor list."
+   ]
+  ]
+ },
+ {
+  "id": "observability",
+  "mod": 2,
+  "sec": "2.5",
+  "name": "Logs, metrics and traces",
+  "format": "flowchart",
+  "title": "Seeing inside a running system",
+  "thesis": "You cannot fix what you cannot see. Logs record events, metrics count and time things, traces follow one request across services. Dashboards and alerts built on SLOs turn that data into action, and runbooks tell the on-call engineer what to do.",
+  "vb": [
+   710,
+   420
+  ],
+  "note": "Read left to right. Your service emits three kinds of signals, they are collected into one backend, and from there they feed dashboards for humans and alert rules that page the on-call engineer, whose incident ends in a postmortem.",
+  "nodes": [
+   [
+    "app",
+    90,
+    210,
+    "Your service",
+    "API, workers, LLM"
+   ],
+   [
+    "logs",
+    265,
+    70,
+    "Logs",
+    "JSON events"
+   ],
+   [
+    "metrics",
+    265,
+    210,
+    "Metrics",
+    "RED and USE"
+   ],
+   [
+    "traces",
+    265,
+    350,
+    "Traces",
+    "spans per request"
+   ],
+   [
+    "store",
+    440,
+    210,
+    "Telemetry store",
+    "via OTel Collector"
+   ],
+   [
+    "dash",
+    615,
+    70,
+    "Dashboards",
+    "SLIs over time"
+   ],
+   [
+    "alert",
+    615,
+    210,
+    "Alert rules",
+    "SLO burn rate"
+   ],
+   [
+    "oncall",
+    615,
+    350,
+    "On-call",
+    "runbook, mitigate"
+   ],
+   [
+    "post",
+    440,
+    350,
+    "Postmortem",
+    "blameless, fixes"
+   ]
+  ],
+  "edges": [
+   [
+    "app",
+    "logs"
+   ],
+   [
+    "app",
+    "metrics"
+   ],
+   [
+    "app",
+    "traces"
+   ],
+   [
+    "logs",
+    "store"
+   ],
+   [
+    "metrics",
+    "store"
+   ],
+   [
+    "traces",
+    "store"
+   ],
+   [
+    "store",
+    "dash"
+   ],
+   [
+    "store",
+    "alert"
+   ],
+   [
+    "alert",
+    "oncall",
+    0,
+    "page"
+   ],
+   [
+    "oncall",
+    "post"
+   ]
+  ],
+  "ideas": [
+   "Logs tell you what happened, metrics tell you how much and how often, traces tell you where the time went in one request.",
+   "RED for services: Rate, Errors, Duration. USE for resources: Utilization, Saturation, Errors.",
+   "An SLI is a measurement, an SLO is your target for it, an SLA is the contract promise with penalties. The error budget is 100% minus the SLO.",
+   "Alert on symptoms users feel (error rate, latency, SLO burn), not on every CPU spike. Every page should link to a runbook.",
+   "For LLM features, trace each model call with model name, token counts, latency, cost and the prompt version."
+  ],
+  "traps": [
+   "Logging free text like 'error happened' with no request id, so nothing can be correlated or searched.",
+   "Logging secrets, tokens or raw PII into a log system that many people can read.",
+   "Paging people for noisy alerts that need no action. Alert fatigue makes teams ignore the real page."
+  ],
+  "qa": [
+   [
+    "Users say the app is slow sometimes. How do you find out why?",
+    "Check the latency metric by percentile (p50, p95, p99) and endpoint to see when and where. Pick slow requests and open their traces to see which span dominates, such as a database query or an LLM call. Then read the logs for those request ids to see the details."
+   ],
+   [
+    "Your SLO is 99.9% availability per 30 days. What is the error budget and how do you use it?",
+    "0.1% of 30 days, about 43 minutes of downtime or the equivalent share of failed requests. While budget remains the team can ship changes. If it burns fast, you alert and slow releases to focus on reliability."
+   ],
+   [
+    "What would you monitor for an LLM agent in production?",
+    "Request rate, error rate and latency like any service, plus tokens and cost per request, tool-call failures, retries, model and prompt versions, and quality signals such as eval scores or user feedback, all tied together by trace id."
+   ]
+  ]
+ },
+ {
+  "id": "caching",
+  "mod": 2,
+  "sec": "2.5",
+  "name": "Caching and performance",
+  "format": "animation",
+  "title": "Answering fast by not doing the work twice",
+  "thesis": "A cache keeps a copy of a result close to where it is needed so the next request skips the slow work. Caches live at every layer, from the browser to the database. The hard part is deciding how stale a copy may be and removing it when the truth changes.",
+  "vb": [
+   710,
+   290
+  ],
+  "codeTitle": "Python: cache-aside with Redis",
+  "code": "import json, redis\nr = redis.Redis(host=\"localhost\", port=6379, decode_responses=True)\nTTL = 300  # seconds of staleness we accept\n\ndef get_product(pid: int) -> dict:\n    key = f\"product:{pid}:v1\"\n    cached = r.get(key)                    # 1. look in the cache\n    if cached is not None:\n        return json.loads(cached)          # hit: about a millisecond\n    row = db.fetch_one(\"SELECT * FROM products WHERE id = %s\", (pid,))\n    r.set(key, json.dumps(row), ex=TTL)    # 2. fill, with a TTL\n    return row\n\ndef update_price(pid: int, price: float):\n    db.execute(\"UPDATE products SET price = %s WHERE id = %s\", (price, pid))\n    r.delete(f\"product:{pid}:v1\")          # 3. invalidate on write\n\n# Browser and CDN caching is set by response headers:\n# Cache-Control: public, max-age=86400   (logo, JS, CSS)\n# Cache-Control: private, no-store       (a user's cart)",
+  "nodes": [
+   [
+    "user",
+    90,
+    70,
+    "Browser",
+    "its own cache"
+   ],
+   [
+    "cdn",
+    265,
+    70,
+    "CDN edge",
+    "static files"
+   ],
+   [
+    "app",
+    440,
+    70,
+    "App server",
+    "your API code"
+   ],
+   [
+    "redis",
+    615,
+    70,
+    "Redis",
+    "in-memory cache"
+   ],
+   [
+    "miss",
+    615,
+    220,
+    "Cache miss",
+    "key not found"
+   ],
+   [
+    "db",
+    440,
+    220,
+    "Database",
+    "the source of truth"
+   ],
+   [
+    "fill",
+    265,
+    220,
+    "Fill cache",
+    "SET with TTL"
+   ],
+   [
+    "inval",
+    90,
+    220,
+    "Invalidate",
+    "on write or expiry"
+   ]
+  ],
+  "edges": [
+   [
+    "user",
+    "cdn",
+    0,
+    "GET"
+   ],
+   [
+    "cdn",
+    "app",
+    0,
+    "not cached"
+   ],
+   [
+    "app",
+    "redis",
+    14,
+    "GET key"
+   ],
+   [
+    "redis",
+    "app",
+    14,
+    "hit"
+   ],
+   [
+    "redis",
+    "miss"
+   ],
+   [
+    "miss",
+    "db"
+   ],
+   [
+    "db",
+    "fill"
+   ],
+   [
+    "fill",
+    "inval",
+    0,
+    "later"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "The browser checks itself first",
+    "n": [
+     "user"
+    ],
+    "d": "Caching starts on the user's machine. If a previous response said Cache-Control: max-age=86400, the browser reuses its copy for a day and sends no request at all.",
+    "l": [
+     17,
+     18,
+     19
+    ]
+   },
+   {
+    "t": "A CDN answers from nearby",
+    "n": [
+     "user",
+     "cdn"
+    ],
+    "e": [
+     "user>cdn"
+    ],
+    "d": "A CDN (content delivery network) is a set of servers around the world holding copies of static files. A user in Sydney gets the logo from a Sydney server instead of your origin in Virginia.",
+    "l": [
+     18
+    ]
+   },
+   {
+    "t": "Dynamic requests reach your app",
+    "n": [
+     "cdn",
+     "app"
+    ],
+    "e": [
+     "cdn>app"
+    ],
+    "d": "Personal or fast-changing data, like a product's live price, passes through to your application server. Doing the database work every time would be slow and expensive under load."
+   },
+   {
+    "t": "Look in Redis",
+    "n": [
+     "app",
+     "redis"
+    ],
+    "e": [
+     "app>redis"
+    ],
+    "d": "Redis is an in-memory key-value store. The app builds a key such as product:42:v1 and asks for it. This pattern, where the app checks the cache itself, is called cache-aside.",
+    "l": [
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "t": "Cache hit",
+    "n": [
+     "redis",
+     "app"
+    ],
+    "e": [
+     "redis>app"
+    ],
+    "d": "If the key exists, the app returns it right away, often in about a millisecond, and the database is never touched. The share of requests served this way is the hit rate.",
+    "l": [
+     7,
+     8
+    ]
+   },
+   {
+    "t": "Cache miss goes to the database",
+    "n": [
+     "miss",
+     "db"
+    ],
+    "e": [
+     "redis>miss",
+     "miss>db"
+    ],
+    "d": "If the key is absent, the app runs the real query. The database stays the source of truth; the cache is only a copy.",
+    "l": [
+     9
+    ]
+   },
+   {
+    "t": "Fill the cache with a TTL",
+    "n": [
+     "db",
+     "fill"
+    ],
+    "e": [
+     "db>fill"
+    ],
+    "d": "The app stores the result with a time to live (TTL), here 300 seconds. After that Redis deletes it, which caps how stale the copy can ever be.",
+    "l": [
+     2,
+     10,
+     11
+    ]
+   },
+   {
+    "t": "Invalidate when the truth changes",
+    "n": [
+     "fill",
+     "inval"
+    ],
+    "e": [
+     "fill>inval"
+    ],
+    "d": "When the price is updated, the app deletes the key so the next read fetches fresh data. Forgetting this step is the classic caching bug: users see old prices until the TTL runs out.",
+    "l": [
+     13,
+     14,
+     15
+    ]
+   }
+  ],
+  "ideas": [
+   "Latency is how long one request takes. Throughput is how many requests per second the system handles. Caching usually improves both.",
+   "Caches live at many layers: browser, CDN, application memory, Redis, and inside the database itself.",
+   "Cache-aside: read the cache, on a miss read the source and fill the cache. Invalidate or let the TTL expire on writes.",
+   "For LLMs, response caching reuses a whole answer for an identical request. Prompt caching lets the provider reuse the processed shared prefix of a prompt, cutting cost and latency even when the end differs.",
+   "Measure before and after with a load test. Look at p95 and p99 latency, not only the average."
+  ],
+  "traps": [
+   "Caching personal data under a shared key, so one user sees another user's account.",
+   "No TTL and no invalidation, so stale data lives forever.",
+   "A popular key expires and hundreds of requests hit the database at once (a cache stampede). Add jitter to TTLs or let one request refill while others wait."
+  ],
+  "qa": [
+   [
+    "An internal dashboard takes 8 seconds to load. How would you speed it up?",
+    "Measure first: trace the request to find the slow part. If it is a repeated heavy query over data that changes hourly, cache the result in Redis with a TTL near that interval, or precompute it into a summary table. Add indexes if the query itself is poor. Then load test to confirm p95 improved."
+   ],
+   [
+    "When should you not cache?",
+    "When data must be exactly current, such as an account balance used to approve a payment, when every request is unique so the hit rate would be near zero, or when caching would risk mixing users' private data."
+   ],
+   [
+    "How does prompt caching differ from caching LLM responses?",
+    "Response caching stores the final answer and returns it for an identical request, so it only helps on repeats. Prompt caching stores the model's processed form of a long shared prefix, like a big system prompt or document, and still generates a fresh answer for each new question."
+   ]
+  ]
+ },
+ {
+  "id": "queues",
+  "mod": 2,
+  "sec": "2.5",
+  "name": "Queues and background jobs",
+  "format": "animation",
+  "title": "Doing slow work without making anyone wait",
+  "thesis": "Some work is too slow or too unreliable to do while a user waits. Put a message on a queue, reply at once, and let background workers process it with retries. Make each job idempotent so running it twice is harmless, and park jobs that keep failing in a dead-letter queue.",
+  "vb": [
+   710,
+   420
+  ],
+  "codeTitle": "Python: FastAPI + Celery job",
+  "code": "# api.py (FastAPI): accept quickly, do the work later\n@api.post(\"/reports\", status_code=202)\ndef create_report(req: ReportRequest, idempotency_key: str = Header()):\n    job = jobs.get_or_create(idempotency_key, payload=req.model_dump())\n    summarize.delay(job.id)                   # enqueue; returns at once\n    return {\"job_id\": job.id, \"status\": \"queued\"}\n\n# worker.py (Celery)\n@app.task(bind=True, acks_late=True,\n          autoretry_for=(RateLimited, TimeoutError),\n          retry_backoff=True, retry_jitter=True, max_retries=5)\ndef summarize(self, job_id: str):\n    job = jobs.get(job_id)\n    if job.status == \"done\":                  # delivered twice? skip\n        return\n    text = call_llm(job.payload)              # slow, may raise\n    jobs.finish(job_id, result=text)          # status = done\n    send_webhook(job.callback_url, {\"job_id\": job_id, \"status\": \"done\"})\n\n# After max_retries Celery marks the task FAILED. Record it in a\n# dead-letter queue or table (SQS does this with maxReceiveCount).",
+  "nodes": [
+   [
+    "client",
+    90,
+    70,
+    "Client",
+    "POST /reports"
+   ],
+   [
+    "api",
+    265,
+    70,
+    "API",
+    "replies 202 + id"
+   ],
+   [
+    "queue",
+    440,
+    70,
+    "Queue",
+    "SQS or RabbitMQ"
+   ],
+   [
+    "worker",
+    615,
+    70,
+    "Worker",
+    "Celery or RQ"
+   ],
+   [
+    "llm",
+    615,
+    210,
+    "LLM call",
+    "slow, may fail",
+    1
+   ],
+   [
+    "store",
+    440,
+    210,
+    "Job table",
+    "status + result"
+   ],
+   [
+    "hook",
+    265,
+    210,
+    "Webhook",
+    "signed POST"
+   ],
+   [
+    "cust",
+    90,
+    210,
+    "Customer system",
+    "gets the result",
+    1
+   ],
+   [
+    "dlq",
+    440,
+    350,
+    "Dead-letter",
+    "gave up after 5"
+   ]
+  ],
+  "edges": [
+   [
+    "client",
+    "api",
+    0,
+    "POST"
+   ],
+   [
+    "api",
+    "queue",
+    0,
+    "enqueue"
+   ],
+   [
+    "queue",
+    "worker",
+    14,
+    "deliver"
+   ],
+   [
+    "worker",
+    "queue",
+    14,
+    "retry"
+   ],
+   [
+    "worker",
+    "llm"
+   ],
+   [
+    "llm",
+    "store",
+    0,
+    "result"
+   ],
+   [
+    "store",
+    "hook"
+   ],
+   [
+    "hook",
+    "cust"
+   ],
+   [
+    "llm",
+    "dlq",
+    0,
+    "max retries"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "The client asks for slow work",
+    "n": [
+     "client",
+     "api"
+    ],
+    "e": [
+     "client>api"
+    ],
+    "d": "A customer wants a summary of 400 contracts. That could take minutes, and HTTP requests usually time out after 30 to 60 seconds. So the API must not do the work inside the request.",
+    "l": [
+     1,
+     2
+    ]
+   },
+   {
+    "t": "Enqueue and reply 202",
+    "n": [
+     "api",
+     "queue"
+    ],
+    "e": [
+     "api>queue"
+    ],
+    "d": "The API saves a job row, puts a small message with the job id on a queue, and answers 202 Accepted with the job id. The client can poll GET /reports/{id} or wait for a webhook.",
+    "l": [
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "t": "A worker picks it up",
+    "n": [
+     "queue",
+     "worker"
+    ],
+    "e": [
+     "queue>worker"
+    ],
+    "d": "Workers are separate processes that pull messages and run them. Add more workers to go faster. With acks_late the message is only removed after the task finishes, so a crashed worker's job is delivered again.",
+    "l": [
+     8,
+     11
+    ]
+   },
+   {
+    "t": "Call the slow dependency",
+    "n": [
+     "worker",
+     "llm"
+    ],
+    "e": [
+     "worker>llm"
+    ],
+    "d": "The worker calls the LLM. This is where rate limits, timeouts and outages happen, so this is the part that needs protection.",
+    "l": [
+     15
+    ]
+   },
+   {
+    "t": "Retry transient failures",
+    "n": [
+     "worker",
+     "queue"
+    ],
+    "e": [
+     "worker>queue"
+    ],
+    "d": "A 429 or a timeout is transient, so the task is retried later with exponential backoff and jitter, up to a limit. A bug, like a malformed payload, should fail at once instead.",
+    "l": [
+     9,
+     10
+    ]
+   },
+   {
+    "t": "Make the job idempotent",
+    "n": [
+     "worker",
+     "store"
+    ],
+    "d": "Queues promise at-least-once delivery, so the same job can arrive twice. The worker checks the job status first, and the API used an idempotency key, so a retry never creates a second report or a second charge.",
+    "l": [
+     2,
+     3,
+     13,
+     14
+    ]
+   },
+   {
+    "t": "Save the result",
+    "n": [
+     "llm",
+     "store"
+    ],
+    "e": [
+     "llm>store"
+    ],
+    "d": "The result and status go into a job table. That table is what the polling endpoint reads and what support looks at when a customer asks where their report is.",
+    "l": [
+     16
+    ]
+   },
+   {
+    "t": "Notify with a webhook",
+    "n": [
+     "store",
+     "hook",
+     "cust"
+    ],
+    "e": [
+     "store>hook",
+     "hook>cust"
+    ],
+    "d": "A webhook is an HTTP POST your system sends to a URL the customer registered. Sign it with an HMAC so they can verify it came from you, and retry it too if their endpoint is down.",
+    "l": [
+     17
+    ]
+   },
+   {
+    "t": "Park what keeps failing",
+    "n": [
+     "dlq"
+    ],
+    "e": [
+     "llm>dlq"
+    ],
+    "d": "After the retry limit the message goes to a dead-letter queue (DLQ) instead of looping forever. Someone is alerted, fixes the cause and replays it.",
+    "l": [
+     19,
+     20
+    ]
+   }
+  ],
+  "ideas": [
+   "Do work synchronously when the user needs the answer now and it is fast. Do it asynchronously when it is slow, bursty, or depends on something unreliable.",
+   "A queue (SQS, RabbitMQ) hands each message to one worker and deletes it when done. A log (Kafka) keeps an ordered history that many consumers can read and replay.",
+   "Delivery is at least once, so jobs must be idempotent: running one twice gives the same result as once.",
+   "Retry transient errors with backoff and jitter, cap the attempts, and send the rest to a dead-letter queue with an alert.",
+   "Long LLM work fits this shape: enqueue, return a job id, process in workers or a provider batch API, then notify by webhook or polling."
+  ],
+  "traps": [
+   "Doing a multi-minute LLM job inside the HTTP request, so the load balancer times out and the client retries, starting the job again.",
+   "Non-idempotent jobs that send an email or charge a card twice when a message is redelivered.",
+   "Retrying forever, or with no delay, so a failing dependency gets hammered and the queue backs up."
+  ],
+  "qa": [
+   [
+    "Design a feature where users upload 500 PDFs and get LLM summaries.",
+    "Upload to object storage, create a job with an idempotency key, enqueue one message per document, and return 202 with the job id. Workers summarize each document with retries and backoff within the rate limit, write results to a job table, and a final step aggregates and sends a webhook. Failed documents go to a DLQ and show as failed in the job status."
+   ],
+   [
+    "When would you choose Kafka over SQS?",
+    "When several independent consumers need the same stream of events, when you need to replay history, or when ordering per key and very high throughput matter. For a simple work queue where each task is done once, SQS or RabbitMQ is simpler to run."
+   ],
+   [
+    "What does idempotent mean and how do you implement it?",
+    "Doing the operation twice has the same effect as once. Implement it with an idempotency key stored with a unique constraint, by checking status before acting, or by using upserts keyed on a natural id instead of blind inserts."
+   ]
+  ]
+ }
+]

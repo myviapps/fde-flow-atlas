@@ -1,0 +1,62 @@
+{
+ "pandas": {
+  "title": "Pellmoor Veterinary Group: a revenue report that never matched finance",
+  "company": "Pellmoor Veterinary Group (made up), chain of 14 animal clinics, about 300 staff, United Kingdom",
+  "situation": "Pellmoor's operations team built a monthly revenue-by-region report by pasting each clinic's visit export into one spreadsheet. The report was about 6 percent above the finance ledger every month, and an analyst spent two days each month trying to reconcile it. The group wanted to use the same data for a new appointment-demand forecast.",
+  "problem": "Nobody could say which rows were wrong, so every month the gap was simply noted and ignored. Rebuilding the spreadsheet by hand would take the same two days and repeat the same hidden errors, and a forecast trained on inflated numbers would plan too many appointment slots.",
+  "approach": [
+   "Loaded one month of all 14 exports with pd.read_csv and inspected shape, dtypes and isna().sum(), writing down every surprise before cleaning anything.",
+   "Found that fee loaded as text in three clinics' files because of a currency symbol, and converted it with str.replace and pd.to_numeric(errors=\"coerce\"), then counted the 9 values that still failed and sent them to the clinics.",
+   "Noticed dates such as 03/02/2026 and confirmed with the practice managers that all clinics write day first, then parsed with format=\"%d/%m/%Y\" instead of letting the tool guess.",
+   "Removed 212 visits that appeared twice because two clinics exported overlapping date ranges, using drop_duplicates on visit_id.",
+   "Merged the clinic lookup with validate=\"many_to_one\", which failed at once: clinic K02 was listed twice after a rename. The operations lead confirmed which row was current and the old one was removed.",
+   "Added a check step that asserts unique visit IDs, an unchanged row count after the merge and no unknown clinics, and prints the monthly total next to the ledger figure."
+  ],
+  "artifact": {
+   "lang": "Python",
+   "code": "import io\nimport pandas as pd\n\nvisits = pd.read_csv(io.StringIO(\"\"\"visit_id,clinic_id,visit_date,fee\nV1,K01,03/02/2026,85.00\nV2,K02,14/02/2026,120.00\nV2,K02,14/02/2026,120.00\nV3,K07,28/02/2026,64.50\n\"\"\"))\nclinics = pd.read_csv(io.StringIO(\"\"\"clinic_id,clinic_name,region\nK01,Harbour Road,South\nK02,Mill Lane,North\nK02,Mill Lane (old),North\nK07,Station Yard,East\n\"\"\"))\n\nvisits[\"visit_date\"] = pd.to_datetime(visits[\"visit_date\"], format=\"%d/%m/%Y\")  # UK day-first\nvisits = visits.drop_duplicates(subset=\"visit_id\")\nclinics = clinics.drop_duplicates(subset=\"clinic_id\", keep=\"first\")\nreport = visits.merge(clinics, on=\"clinic_id\", how=\"left\", validate=\"many_to_one\")\n\nassert len(report) == len(visits), \"merge changed the row count\"\nassert report[\"region\"].notna().all(), \"visit with unknown clinic\"\nprint(report.groupby(\"region\")[\"fee\"].sum().to_dict())\n# {'East': 64.5, 'North': 120.0, 'South': 85.0}"
+  },
+  "outcome": "The cleaned February total came within 0.3 percent of the finance ledger, down from a 6 percent gap, and the remaining difference was traced to refunds booked in March. The monthly report now runs in under a minute from the raw exports, and the forecast project started from data finance had signed off.",
+  "lessons": [
+   "Inspect dtypes first: a number column stored as text tells you exactly where to look.",
+   "Ask the customer how dates are written; never let the tool guess day-first versus month-first.",
+   "Duplicate keys in a lookup table silently inflate totals after a merge, so validate every merge.",
+   "Reconciling against a number the customer already trusts is what earns trust in your file."
+  ],
+  "discuss": [
+   "The 9 fees that could not be read are small. Would you drop them, fill them, or hold the report until the clinics answer? Why?",
+   "How would you make the checks run automatically each month and alert someone when they fail?",
+   "What would you say to the operations lead who built the old spreadsheet, so the new process is adopted rather than resented?"
+  ]
+ },
+ "debugging": {
+  "title": "Keswinde Mutual: claims silently missing from a nightly sync",
+  "company": "Keswinde Mutual (made up), home and motor insurer, about 1,200 staff, Netherlands",
+  "situation": "An AI triage tool ranked new insurance claims each morning from a nightly sync with Keswinde's policy system. Three weeks after a release, claims handlers started finding claims in the policy system that never appeared in triage. The job logged no errors, and between 1 and 99 claims were missing each night, about 1-2 percent of volume.",
+  "problem": "Keswinde's IT team proposed a full re-sync of all open claims every night, which would have hidden the gap at about six times the API cost. Retries would not help either, because nothing was failing; the code believed it had finished successfully. The FDE had never worked in this repo before.",
+  "approach": [
+   "Reproduced the gap on staging for one fixed window (10-11 March): the policy system reported 4,812 claims and the sync stored 4,800, every time.",
+   "Found the way in by grepping for the scheduled job name, which led to the entry point in sync/cli.py and the fetch_all function, and ran the test suite first to note two tests that already failed.",
+   "Noticed the missing counts were always under 100, the API page size, and wrote down one hypothesis: the last partial page is skipped.",
+   "Built a 20-line minimal repro with a fake API of 250 claims; it received 200 and exited with code 1, confirming the hypothesis without touching production.",
+   "Ran git bisect run with the repro between the last good release and HEAD. After 6 of 40 commits it named a refactor that computed the page count as total // page_size.",
+   "Fixed it with math.ceil, added regression tests for 0, 100, 200 and 250 claims, and wrote a bug report with impact, evidence and a backfill plan for the platform team."
+  ],
+  "artifact": {
+   "lang": "Text",
+   "code": "Title: Nightly claims sync drops the last partial page\n\nImpact     1-99 claims per night never reach triage (about 1-2%), since 3 March\nRepro      repro_pages.py (attached): fake API, 250 claims -> 200 arrive, exit 1\n           Real window: 10-11 March on staging, 4,812 expected, 4,800 synced\nBisect     git bisect run python repro_pages.py\n           first bad commit: a1c9e42 \"refactor: compute page count up front\"\nCause      pages = total // PAGE_SIZE   (250 // 100 = 2, last 50 skipped)\nFix        pages = math.ceil(total / PAGE_SIZE), PR #412\nTests      new cases for 0, 100, 200 and 250 claims; all pass\nBackfill   one-off sync of 3-24 March: 1,006 missing claims loaded, counts match\nWhy no retries or full re-sync: nothing was failing, so retries change nothing,\nand a nightly full re-sync would hide the bug at 6x the API cost."
+  },
+  "outcome": "The fix was merged the next day and a one-off backfill loaded 1,006 missing claims from the previous three weeks. For the following 30 nights, synced counts matched the policy system exactly, and the nightly full re-sync was never needed.",
+  "lessons": [
+   "A bug with no errors is still reproducible: compare counts for a fixed window.",
+   "Patterns in the numbers (always under the page size) point to a hypothesis.",
+   "A minimal repro that exits non-zero turns git bisect into an automatic search.",
+   "Retries and re-syncs hide causes; fix the cause and backfill what was lost."
+  ],
+  "discuss": [
+   "How would you have caught this before release? Which test or monitoring check was missing?",
+   "The customer's manager wants the re-sync anyway \"to be safe\". How do you respond?",
+   "What would you do differently if you could not run code on staging and only had production logs?"
+  ]
+ }
+}

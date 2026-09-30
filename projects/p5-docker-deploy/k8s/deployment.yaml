@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tickets-api
+  labels: {app: tickets-api}
+spec:
+  # SQLite lives inside the pod, so keep ONE replica. Use Postgres before scaling out.
+  replicas: 1
+  selector:
+    matchLabels: {app: tickets-api}
+  template:
+    metadata:
+      labels: {app: tickets-api}
+    spec:
+      containers:
+        - name: api
+          image: tickets-api:local
+          imagePullPolicy: IfNotPresent     # use the image loaded into kind, don't pull
+          ports:
+            - containerPort: 8000
+          env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef: {name: tickets-api, key: api-key}
+            - name: DATABASE_URL
+              value: sqlite:////data/tickets.db
+          volumeMounts:
+            - {name: data, mountPath: /data}
+          readinessProbe:                   # gate traffic until the DB answers
+            httpGet: {path: /readyz, port: 8000}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:                    # restart only if the process is stuck
+            httpGet: {path: /healthz, port: 8000}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+      volumes:
+        - name: data
+          emptyDir: {}                      # demo only: data is lost when the pod is replaced

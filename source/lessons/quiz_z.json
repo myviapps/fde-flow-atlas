@@ -1,0 +1,230 @@
+{
+ "regulated": [
+  {
+   "q": "Under HIPAA, what must be in place before an LLM vendor may receive a hospital's PHI?",
+   "options": [
+    "A SOC 2 Type I report from the vendor",
+    "A signed Business Associate Agreement covering that service",
+    "A DPIA approved by an EU regulator",
+    "An ISO 27001 certificate covering the hospital"
+   ],
+   "answer": 1,
+   "why": "Vendors handling PHI for a covered entity must sign a BAA first. SOC 2 and ISO reports are helpful evidence but do not replace it."
+  },
+  {
+   "q": "What does PCI DSS scope reduction through tokenisation achieve?",
+   "options": [
+    "It encrypts card data so every system can store it safely",
+    "It removes the need for any payment provider audits",
+    "Systems that see only tokens stay out of the cardholder data environment",
+    "It lets you keep card security codes after authorisation"
+   ],
+   "answer": 2,
+   "why": "If your system receives only a token and never the real card number, it is not part of the cardholder data environment. Security codes must never be stored after authorisation."
+  },
+  {
+   "q": "A federal agency asks for your AI search tool. Which question matters most early?",
+   "options": [
+    "Which FedRAMP baseline they need and whether each service is authorised in that region",
+    "Whether their staff prefer a chat window or a search box",
+    "Which programming language their team knows best",
+    "Whether they have a SOC 2 report of their own"
+   ],
+   "answer": 0,
+   "why": "Federal agencies can only use authorised cloud services, and a model or store missing from the government region can decide the whole architecture."
+  },
+  {
+   "q": "A German insurer wants personal data kept in the EU. Which part of an AI build is most often forgotten?",
+   "options": [
+    "The main database region",
+    "The web server region",
+    "The user interface language",
+    "Prompt logs, vector indexes and the model endpoint"
+   ],
+   "answer": 3,
+   "why": "Teams usually place the database correctly but forget copies in logs, observability tools, vector stores, eval sets and the model provider's endpoint."
+  },
+  {
+   "q": "Spot the mistake: 'We are compliant, so the bank's security review is a formality.'",
+   "options": [
+    "Security reviews are only needed for healthcare customers",
+    "Banks accept any SOC 2 report, so the claim is fine",
+    "It names no framework, version or scope, and reviews take weeks",
+    "Compliance only matters after the pilot is in production"
+   ],
+   "answer": 2,
+   "why": "A claim of compliance must say which framework, version and scope it covers, and bank security and model risk reviews take real time, so they should start early."
+  }
+ ],
+ "fieldlife": [
+  {
+   "q": "What is usually the slowest part of your first week at a new customer?",
+   "options": [
+    "Writing the first working prototype",
+    "Getting access: VPN, accounts, data roles and devices",
+    "Choosing a programming language",
+    "Booking travel for the next month"
+   ],
+   "answer": 1,
+   "why": "Access requests often need several approvals, so submit them on day one with a named approver each and follow up."
+  },
+  {
+   "q": "What is cognitive empathy in customer work?",
+   "options": [
+    "Understanding someone's view and incentives without having to agree",
+    "Sharing the customer's emotions so they feel supported",
+    "Agreeing with stakeholders to avoid conflict",
+    "Reading body language to detect when people lie"
+   ],
+   "answer": 0,
+   "why": "Cognitive empathy is understanding how someone sees a situation and what drives them, which helps you find what would make a blocker comfortable."
+  },
+  {
+   "q": "A manager asks you to 'also quickly' build a letter generator during your pilot. What do you do first?",
+   "options": [
+    "Build it that evening so the relationship stays good",
+    "Refuse because it is not in the statement of work",
+    "Write it down, size it and give the sponsor trade options",
+    "Ask the manager to raise a ticket with your support team"
+   ],
+   "answer": 2,
+   "why": "Writing, sizing and trading keeps the decision with the sponsor and protects the agreed goal without a flat refusal."
+  },
+  {
+   "q": "You support three accounts and keep losing time switching between them. What helps most?",
+   "options": [
+    "Answer every message within ten minutes",
+    "Drop the smallest account without telling anyone",
+    "Work on all three every hour to keep them equal",
+    "Block time by account and keep a current-state note for each"
+   ],
+   "answer": 3,
+   "why": "Longer blocks per account and a short state note at the top of each account's file reduce the reload cost of every switch."
+  },
+  {
+   "q": "Spot the trap: 'The customer has my mobile number, so they can reach me any time.'",
+   "options": [
+    "It creates a personal on-call line that leads to burnout",
+    "Customers should never know an FDE's name",
+    "It breaks data residency rules",
+    "Mobile numbers are only allowed for executive sponsors"
+   ],
+   "answer": 0,
+   "why": "Support should run through agreed hours and a team escalation path, not one person's phone, or peaks turn into a permanent state."
+  }
+ ],
+ "interviewrounds": [
+  {
+   "q": "What does a recruiter screen mostly filter for?",
+   "options": [
+    "Algorithm speed on hard problems",
+    "Deep system design knowledge",
+    "Interest, basic fit, communication and practical details",
+    "The quality of your open-source contributions"
+   ],
+   "answer": 2,
+   "why": "The recruiter checks fit, clarity and logistics such as location, travel and salary; technical depth comes in later rounds."
+  },
+  {
+   "q": "In a debugging round, what should you do right after skimming the README and layout?",
+   "options": [
+    "Rewrite the module you think is messy",
+    "Reproduce the failure and read the full error and trace",
+    "Guess the fix and submit quickly",
+    "Ask the interviewer where the bug is"
+   ],
+   "answer": 1,
+   "why": "Reproducing and reading the full trace gives you evidence for your first hypothesis; a visible method scores well."
+  },
+  {
+   "q": "The design prompt names a hospital using Okta SSO and an old document store. How do you open?",
+   "options": [
+    "Draw the standard RAG architecture straight away",
+    "Pick a vector database and justify it",
+    "Estimate queries per second before anything else",
+    "Ask about users, data, permissions, residency and the old store's access"
+   ],
+   "answer": 3,
+   "why": "FDE design rounds score whether you gather the customer's constraints first, because they shape the whole design."
+  },
+  {
+   "q": "A take-home has a 4-hour limit and you run out of time. What is the best move?",
+   "options": [
+    "List what you cut and why in the README",
+    "Keep working for two more days to finish every feature",
+    "Submit without a README so they read the code",
+    "Skip the tests to add one more feature"
+   ],
+   "answer": 0,
+   "why": "Reviewers usually open the README first, and a clear note on trade-offs and cuts shows judgement and respect for the limit."
+  },
+  {
+   "q": "Spot the mistake in this STAR answer: three minutes on context, 'we' throughout, no result.",
+   "options": [
+    "STAR answers should skip the situation entirely",
+    "Too long on setup, unclear personal role, and no measured result",
+    "Behavioral answers should always be under 30 seconds",
+    "Using a failure story is never acceptable"
+   ],
+   "answer": 1,
+   "why": "Keep the situation short, say what you did with 'I', and end with a number or clear outcome."
+  }
+ ],
+ "portfolio": [
+  {
+   "q": "How many repositories can you pin to the top of a GitHub profile?",
+   "options": [
+    "Three",
+    "Ten",
+    "Up to six",
+    "As many as you like"
+   ],
+   "answer": 2,
+   "why": "GitHub lets you pin up to six repositories; pin your three or four strongest."
+  },
+  {
+   "q": "What should a reviewer see in the first screen of a project README?",
+   "options": [
+    "The full list of dependencies",
+    "The problem, a demo image, the headline result and quick setup",
+    "A history of every version",
+    "The licence text"
+   ],
+   "answer": 1,
+   "why": "Most reviewers decide from the first screen, so lead with what it does, proof it works and a number."
+  },
+  {
+   "q": "You want to show a claims tool you built at work. What is the safest approach?",
+   "options": [
+    "Publish the code with the company name removed",
+    "Share screenshots of the internal tool only",
+    "Put the repo on GitHub as private and share the link",
+    "Rebuild the pattern with synthetic data and label it a sample scenario"
+   ],
+   "answer": 3,
+   "why": "Employer code, data and screenshots need written permission; a clean rebuild with synthetic data shows the skill without leaking anything."
+  },
+  {
+   "q": "Your recorded demo is 11 minutes, mostly setup and code. What should you change first?",
+   "options": [
+    "Script it to about 3 minutes around the user, problem, tool and result",
+    "Speed the video up to double speed",
+    "Add background music to keep attention",
+    "Split it into eleven one-minute videos"
+   ],
+   "answer": 0,
+   "why": "Short scripted demos that start with the user's problem get watched; setup and code detail can live in the README."
+  },
+  {
+   "q": "Spot the trap: a profile with 40 pinned-looking tutorial repos and 'Skills: Python, RAG, AWS'.",
+   "options": [
+    "Tutorial repos are fine as long as they are public",
+    "Listing skills is enough proof for FDE roles",
+    "Strong work is buried and nothing proves the claimed skills",
+    "The profile needs more repos to look active"
+   ],
+   "answer": 2,
+   "why": "Reviewers spend seconds; a few featured projects with results prove skills that a list only claims."
+  }
+ ]
+}

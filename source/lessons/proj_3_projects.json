@@ -1,0 +1,457 @@
+[
+ {
+  "id": "p6-tool-agent",
+  "mod": 8,
+  "sec": "8.6",
+  "name": "Project 6: tool-call agent",
+  "title": "Build a tool-calling order-support agent with the Anthropic SDK",
+  "thesis": "Write the agent loop yourself: the model asks for get_order, track_shipment or search_policy, your code validates and runs them, and a trace shows every step. This is the core pattern behind most customer-facing agents an FDE ships.",
+  "format": "project",
+  "project": {
+   "level": "Intermediate",
+   "time": "2-3 hours",
+   "skills": [
+    "Anthropic Messages API tool use",
+    "agent loop design",
+    "input validation",
+    "JSON trace logging",
+    "offline fakes for testing",
+    "pytest"
+   ],
+   "concepts": [
+    "python2",
+    "tools",
+    "prompting",
+    "guardrails",
+    "observability",
+    "tdd",
+    "evals",
+    "llmcost"
+   ],
+   "folder": "fde-atlas/projects/p6-tool-agent",
+   "tree": "p6-tool-agent/.env.example\np6-tool-agent/.gitignore\np6-tool-agent/README.md\np6-tool-agent/agent/__init__.py\np6-tool-agent/agent/llm.py\np6-tool-agent/agent/loop.py\np6-tool-agent/agent/tools.py\np6-tool-agent/data/store.json\np6-tool-agent/main.py\np6-tool-agent/requirements.txt\np6-tool-agent/tests/conftest.py\np6-tool-agent/tests/test_agent.py\np6-tool-agent/tests/test_tools.py",
+   "setup": [
+    {
+     "title": "Create a virtual environment (macOS / Linux)",
+     "body": "A venv keeps this project's packages separate from everything else on your machine.",
+     "code": "cd p6-tool-agent\npython3 -m venv .venv\nsource .venv/bin/activate\npip install -r requirements.txt",
+     "lang": "bash"
+    },
+    {
+     "title": "Create a virtual environment (Windows PowerShell)",
+     "body": "Same thing on Windows. If activation is blocked, run Set-ExecutionPolicy -Scope CurrentUser RemoteSigned once.",
+     "code": "cd p6-tool-agent\npy -m venv .venv\n.venv\\Scripts\\Activate.ps1\npip install -r requirements.txt",
+     "lang": "powershell"
+    },
+    {
+     "title": "Optional: real mode environment variables",
+     "body": "Fake mode is the default and needs nothing. For real mode set LLM_MODE, your API key and the model id. The code never hard-codes a model; it reads MODEL.",
+     "code": "# macOS / Linux\nexport LLM_MODE=real ANTHROPIC_API_KEY=your-key MODEL=claude-sonnet-5\n\n# Windows PowerShell\n$env:LLM_MODE=\"real\"; $env:ANTHROPIC_API_KEY=\"your-key\"; $env:MODEL=\"claude-sonnet-5\"",
+     "lang": "bash"
+    }
+   ],
+   "steps": [
+    {
+     "title": "Create the fake data store",
+     "body": "Agents are only as good as the systems behind them. Start with a small JSON file of orders, shipments and policies. The customers are clearly fake.\n\nOne order has a tracking number, one is still processing (no tracking), one is delivered. That spread lets you test different tool paths.",
+     "code": "{\n  \"orders\": {\n    \"A1001\": {\"customer\": \"Test Customer 1\", \"status\": \"shipped\", \"items\": [\"USB-C cable\", \"Phone case\"], \"total\": 34.50, \"placed\": \"2026-09-10\", \"tracking\": \"TRK-555001\"},\n    \"A1002\": {\"customer\": \"Test Customer 2\", \"status\": \"processing\", \"items\": [\"Laptop stand\"], \"total\": 59.00, \"placed\": \"2026-09-22\", \"tracking\": null},\n    \"A1003\": {\"customer\": \"Test Customer 3\", \"status\": \"delivered\", \"items\": [\"Headphones\"], \"total\": 129.99, \"placed\": \"2026-08-30\", \"tracking\": \"TRK-555003\"}\n  },\n  \"shipments\": {\n    \"TRK-555001\": {\"carrier\": \"FastShip\", \"status\": \"in transit\", \"last_scan\": \"Denver hub\", \"eta\": \"2026-09-29\"},\n    \"TRK-555003\": {\"carrier\": \"FastShip\", \"status\": \"delivered\", \"last_scan\": \"Front door\", \"eta\": \"2026-09-04\"}\n  },\n  \"policies\": [\n    {\"id\": \"returns\", \"title\": \"Returns\", \"text\": \"Items can be returned within 30 days of delivery if unused. Refunds go to the original payment method within 5 business days.\"},\n    {\"id\": \"shipping\", \"title\": \"Shipping\", \"text\": \"Standard shipping takes 3 to 7 business days. Orders ship within 2 business days of being placed.\"},\n    {\"id\": \"damaged\", \"title\": \"Damaged items\", \"text\": \"If an item arrives damaged, contact support within 7 days with a photo and we will send a free replacement.\"},\n    {\"id\": \"cancel\", \"title\": \"Cancellations\", \"text\": \"Orders can be cancelled free of charge while their status is processing. Shipped orders must be returned instead.\"}\n  ]\n}\n",
+     "lang": "JSON",
+     "file": "data/store.json"
+    },
+    {
+     "title": "Define the tools, schemas and validation",
+     "body": "TOOLS is exactly what the Messages API expects: a name, a description the model reads to decide when to call it, and a JSON schema for the input. Good descriptions matter as much as good code.\n\nNever trust tool arguments. The model can send a missing field, a wrong type or an injected string. validate() checks required keys, extra keys, types and id formats before any data is touched. execute_tool() never raises: errors come back as text with is_error=True so the model can recover (for example, ask the user for the right order id). Create an empty agent/__init__.py too so agent is a package.",
+     "code": "\"\"\"The three tools the agent can call, their JSON schemas, and argument validation.\"\"\"\nimport json\nimport re\nfrom pathlib import Path\n\nSTORE_PATH = Path(__file__).resolve().parent.parent / \"data\" / \"store.json\"\nORDER_ID = re.compile(r\"^A\\d{4}$\")\nTRACKING_ID = re.compile(r\"^TRK-\\d{6}$\")\n\n# Tool definitions in the shape the Anthropic Messages API expects.\nTOOLS = [\n    {\n        \"name\": \"get_order\",\n        \"description\": \"Look up one order by its id (format A1234). Returns status, items, total and tracking number.\",\n        \"input_schema\": {\n            \"type\": \"object\",\n            \"properties\": {\"order_id\": {\"type\": \"string\", \"description\": \"Order id like A1001\"}},\n            \"required\": [\"order_id\"],\n            \"additionalProperties\": False,\n        },\n    },\n    {\n        \"name\": \"track_shipment\",\n        \"description\": \"Get carrier status for a tracking number (format TRK-123456). Use get_order first to find it.\",\n        \"input_schema\": {\n            \"type\": \"object\",\n            \"properties\": {\"tracking_number\": {\"type\": \"string\"}},\n            \"required\": [\"tracking_number\"],\n            \"additionalProperties\": False,\n        },\n    },\n    {\n        \"name\": \"search_policy\",\n        \"description\": \"Search store policies (returns, shipping, damaged items, cancellations) by keywords.\",\n        \"input_schema\": {\n            \"type\": \"object\",\n            \"properties\": {\"query\": {\"type\": \"string\", \"description\": \"A few keywords\"}},\n            \"required\": [\"query\"],\n            \"additionalProperties\": False,\n        },\n    },\n]\n\n\nclass ToolError(Exception):\n    \"\"\"Raised for bad arguments or missing records. Sent back to the model as is_error.\"\"\"\n\n\ndef load_store(path=STORE_PATH):\n    return json.loads(Path(path).read_text(encoding=\"utf-8\"))\n\n\ndef validate(name, args):\n    \"\"\"Check the arguments against the schema before touching any data.\"\"\"\n    spec = next((t for t in TOOLS if t[\"name\"] == name), None)\n    if spec is None:\n        raise ToolError(f\"unknown tool: {name}\")\n    if not isinstance(args, dict):\n        raise ToolError(\"arguments must be an object\")\n    schema = spec[\"input_schema\"]\n    missing = [k for k in schema[\"required\"] if k not in args]\n    extra = [k for k in args if k not in schema[\"properties\"]]\n    if missing or extra:\n        raise ToolError(f\"missing={missing} unexpected={extra}\")\n    for key, value in args.items():\n        if not isinstance(value, str) or not value.strip():\n            raise ToolError(f\"{key} must be a non-empty string\")\n    if name == \"get_order\" and not ORDER_ID.match(args[\"order_id\"]):\n        raise ToolError(\"order_id must look like A1234\")\n    if name == \"track_shipment\" and not TRACKING_ID.match(args[\"tracking_number\"]):\n        raise ToolError(\"tracking_number must look like TRK-123456\")\n    if name == \"search_policy\" and len(args[\"query\"]) > 200:\n        raise ToolError(\"query too long\")\n\n\ndef get_order(store, order_id):\n    order = store[\"orders\"].get(order_id)\n    if order is None:\n        raise ToolError(f\"no order {order_id}\")\n    return {\"order_id\": order_id, **order}\n\n\ndef track_shipment(store, tracking_number):\n    shipment = store[\"shipments\"].get(tracking_number)\n    if shipment is None:\n        raise ToolError(f\"no shipment {tracking_number}\")\n    return {\"tracking_number\": tracking_number, **shipment}\n\n\ndef _words(text):\n    \"\"\"Lowercase words longer than 2 letters, with a crude plural/past-tense trim.\"\"\"\n    return {re.sub(r\"(ed|s)$\", \"\", w) for w in re.findall(r\"[a-z]+\", text.lower()) if len(w) > 2}\n\n\ndef search_policy(store, query):\n    words = _words(query)\n    scored = []\n    for p in store[\"policies\"]:\n        text_words = _words(p[\"title\"] + \" \" + p[\"text\"])\n        score = len(words & text_words) + (3 if p[\"id\"] in words else 0)\n        if score:\n            scored.append((score, p))\n    scored.sort(key=lambda pair: -pair[0])\n    return {\"results\": [p for _, p in scored[:2]]}\n\n\nFUNCTIONS = {\"get_order\": get_order, \"track_shipment\": track_shipment, \"search_policy\": search_policy}\n\n\ndef execute_tool(store, name, args):\n    \"\"\"Validate, run, and return (result_text, is_error). Never raises.\"\"\"\n    try:\n        validate(name, args)\n        result = FUNCTIONS[name](store, **args)\n        return json.dumps(result), False\n    except ToolError as exc:\n        return f\"Error: {exc}\", True\n",
+     "lang": "Python",
+     "file": "agent/tools.py"
+    },
+    {
+     "title": "Write two model clients: real and fake",
+     "body": "RealLLM wraps client.messages.create with the model from MODEL. FakeLLM returns objects with the same shape (stop_reason plus content blocks with type tool_use or text), decided by simple rules: look up the order, then track it if the user asks where it is, then search policy for return or refund words, then answer.\n\nBecause both expose the same create() method, the loop cannot tell them apart. That is what lets tests run offline and for free.",
+     "code": "\"\"\"Two interchangeable model clients: the real Anthropic API, and an offline fake.\n\nBoth expose create(system, messages, tools) and return an object with\n.stop_reason and .content (a list of blocks with .type), like the SDK does.\n\"\"\"\nimport json\nimport os\nimport re\nfrom types import SimpleNamespace\n\n\nclass RealLLM:\n    def __init__(self):\n        import anthropic  # imported here so fake mode works without the package\n\n        self.model = os.environ.get(\"MODEL\")\n        if not self.model:\n            raise RuntimeError(\"Set MODEL (see .env.example) to use LLM_MODE=real\")\n        self.client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY\n\n    def create(self, system, messages, tools):\n        return self.client.messages.create(\n            model=self.model, max_tokens=16000, system=system, tools=tools, messages=messages\n        )\n\n\nTRACK_WORDS = {\"where\", \"track\", \"tracking\", \"arrive\", \"eta\", \"delivered\"}\nPOLICY_WORDS = {\"return\", \"refund\", \"policy\", \"cancel\", \"damaged\", \"broken\", \"shipping\"}\n\n\ndef _results_so_far(messages):\n    \"\"\"Map tool name -> (parsed result or None, is_error) from the conversation.\"\"\"\n    names, out = {}, {}\n    for msg in messages:\n        if isinstance(msg[\"content\"], str):\n            continue\n        for block in msg[\"content\"]:\n            kind = block[\"type\"] if isinstance(block, dict) else block.type\n            if kind == \"tool_use\":\n                names[block.id] = block.name\n            elif kind == \"tool_result\":\n                ok = not block.get(\"is_error\", False)\n                out[names[block[\"tool_use_id\"]]] = (json.loads(block[\"content\"]) if ok else None, not ok)\n    return out\n\n\nclass FakeLLM:\n    \"\"\"Rule-based stand-in that emits the same block shapes as the real API.\"\"\"\n\n    def create(self, system, messages, tools):\n        question = messages[0][\"content\"]\n        words = set(re.findall(r\"[a-z]+\", question.lower()))\n        order_ids = re.findall(r\"\\bA\\d{4}\\b\", question)\n        done = _results_so_far(messages)\n        call_id = f\"toolu_fake_{len(messages)}\"\n\n        def tool(name, **args):\n            block = SimpleNamespace(type=\"tool_use\", id=call_id, name=name, input=args)\n            return SimpleNamespace(stop_reason=\"tool_use\", content=[block])\n\n        if order_ids and \"get_order\" not in done:\n            return tool(\"get_order\", order_id=order_ids[0])\n        order, order_err = done.get(\"get_order\", (None, False))\n        if words & TRACK_WORDS and order and order.get(\"tracking\") and \"track_shipment\" not in done:\n            return tool(\"track_shipment\", tracking_number=order[\"tracking\"])\n        if words & POLICY_WORDS and \"search_policy\" not in done:\n            return tool(\"search_policy\", query=question[:200])\n\n        lines = []\n        if order_err:\n            lines.append(\"I could not find that order. Please double-check the order id.\")\n        elif order:\n            lines.append(f\"Order {order['order_id']} is {order['status']} ({', '.join(order['items'])}).\")\n        ship = done.get(\"track_shipment\", (None, False))[0]\n        if ship:\n            lines.append(f\"{ship['carrier']} shows it {ship['status']}, last scan {ship['last_scan']}, ETA {ship['eta']}.\")\n        policy = done.get(\"search_policy\", (None, False))[0]\n        if policy and policy[\"results\"]:\n            top = policy[\"results\"][0]\n            lines.append(f\"Policy ({top['title']}): {top['text']}\")\n        if not lines:\n            lines.append(\"I can help with orders, shipments and store policies. What is your order id?\")\n        return SimpleNamespace(stop_reason=\"end_turn\", content=[SimpleNamespace(type=\"text\", text=\" \".join(lines))])\n\n\ndef make_llm():\n    return RealLLM() if os.environ.get(\"LLM_MODE\", \"fake\") == \"real\" else FakeLLM()\n",
+     "lang": "Python",
+     "file": "agent/llm.py"
+    },
+    {
+     "title": "Write the agent loop with a cap and a trace",
+     "body": "The loop: call the model; if stop_reason is tool_use, run every requested tool and send all results back in ONE user message; repeat. Stop on end_turn, on any other stop reason (max_tokens, refusal), or when max_iterations is reached.\n\nThe assistant turn is appended exactly as returned, so tool_use (and any thinking) blocks stay intact. Every step goes to a Trace, one JSON line per event, which is what you read when a customer says the bot gave a wrong answer.",
+     "code": "\"\"\"The agent loop: ask the model, run the tools it requests, repeat until done or capped.\"\"\"\nimport json\nimport time\n\nfrom agent.tools import TOOLS, execute_tool, load_store\n\nSYSTEM = (\n    \"You are an order-support agent for an online store. Use the tools to look up facts; \"\n    \"never guess order status, tracking or policy details. If a tool returns an error, \"\n    \"tell the customer plainly what is missing. Keep answers to 2-4 sentences.\"\n)\n\n\nclass Trace:\n    \"\"\"Collects one JSON event per step; optionally appends them to a .jsonl file.\"\"\"\n\n    def __init__(self, path=None):\n        self.path, self.events = path, []\n\n    def log(self, kind, **data):\n        event = {\"t\": round(time.time(), 3), \"kind\": kind, **data}\n        self.events.append(event)\n        if self.path:\n            with open(self.path, \"a\", encoding=\"utf-8\") as f:\n                f.write(json.dumps(event) + \"\\n\")\n\n\ndef run_agent(question, llm, store=None, max_iterations=6, trace=None):\n    store = store or load_store()\n    trace = trace or Trace()\n    messages = [{\"role\": \"user\", \"content\": question}]\n    trace.log(\"user\", text=question)\n\n    for step in range(1, max_iterations + 1):\n        response = llm.create(system=SYSTEM, messages=messages, tools=TOOLS)\n        trace.log(\"model\", step=step, stop_reason=response.stop_reason)\n        # Keep the assistant turn exactly as returned (it may hold tool_use and thinking blocks).\n        messages.append({\"role\": \"assistant\", \"content\": response.content})\n\n        if response.stop_reason != \"tool_use\":\n            text = \" \".join(b.text for b in response.content if b.type == \"text\").strip()\n            if response.stop_reason != \"end_turn\":\n                text = text or f\"Stopped early ({response.stop_reason}). A human will follow up.\"\n            trace.log(\"final\", step=step, text=text)\n            return {\"answer\": text, \"steps\": step, \"messages\": messages, \"trace\": trace.events}\n\n        results = []\n        for block in response.content:\n            if block.type != \"tool_use\":\n                continue\n            output, is_error = execute_tool(store, block.name, block.input)\n            trace.log(\"tool\", step=step, name=block.name, input=block.input, is_error=is_error, output=output[:300])\n            results.append({\"type\": \"tool_result\", \"tool_use_id\": block.id, \"content\": output, \"is_error\": is_error})\n        messages.append({\"role\": \"user\", \"content\": results})  # all results in ONE user message\n\n    trace.log(\"capped\", max_iterations=max_iterations)\n    answer = \"Sorry, I could not finish this request. I have passed it to a human agent.\"\n    return {\"answer\": answer, \"steps\": max_iterations, \"messages\": messages, \"trace\": trace.events}\n",
+     "lang": "Python",
+     "file": "agent/loop.py"
+    },
+    {
+     "title": "Add a command line entry point",
+     "body": "main.py prints each tool call and the final answer and appends the trace to trace.jsonl. The mode (fake or real) comes from LLM_MODE.",
+     "code": "\"\"\"Command line entry point: python main.py \"Where is my order A1001?\" \"\"\"\nimport os\nimport sys\n\nfrom agent.llm import make_llm\nfrom agent.loop import Trace, run_agent\n\n\ndef main():\n    question = \" \".join(sys.argv[1:]) or \"Where is my order A1001?\"\n    trace = Trace(os.environ.get(\"TRACE_FILE\", \"trace.jsonl\"))\n    result = run_agent(question, make_llm(), trace=trace)\n    for event in result[\"trace\"]:\n        if event[\"kind\"] == \"tool\":\n            flag = \" (error)\" if event[\"is_error\"] else \"\"\n            print(f\"  [step {event['step']}] {event['name']}({event['input']}){flag}\")\n    print(f\"\\nAnswer: {result['answer']}\")\n    print(f\"Steps: {result['steps']}  |  trace appended to {trace.path}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+     "lang": "Python",
+     "file": "main.py"
+    },
+    {
+     "title": "Test the tools",
+     "body": "conftest.py puts the project on the import path and forces fake mode. The parametrized test feeds bad arguments (missing, malformed, extra, wrong type, unknown tool) and checks each is rejected.",
+     "code": "import os\nimport sys\nfrom pathlib import Path\n\n# Make \"import agent\" work when pytest runs from the project folder.\nsys.path.insert(0, str(Path(__file__).resolve().parent.parent))\nos.environ.setdefault(\"LLM_MODE\", \"fake\")\n\n\n# ---- tests/test_tools.py ----\nimport json\n\nimport pytest\n\nfrom agent.tools import ToolError, execute_tool, load_store, validate\n\n\n@pytest.fixture\ndef store():\n    return load_store()\n\n\ndef test_get_order_found(store):\n    out, is_error = execute_tool(store, \"get_order\", {\"order_id\": \"A1001\"})\n    assert not is_error\n    assert json.loads(out)[\"tracking\"] == \"TRK-555001\"\n\n\ndef test_get_order_missing_is_error_not_crash(store):\n    out, is_error = execute_tool(store, \"get_order\", {\"order_id\": \"A9999\"})\n    assert is_error and \"no order\" in out\n\n\n@pytest.mark.parametrize(\n    \"name,args\",\n    [\n        (\"get_order\", {}),                                  # missing argument\n        (\"get_order\", {\"order_id\": \"1001; DROP TABLE\"}),    # bad format\n        (\"get_order\", {\"order_id\": \"A1001\", \"admin\": \"1\"}),  # unexpected argument\n        (\"track_shipment\", {\"tracking_number\": 42}),        # wrong type\n        (\"delete_order\", {\"order_id\": \"A1001\"}),            # unknown tool\n    ],\n)\ndef test_validation_rejects_bad_args(name, args):\n    with pytest.raises(ToolError):\n        validate(name, args)\n\n\ndef test_search_policy_ranks_returns_first(store):\n    out, _ = execute_tool(store, \"search_policy\", {\"query\": \"how do I return and get a refund\"})\n    assert json.loads(out)[\"results\"][0][\"id\"] == \"returns\"\n",
+     "lang": "Python",
+     "file": "tests/test_tools.py"
+    },
+    {
+     "title": "Test the agent loop, including a runaway model",
+     "body": "LoopingLLM is a deliberately broken model that asks for a tool forever. The test proves the iteration cap stops it and hands off to a human. Other tests check tool order for a tracking question, the policy path, a missing order, and that the trace file is written.",
+     "code": "from types import SimpleNamespace\n\nfrom agent.llm import FakeLLM\nfrom agent.loop import Trace, run_agent\n\n\ndef tool_names(result):\n    return [e[\"name\"] for e in result[\"trace\"] if e[\"kind\"] == \"tool\"]\n\n\ndef test_tracking_question_chains_two_tools():\n    result = run_agent(\"Where is my order A1001?\", FakeLLM())\n    assert tool_names(result) == [\"get_order\", \"track_shipment\"]\n    assert \"in transit\" in result[\"answer\"] and result[\"steps\"] == 3\n\n\ndef test_policy_question_uses_search():\n    result = run_agent(\"Can I return something I bought?\", FakeLLM())\n    assert tool_names(result) == [\"search_policy\"]\n    assert \"30 days\" in result[\"answer\"]\n\n\ndef test_unknown_order_is_reported_gracefully():\n    result = run_agent(\"Where is order A9999?\", FakeLLM())\n    assert any(e[\"kind\"] == \"tool\" and e[\"is_error\"] for e in result[\"trace\"])\n    assert \"could not find\" in result[\"answer\"]\n\n\nclass LoopingLLM:\n    \"\"\"A misbehaving model that asks for a tool forever.\"\"\"\n\n    def create(self, system, messages, tools):\n        block = SimpleNamespace(type=\"tool_use\", id=f\"t{len(messages)}\", name=\"get_order\", input={\"order_id\": \"A1001\"})\n        return SimpleNamespace(stop_reason=\"tool_use\", content=[block])\n\n\ndef test_iteration_cap_stops_runaway_loop():\n    result = run_agent(\"loop please\", LoopingLLM(), max_iterations=3)\n    assert result[\"steps\"] == 3\n    assert result[\"trace\"][-1][\"kind\"] == \"capped\"\n    assert \"human agent\" in result[\"answer\"]\n\n\ndef test_trace_written_to_file(tmp_path):\n    path = tmp_path / \"trace.jsonl\"\n    run_agent(\"Where is my order A1001?\", FakeLLM(), trace=Trace(path))\n    lines = path.read_text().strip().splitlines()\n    assert len(lines) >= 5  # user, model, tool, model, tool, model, final\n",
+     "lang": "Python",
+     "file": "tests/test_agent.py"
+    },
+    {
+     "title": "Requirements and example environment file",
+     "body": "Only two packages. Copy .env.example as a reference for the variables; never commit a real key.",
+     "code": "# requirements.txt\nanthropic>=0.40\npytest>=8.0\n\n# .env.example\n# Copy to .env, fill in, then export these in your shell (see README).\n# fake = offline rule-based model (default, no key needed); real = Anthropic API\nLLM_MODE=fake\nANTHROPIC_API_KEY=your-key-here\n# Any current Claude model id, for example claude-sonnet-5\nMODEL=claude-sonnet-5\nTRACE_FILE=trace.jsonl\n",
+     "lang": "bash",
+     "file": "requirements.txt"
+    }
+   ],
+   "run": {
+    "code": "python main.py \"Where is my order A1001?\"\n#   [step 1] get_order({'order_id': 'A1001'})\n#   [step 2] track_shipment({'tracking_number': 'TRK-555001'})\n#\n# Answer: Order A1001 is shipped (USB-C cable, Phone case). FastShip shows it in transit, last scan Denver hub, ETA 2026-09-29.\n# Steps: 3  |  trace appended to trace.jsonl\n\npython main.py \"Can I cancel order A1002?\"\n# Answer: Order A1002 is processing (Laptop stand). Policy (Cancellations): Orders can be cancelled free of charge while their status is processing. ...\n\npython main.py \"Where is order A9999?\"\n# Answer: I could not find that order. Please double-check the order id.",
+    "lang": "bash"
+   },
+   "tests": {
+    "code": "python -m pytest -q\n# .............\n# 13 passed in 0.27s",
+    "lang": "bash"
+   },
+   "stretch": [
+    "Add a cancel_order tool that only works while status is processing and requires an explicit confirm step (human in the loop).",
+    "Move data/store.json into SQLite and use parameterized queries in the tools.",
+    "Log response.usage per step in the trace and print the token cost of each question.",
+    "Write a 10-question eval with the expected tool sequence per question and run it in both fake and real mode."
+   ],
+   "interview": "I built an order-support agent with a hand-written tool loop on the Anthropic Messages API: three narrow tools, schema plus format validation on every argument, errors returned to the model as is_error results instead of exceptions, an iteration cap with a human handoff, and a JSONL trace per step. A fake model with the same interface made the loop testable offline, including a runaway-model test. The trade-offs I would mention are narrow tools versus one generic query tool (safer and easier to evaluate, but more tools to maintain), and the SDK tool runner versus a manual loop (less code versus full control over caps and tracing)."
+  },
+  "ideas": [
+   "An agent is a loop: model asks for a tool, your code runs it, results go back, repeat until end_turn.",
+   "Tool descriptions and schemas are prompts; the model chooses tools by reading them.",
+   "Validate every tool argument and return errors as is_error results so the model can recover.",
+   "A fake model with the same interface makes agent logic testable offline and deterministic."
+  ],
+  "traps": [
+   "No iteration cap: a confused model can call tools forever and burn money.",
+   "Sending tool results back in separate user messages, or dropping the assistant turn that contained the tool_use blocks, which breaks the conversation shape.",
+   "Hard-coding a model id or API key in code instead of reading them from the environment."
+  ],
+  "qa": [
+   [
+    "Why return tool errors to the model instead of raising?",
+    "Because the model can often fix the problem itself: ask the user for a valid order id, or try a different tool. Raising ends the whole conversation. Returning a clear error with is_error=True keeps the loop alive, and the trace still records the failure for debugging."
+   ],
+   [
+    "How would you stop an agent from doing something harmful with a tool?",
+    "Keep tools narrow (get_order, not run_sql), validate arguments against strict formats, enforce permissions in the tool code not the prompt, cap iterations, require human confirmation for writes like cancel or refund, and log every call so you can audit it."
+   ]
+  ]
+ },
+ {
+  "id": "p7-mcp-server",
+  "mod": 8,
+  "sec": "8.7",
+  "name": "Project 7: MCP server",
+  "title": "Build an MCP server for a mock CRM",
+  "thesis": "Expose a fake CRM to any MCP client (Claude Desktop, Claude Code, MCP Inspector) with three tools and one resource, using the official Python SDK's FastMCP. MCP is how an FDE plugs a customer's internal systems into Claude once instead of per app.",
+  "format": "project",
+  "project": {
+   "level": "Intermediate",
+   "time": "1.5-2 hours",
+   "skills": [
+    "Model Context Protocol",
+    "FastMCP (Python MCP SDK)",
+    "stdio transport",
+    "MCP Inspector",
+    "Claude Desktop configuration",
+    "pytest"
+   ],
+   "concepts": [
+    "python2",
+    "mcp",
+    "tools",
+    "security",
+    "tdd",
+    "terminal",
+    "docs"
+   ],
+   "folder": "fde-atlas/projects/p7-mcp-server",
+   "tree": "p7-mcp-server/.gitignore\np7-mcp-server/README.md\np7-mcp-server/claude_desktop_config.example.json\np7-mcp-server/crm_data.py\np7-mcp-server/crm_server.py\np7-mcp-server/requirements.txt\np7-mcp-server/smoke_client.py\np7-mcp-server/tests/test_crm.py",
+   "setup": [
+    {
+     "title": "Create a virtual environment (macOS / Linux)",
+     "body": "A venv keeps this project's packages separate from everything else on your machine.",
+     "code": "cd p7-mcp-server\npython3 -m venv .venv\nsource .venv/bin/activate\npip install -r requirements.txt",
+     "lang": "bash"
+    },
+    {
+     "title": "Create a virtual environment (Windows PowerShell)",
+     "body": "Same thing on Windows. If activation is blocked, run Set-ExecutionPolicy -Scope CurrentUser RemoteSigned once.",
+     "code": "cd p7-mcp-server\npy -m venv .venv\n.venv\\Scripts\\Activate.ps1\npip install -r requirements.txt",
+     "lang": "powershell"
+    },
+    {
+     "title": "SDK version note",
+     "body": "requirements.txt pins mcp>=1.2,<2 because the code uses from mcp.server.fastmcp import FastMCP. In mcp 2.x FastMCP was renamed to MCPServer (from mcp.server.mcpserver import MCPServer) and other APIs changed. Porting is a stretch goal.",
+     "code": "pip show mcp   # should show a 1.x version",
+     "lang": "bash"
+    },
+    {
+     "title": "Optional: Node.js for MCP Inspector",
+     "body": "MCP Inspector runs through npx, which comes with Node.js 18 or newer. You only need it for the Inspector step.",
+     "code": "node --version\nnpx --version",
+     "lang": "bash"
+    }
+   ],
+   "steps": [
+    {
+     "title": "Write the mock CRM as plain Python",
+     "body": "Keep business logic separate from the protocol. crm_data.py has four fake companies, some notes, and four functions: search, get, add_note and pipeline_summary. No MCP here, so it is trivial to test.\n\nErrors are helpful on purpose: an unknown id tells the model to call search_customers first. Error text is guidance for the model.",
+     "code": "\"\"\"A tiny in-memory mock CRM. Plain Python, no MCP here, so it is easy to unit test.\"\"\"\nfrom datetime import date\n\nCUSTOMERS = {\n    \"C001\": {\"name\": \"Acme Test Co\", \"industry\": \"manufacturing\", \"stage\": \"customer\", \"arr\": 120000, \"owner\": \"Sam\"},\n    \"C002\": {\"name\": \"Globex Sample Ltd\", \"industry\": \"logistics\", \"stage\": \"trial\", \"arr\": 0, \"owner\": \"Priya\"},\n    \"C003\": {\"name\": \"Initech Demo Inc\", \"industry\": \"software\", \"stage\": \"negotiation\", \"arr\": 45000, \"owner\": \"Sam\"},\n    \"C004\": {\"name\": \"Umbrella Example LLC\", \"industry\": \"healthcare\", \"stage\": \"churned\", \"arr\": 0, \"owner\": \"Lee\"},\n}\nNOTES = {\"C001\": [\"Renewal due in November.\"], \"C003\": [\"Asked for SSO before signing.\"]}\n\n\ndef reset():\n    \"\"\"Restore the starting notes (used by tests).\"\"\"\n    NOTES.clear()\n    NOTES.update({\"C001\": [\"Renewal due in November.\"], \"C003\": [\"Asked for SSO before signing.\"]})\n\n\ndef search(query: str, limit: int = 5) -> list[dict]:\n    q = query.lower().strip()\n    hits = [\n        {\"id\": cid, **c}\n        for cid, c in CUSTOMERS.items()\n        if q in c[\"name\"].lower() or q == c[\"industry\"] or q == c[\"stage\"]\n    ]\n    return hits[: max(1, min(limit, 20))]\n\n\ndef get(customer_id: str) -> dict:\n    if customer_id not in CUSTOMERS:\n        raise ValueError(f\"Unknown customer id {customer_id!r}. Use search_customers first.\")\n    return {\"id\": customer_id, **CUSTOMERS[customer_id], \"notes\": NOTES.get(customer_id, [])}\n\n\ndef add_note(customer_id: str, text: str) -> dict:\n    get(customer_id)  # raises for unknown ids\n    text = text.strip()\n    if not 1 <= len(text) <= 500:\n        raise ValueError(\"Note must be 1 to 500 characters.\")\n    NOTES.setdefault(customer_id, []).append(f\"{date.today().isoformat()}: {text}\")\n    return {\"id\": customer_id, \"notes\": NOTES[customer_id]}\n\n\ndef pipeline_summary() -> str:\n    lines = [\"# Pipeline summary\"]\n    for stage in [\"trial\", \"negotiation\", \"customer\", \"churned\"]:\n        names = [c[\"name\"] for c in CUSTOMERS.values() if c[\"stage\"] == stage]\n        lines.append(f\"- {stage}: {len(names)} ({', '.join(names) or 'none'})\")\n    total = sum(c[\"arr\"] for c in CUSTOMERS.values())\n    lines.append(f\"\\nTotal ARR: ${total:,}\")\n    return \"\\n\".join(lines)\n",
+     "lang": "Python",
+     "file": "crm_data.py"
+    },
+    {
+     "title": "Wrap it in a FastMCP server",
+     "body": "@mcp.tool() turns a function into an MCP tool. The function name becomes the tool name, type hints become the input schema, and the docstring becomes the description the model reads. @mcp.resource() exposes read-only data at a URI; the client decides when to load it.\n\nThe critical detail for stdio servers: stdout is the protocol channel. A stray print() corrupts messages, so logging goes to stderr. mcp.run() uses stdio by default.",
+     "code": "\"\"\"MCP server exposing the mock CRM: 3 tools + 1 resource, over stdio.\n\nRun directly:     python crm_server.py        (waits silently for an MCP client)\nInspect it:       npx @modelcontextprotocol/inspector python crm_server.py\n\"\"\"\nimport logging\nimport sys\n\nfrom mcp.server.fastmcp import FastMCP\n\nimport crm_data\n\n# stdout carries the MCP protocol. Anything you print there corrupts it, so log to stderr.\nlogging.basicConfig(stream=sys.stderr, level=logging.INFO)\nlog = logging.getLogger(\"mock-crm\")\n\nmcp = FastMCP(\"mock-crm\")\n\n\n@mcp.tool()\ndef search_customers(query: str, limit: int = 5) -> list[dict]:\n    \"\"\"Find customers by part of their name, or by exact industry or stage\n    (trial, negotiation, customer, churned). Returns id, name, stage, ARR, owner.\"\"\"\n    log.info(\"search_customers %r\", query)\n    return crm_data.search(query, limit)\n\n\n@mcp.tool()\ndef get_customer(customer_id: str) -> dict:\n    \"\"\"Get one customer's full record and notes by id (like C001).\"\"\"\n    return crm_data.get(customer_id)\n\n\n@mcp.tool()\ndef add_note(customer_id: str, text: str) -> dict:\n    \"\"\"Append a short note (max 500 chars) to a customer. This changes data.\"\"\"\n    log.info(\"add_note %s\", customer_id)\n    return crm_data.add_note(customer_id, text)\n\n\n@mcp.resource(\"crm://pipeline/summary\")\ndef pipeline_summary() -> str:\n    \"\"\"Read-only markdown summary of the sales pipeline by stage.\"\"\"\n    return crm_data.pipeline_summary()\n\n\nif __name__ == \"__main__\":\n    mcp.run()  # stdio transport by default\n",
+     "lang": "Python",
+     "file": "crm_server.py"
+    },
+    {
+     "title": "Write a tiny MCP client to smoke-test it",
+     "body": "smoke_client.py starts the server as a subprocess over stdio, exactly like Claude Desktop does, then initializes a session, lists tools and resources, calls a tool and reads the resource. If this works, a real client will work.",
+     "code": "\"\"\"Start the server as a subprocess and talk MCP to it, like Claude Desktop would.\"\"\"\nimport asyncio\nimport sys\n\nfrom mcp import ClientSession, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\n\nasync def main():\n    params = StdioServerParameters(command=sys.executable, args=[\"crm_server.py\"])\n    async with stdio_client(params) as (read, write):\n        async with ClientSession(read, write) as session:\n            await session.initialize()\n            tools = await session.list_tools()\n            print(\"tools:\", [t.name for t in tools.tools])\n            resources = await session.list_resources()\n            print(\"resources:\", [str(r.uri) for r in resources.resources])\n            result = await session.call_tool(\"search_customers\", {\"query\": \"trial\"})\n            print(\"search_customers(trial):\", result.content[0].text)\n            summary = await session.read_resource(\"crm://pipeline/summary\")\n            print(summary.contents[0].text)\n\n\nif __name__ == \"__main__\":\n    asyncio.run(main())\n",
+     "lang": "Python",
+     "file": "smoke_client.py"
+    },
+    {
+     "title": "Unit-test the tool functions directly",
+     "body": "In FastMCP 1.x the decorators return your original function, so tests call search_customers() and friends like normal Python. A fixture resets the notes so tests do not leak state. The last test asks the server itself to list its tools and resources, catching registration mistakes.",
+     "code": "import asyncio\nimport sys\nfrom pathlib import Path\n\nimport pytest\n\nsys.path.insert(0, str(Path(__file__).resolve().parent.parent))\nimport crm_data  # noqa: E402\nimport crm_server  # noqa: E402\n\n\n@pytest.fixture(autouse=True)\ndef fresh_data():\n    crm_data.reset()\n\n\ndef test_search_by_name_and_stage():\n    assert [c[\"id\"] for c in crm_server.search_customers(\"acme\")] == [\"C001\"]\n    assert [c[\"id\"] for c in crm_server.search_customers(\"trial\")] == [\"C002\"]\n\n\ndef test_search_limit_is_clamped():\n    assert len(crm_server.search_customers(\"\", limit=1000)) <= 20\n\n\ndef test_get_customer_includes_notes():\n    record = crm_server.get_customer(\"C003\")\n    assert record[\"stage\"] == \"negotiation\"\n    assert \"SSO\" in record[\"notes\"][0]\n\n\ndef test_unknown_customer_raises_helpful_error():\n    with pytest.raises(ValueError, match=\"search_customers\"):\n        crm_server.get_customer(\"C999\")\n\n\ndef test_add_note_appends_and_validates():\n    out = crm_server.add_note(\"C002\", \"  Trial extended by 2 weeks. \")\n    assert out[\"notes\"][-1].endswith(\"Trial extended by 2 weeks.\")\n    with pytest.raises(ValueError):\n        crm_server.add_note(\"C002\", \"x\" * 501)\n\n\ndef test_resource_text():\n    text = crm_server.pipeline_summary()\n    assert \"negotiation: 1\" in text and \"Total ARR: $165,000\" in text\n\n\ndef test_server_registers_tools_and_resource():\n    tools = asyncio.run(crm_server.mcp.list_tools())\n    assert {t.name for t in tools} == {\"search_customers\", \"get_customer\", \"add_note\"}\n    resources = asyncio.run(crm_server.mcp.list_resources())\n    assert [str(r.uri) for r in resources] == [\"crm://pipeline/summary\"]\n",
+     "lang": "Python",
+     "file": "tests/test_crm.py"
+    },
+    {
+     "title": "Explore it in MCP Inspector",
+     "body": "Inspector is the official debugging UI. It starts your server, shows the schemas generated from your type hints, and lets you call tools by hand. Try get_customer with C999 to see how an error result looks to a client. The --cli form lists tools without a browser.",
+     "code": "npx @modelcontextprotocol/inspector python crm_server.py\n# Browser opens -> Connect -> Tools -> search_customers {\"query\": \"acme\"}\n# Resources -> crm://pipeline/summary\n\nnpx @modelcontextprotocol/inspector --cli python crm_server.py --method tools/list",
+     "lang": "bash",
+     "file": ""
+    },
+    {
+     "title": "Connect it to Claude Desktop",
+     "body": "Claude Desktop launches local MCP servers from its config file (Settings, Developer, Edit Config). macOS: ~/Library/Application Support/Claude/claude_desktop_config.json. Windows: %APPDATA%\\Claude\\claude_desktop_config.json. Use absolute paths to the venv's python and to crm_server.py; on Windows use .venv\\Scripts\\python.exe with doubled backslashes in JSON.\n\nFully quit and reopen Claude Desktop, then ask: \"Which customers are in negotiation, and what notes do we have?\" If the server does not show up, read the MCP logs (macOS ~/Library/Logs/Claude/mcp*.log, Windows %APPDATA%\\Claude\\logs).",
+     "code": "{\n  \"mcpServers\": {\n    \"mock-crm\": {\n      \"command\": \"/ABSOLUTE/PATH/TO/p7-mcp-server/.venv/bin/python\",\n      \"args\": [\"/ABSOLUTE/PATH/TO/p7-mcp-server/crm_server.py\"]\n    }\n  }\n}\n",
+     "lang": "JSON",
+     "file": "claude_desktop_config.example.json"
+    },
+    {
+     "title": "Requirements",
+     "body": "Just the MCP SDK (pinned below 2.0 for FastMCP) and pytest.",
+     "code": "# FastMCP lives at mcp.server.fastmcp in the 1.x SDK. mcp 2.x renamed it (see README).\nmcp>=1.2,<2\npytest>=8.0\n",
+     "lang": "bash",
+     "file": "requirements.txt"
+    }
+   ],
+   "run": {
+    "code": "python smoke_client.py\n# tools: ['search_customers', 'get_customer', 'add_note']\n# resources: ['crm://pipeline/summary']\n# search_customers(trial): { \"id\": \"C002\", \"name\": \"Globex Sample Ltd\", ... }\n# # Pipeline summary\n# - trial: 1 (Globex Sample Ltd)\n# - negotiation: 1 (Initech Demo Inc)\n# - customer: 1 (Acme Test Co)\n# - churned: 1 (Umbrella Example LLC)\n#\n# Total ARR: $165,000\n# (server INFO logs on stderr are mixed in)",
+    "lang": "bash"
+   },
+   "tests": {
+    "code": "python -m pytest -q\n# .......\n# 7 passed in 0.62s",
+    "lang": "bash"
+   },
+   "stretch": [
+    "Port the server to mcp 2.x (MCPServer) and get the tests passing again.",
+    "Add a resource template crm://customers/{customer_id} and a prompt named account_brief.",
+    "Move the data to SQLite and make add_note require a confirm argument before writing.",
+    "Serve it over Streamable HTTP (mcp.run(transport=\"streamable-http\")) and add a bearer-token check."
+   ],
+   "interview": "I built an MCP server that exposes a mock CRM to any MCP client: three tools (search, get, add note) and a read-only pipeline resource, using FastMCP so type hints and docstrings become the schema. I kept business logic in plain Python so it is unit-tested directly, then verified the protocol with MCP Inspector and a small stdio client before wiring it into Claude Desktop. Trade-offs I would raise: stdio is simple and local but single-user, while HTTP needs real auth; and write tools like add_note need confirmation and audit logging because the model, not a human, decides when to call them."
+  },
+  "ideas": [
+   "MCP separates tools (actions the model may call) from resources (data the client may load).",
+   "Write the integration once as an MCP server and every MCP client can use it.",
+   "In FastMCP, type hints and docstrings become the tool schema and description, so write them for the model.",
+   "Keep business logic out of the protocol layer so it can be unit-tested directly."
+  ],
+  "traps": [
+   "Printing to stdout in a stdio server, which corrupts the protocol stream. Log to stderr.",
+   "Relative paths or the system python in claude_desktop_config.json; Claude Desktop needs absolute paths to the venv's interpreter.",
+   "Installing mcp 2.x and copying 1.x FastMCP examples; the import moved, so pin the version or port the code."
+  ],
+  "qa": [
+   [
+    "When would you expose something as a resource instead of a tool?",
+    "A resource is read-only context the client or user chooses to load, like a pipeline summary or a schema. A tool is something the model decides to call, possibly with side effects. If it changes data or needs arguments the model chooses, make it a tool; if it is reference data, a resource is simpler and safer."
+   ],
+   [
+    "How would you make this MCP server safe to give to a customer's sales team?",
+    "Run it over HTTP with real authentication, enforce per-user permissions inside each tool, keep write tools narrow with validation and confirmation, log every call with the user identity, rate-limit, and never return fields the caller is not allowed to see."
+   ]
+  ]
+ },
+ {
+  "id": "p8-rag-evals",
+  "mod": 8,
+  "sec": "8.8",
+  "name": "Project 8: RAG with evals",
+  "title": "Build a RAG pipeline with ACLs, citations and an eval gate",
+  "thesis": "Ingest 10 policy documents, chunk and embed them, retrieve top-k with a permission filter, answer with citations, and score it on a 15-question golden set. Measured retrieval and faithfulness are what turn a RAG demo into something a customer can trust.",
+  "format": "project",
+  "project": {
+   "level": "Intermediate",
+   "time": "3-4 hours",
+   "skills": [
+    "chunking",
+    "embeddings (hashing and sentence-transformers)",
+    "vector search with numpy",
+    "pgvector",
+    "ACL filtering",
+    "citations",
+    "recall@k and faithfulness evals",
+    "pytest"
+   ],
+   "concepts": [
+    "python2",
+    "mathbasics",
+    "embeddings",
+    "rag",
+    "evals",
+    "security",
+    "sql",
+    "prompting",
+    "tdd"
+   ],
+   "folder": "fde-atlas/projects/p8-rag-evals",
+   "tree": "p8-rag-evals/.env.example\np8-rag-evals/.gitignore\np8-rag-evals/README.md\np8-rag-evals/ask.py\np8-rag-evals/docker-compose.yml\np8-rag-evals/docs/budget_approval.md\np8-rag-evals/docs/expenses.md\np8-rag-evals/docs/parental_leave.md\np8-rag-evals/docs/performance_reviews.md\np8-rag-evals/docs/pto.md\np8-rag-evals/docs/remote_work.md\np8-rag-evals/docs/salary_bands.md\np8-rag-evals/docs/security.md\np8-rag-evals/docs/travel.md\np8-rag-evals/docs/vendor_payments.md\np8-rag-evals/eval.py\np8-rag-evals/evals/golden.jsonl\np8-rag-evals/rag/__init__.py\np8-rag-evals/rag/answer.py\np8-rag-evals/rag/embed.py\np8-rag-evals/rag/index.py\np8-rag-evals/requirements.txt\np8-rag-evals/tests/test_rag.py",
+   "setup": [
+    {
+     "title": "Create a virtual environment (macOS / Linux)",
+     "body": "A venv keeps this project's packages separate from everything else on your machine.",
+     "code": "cd p8-rag-evals\npython3 -m venv .venv\nsource .venv/bin/activate\npip install -r requirements.txt",
+     "lang": "bash"
+    },
+    {
+     "title": "Create a virtual environment (Windows PowerShell)",
+     "body": "Same thing on Windows. If activation is blocked, run Set-ExecutionPolicy -Scope CurrentUser RemoteSigned once.",
+     "code": "cd p8-rag-evals\npy -m venv .venv\n.venv\\Scripts\\Activate.ps1\npip install -r requirements.txt",
+     "lang": "powershell"
+    },
+    {
+     "title": "Optional: real embeddings and real answers",
+     "body": "Offline mode needs nothing else. For semantic embeddings install sentence-transformers (a large download that includes PyTorch). For model-written answers set LLM_MODE=real, your key and MODEL.",
+     "code": "pip install sentence-transformers\n# macOS / Linux\nexport EMBED_MODE=st LLM_MODE=real ANTHROPIC_API_KEY=your-key MODEL=claude-sonnet-5\n# Windows PowerShell\n$env:EMBED_MODE=\"st\"; $env:LLM_MODE=\"real\"; $env:ANTHROPIC_API_KEY=\"your-key\"; $env:MODEL=\"claude-sonnet-5\"",
+     "lang": "bash"
+    },
+    {
+     "title": "Optional: pgvector with Docker",
+     "body": "The numpy store is the default so nothing needs Docker. docker-compose.yml starts Postgres with the pgvector extension for the pgvector stretch goal.",
+     "code": "# Optional: Postgres with the pgvector extension, for the pgvector stretch goal.\n# Start: docker compose up -d     Stop: docker compose down\nservices:\n  db:\n    image: pgvector/pgvector:pg16\n    environment:\n      POSTGRES_USER: rag\n      POSTGRES_PASSWORD: rag-local-only\n      POSTGRES_DB: rag\n    ports:\n      - \"5432:5432\"\n\n# docker compose up -d",
+     "lang": "yaml"
+    }
+   ],
+   "steps": [
+    {
+     "title": "Add the documents with ACL front matter",
+     "body": "Ten short, generated policy documents. Each starts with a title and an acl: all (everyone), hr, or finance. The ACL travels with every chunk so retrieval can filter on it.",
+     "code": "# ===== docs/budget_approval.md =====\n---\ntitle: Budget approval (finance)\nacl: finance\n---\nPurchases under 1,000 dollars need approval from your manager only. Purchases from 1,000 to 10,000 dollars need approval from the department head.\n\nAny purchase over 10,000 dollars requires approval from the CFO before a purchase order is issued.\n\nBudgets are set each November for the following fiscal year, which starts on February 1.\n\n# ===== docs/expenses.md =====\n---\ntitle: Expense reimbursement\nacl: all\n---\nSubmit expense reports within 30 days of the purchase date using the expense tool. Reports submitted later than 90 days are not reimbursed.\n\nAn itemized receipt is required for every expense over 25 dollars. Alcohol and personal entertainment are never reimbursable.\n\nReimbursements are paid with the next payroll run after your manager approves the report.\n\n# ===== docs/parental_leave.md =====\n---\ntitle: Parental leave\nacl: all\n---\nPrimary caregivers receive 16 weeks of fully paid parental leave. Secondary caregivers receive 8 weeks of fully paid leave.\n\nParental leave can be taken any time within 12 months of the birth, adoption or foster placement of a child.\n\nTell HR at least 30 days before your planned leave start date when possible, so your team can plan coverage.\n\n# ===== docs/performance_reviews.md =====\n---\ntitle: Performance reviews (HR internal)\nacl: hr\n---\nPerformance reviews happen twice a year, in April and October. Managers rate each employee on a scale from 1 to 5.\n\nAn employee rated 1 or 2 in two consecutive reviews is placed on a 60-day performance improvement plan (PIP).\n\nHR calibrates ratings across teams before results are shared with employees.\n\n# ===== docs/pto.md =====\n---\ntitle: Paid time off\nacl: all\n---\nFull-time employees receive 20 days of paid time off (PTO) per year. PTO accrues monthly at about 1.67 days per month, starting on the first day of employment.\n\nRequest PTO in the HR portal at least two weeks in advance for absences longer than three days. Your manager approves or declines within five business days.\n\nUp to 5 unused PTO days carry over into the next calendar year. Days above that limit expire on December 31.\n\n# ===== docs/remote_work.md =====\n---\ntitle: Remote work\nacl: all\n---\nEmployees may work remotely up to 3 days per week with their manager's agreement. Core collaboration hours are 10:00 to 15:00 in your team's home time zone.\n\nEach employee receives a one-time home office stipend of 500 dollars for a chair, desk or monitor. Submit the receipt through the expense tool within 60 days of starting remote work.\n\nWorking from another country for more than 14 days requires written approval from HR because of tax and visa rules.\n\n# ===== docs/salary_bands.md =====\n---\ntitle: Salary bands (confidential)\nacl: hr\n---\nSalary bands are reviewed every March using market data from two compensation surveys.\n\nThe band for level L3 engineers is 95,000 to 125,000 dollars. The band for level L4 engineers is 120,000 to 155,000 dollars.\n\nOffers above the top of a band require approval from the VP of People and the CFO.\n\n# ===== docs/security.md =====\n---\ntitle: Information security\nacl: all\n---\nPasswords must be at least 14 characters long and unique to each system. Multi-factor authentication (MFA) is mandatory for email, the VPN and all production systems.\n\nLock your laptop screen whenever you step away. Laptops lock automatically after 5 minutes of inactivity.\n\nReport suspected phishing emails with the Report Phishing button in your mail client. Report a lost or stolen laptop to the security team within 1 hour.\n\n# ===== docs/travel.md =====\n---\ntitle: Business travel\nacl: all\n---\nBook all flights and hotels through the company travel portal so that we can locate travelers in an emergency.\n\nEconomy class is required for flights under 6 hours. Premium economy is allowed for flights of 6 hours or longer.\n\nThe hotel limit is 250 dollars per night in most cities and 350 dollars per night in high-cost cities. The daily meal allowance while traveling is 60 dollars.\n\n# ===== docs/vendor_payments.md =====\n---\ntitle: Vendor payments (finance)\nacl: finance\n---\nStandard vendor payment terms are net 30 days from the invoice date. Vendors send invoices to the accounts payable inbox.\n\nWire transfers over 50,000 dollars require two approvers from the finance team.\n\nNew vendors must complete a tax form and a bank verification call before their first payment.\n",
+     "lang": "markdown",
+     "file": "docs/*.md"
+    },
+    {
+     "title": "Write the embedders",
+     "body": "HashingEmbedder is the offline mode: it hashes each word and word pair into one of 1024 buckets and normalizes the vector. It is deterministic and instant, but purely lexical: it does not know that vacation means PTO.\n\nSentenceTransformerEmbedder is the real mode (all-MiniLM-L6-v2 by default, 384 dimensions). Both return unit vectors, so a dot product is cosine similarity. EMBED_MODE picks one.",
+     "code": "\"\"\"Embedders. The hashing one is deterministic and offline; the real one downloads a model.\"\"\"\nimport hashlib\nimport os\nimport re\n\nimport numpy as np\n\nSTOP = set(\"a an the of to in on for and or is are be by with at from as it that this your you i we our do does can how what when who which much many any per\".split())\n\n\ndef tokens(text):\n    \"\"\"Lowercase words minus stopwords, with a crude plural trim (days -> day).\"\"\"\n    words = re.findall(r\"[a-z0-9]+\", text.lower())\n    return [re.sub(r\"(?<=[a-z]{3})s$\", \"\", w) for w in words if w not in STOP]\n\n\nclass HashingEmbedder:\n    \"\"\"Feature hashing of words and word pairs into a fixed-size unit vector.\n\n    Not semantic (it will not know \"vacation\" means \"PTO\"), but deterministic,\n    instant, and good enough to test the whole pipeline without downloads.\n    \"\"\"\n\n    def __init__(self, dim=1024):\n        self.dim = dim\n\n    def _bucket(self, feature):\n        h = int(hashlib.md5(feature.encode()).hexdigest(), 16)\n        return h % self.dim, (1.0 if (h >> 64) & 1 else -1.0)\n\n    def embed(self, texts):\n        out = np.zeros((len(texts), self.dim), dtype=np.float32)\n        for row, text in enumerate(texts):\n            toks = tokens(text)\n            feats = toks + [a + \"_\" + b for a, b in zip(toks, toks[1:])]\n            for f in feats:\n                idx, sign = self._bucket(f)\n                out[row, idx] += sign\n            norm = np.linalg.norm(out[row])\n            if norm:\n                out[row] /= norm\n        return out\n\n\nclass SentenceTransformerEmbedder:\n    \"\"\"Real semantic embeddings. Needs: pip install sentence-transformers (large download).\"\"\"\n\n    def __init__(self, name=None):\n        from sentence_transformers import SentenceTransformer\n\n        self.model = SentenceTransformer(name or os.environ.get(\"EMBED_MODEL\", \"all-MiniLM-L6-v2\"))\n\n    def embed(self, texts):\n        return np.asarray(self.model.encode(texts, normalize_embeddings=True), dtype=np.float32)\n\n\ndef make_embedder():\n    mode = os.environ.get(\"EMBED_MODE\", \"hash\")\n    return SentenceTransformerEmbedder() if mode == \"st\" else HashingEmbedder()\n",
+     "lang": "Python",
+     "file": "rag/embed.py"
+    },
+    {
+     "title": "Ingest, chunk, store and retrieve with an ACL filter",
+     "body": "load_docs parses the front matter. chunk_doc splits on blank lines and packs paragraphs into chunks up to 400 characters, with ids like pto#1 that citations will use. Each chunk is embedded with its title prefixed so it keeps context.\n\nInMemoryStore is the fallback for pgvector: a numpy matrix plus metadata. The key line sets forbidden chunks' scores to minus infinity BEFORE ranking, so restricted text can never be retrieved, let alone sent to a model. Create an empty rag/__init__.py too.",
+     "code": "\"\"\"Ingest -> chunk -> embed -> store, and retrieval with an ACL filter.\"\"\"\nfrom dataclasses import dataclass\nfrom pathlib import Path\n\nimport numpy as np\n\nDOCS_DIR = Path(__file__).resolve().parent.parent / \"docs\"\n\n\n@dataclass\nclass Chunk:\n    id: str      # \"pto#1\"\n    doc_id: str  # \"pto\"\n    title: str\n    acl: str     # \"all\", \"hr\", \"finance\"\n    text: str\n\n\ndef load_docs(folder=DOCS_DIR):\n    \"\"\"Read markdown files with a small front-matter header (title, acl).\"\"\"\n    docs = []\n    for path in sorted(Path(folder).glob(\"*.md\")):\n        _, header, body = path.read_text(encoding=\"utf-8\").split(\"---\", 2)\n        meta = dict(line.split(\":\", 1) for line in header.strip().splitlines())\n        meta = {k.strip(): v.strip() for k, v in meta.items()}\n        docs.append({\"id\": path.stem, \"title\": meta[\"title\"], \"acl\": meta.get(\"acl\", \"all\"), \"body\": body.strip()})\n    return docs\n\n\ndef chunk_doc(doc, max_chars=400):\n    \"\"\"Split on blank lines, then pack paragraphs into chunks up to max_chars.\"\"\"\n    chunks, current = [], \"\"\n    for para in [p.strip() for p in doc[\"body\"].split(\"\\n\\n\") if p.strip()]:\n        if current and len(current) + len(para) > max_chars:\n            chunks.append(current)\n            current = \"\"\n        current = (current + \"\\n\\n\" + para).strip()\n    if current:\n        chunks.append(current)\n    return [Chunk(f\"{doc['id']}#{i}\", doc[\"id\"], doc[\"title\"], doc[\"acl\"], text) for i, text in enumerate(chunks)]\n\n\nclass InMemoryStore:\n    \"\"\"Numpy fallback for pgvector: a matrix of unit vectors plus metadata.\"\"\"\n\n    def __init__(self):\n        self.chunks, self.vectors = [], None\n\n    def add(self, chunks, vectors):\n        self.chunks.extend(chunks)\n        self.vectors = vectors if self.vectors is None else np.vstack([self.vectors, vectors])\n\n    def search(self, query_vec, k, allowed_acls):\n        # Filter BEFORE ranking so forbidden text can never reach the prompt.\n        allowed = np.array([c.acl in allowed_acls for c in self.chunks])\n        scores = self.vectors @ query_vec          # cosine similarity (vectors are normalized)\n        scores = np.where(allowed, scores, -np.inf)\n        order = np.argsort(-scores)[:k]\n        return [(self.chunks[i], float(scores[i])) for i in order if np.isfinite(scores[i])]\n\n\ndef build_index(embedder, folder=DOCS_DIR):\n    store = InMemoryStore()\n    chunks = [c for doc in load_docs(folder) for c in chunk_doc(doc)]\n    # Prefix the title so each chunk carries its context (\"contextual chunk header\").\n    store.add(chunks, embedder.embed([f\"{c.title}. {c.text}\" for c in chunks]))\n    return store\n\n\ndef retrieve(store, embedder, question, groups, k=3):\n    allowed = {\"all\", *groups}\n    return store.search(embedder.embed([question])[0], k, allowed)\n",
+     "lang": "Python",
+     "file": "rag/index.py"
+    },
+    {
+     "title": "Answer with citations, or abstain",
+     "body": "If nothing relevant is retrieved (top score under MIN_SCORE) the system says it does not know instead of guessing. In fake mode the answer is the sentence from the top chunk that best overlaps the question, followed by its chunk id. In real mode Claude gets the chunks inside source tags and must cite a source id after every sentence.\n\nMIN_SCORE is tuned for the hashing embedder; re-tune it when you switch embedders.",
+     "code": "\"\"\"Answer a question from retrieved chunks, with [chunk-id] citations.\"\"\"\nimport os\nimport re\n\nfrom rag.embed import tokens\nfrom rag.index import retrieve\n\nNO_ANSWER = \"I don't know based on the documents you can access.\"\nMIN_SCORE = 0.08  # below this, retrieval found nothing relevant: abstain instead of guessing\n\nSYSTEM = (\n    \"Answer the employee's question using ONLY the sources provided. After each sentence, \"\n    \"cite the source id in square brackets, like [pto#0]. If the sources do not contain the \"\n    f\"answer, reply exactly: {NO_ANSWER}\"\n)\n\n\ndef sentences(text):\n    return [s.strip() for s in re.split(r\"(?<=[.!?\\]])\\s+(?!\\[)\", text) if s.strip()]\n\n\ndef fake_answer(question, hits):\n    \"\"\"Offline mode: return the sentence from the top chunk that best overlaps the question.\"\"\"\n    top = hits[0][0]\n    q = set(tokens(question))\n    best = max(sentences(top.text), key=lambda s: len(q & set(tokens(s))))\n    return f\"{best} [{top.id}]\"\n\n\ndef real_answer(question, hits):\n    import anthropic\n\n    context = \"\\n\\n\".join(f\"<source id=\\\"{c.id}\\\" title=\\\"{c.title}\\\">\\n{c.text}\\n</source>\" for c, _ in hits)\n    response = anthropic.Anthropic().messages.create(\n        model=os.environ[\"MODEL\"],\n        max_tokens=16000,\n        system=SYSTEM,\n        messages=[{\"role\": \"user\", \"content\": f\"{context}\\n\\nQuestion: {question}\"}],\n    )\n    return \"\".join(b.text for b in response.content if b.type == \"text\").strip()\n\n\ndef answer(question, store, embedder, groups=(), k=3):\n    hits = retrieve(store, embedder, question, groups, k)\n    if not hits or hits[0][1] < MIN_SCORE:\n        return {\"answer\": NO_ANSWER, \"hits\": hits}\n    mode = os.environ.get(\"LLM_MODE\", \"fake\")\n    text = real_answer(question, hits) if mode == \"real\" else fake_answer(question, hits)\n    return {\"answer\": text, \"hits\": hits}\n",
+     "lang": "Python",
+     "file": "rag/answer.py"
+    },
+    {
+     "title": "Add a CLI to ask one question",
+     "body": "ask.py shows the retrieved chunks with scores and ACLs, then the answer. --groups sets which ACL groups the user belongs to.",
+     "code": "\"\"\"Ask one question: python ask.py \"How many PTO days do I get?\" --groups hr\"\"\"\nimport argparse\n\nfrom rag.answer import answer\nfrom rag.embed import make_embedder\nfrom rag.index import build_index\n\nparser = argparse.ArgumentParser()\nparser.add_argument(\"question\")\nparser.add_argument(\"--groups\", nargs=\"*\", default=[], help=\"ACL groups the user belongs to, e.g. hr finance\")\nparser.add_argument(\"--k\", type=int, default=3)\nargs = parser.parse_args()\n\nembedder = make_embedder()\nstore = build_index(embedder)\nresult = answer(args.question, store, embedder, args.groups, args.k)\nprint(\"Retrieved:\")\nfor chunk, score in result[\"hits\"]:\n    print(f\"  {score:.3f}  {chunk.id:<22} ({chunk.acl})\")\nprint(f\"\\nAnswer: {result['answer']}\")\n",
+     "lang": "Python",
+     "file": "ask.py"
+    },
+    {
+     "title": "Write the golden set",
+     "body": "15 questions, each with the user's groups, the document that should be retrieved, and a key fact the answer must contain. q15 is an ACL test: a regular user asks about HR-only salary bands, and the HR document must never appear in the results.",
+     "code": "{\"id\": \"q01\", \"question\": \"How many PTO days do full-time employees get per year?\", \"groups\": [], \"expected_doc\": \"pto\", \"fact\": \"20 days\"}\n{\"id\": \"q02\", \"question\": \"How many unused PTO days carry over to next year?\", \"groups\": [], \"expected_doc\": \"pto\", \"fact\": \"5 unused\"}\n{\"id\": \"q03\", \"question\": \"How many days per week can I work remotely?\", \"groups\": [], \"expected_doc\": \"remote_work\", \"fact\": \"3 days\"}\n{\"id\": \"q04\", \"question\": \"How much is the home office stipend?\", \"groups\": [], \"expected_doc\": \"remote_work\", \"fact\": \"500\"}\n{\"id\": \"q05\", \"question\": \"Within how many days must I submit an expense report?\", \"groups\": [], \"expected_doc\": \"expenses\", \"fact\": \"30 days\"}\n{\"id\": \"q06\", \"question\": \"When is an itemized receipt required for an expense?\", \"groups\": [], \"expected_doc\": \"expenses\", \"fact\": \"25 dollars\"}\n{\"id\": \"q07\", \"question\": \"What is the hotel limit per night when traveling?\", \"groups\": [], \"expected_doc\": \"travel\", \"fact\": \"250\"}\n{\"id\": \"q08\", \"question\": \"Which flights allow premium economy?\", \"groups\": [], \"expected_doc\": \"travel\", \"fact\": \"6 hours\"}\n{\"id\": \"q09\", \"question\": \"How long must passwords be?\", \"groups\": [], \"expected_doc\": \"security\", \"fact\": \"14 characters\"}\n{\"id\": \"q10\", \"question\": \"How do I report a phishing email?\", \"groups\": [], \"expected_doc\": \"security\", \"fact\": \"Report Phishing\"}\n{\"id\": \"q11\", \"question\": \"How many weeks of parental leave do primary caregivers get?\", \"groups\": [], \"expected_doc\": \"parental_leave\", \"fact\": \"16 weeks\"}\n{\"id\": \"q12\", \"question\": \"What is the salary band for L3 engineers?\", \"groups\": [\"hr\"], \"expected_doc\": \"salary_bands\", \"fact\": \"95,000\"}\n{\"id\": \"q13\", \"question\": \"How often are performance reviews held?\", \"groups\": [\"hr\"], \"expected_doc\": \"performance_reviews\", \"fact\": \"April and October\"}\n{\"id\": \"q14\", \"question\": \"Who must approve a purchase over 10,000 dollars?\", \"groups\": [\"finance\"], \"expected_doc\": \"budget_approval\", \"fact\": \"CFO\"}\n{\"id\": \"q15\", \"question\": \"What is the salary band for L4 engineers?\", \"groups\": [], \"expected_doc\": null, \"fact\": null, \"forbidden_doc\": \"salary_bands\"}\n",
+     "lang": "JSON",
+     "file": "evals/golden.jsonl"
+    },
+    {
+     "title": "Write the eval script and quality gates",
+     "body": "recall@k: did the expected document appear in the top k? fact_accuracy: does the answer contain the key fact? faithfulness: for each answer sentence, does it cite a retrieved chunk and do at least 70 percent of its content words appear in that chunk? It is a cheap proxy; LLM-as-judge is the usual upgrade. acl_leaks counts forbidden documents retrieved.\n\nThe script exits with code 1 when a gate fails, so the same command works in CI.",
+     "code": "\"\"\"Run the golden set: retrieval recall@k, fact accuracy, faithfulness, ACL leaks.\n\nUsage: python eval.py [--k 3]      Exit code 1 if a quality gate fails (use it in CI).\n\"\"\"\nimport argparse\nimport json\nimport re\nimport sys\nfrom pathlib import Path\n\nfrom rag.answer import NO_ANSWER, answer, sentences\nfrom rag.embed import make_embedder, tokens\nfrom rag.index import build_index\n\nGOLDEN = Path(__file__).resolve().parent / \"evals\" / \"golden.jsonl\"\n\n\ndef faithfulness(answer_text, hits, threshold=0.7):\n    \"\"\"Share of answer sentences that are supported by the chunks they cite.\n\n    A sentence counts as supported when it cites at least one retrieved chunk and\n    at least `threshold` of its content words appear in the cited chunk text.\n    A crude, cheap proxy; an LLM-as-judge is the usual upgrade.\n    \"\"\"\n    if answer_text == NO_ANSWER:\n        return 1.0\n    by_id = {c.id: c.text for c, _ in hits}\n    sents = sentences(answer_text)\n    supported = 0\n    for s in sents:\n        cited = re.findall(r\"\\[([\\w#]+)\\]\", s)\n        source = \" \".join(by_id.get(c, \"\") for c in cited)\n        words = set(tokens(re.sub(r\"\\[[\\w#]+\\]\", \"\", s)))\n        if cited and source and words and len(words & set(tokens(source))) / len(words) >= threshold:\n            supported += 1\n    return supported / len(sents) if sents else 0.0\n\n\ndef run(k=3):\n    embedder = make_embedder()\n    store = build_index(embedder)\n    rows = [json.loads(line) for line in GOLDEN.read_text().splitlines() if line.strip()]\n    hits_at_k, facts_ok, faith, leaks, answerable = 0, 0, [], 0, 0\n    print(f\"{'id':<4} {'recall':<6} {'fact':<5} {'faith':<5} question\")\n    for row in rows:\n        result = answer(row[\"question\"], store, embedder, row[\"groups\"], k)\n        docs = [c.doc_id for c, _ in result[\"hits\"]]\n        f = faithfulness(result[\"answer\"], result[\"hits\"])\n        faith.append(f)\n        if row[\"expected_doc\"]:\n            answerable += 1\n            hit = row[\"expected_doc\"] in docs\n            fact = row[\"fact\"].lower() in result[\"answer\"].lower()\n            hits_at_k += hit\n            facts_ok += fact\n            print(f\"{row['id']:<4} {'yes' if hit else 'NO':<6} {'yes' if fact else 'NO':<5} {f:<5.2f} {row['question']}\")\n        else:\n            leaked = row[\"forbidden_doc\"] in docs\n            leaks += leaked\n            print(f\"{row['id']:<4} {'-':<6} {'-':<5} {f:<5.2f} {row['question']}  (ACL check: {'LEAK' if leaked else 'ok'})\")\n    summary = {\n        f\"recall@{k}\": round(hits_at_k / answerable, 3),\n        \"fact_accuracy\": round(facts_ok / answerable, 3),\n        \"faithfulness\": round(sum(faith) / len(faith), 3),\n        \"acl_leaks\": leaks,\n        \"questions\": len(rows),\n    }\n    print(\"\\n\" + json.dumps(summary, indent=2))\n    return summary\n\n\nif __name__ == \"__main__\":\n    parser = argparse.ArgumentParser()\n    parser.add_argument(\"--k\", type=int, default=3)\n    s = run(parser.parse_args().k)\n    gates_ok = list(s.values())[0] >= 0.8 and s[\"faithfulness\"] >= 0.8 and s[\"acl_leaks\"] == 0\n    sys.exit(0 if gates_ok else 1)\n",
+     "lang": "Python",
+     "file": "eval.py"
+    },
+    {
+     "title": "Test the pipeline",
+     "body": "Tests cover document loading, chunk sizes and ids, deterministic embeddings, citations, the ACL filter for both a regular and an HR user, the faithfulness check on a supported and an invented sentence, and the full golden set against the gates.",
+     "code": "import os\nimport sys\nfrom pathlib import Path\n\nimport numpy as np\nimport pytest\n\nsys.path.insert(0, str(Path(__file__).resolve().parent.parent))\nos.environ[\"LLM_MODE\"] = \"fake\"\nos.environ[\"EMBED_MODE\"] = \"hash\"\n\nfrom eval import faithfulness, run  # noqa: E402\nfrom rag.answer import NO_ANSWER, answer  # noqa: E402\nfrom rag.embed import HashingEmbedder  # noqa: E402\nfrom rag.index import build_index, chunk_doc, load_docs  # noqa: E402\n\n\n@pytest.fixture(scope=\"module\")\ndef setup():\n    emb = HashingEmbedder()\n    return build_index(emb), emb\n\n\ndef test_ten_docs_with_acls():\n    docs = load_docs()\n    assert len(docs) == 10\n    assert {d[\"acl\"] for d in docs} == {\"all\", \"hr\", \"finance\"}\n\n\ndef test_chunks_respect_size_and_keep_ids():\n    doc = {\"id\": \"d\", \"title\": \"T\", \"acl\": \"all\", \"body\": \"\\n\\n\".join([\"x\" * 150] * 5)}\n    chunks = chunk_doc(doc, max_chars=400)\n    assert [c.id for c in chunks] == [\"d#0\", \"d#1\", \"d#2\"]\n    assert all(len(c.text) <= 400 for c in chunks)\n\n\ndef test_hashing_embedder_is_deterministic_and_normalized():\n    a, b = HashingEmbedder().embed([\"remote work stipend\"]), HashingEmbedder().embed([\"remote work stipend\"])\n    assert np.allclose(a, b) and np.isclose(np.linalg.norm(a[0]), 1.0)\n\n\ndef test_answer_cites_top_chunk(setup):\n    store, emb = setup\n    out = answer(\"How many weeks of parental leave do primary caregivers get?\", store, emb)\n    assert \"16 weeks\" in out[\"answer\"] and \"[parental_leave#0]\" in out[\"answer\"]\n\n\ndef test_acl_blocks_hr_doc_for_regular_user(setup):\n    store, emb = setup\n    out = answer(\"What is the salary band for L3 engineers?\", store, emb, groups=[])\n    assert all(c.acl == \"all\" for c, _ in out[\"hits\"])\n    assert \"95,000\" not in out[\"answer\"]\n    assert \"95,000\" in answer(\"What is the salary band for L3 engineers?\", store, emb, groups=[\"hr\"])[\"answer\"]\n\n\ndef test_faithfulness_flags_unsupported_sentence(setup):\n    store, emb = setup\n    hits = answer(\"How long must passwords be?\", store, emb)[\"hits\"]\n    good = \"Passwords must be at least 14 characters long and unique to each system. [security#0]\"\n    bad = \"Passwords must be changed every week by the CEO personally. [security#0]\"\n    assert faithfulness(good, hits) == 1.0\n    assert faithfulness(bad, hits) == 0.0\n    assert faithfulness(NO_ANSWER, hits) == 1.0\n\n\ndef test_golden_set_meets_quality_gates():\n    summary = run(k=3)\n    assert summary[\"questions\"] == 15\n    assert summary[\"recall@3\"] >= 0.8 and summary[\"faithfulness\"] >= 0.8 and summary[\"acl_leaks\"] == 0\n",
+     "lang": "Python",
+     "file": "tests/test_rag.py"
+    },
+    {
+     "title": "Requirements and environment",
+     "body": "numpy, anthropic and pytest are required; sentence-transformers and psycopg are optional and commented out.",
+     "code": "# requirements.txt\nnumpy>=1.26\nanthropic>=0.40\npytest>=8.0\n# Optional, for real semantic embeddings (EMBED_MODE=st). Large download (PyTorch):\n# sentence-transformers>=3.0\n# Optional, only if you implement the pgvector store (stretch goal):\n# psycopg[binary]>=3.1\n# pgvector>=0.3\n\n# .env.example\n# fake = answer from the top chunk offline (default); real = Anthropic API\nLLM_MODE=fake\nANTHROPIC_API_KEY=your-key-here\n# Any current Claude model id, for example claude-sonnet-5\nMODEL=claude-sonnet-5\n# hash = offline hashing embedder (default); st = sentence-transformers\nEMBED_MODE=hash\nEMBED_MODEL=all-MiniLM-L6-v2\n",
+     "lang": "bash",
+     "file": "requirements.txt"
+    }
+   ],
+   "run": {
+    "code": "python ask.py \"What is the salary band for L4 engineers?\"\n# Retrieved:\n#   0.000  expenses#0             (all)\n#   ...\n# Answer: I don't know based on the documents you can access.\n\npython ask.py \"What is the salary band for L4 engineers?\" --groups hr\n#   0.426  salary_bands#0         (hr)\n# Answer: The band for level L4 engineers is 120,000 to 155,000 dollars. [salary_bands#0]\n\npython eval.py\n# id   recall fact  faith question\n# q01  yes    yes   1.00  How many PTO days do full-time employees get per year?\n# ...\n# q15  -      -     1.00  What is the salary band for L4 engineers?  (ACL check: ok)\n# { \"recall@3\": 1.0, \"fact_accuracy\": 1.0, \"faithfulness\": 1.0, \"acl_leaks\": 0, \"questions\": 15 }\n\npython ask.py \"How much vacation do I get?\"\n# Answer: I don't know ...   (lexical embeddings miss synonyms: try EMBED_MODE=st)",
+    "lang": "bash"
+   },
+   "tests": {
+    "code": "python -m pytest -q\n# .......\n# 7 passed in 0.52s",
+    "lang": "bash"
+   },
+   "stretch": [
+    "Implement PgVectorStore with the same add and search methods using the SQL in the README, and switch with VECTOR_STORE=pgvector.",
+    "Add 5 paraphrased golden questions (vacation, work from home) and compare recall for hashing versus sentence-transformers embeddings.",
+    "Replace the word-overlap faithfulness check with an LLM-as-judge and measure how often the two disagree.",
+    "Add hybrid search (BM25 plus vectors) and a reranker, and report recall@1 before and after."
+   ],
+   "interview": "I built a small RAG system over policy documents with ACL filtering applied before ranking, chunk-level citations, abstention when retrieval is weak, and an eval script over a 15-question golden set that reports recall@k, fact accuracy, faithfulness and ACL leaks and fails CI when they drop. It runs fully offline with a hashing embedder and numpy, and swaps to sentence-transformers, pgvector and Claude via environment variables. Trade-offs I would mention: lexical embeddings are cheap and predictable but miss synonyms, a word-overlap faithfulness check is fast but crude compared with an LLM judge, and a golden set this small shows regressions but is not a statistically strong benchmark."
+  },
+  "ideas": [
+   "Measure retrieval separately from generation: if the right chunk is not retrieved, no prompt can fix the answer.",
+   "Apply permission filters before ranking so restricted text never reaches the model.",
+   "Citations with chunk ids make every answer checkable, by humans and by an automated faithfulness check.",
+   "An eval script with thresholds and an exit code turns quality into a CI gate."
+  ],
+  "traps": [
+   "Filtering ACLs after retrieval, or only in the prompt, so restricted text still lands in the context.",
+   "Judging a RAG system by reading a few answers instead of measuring recall@k on a fixed golden set.",
+   "Keeping a similarity threshold after switching embedders; score scales differ between models."
+  ],
+  "qa": [
+   [
+    "Your RAG bot gives a wrong answer. How do you debug it?",
+    "First check retrieval: was the correct chunk in the top k? If not, fix chunking, embeddings, query rewriting or add hybrid search. If it was retrieved but the answer is wrong, it is a generation problem: fix the prompt, citation rules or context order. Add the case to the golden set so it stays fixed."
+   ],
+   [
+    "What does recall@k measure and why is it not enough on its own?",
+    "It measures the share of questions where a relevant document appears in the top k results. It says nothing about whether the answer used that document correctly, so you also need faithfulness (is every claim supported by a cited chunk) and answer correctness, plus safety checks such as ACL leaks."
+   ]
+  ]
+ }
+]

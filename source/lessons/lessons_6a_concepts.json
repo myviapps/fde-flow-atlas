@@ -1,0 +1,596 @@
+[
+ {
+  "mod": 1,
+  "sec": "1.3",
+  "name": "Customer-facing roles",
+  "title": "Customer-facing technical roles compared",
+  "thesis": "Sales engineers, solutions architects, forward deployed engineers, customer success engineers and consultants all work with customers, but they own different stages of the customer's life and different outputs. The FDE is the one who writes and ships production code inside the customer's world, spending most of the week on code and model work.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "lead",
+    90,
+    70,
+    "Lead and demo",
+    "Sales Engineer"
+   ],
+   [
+    "design",
+    265,
+    70,
+    "Solution design",
+    "Solutions Architect"
+   ],
+   [
+    "pov",
+    440,
+    70,
+    "Proof of value",
+    "SE or FDE"
+   ],
+   [
+    "sign",
+    615,
+    70,
+    "Contract signed",
+    "Account Executive"
+   ],
+   [
+    "build",
+    615,
+    220,
+    "Build and deploy",
+    "FDE"
+   ],
+   [
+    "live",
+    440,
+    220,
+    "Go-live",
+    "FDE and support"
+   ],
+   [
+    "adopt",
+    265,
+    220,
+    "Adoption",
+    "CSE and CSM"
+   ],
+   [
+    "renew",
+    90,
+    220,
+    "Renew, expand",
+    "CSM and AE"
+   ],
+   [
+    "consult",
+    440,
+    350,
+    "Consultant",
+    "any stage, by contract",
+    1
+   ]
+  ],
+  "edges": [
+   [
+    "lead",
+    "design",
+    0,
+    "fit?"
+   ],
+   [
+    "design",
+    "pov",
+    0,
+    "plan"
+   ],
+   [
+    "pov",
+    "sign",
+    0,
+    "proof"
+   ],
+   [
+    "sign",
+    "build",
+    0,
+    "handoff"
+   ],
+   [
+    "build",
+    "live"
+   ],
+   [
+    "live",
+    "adopt",
+    0,
+    "handoff"
+   ],
+   [
+    "adopt",
+    "renew"
+   ],
+   [
+    "renew",
+    "pov",
+    0,
+    "next use case"
+   ]
+  ],
+  "note": "Read the top row left to right, then the bottom row right to left. Each box is a stage in the customer's life and the small text names the role that usually leads it; the dashed box is an outside consultant who can be hired at any stage.",
+  "ideas": [
+   "A Sales Engineer proves the product fits before the sale; a Solutions Architect designs how it fits the customer's systems.",
+   "An FDE builds and ships the working deployment and spends roughly 70 to 80 percent of the week on code and model work.",
+   "A Customer Success Engineer keeps a live customer healthy and growing after go-live; a consultant sells hours and deliverables.",
+   "Most problems in a deal happen at the handoffs between roles, so each handoff needs a written note.",
+   "Titles vary by company type, so read the verbs in a job description, not the title."
+  ],
+  "traps": [
+   "Treating the title as the job: one company's Solutions Architect writes production code daily, another's only draws diagrams.",
+   "Letting the FDE drift into pre-sales demos and status meetings until the build work falls below half the week.",
+   "Assuming the next role already knows what was promised, instead of writing the handoff down."
+  ],
+  "qa": [
+   [
+    "How is an FDE different from a Solutions Architect?",
+    "An SA mostly designs and advises, often before the sale, and hands over an architecture. An FDE owns the build: I write and ship the production code inside the customer's environment, own it through go-live and feed what I learn back to the product team. Some companies blur the two, so I would ask what share of the week is hands-on code."
+   ],
+   [
+    "What does an FDE's time split look like, and how do you protect it?",
+    "Most of the week, around 70 to 80 percent, is code and model work: integration, pipelines, prompts, evals and debugging on site. The rest is discovery, demos and writing. I protect it by batching meetings, sending written updates instead of status calls and letting the engagement manager own scheduling and paperwork."
+   ],
+   [
+    "You join a deal after the contract is signed. What do you ask the sales engineer for?",
+    "The handoff: what was promised and in what words, the success criteria, the demo and its data, the systems and people involved, open risks, and anything the customer was told we would not do. I read it back to the customer in my first week so there are no surprises."
+   ]
+  ],
+  "id": "fderoles"
+ },
+ {
+  "mod": 1,
+  "sec": "1.3",
+  "name": "FDE skills self-assessment",
+  "title": "The FDE skill set and self-assessment",
+  "thesis": "Hiring managers look for five things in an FDE: technical depth, problem finding, customer empathy, product judgment and ownership. You get better fastest by rating yourself on each one with evidence, picking the weakest axis that matters, and turning it into a route through the atlas that you re-check every few weeks.",
+  "format": "animation",
+  "vb": [
+   710,
+   290
+  ],
+  "nodes": [
+   [
+    "axes",
+    90,
+    70,
+    "Five axes",
+    "the skills radar"
+   ],
+   [
+    "evidence",
+    265,
+    70,
+    "Collect evidence",
+    "projects, stories"
+   ],
+   [
+    "rate",
+    440,
+    70,
+    "Rate 1 to 5",
+    "anchored scale"
+   ],
+   [
+    "check",
+    615,
+    70,
+    "Reality check",
+    "peer or mentor"
+   ],
+   [
+    "gap",
+    615,
+    220,
+    "Pick the gap",
+    "lowest that matters"
+   ],
+   [
+    "route",
+    440,
+    220,
+    "Map to topics",
+    "an atlas route"
+   ],
+   [
+    "practise",
+    265,
+    220,
+    "Practise",
+    "a project as proof"
+   ],
+   [
+    "rerate",
+    90,
+    220,
+    "Re-rate",
+    "every 6 weeks"
+   ]
+  ],
+  "edges": [
+   [
+    "axes",
+    "evidence"
+   ],
+   [
+    "evidence",
+    "rate",
+    0,
+    "backs"
+   ],
+   [
+    "rate",
+    "check",
+    0,
+    "compare"
+   ],
+   [
+    "check",
+    "gap",
+    0,
+    "adjusted"
+   ],
+   [
+    "gap",
+    "route"
+   ],
+   [
+    "route",
+    "practise"
+   ],
+   [
+    "practise",
+    "rerate",
+    0,
+    "new proof"
+   ],
+   [
+    "rerate",
+    "evidence",
+    0,
+    "repeat"
+   ]
+  ],
+  "steps": [
+   {
+    "t": "Start with five axes",
+    "n": [
+     "axes"
+    ],
+    "e": [],
+    "d": "The skills radar has five axes: technical depth, problem finding, customer empathy, product judgment and ownership. An FDE needs a working level on all five, not a perfect score on one."
+   },
+   {
+    "t": "Gather evidence first",
+    "n": [
+     "axes",
+     "evidence"
+    ],
+    "e": [
+     "axes>evidence"
+    ],
+    "d": "Before giving yourself a number, list what you can point to for each axis: a project you shipped, a story you can tell, feedback someone gave you. No evidence means the number is a guess.",
+    "l": [
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "t": "Rate on an anchored scale",
+    "n": [
+     "evidence",
+     "rate"
+    ],
+    "e": [
+     "evidence>rate"
+    ],
+    "d": "Score each axis from 1 to 5, where each number has a plain description, such as 3 means 'did it on a real project with some help'. The code caps a score when evidence is missing.",
+    "l": [
+     8,
+     9,
+     10,
+     11
+    ]
+   },
+   {
+    "t": "Check against someone else",
+    "n": [
+     "rate",
+     "check"
+    ],
+    "e": [
+     "rate>check"
+    ],
+    "d": "Ask a peer, manager or mentor to rate you on the same scale. Where your scores differ by two or more points, talk about the evidence, because one of you is missing something."
+   },
+   {
+    "t": "Pick the gap that matters",
+    "n": [
+     "check",
+     "gap"
+    ],
+    "e": [
+     "check>gap"
+    ],
+    "d": "Choose one or two axes that are both low and important for the jobs you want. Fixing everything at once spreads your time too thin.",
+    "l": [
+     13,
+     14,
+     15,
+     16,
+     18
+    ]
+   },
+   {
+    "t": "Turn the gap into a route",
+    "n": [
+     "gap",
+     "route"
+    ],
+    "e": [
+     "gap>route"
+    ],
+    "d": "Map the axis to atlas topics and give each a week. A weak product judgment axis points to the moat, ROI and proof-of-concept topics."
+   },
+   {
+    "t": "Practise with a real output",
+    "n": [
+     "route",
+     "practise"
+    ],
+    "e": [
+     "route>practise"
+    ],
+    "d": "Reading does not move a score. Each week should end with something you made: a written problem statement, a small deployed service, a one-page business case."
+   },
+   {
+    "t": "Re-rate and repeat",
+    "n": [
+     "practise",
+     "rerate",
+     "evidence"
+    ],
+    "e": [
+     "practise>rerate",
+     "rerate>evidence"
+    ],
+    "d": "After about six weeks, rate yourself again with the new evidence. The radar should change shape, and a new weakest axis becomes the next focus."
+   }
+  ],
+  "code": "ratings  = {\"Technical depth\": 4, \"Problem finding\": 3,\n            \"Customer empathy\": 4, \"Product judgment\": 3,\n            \"Ownership\": 4}\nevidence = {\"Technical depth\": 3,   # shipped projects,\n            \"Problem finding\": 0,   # stories, feedback\n            \"Customer empathy\": 1,\n            \"Product judgment\": 0, \"Ownership\": 2}\n\ndef honest(score, proofs):\n    # no evidence caps you at 2, one piece at 3\n    cap = 2 if proofs == 0 else 3 if proofs == 1 else 5\n    return min(score, cap)\n\nfixed = {a: honest(s, evidence[a]) for a, s in ratings.items()}\ntarget = 3\ngaps = sorted((target - s, a) for a, s in fixed.items()\n              if s < target)\nprint(fixed)\nprint('Work on:', [a for _, a in gaps])",
+  "codeTitle": "Evidence-capped self-rating",
+  "ideas": [
+   "The five axes are technical depth, problem finding, customer empathy, product judgment and ownership.",
+   "Aim to be T-shaped: one deep spike you are known for, plus working breadth across data, APIs, LLMs and deployment.",
+   "A self-rating is only as good as the evidence behind it, so collect evidence before you score.",
+   "Ownership and comfort with ambiguity show in behaviour, so prove them with stories, not adjectives.",
+   "A gap becomes useful only when it turns into dated weeks of practice with a concrete output."
+  ],
+  "traps": [
+   "Rating yourself on how confident you feel instead of what you can show.",
+   "Trying to fix all five axes at once, which spreads effort so thin that nothing moves.",
+   "Treating technical depth as the whole job and ignoring the people and product axes interviews also score."
+  ],
+  "qa": [
+   [
+    "Which of the five FDE skills is your weakest, and what are you doing about it?",
+    "I rate myself with evidence, and my weakest was product judgment: I could build what was asked but rarely asked whether it should be a product feature or a one-off. For six weeks I worked through business cases and build-versus-configure decisions, and wrote a one-page case for a feature in my own project. I now start every build with the question 'which customers would reuse this?'"
+   ],
+   [
+    "What does ownership mean to you in a customer deployment?",
+    "It means the outcome is mine even when the cause is not. If the customer's nightly export breaks my pipeline, I do not stop at 'not our bug'; I find the owner, explain the impact with numbers, suggest a fix and add a check so we catch it next time. It also means saying clearly when something is off track, early."
+   ],
+   [
+    "How do you handle a vague request like 'use AI to make claims faster'?",
+    "I write down my assumptions, pick the one that would change the plan most if it were wrong, and test it cheaply, usually by shadowing users and measuring where the time goes. I share a one-page problem statement within a week, with what I know, what I am guessing and what I will do next."
+   ]
+  ],
+  "id": "fdeskills"
+ },
+ {
+  "mod": 5,
+  "sec": "5.2",
+  "name": "Writing and async comms",
+  "title": "Writing and async communication",
+  "thesis": "Most FDE communication is written and read later: chat messages, shared channels, end-of-day notes, tickets and pull requests. A good async message puts the point and the ask first, names an owner and a date, goes to the right channel, and leaves a record, so work keeps moving while people are in meetings, asleep or in another time zone.",
+  "format": "flowchart",
+  "vb": [
+   710,
+   420
+  ],
+  "nodes": [
+   [
+    "draft",
+    90,
+    70,
+    "Write the draft",
+    "one purpose"
+   ],
+   [
+    "bluf",
+    265,
+    70,
+    "Lead with BLUF",
+    "ask, owner, date"
+   ],
+   [
+    "sens",
+    440,
+    70,
+    "Sensitive?",
+    "secrets, personal"
+   ],
+   [
+    "secure",
+    615,
+    70,
+    "Secure route",
+    "never paste in chat"
+   ],
+   [
+    "channel",
+    440,
+    210,
+    "Pick the channel",
+    "shared, DM, ticket"
+   ],
+   [
+    "urgent",
+    265,
+    210,
+    "Urgent?",
+    "users blocked now"
+   ],
+   [
+    "post",
+    90,
+    210,
+    "Post in thread",
+    "tag the owner"
+   ],
+   [
+    "call",
+    265,
+    350,
+    "Call first",
+    "then write it up"
+   ],
+   [
+    "record",
+    90,
+    350,
+    "Record decision",
+    "doc or ticket"
+   ]
+  ],
+  "edges": [
+   [
+    "draft",
+    "bluf"
+   ],
+   [
+    "bluf",
+    "sens"
+   ],
+   [
+    "sens",
+    "secure",
+    0,
+    "yes"
+   ],
+   [
+    "sens",
+    "channel",
+    0,
+    "no"
+   ],
+   [
+    "channel",
+    "urgent"
+   ],
+   [
+    "urgent",
+    "post",
+    0,
+    "no"
+   ],
+   [
+    "urgent",
+    "call",
+    0,
+    "yes"
+   ],
+   [
+    "call",
+    "post",
+    0,
+    "summary"
+   ],
+   [
+    "post",
+    "record",
+    0,
+    "decided"
+   ]
+  ],
+  "note": "Follow a message from the top left. It gets its point and ask up front, is checked for sensitive content, goes to the right channel, and anything urgent gets a call before the written summary. Any decision ends up recorded somewhere people can find it later.",
+  "ideas": [
+   "Bottom line up front (BLUF): the first line says what you need or what happened, before any background.",
+   "Every message that needs action names one owner and one date.",
+   "Shared channels with a customer are visible to them and kept for a long time, so write every message as if their CIO will read it.",
+   "An end-of-day note turns time-zone gaps into handoffs instead of lost days.",
+   "Chat is for coordination; decisions, tickets and designs belong in a document or tracker you can link to."
+  ],
+  "traps": [
+   "Burying the ask in paragraph three, so the reader replies to the wrong thing or not at all.",
+   "Pasting credentials, customer personal data or frank opinions about the customer into a shared channel.",
+   "Asking 'any update?' with no owner, no deadline and no context, which creates more messages instead of progress."
+  ],
+  "qa": [
+   [
+    "How do you keep a customer project moving when their team is in a different time zone?",
+    "I write a short end-of-day note in the shared channel: what shipped, what is next, what is blocked and exactly what I need from whom by when. They read it at the start of their day and reply with answers, so by my morning the blockers are gone. Anything urgent gets a call at the one overlapping hour, followed by a written summary."
+   ],
+   [
+    "You have to tell a customer that a date will slip. How do you write it?",
+    "News first: the date, the new date and the one-line reason. Then the impact on them, what we are doing about it, the options they can choose between and when my next update will come. I send it as early as I know, never on the day it was due, and I say it on a call first if it affects their executives."
+   ],
+   [
+    "What do you never put in a shared customer channel?",
+    "Credentials and keys, customer personal data, internal pricing or contract talk, opinions about the customer's people, and guesses about whose fault an incident is. Those go through secure channels, internal channels or a call. I assume anything in a shared channel can be read by anyone at the customer, now or later."
+   ]
+  ],
+  "id": "asyncwriting"
+ },
+ {
+  "mod": 5,
+  "sec": "5.2",
+  "name": "Professional ethics on site",
+  "title": "Professional ethics on site",
+  "thesis": "An FDE works inside the customer's building, systems and data, so trust is the job's foundation. Professional ethics on site means keeping confidences, protecting customer data, being honest about what the technology can do, avoiding conflicts of interest, treating the people affected by automation with respect, and raising concerns early through the right channel.",
+  "format": "text",
+  "vb": null,
+  "ideas": [
+   "Confidentiality covers what you hear and see on site, not only the files you are given; assume every customer detail is private unless told otherwise.",
+   "Customer data goes only into tools your company and the customer have approved, and only as much as the task needs.",
+   "Honesty about model limits is a commercial asset: a customer who hears the real accuracy early trusts your later numbers.",
+   "Gifts, side work and competitor information are handled by written policy, and when in doubt you declare it.",
+   "When something feels wrong, clarify the facts, raise it early and in writing, and use the formal channel if the normal route fails."
+  ],
+  "traps": [
+   "Pasting a customer's real records into a personal or consumer AI tool 'just to test a prompt'.",
+   "Letting a demo on hand-picked examples stand as the accuracy the customer should expect.",
+   "Carrying ideas, data or documents from one customer to a competing customer because 'it is the same problem'."
+  ],
+  "qa": [
+   [
+    "A customer's manager asks you to tune the model so its error rate looks better in the report to their board. What do you do?",
+    "I would say no to changing how we report, and offer something useful instead. I would explain that the board decision depends on the real number, show where the errors come from and propose a plan to reduce them, with a date. If they pushed, I would raise it with my manager and our account lead in writing. Reporting honestly protects both the customer and us."
+   ],
+   [
+    "How do you handle customer data when you want to test a prompt quickly?",
+    "I use only tools approved for that customer's data, usually our company's enterprise environment covered by the data agreement. I take the smallest sample I need, mask personal fields first and prefer synthetic or already-anonymised examples. I never use a personal account or a consumer AI tool, and I delete local copies when the task is done."
+   ],
+   [
+    "You notice the automation you are building will remove most of a team's current tasks. What is your responsibility?",
+    "Decisions about jobs belong to the customer, but I can make sure people are treated honestly and the rollout is safe. I would ask the sponsor how the change will be communicated before I start shadowing the team, never hide the purpose from users, design human review where errors matter, and pass on ideas for how the team's skills could be used. I would not share assumptions about job cuts myself."
+   ]
+  ],
+  "id": "ethics"
+ }
+]

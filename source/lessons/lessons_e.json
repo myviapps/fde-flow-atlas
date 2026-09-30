@@ -1,0 +1,382 @@
+{
+ "http": {
+  "plain": "An API (application programming interface) is a way for one program to ask another program for data or to do something. Most modern APIs work over HTTP, the same protocol your browser uses to load web pages. Your program sends a request, which names an action and an address, and the other system sends back a response, which contains a status code saying how it went and usually some data. The data is almost always formatted as JSON (JavaScript Object Notation), a plain-text format of named fields, lists and values that any language can read.",
+  "analogy": "An HTTP request is like a form you hand to a clerk at a government office. The form says which department (the URL), what you want done (the method), shows your ID badge (the auth header), and may include attached paperwork (the body). The clerk hands back a stamped reply: approved, rejected with a reason, or 'come back later, we are busy'.",
+  "why": "An FDE's first week at a customer is often spent connecting to their systems: a CRM, an ERP, a ticketing tool, an internal service. When a bank says 'the claims API returns errors sometimes', you need to reproduce the call, read the status code and headers, and tell whether the problem is your token, your request, their rate limit or their server.",
+  "subtopics": [
+   {
+    "title": "The anatomy of a request",
+    "body": "Every HTTP request has four parts. The method says what you want to do. The URL says which thing you want to do it to. Headers carry extra information about the request. The body carries data you are sending, and is empty for most reads.\n\nThe common methods are GET (read), POST (create), PUT (replace), PATCH (change some fields) and DELETE (remove). A URL like https://api.shop.com/v1/orders?status=open has a scheme (https), a host (api.shop.com), a path (/v1/orders) and a query string (status=open) that filters the result.\n\nThe path is where REST comes in. REST (Representational State Transfer) is a style where each kind of data is a resource with its own URL. /customers is the collection of customers, /customers/42 is one customer, and /customers/42/orders are that customer's orders. The method then says what to do with the resource.",
+    "example": "A retailer called Northwind gives you API access. To list open orders you send GET /v1/orders?status=open. To look at order 9001 you send GET /v1/orders/9001. To mark it shipped you send PATCH /v1/orders/9001 with the body {\"status\": \"shipped\"}. To create a refund you send POST /v1/refunds with the order id and amount in the body. Four actions, all built from the same method-plus-URL pattern.",
+    "code": "# Read a collection, filtered by a query string\nGET  /v1/orders?status=open&limit=50\n\n# Read one resource by its id\nGET  /v1/orders/9001\n\n# Change one field of that resource\nPATCH /v1/orders/9001\nContent-Type: application/json\n\n{\"status\": \"shipped\"}\n\n# Create a new resource in a collection\nPOST /v1/refunds\nContent-Type: application/json\n\n{\"order_id\": 9001, \"amount\": 25.00, \"reason\": \"damaged\"}",
+    "lang": "Text"
+   },
+   {
+    "title": "Headers and authentication",
+    "body": "Headers are name and value pairs sent before the body. Content-Type says what format the body is in, usually application/json. Accept says what format you want back. User-Agent names your client.\n\nThe most important header is Authorization. APIs need to know who is calling, so you send a secret. An API key is a long random string the provider gives you. A bearer token is a string you send as 'Authorization: Bearer <token>', and it often expires after an hour or so. OAuth 2.0 is a common standard for obtaining such tokens: your program trades a client id and client secret, or a user's approval, for a short-lived access token.\n\nTokens are passwords. Keep them in environment variables or a secret manager, never in code, and never paste them into tickets or chat.",
+    "example": "A hospital's scheduling system uses OAuth 2.0 client credentials. Your service first POSTs its client id and secret to the token endpoint and receives an access token valid for 3600 seconds. Every API call then sends that token in the Authorization header. After an hour, calls start returning 401 Unauthorized, which is your signal to fetch a new token and try again.",
+    "code": "import os, requests\n\n# 1. Exchange client credentials for a short-lived access token\ntok = requests.post(\n    \"https://auth.clinic-example.org/oauth/token\",\n    data={\"grant_type\": \"client_credentials\",\n          \"client_id\": os.environ[\"CLIENT_ID\"],\n          \"client_secret\": os.environ[\"CLIENT_SECRET\"]},\n    timeout=10,\n).json()\naccess_token = tok[\"access_token\"]        # expires_in is often 3600\n\n# 2. Send it as a bearer token on every call\nr = requests.get(\n    \"https://api.clinic-example.org/v1/appointments\",\n    headers={\"Authorization\": f\"Bearer {access_token}\",\n             \"Accept\": \"application/json\"},\n    timeout=10,\n)\nprint(r.status_code)",
+    "lang": "Python"
+   },
+   {
+    "title": "Status codes tell you what happened",
+    "body": "Every response starts with a three-digit status code. The first digit is the class. 2xx means success: 200 OK, 201 Created, 204 No Content. 3xx means the resource moved and you should follow a redirect. 4xx means the client, meaning you, did something wrong. 5xx means the server had a problem.\n\nThe 4xx codes you will see most are 400 Bad Request (malformed input), 401 Unauthorized (missing or expired credentials), 403 Forbidden (valid credentials without permission), 404 Not Found, 409 Conflict, 422 Unprocessable (the data failed validation) and 429 Too Many Requests (you hit a rate limit). The 5xx codes are 500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable and 504 Gateway Timeout.\n\nThe class tells you what to do next. Retrying a 400 will fail forever because the request itself is wrong. Retrying a 429 or 503 after a pause often succeeds. A 429 response frequently includes a Retry-After header saying how many seconds to wait.",
+    "example": "An insurer's claims API returns a mix of responses during a nightly sync: 9,850 calls get 200, 120 get 429, 25 get 503 and 5 get 422. The 429s and 503s are temporary and should be retried with a wait. The 5 calls with 422 have a body saying 'policy_number must be 10 digits'. Those are data problems. Retrying will not help, so you log them and report the bad records to the customer.",
+    "code": "def classify(r):\n    code = r.status_code\n    if 200 <= code < 300:\n        return \"ok\"\n    if code == 401:\n        return \"refresh token, then retry once\"\n    if code == 429:\n        wait = r.headers.get(\"Retry-After\", \"a few\")\n        return f\"rate limited: wait {wait} seconds and retry\"\n    if code in (500, 502, 503, 504):\n        return \"server trouble: retry with backoff\"\n    if 400 <= code < 500:\n        return f\"our request is wrong, do not retry: {r.text[:200]}\"\n    return \"unexpected\"",
+    "lang": "Python"
+   },
+   {
+    "title": "JSON bodies in and out",
+    "body": "JSON is text with a few building blocks: objects in curly braces holding named fields, arrays in square brackets holding lists, strings in double quotes, numbers, true, false and null. Python's json module and the requests library convert JSON objects to dicts and arrays to lists.\n\nWhen you send data, pass it with json= in requests. The library serialises the dict to JSON text and sets the Content-Type header for you. When you receive data, call r.json() to parse the body.\n\nNever assume every field is present. Real APIs omit empty fields, return null, or change a number into a string between versions. Use .get() with a default, or validate the response with a schema library such as Pydantic.",
+    "example": "A logistics company's shipment API returns {\"id\": \"SHP-77\", \"weight_kg\": 12.5, \"delivered_at\": null, \"items\": [{\"sku\": \"A1\", \"qty\": 3}]}. In Python that becomes a dict whose items field is a list of dicts. delivered_at is None because the parcel is still in transit, so code that calls a date method on it would crash. Checking for None first avoids the crash.",
+    "code": "import requests\n\n# Send JSON: requests serialises the dict and sets Content-Type\nr = requests.post(\"https://api.shipco-example.com/v1/shipments\",\n                  json={\"sku\": \"A1\", \"qty\": 3, \"to\": \"Leeds\"},\n                  headers={\"Authorization\": \"Bearer TOKEN\"},\n                  timeout=10)\nshipment = r.json()                 # JSON text -> dict\n\n# Read defensively: fields may be missing or null\nweight = shipment.get(\"weight_kg\", 0.0)\ndelivered = shipment.get(\"delivered_at\")    # None if in transit\nif delivered is None:\n    print(shipment[\"id\"], \"still in transit\")\nfor item in shipment.get(\"items\", []):\n    print(item[\"sku\"], item[\"qty\"])",
+    "lang": "Python"
+   },
+   {
+    "title": "Pagination: getting all the data",
+    "body": "An API will not return a million records in one response. It returns a page, perhaps 100 items, plus a way to ask for the next page. You loop until there are no more pages.\n\nThere are three common styles. Offset pagination uses ?offset=200&limit=100. It is simple, but if rows are inserted while you page, items shift and you can skip or repeat some. Cursor pagination returns an opaque token like next_cursor that you send back, and it stays stable while data changes. Link-header pagination puts the URL of the next page in a Link response header; requests exposes it as r.links.\n\nAlways check the API documentation for which style is used and what the maximum page size is. Larger pages mean fewer calls and less risk of hitting rate limits.",
+    "example": "A SaaS CRM holds 48,200 contacts and returns at most 200 per page with a cursor. Your loop makes 242 calls. The last response has next_cursor set to null, which ends the loop. Had you stopped after the first call, your report would have claimed the customer has 200 contacts, a mistake that would surface in the first demo.",
+    "code": "import requests\n\ndef fetch_all_contacts(session, base_url):\n    contacts, cursor = [], None\n    while True:\n        params = {\"limit\": 200}\n        if cursor:\n            params[\"cursor\"] = cursor\n        r = session.get(f\"{base_url}/v1/contacts\", params=params, timeout=10)\n        r.raise_for_status()\n        page = r.json()\n        contacts.extend(page[\"items\"])\n        cursor = page.get(\"next_cursor\")\n        if not cursor:                     # last page reached\n            return contacts\n\ns = requests.Session()                      # reuses the connection\ns.headers[\"Authorization\"] = \"Bearer TOKEN\"\nprint(len(fetch_all_contacts(s, \"https://api.crm-example.com\")))",
+    "lang": "Python"
+   },
+   {
+    "title": "Debugging with curl first",
+    "body": "curl is a command-line tool that sends HTTP requests. It is installed on almost every machine, including locked-down customer servers where you cannot install Python packages. Reproducing a failing call with curl removes your own code from the question.\n\nUseful flags: -X sets the method, -H adds a header, -d sends a body, -i prints response headers, -v prints the whole conversation including TLS details, and -w can print the status code and timing. If curl works and your code fails, the bug is in your code. If curl fails the same way, the problem is the token, the network, or the API itself.\n\nWhen you share a curl command in a ticket, replace the token with a placeholder first.",
+    "example": "A manufacturer's parts API times out from your pipeline. From the same server you run curl with -w to print the time. It takes 29 seconds and returns 504 Gateway Timeout, while the same call for a smaller date range returns in 0.4 seconds with 200. That tells you the API struggles with large queries, so you split the pull into daily ranges.",
+    "code": "# Show response headers (-i) and the status code and time (-w)\ncurl -s -i \\\n  -H \"Authorization: Bearer $PARTS_TOKEN\" \\\n  -H \"Accept: application/json\" \\\n  -w \"\\nstatus=%{http_code} time=%{time_total}s\\n\" \\\n  \"https://api.parts-example.com/v1/parts?updated_since=2026-01-01\"\n\n# Send a JSON body with POST\ncurl -s -X POST \"https://api.parts-example.com/v1/parts\" \\\n  -H \"Authorization: Bearer $PARTS_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"part_no\": \"BRK-220\", \"qty\": 40}'",
+    "lang": "bash"
+   }
+  ],
+  "glossary": [
+   [
+    "API",
+    "A defined way for one program to request data or actions from another."
+   ],
+   [
+    "HTTP method",
+    "The verb of a request, such as GET to read or POST to create."
+   ],
+   [
+    "Endpoint",
+    "A specific URL path on an API that handles one kind of request, such as /v1/orders."
+   ],
+   [
+    "Header",
+    "A name and value pair sent with a request or response to describe it, such as Content-Type."
+   ],
+   [
+    "Status code",
+    "A three-digit number in every response that says whether the request succeeded and, if not, roughly why."
+   ],
+   [
+    "JSON",
+    "A plain-text data format of objects, arrays, strings, numbers, true, false and null."
+   ],
+   [
+    "REST",
+    "An API style that exposes data as resources at URLs and uses HTTP methods to act on them."
+   ],
+   [
+    "Bearer token",
+    "A secret string sent in the Authorization header that proves the caller's identity, usually short-lived."
+   ],
+   [
+    "Pagination",
+    "Splitting a large result into pages that the client requests one after another."
+   ],
+   [
+    "Rate limit",
+    "A cap on how many requests a client may send in a time window, usually enforced with 429 responses."
+   ]
+  ],
+  "practice": [
+   "Use curl against a free public API such as https://api.github.com/repos/python/cpython with -i. Write down the status code, three response headers and what each means, and two fields from the JSON body.",
+   "Write a Python function using requests that fetches all pages from https://api.github.com/repos/python/cpython/issues?per_page=50 by following r.links['next'], stops after 5 pages, and prints how many issues it collected. Set a timeout on every call.",
+   "Stretch: write a small client class for a fake API of your choice with get_orders() and create_refund() methods. It must read the token from an environment variable, raise a clear exception for 4xx responses, retry 429 and 5xx up to three times with growing waits, and return parsed dicts."
+  ]
+ },
+ "git": {
+  "plain": "Git is a version control system: a tool that records every change to a set of files so you can see who changed what, when, and why, and go back to any earlier version. A repository (repo) is a project folder that Git tracks, including its full history. You save work as commits, which are named snapshots of the files. Branches let several people work on separate changes at once, and a pull request is a web page on GitHub or GitLab where a change is reviewed and tested before it joins the main code.",
+  "analogy": "Git is like a shared recipe book with a perfect edit log. Each cook copies the book to try a new dish on their own pages (a branch), writes down each change with a note (a commit), and then asks the head chef to review the pages before they are pasted into the master book (a pull request and merge). If two cooks rewrote the same line of the same recipe, the head chef has to pick the final wording (a conflict).",
+  "why": "FDEs write code on customer sites, often alongside the customer's own engineers and under their change-control rules. A regulated bank will want every change to its data pipeline reviewed, tested and traceable to a ticket. Git and pull requests give you that audit trail, and let you undo a bad change in minutes when a Friday deploy goes wrong.",
+  "subtopics": [
+   {
+    "title": "Repository, working tree and commits",
+    "body": "A repository is a folder with a hidden .git directory inside it. That directory holds every version of every file ever committed. You create one with git init, or copy an existing one with git clone.\n\nThe working tree is the normal files you see and edit. Editing a file does not change the history. It only changes the working tree.\n\nA commit is a snapshot of the tracked files at one moment, plus an author, a timestamp, a message and a pointer to the previous commit. Each commit has a unique id, a long hexadecimal hash such as 3f9a2c1. git log lists the commits, newest first.",
+    "example": "You clone a retailer's forecasting repo. git log shows 214 commits over two years. The most recent says 'Add holiday flags to weekly features' by a customer engineer, Priya, three days ago. When forecasts suddenly drop, you can run git show on that commit to see exactly which lines changed, which is often the fastest route to the cause.",
+    "code": "git clone https://github.com/northwind/forecasting.git\ncd forecasting\n\ngit log --oneline -5          # last five commits, one line each\n# 3f9a2c1 Add holiday flags to weekly features\n# a17b004 Fix timezone in store open hours\n# ...\n\ngit show 3f9a2c1              # full diff of one commit\ngit log -p -- features.py     # every change ever made to one file",
+    "lang": "bash"
+   },
+   {
+    "title": "Staging: choosing what goes in a commit",
+    "body": "Git has a middle step between editing and committing, called the staging area or index. git add copies the current state of a file into the staging area. git commit then saves exactly what is staged, nothing more.\n\nThis lets you split messy work into clean commits. If you fixed a bug and also reformatted an unrelated file, you can stage and commit the fix first, then commit the formatting separately.\n\ngit status shows three groups: changes staged for commit, changes not staged, and untracked files that Git has never seen. git diff shows unstaged changes line by line, and git diff --staged shows what the next commit will contain.",
+    "example": "At a hospital you change ingest.py to handle a new date format, add a test for it, and also leave a debug print in config.py. git status lists all three files. You stage only ingest.py and tests/test_ingest.py, check git diff --staged, and commit with the message 'Parse DD/MM/YYYY admission dates'. The debug print stays uncommitted, and you discard it with git restore config.py.",
+    "code": "git status\n# modified:   ingest.py\n# modified:   config.py\n# untracked:  tests/test_ingest.py\n\ngit add ingest.py tests/test_ingest.py   # stage only the real change\ngit diff --staged                        # review what will be committed\ngit commit -m \"Parse DD/MM/YYYY admission dates\"\n\ngit restore config.py                    # throw away the debug print\ngit status                               # working tree clean",
+    "lang": "bash"
+   },
+   {
+    "title": "Branches and the remote",
+    "body": "A branch is a lightweight, movable name that points at a commit. main (older repos use master) is the shared branch that should always work. When you start a task, you create a new branch from main. Your commits move your branch forward and leave main alone.\n\nA remote is a copy of the repository on a server, usually called origin, hosted on GitHub, GitLab, Bitbucket or a customer's internal server. git push uploads your branch's commits to the remote. git pull downloads new commits from the remote and merges them into your current branch. git fetch downloads without merging, so you can look first.\n\nName branches after the work: fix/retry-429, feat/claims-export. Keep them short-lived, ideally merged within a few days, so they do not drift far from main.",
+    "example": "Two FDEs work at an insurer. Ana creates feat/claims-export, and Ben creates fix/null-policy-dates, both from the same main commit. They commit and push independently for two days without affecting each other. Each branch gets its own pull request and review.",
+    "code": "git switch main\ngit pull                              # get everyone's latest work\ngit switch -c feat/claims-export      # new branch from here\n\n# ...edit, add, commit a few times...\n\ngit push -u origin feat/claims-export # first push sets upstream\ngit branch -a                         # list local and remote branches\ngit switch main                       # jump back; your branch is kept",
+    "lang": "bash"
+   },
+   {
+    "title": "Pull requests and code review",
+    "body": "A pull request (GitLab calls it a merge request) asks to merge one branch into another, usually into main. It shows the full diff, runs automated checks, and gives reviewers a place to comment on specific lines.\n\nA good pull request does one thing. Its description says what changed, why, and how it was tested, and links the ticket. Keep it small enough to review in one sitting; a few hundred changed lines is a common rough ceiling.\n\nReview is a conversation. Reviewers ask questions and suggest changes. You respond by pushing more commits to the same branch, and the pull request updates. When reviewers approve and CI is green, the pull request is merged. Many teams protect main so nothing can be pushed to it directly.",
+    "example": "Ben opens a pull request titled 'Treat empty policy start dates as missing, not 1970-01-01'. The description explains that 312 claims had empty dates that were being parsed as the Unix epoch, which skewed the age-of-policy feature. A customer engineer asks whether the model needs retraining. Ben answers, adds a test with an empty date, pushes, gets approval and merges.",
+    "code": "## What\nTreat empty policy_start_date as missing instead of 1970-01-01.\n\n## Why\n312 claims had empty dates parsed as the Unix epoch, which made\npolicy age look like 56 years and skewed the fraud model feature.\n\n## How tested\n- New unit test: test_empty_start_date_is_none\n- Re-ran September backfill: 312 rows now null, 0 rows at 1970\n\n## Follow-up\nFeature table needs a rebuild; retraining ticket CLAIMS-418.",
+    "lang": "Text"
+   },
+   {
+    "title": "Resolving a merge conflict",
+    "body": "A merge conflict happens when two branches changed the same lines of the same file, and Git cannot tell which version is right. Git stops the merge and writes both versions into the file between markers.\n\nThe section between <<<<<<< HEAD and ======= is what your current branch has. The section between ======= and >>>>>>> is what the incoming branch has. You edit the file so it contains the correct final code, which might be one side, the other, or a combination, and delete the marker lines.\n\nThen run the tests, git add the file to mark it resolved, and commit. If you get lost, git merge --abort returns everything to how it was before the merge started.",
+    "example": "Ana's branch changed the retry limit in client.py to 5. Meanwhile a colleague merged a change to main that set it to 3 and added a timeout. When Ana merges main into her branch, Git reports a conflict in client.py. After checking with the colleague, she keeps both ideas: 5 retries and the new timeout. She edits the file, removes the markers, runs pytest, and commits the merge.",
+    "code": "git fetch origin\ngit merge origin/main\n# CONFLICT (content): Merge conflict in client.py\n\n# client.py now contains:\n# <<<<<<< HEAD\n# MAX_RETRIES = 5\n# =======\n# MAX_RETRIES = 3\n# TIMEOUT_S = 10\n# >>>>>>> origin/main\n\n# Edit to the correct final version:\n# MAX_RETRIES = 5\n# TIMEOUT_S = 10\n\npytest -q                     # make sure it still works\ngit add client.py\ngit commit                    # Git pre-fills a merge message\ngit push",
+    "lang": "bash"
+   },
+   {
+    "title": "Undoing mistakes safely",
+    "body": "Git makes most mistakes recoverable. Before a commit, git restore discards edits to a file. git restore --staged unstages a file while keeping the edits.\n\nAfter a commit that is already pushed and shared, use git revert. It creates a new commit that applies the opposite change. History stays intact, which matters on shared branches and in audited environments.\n\ngit reset and git push --force rewrite history. They are fine on your own unshared branch and dangerous on shared ones, because they can delete commits other people have. If a secret was ever committed, treat it as leaked even after you remove it, because it remains in history and in every clone. Rotate the secret.",
+    "example": "A deploy on Friday merges a change that breaks the nightly load at a retailer. Rather than debugging under pressure, you run git revert on the merge commit, open a pull request with the revert, get a quick approval and deploy. The pipeline is back to the previous behaviour in 15 minutes, and the original change can be fixed on Monday.",
+    "code": "git restore report.py            # discard unstaged edits\ngit restore --staged report.py   # unstage, keep the edits\n\ngit log --oneline -3\n# 9c1e7aa Merge pull request #57 from feat/new-loader\n# ...\n\ngit revert -m 1 9c1e7aa          # undo a merge commit (-m 1 keeps main's side)\ngit push                         # history keeps both the change and its undo\n\n# .gitignore: stop secrets being committed in the first place\n# .env\n# *.pem",
+    "lang": "bash"
+   }
+  ],
+  "glossary": [
+   [
+    "Repository",
+    "A project folder whose full change history Git tracks."
+   ],
+   [
+    "Working tree",
+    "The actual files on disk that you edit."
+   ],
+   [
+    "Staging area",
+    "The list of changes chosen for the next commit, filled with git add."
+   ],
+   [
+    "Commit",
+    "A saved snapshot of the files with an author, time, message and unique id."
+   ],
+   [
+    "Branch",
+    "A movable name pointing at a line of commits, used to work on a change in isolation."
+   ],
+   [
+    "Remote",
+    "A copy of the repository on a server, usually named origin."
+   ],
+   [
+    "Pull request",
+    "A request, with a web page for review and checks, to merge one branch into another."
+   ],
+   [
+    "Merge conflict",
+    "A stop during a merge because both branches changed the same lines and a human must choose the result."
+   ],
+   [
+    "Revert",
+    "A new commit that undoes the changes of an earlier commit without rewriting history."
+   ]
+  ],
+  "practice": [
+   "Create a new repository with a file notes.txt. Make three commits with clear messages, then use git log --oneline and git show to find the second commit's changes. Deliverable: the log output.",
+   "Create a branch, change line 1 of notes.txt and commit. Switch to main, change the same line differently and commit. Merge the branch into main, resolve the conflict by combining both edits, and commit. Deliverable: the final file and git log --graph --oneline output.",
+   "Stretch: on GitHub, create a repo with a small Python function and a test. Open a pull request from a branch with a description in the What, Why, How tested format, leave a review comment on your own diff, push a fix commit, and merge. Then revert the merge with git revert and confirm the function is back to its old version."
+  ]
+ },
+ "tdd": {
+  "plain": "A test is a small piece of code that runs your real code with known inputs and checks that the output is what you expected. pytest is the most common Python tool for writing and running tests. Test-driven development (TDD) is a habit where you write the test first, watch it fail, then write just enough code to make it pass, then tidy the code. Continuous integration (CI) is a service that runs all your tests automatically every time someone proposes a change, so broken code is caught before it is merged.",
+  "analogy": "TDD is like writing the answer key before you solve the exercise. The key says 'for these ingredients, the cake should weigh 1.2 kg'. You bake until the scale agrees. Later, when you change the recipe to use less sugar, you weigh again, and the key tells you at once whether you broke something.",
+  "why": "FDE code runs against messy customer data and systems you do not control, and it changes fast as requirements shift during a pilot. When a logistics customer says 'also handle the new depot codes', a test suite lets you add that in an afternoon and know the other 40 rules still work. It also proves to the customer's engineering team that your code is safe to own after you leave.",
+  "subtopics": [
+   {
+    "title": "Your first pytest test",
+    "body": "In pytest, a test is a plain function whose name starts with test_, in a file whose name starts with test_. Inside it, you call your code and use Python's assert statement to check the result. If the assertion is true, the test passes. If it is false or the code raises an error, the test fails and pytest shows you the values involved.\n\nYou run all tests with the command pytest from the project folder. It finds the test files automatically, runs every test function, and prints a summary such as '5 passed, 1 failed'.\n\nGood tests check one behaviour each and have names that read like a sentence. When one fails, the name alone should tell you what broke.",
+    "example": "A retailer applies a 10% loyalty discount on orders over 100 pounds. You write a function apply_discount(total, is_member). Tests check three facts: a member spending 150 pays 135, a member spending 80 pays 80, and a non-member spending 150 pays 150. Running pytest prints '3 passed'.",
+    "code": "# pricing.py\ndef apply_discount(total: float, is_member: bool) -> float:\n    if is_member and total > 100:\n        return round(total * 0.9, 2)\n    return total\n\n# test_pricing.py\nfrom pricing import apply_discount\n\ndef test_member_over_100_gets_10_percent_off():\n    assert apply_discount(150.0, True) == 135.0\n\ndef test_member_under_100_pays_full_price():\n    assert apply_discount(80.0, True) == 80.0\n\ndef test_non_member_pays_full_price():\n    assert apply_discount(150.0, False) == 150.0\n\n# $ pytest -q\n# ...                                  [100%]\n# 3 passed",
+    "lang": "Python"
+   },
+   {
+    "title": "Red, green, refactor",
+    "body": "TDD is a short loop you repeat many times an hour. Red: write a test for the next small behaviour and run it. It fails, because the code does not exist yet. Seeing it fail proves the test can catch a problem.\n\nGreen: write the simplest code that makes the test pass. It is fine if it is a bit clumsy. The goal is a passing test quickly.\n\nRefactor: with the tests green, clean up the code. Rename variables, remove duplication, split long functions. Run the tests after each change. If they stay green, you know behaviour is unchanged. Then go back to red with the next behaviour.\n\nThe benefit is that you never write much code without evidence it works, and your design stays driven by what callers actually need.",
+    "example": "A hospital wants patient ages computed from birth dates. Red: you write test_age_before_birthday_this_year expecting 40 for someone born 1985-12-01 on 2026-09-27. It fails with ImportError. Green: you write age() by subtracting years and adjusting if the birthday has not happened. Pass. Refactor: you rename variables. Red again: test_birthday_today, then test_leap_day_birth. Each loop takes a few minutes.",
+    "code": "# test_age.py  (red: written first)\nfrom datetime import date\nfrom patients import age\n\ndef test_age_before_birthday_this_year():\n    assert age(date(1985, 12, 1), today=date(2026, 9, 27)) == 40\n\ndef test_age_on_birthday():\n    assert age(date(1985, 9, 27), today=date(2026, 9, 27)) == 41\n\n# patients.py  (green, then refactored)\nfrom datetime import date\n\ndef age(born: date, today: date) -> int:\n    had_birthday = (today.month, today.day) >= (born.month, born.day)\n    return today.year - born.year - (0 if had_birthday else 1)",
+    "lang": "Python"
+   },
+   {
+    "title": "Unit tests versus integration tests",
+    "body": "A unit test checks one small piece, like a function or a class, in isolation. Anything slow or external, such as a network call or a database, is replaced by a fake. Unit tests run in milliseconds, so you can have hundreds and run them constantly.\n\nAn integration test checks that several real pieces work together: your code plus a real database, or your API plus its serialisation layer. They are slower and need setup, but they catch wiring problems unit tests miss, such as a SQL query with a typo in a column name.\n\nThe test pyramid is a rule of thumb: many unit tests at the bottom, fewer integration tests in the middle, and very few end-to-end tests that drive the whole system. pytest markers let you tag slow tests so you can run just the fast ones while coding.",
+    "example": "For an insurer's claims loader, you have 60 unit tests for parsing and validation rules, which run in under a second. You also have 6 integration tests that start a throwaway PostgreSQL database, load 20 sample claims, and check row counts and a few joined queries. Those take 15 seconds and run in CI on every pull request.",
+    "code": "# conftest.py: register a marker for slower tests\ndef pytest_configure(config):\n    config.addinivalue_line(\"markers\", \"integration: needs a real database\")\n\n# test_loader.py\nimport pytest\nfrom loader import parse_claim, load_claims\n\ndef test_parse_claim_uppercases_policy_id():          # unit\n    assert parse_claim({\"policy\": \"ab12\"})[\"policy\"] == \"AB12\"\n\n@pytest.mark.integration\ndef test_load_claims_writes_rows(pg_conn):  # integration; pg_conn fixture in conftest\n    load_claims(pg_conn, [{\"policy\": \"ab12\", \"amount\": 50}])\n    n = pg_conn.execute(\"SELECT count(*) FROM claims\").fetchone()[0]\n    assert n == 1\n\n# pytest -m \"not integration\"   -> fast loop while coding\n# pytest                        -> everything, as CI does",
+    "lang": "Python"
+   },
+   {
+    "title": "Mocking an external API",
+    "body": "A mock is a fake object that stands in for a real one during a test. You tell it what to return, and afterwards you can check how it was called. Python's standard library has unittest.mock, and its patch function temporarily replaces a name, such as requests.get inside your module, with a mock.\n\nMocking external APIs gives you three things. Tests run without network access. You can produce failure cases on demand, such as a 429 or a 503, that are hard to trigger for real. And you never touch the customer's live data from a test.\n\nPatch the name where it is used. If orders.py does import requests and calls requests.get, patch 'orders.requests.get'. Do not over-mock: if a test replaces everything, it only tests the mocks.",
+    "example": "Your function sync_invoices() calls a finance API and retries once on 503. You write a test where the mock returns a 503 response first and a 200 with two invoices second. The test asserts that two invoices are returned and that the mock was called exactly twice. It runs in 5 milliseconds and never contacts the finance system.",
+    "code": "# invoices.py\nimport requests\n\ndef sync_invoices(url):\n    for attempt in range(2):\n        r = requests.get(url, timeout=10)\n        if r.status_code == 503 and attempt == 0:\n            continue                       # retry once\n        r.raise_for_status()\n        return r.json()[\"invoices\"]\n\n# test_invoices.py\nfrom unittest.mock import patch, Mock\nfrom invoices import sync_invoices\n\n@patch(\"invoices.requests.get\")\ndef test_retries_once_on_503(mock_get):\n    busy = Mock(status_code=503)\n    ok = Mock(status_code=200)\n    ok.json.return_value = {\"invoices\": [{\"id\": 1}, {\"id\": 2}]}\n    mock_get.side_effect = [busy, ok]      # first call, second call\n    assert len(sync_invoices(\"https://fin.example.com/v1/invoices\")) == 2\n    assert mock_get.call_count == 2",
+    "lang": "Python"
+   },
+   {
+    "title": "Fixtures and parametrised tests",
+    "body": "A fixture is a function that prepares something a test needs, such as sample data, a temporary file or a database connection. You mark it with @pytest.fixture and name it as a test argument. pytest runs the fixture and passes the result in. Fixtures in a file called conftest.py are shared by all tests in that folder.\n\nParametrisation runs one test function with many inputs. @pytest.mark.parametrize takes a list of cases and pytest reports each as its own test. This is ideal for data-cleaning rules, where you want to check dozens of messy input values.\n\nBoth features keep tests short, which makes them easier to read and more likely to be kept up to date.",
+    "example": "A logistics customer sends postcodes in every format: ' sw1a 1aa', 'SW1A1AA', 'sw1a-1aa'. You write one parametrised test with six input and expected-output pairs for normalise_postcode(). When the customer reports a new format, you add one line to the list, watch it fail, and fix the function.",
+    "code": "import pytest\nfrom cleaning import normalise_postcode\n\n@pytest.mark.parametrize(\"raw, expected\", [\n    (\" sw1a 1aa\", \"SW1A 1AA\"),\n    (\"SW1A1AA\",   \"SW1A 1AA\"),\n    (\"sw1a-1aa\",  \"SW1A 1AA\"),\n    (\"M1 1AE\",    \"M1 1AE\"),\n    (\"\",          None),          # empty input is missing\n    (None,        None),\n])\ndef test_normalise_postcode(raw, expected):\n    assert normalise_postcode(raw) == expected\n\n@pytest.fixture\ndef sample_orders():\n    return [{\"id\": 1, \"postcode\": \"sw1a1aa\"}, {\"id\": 2, \"postcode\": \"\"}]\n\ndef test_orders_get_clean_postcodes(sample_orders):\n    cleaned = [normalise_postcode(o[\"postcode\"]) for o in sample_orders]\n    assert cleaned == [\"SW1A 1AA\", None]",
+    "lang": "Python"
+   },
+   {
+    "title": "CI: tests on every pull request",
+    "body": "Continuous integration means every change is automatically built and tested on a clean machine, usually when a pull request is opened or updated. GitHub Actions, GitLab CI and Jenkins are common CI systems. You describe the steps in a configuration file in the repo.\n\nA typical Python workflow checks out the code, installs a Python version, installs dependencies, and runs pytest. If any test fails, the pull request shows a red cross. With branch protection turned on, a pull request cannot be merged until the required checks pass.\n\nCI also catches the 'works on my machine' problem, because the clean machine has only what the repo declares. Add linting and type checks to the same workflow once tests are in place.",
+    "example": "At a manufacturer, a customer engineer opens a pull request that renames a column. Two of your unit tests fail in CI because the loader still uses the old name. The pull request is blocked. The engineer fixes the loader in the same pull request, CI turns green, and the change merges without ever breaking the nightly job.",
+    "code": "# .github/workflows/tests.yml\nname: tests\non:\n  pull_request:\n  push:\n    branches: [main]\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n      - run: pip install -r requirements.txt pytest\n      - run: pytest -q          # a failing test fails the job",
+    "lang": "YAML"
+   }
+  ],
+  "glossary": [
+   [
+    "Test",
+    "Code that runs your code with known inputs and checks the result."
+   ],
+   [
+    "Assertion",
+    "A statement that must be true for a test to pass, written with assert in pytest."
+   ],
+   [
+    "TDD",
+    "Test-driven development: write a failing test, make it pass, then refactor."
+   ],
+   [
+    "Refactor",
+    "Change the structure of code without changing what it does."
+   ],
+   [
+    "Unit test",
+    "A fast test of one small piece of code in isolation, with external dependencies replaced."
+   ],
+   [
+    "Integration test",
+    "A test that checks several real components working together, such as code and a database."
+   ],
+   [
+    "Mock",
+    "A fake object that stands in for a real dependency in a test and records how it was called."
+   ],
+   [
+    "Fixture",
+    "A pytest function that prepares data or resources a test needs and passes them in."
+   ],
+   [
+    "CI",
+    "Continuous integration: automatically building and testing every proposed change on a clean machine."
+   ],
+   [
+    "Regression",
+    "A bug where something that used to work stops working after a change."
+   ]
+  ],
+  "practice": [
+   "Write a function is_valid_email(s) using TDD. Start with one failing test, make it pass, and repeat until you have at least six tests covering empty strings, missing @, and uppercase. Deliverable: the test file and the pytest output.",
+   "Write fetch_weather(city) that calls a public weather API with requests. Then write two tests that patch requests.get: one returns a 200 with a sample JSON body and checks the parsed temperature, one returns a 500 and checks that your function raises a clear exception. No test may make a real network call.",
+   "Stretch: put the previous exercise in a GitHub repo, add a GitHub Actions workflow that runs pytest on pull requests, turn on branch protection requiring the check, and open a pull request with a deliberately failing test to confirm it is blocked. Then fix it and merge."
+  ]
+ },
+ "bigo": {
+  "plain": "Complexity analysis describes how the work a piece of code does grows as its input grows. Big-O notation is the shorthand: O(n) means the work grows in proportion to n, the number of items, and O(n^2) means it grows with n times n. Design patterns are named, reusable ways of structuring code to solve a common problem, so other engineers recognise the shape at a glance. Defensive programming is the habit of writing code that assumes inputs may be wrong and checks them, so failures are caught early and explained clearly.",
+  "analogy": "Finding a name in a phone book by reading every page is O(n). Opening it in the middle and halving each time is O(log n). Knowing the exact page number from an index card is O(1). Comparing every guest at a wedding with every other guest to find cousins is O(n^2), which is fine for 20 guests and hopeless for 20,000.",
+  "why": "FDEs prototype on a sample of 1,000 rows and then run on the customer's 5 million. Code that took one second on the sample can take days in production if it hides a quadratic loop. Patterns and defensive habits matter because each customer has different systems, and your code must absorb their quirks without turning into a tangle.",
+  "subtopics": [
+   {
+    "title": "What Big-O measures",
+    "body": "Big-O counts how the number of basic steps grows with input size, written n. It ignores constant factors and small terms, because at large n the biggest term dominates. A function doing 3n + 50 steps is O(n). One doing n^2 + 1000n is O(n^2).\n\nThe common classes, from fastest to slowest growth, are: O(1), constant, the same work whatever n is. O(log n), logarithmic, where each step halves what remains. O(n), linear, touching each item once. O(n log n), typical of efficient sorting. O(n^2), quadratic, usually a loop inside a loop.\n\nThe gaps get huge fast. For n = 1,000,000: log n is about 20, n log n is about 20 million, and n^2 is a trillion.",
+    "example": "A bank has 1 million transactions. Checking whether one account id is in a Python set takes about one step. Binary search on a sorted list takes about 20 comparisons. Scanning a list takes up to 1 million. Comparing every transaction with every other to find duplicates takes about 500 billion comparisons, which at roughly 10 million comparisons per second in plain Python is over 13 hours.",
+    "code": "import math\n\nfor n in [1_000, 100_000, 1_000_000]:\n    print(f\"n={n:>9,}  \"\n          f\"log n={math.log2(n):5.0f}  \"\n          f\"n log n={n * math.log2(n):>14,.0f}  \"\n          f\"n^2={n * n:>18,}\")\n\n# n=    1,000  log n=   10  n log n=        9,966  n^2=         1,000,000\n# n=  100,000  log n=   17  n log n=    1,660,964  n^2=    10,000,000,000\n# n=1,000,000  log n=   20  n log n=   19,931,569  n^2= 1,000,000,000,000",
+    "lang": "Python"
+   },
+   {
+    "title": "List versus dict: the most common fix",
+    "body": "In Python, checking x in some_list walks the list from the start until it finds x, so it is O(n). Checking x in some_set or x in some_dict uses a hash table: Python computes a number from x and jumps straight to the right slot, so it is O(1) on average.\n\nThe trap appears when the list check sits inside a loop. For each of n orders, you scan m customers. That is O(n times m). With 50,000 of each, it is up to 2.5 billion comparisons.\n\nThe fix is to build a dict or set once, in O(m), and then look each item up in O(1). Total work becomes O(n + m). You trade some memory for the index, which is almost always worth it.",
+    "example": "An e-commerce FDE matches 200,000 payments to 200,000 invoices by invoice number. The first version loops over payments and, for each, searches the invoice list. It is still running after an hour. Building invoices_by_number = {inv['number']: inv for inv in invoices} and looking each payment up takes under a second.",
+    "code": "invoices = [{\"number\": f\"INV-{i}\", \"amount\": i % 500} for i in range(200_000)]\npayments = [{\"ref\": f\"INV-{i}\", \"paid\": i % 500} for i in range(0, 400_000, 2)]\n\n# Slow: O(n * m). 'in' on a list scans it every time.\n# numbers = [inv[\"number\"] for inv in invoices]\n# matched = [p for p in payments if p[\"ref\"] in numbers]\n\n# Fast: O(n + m). Build the index once.\nby_number = {inv[\"number\"]: inv for inv in invoices}     # O(m)\nmatched, unmatched = [], []\nfor p in payments:                                       # O(n)\n    inv = by_number.get(p[\"ref\"])                        # O(1) average\n    (matched if inv else unmatched).append(p)\n\nprint(len(matched), \"matched,\", len(unmatched), \"unmatched\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Log n, n log n and knowing when to sort",
+    "body": "O(log n) algorithms throw away half the remaining data at each step. Binary search on a sorted list is the classic one. Python's bisect module does it for you. Database B-tree indexes work on a similar principle, which is why an indexed lookup in a table of 100 million rows is still fast.\n\nSorting a list with Python's sorted() is O(n log n). If you need many range queries, such as 'all readings between 09:00 and 09:05', sorting once and then binary searching each query can beat scanning the whole list each time.\n\nIn practice: if you look things up by exact key, use a dict. If you need ranges or 'nearest value' lookups, sort once and use bisect, or let the database do it with an index.",
+    "example": "A factory stores 2 million sensor readings with timestamps. Engineers ask for 5,000 short time windows. Scanning all readings for each window is 10 billion checks. Sorting timestamps once (about 42 million steps) and using two binary searches per window (about 42 steps each) makes the job take seconds.",
+    "code": "import bisect, random\n\ntimestamps = sorted(random.uniform(0, 86_400) for _ in range(2_000_000))  # O(n log n)\n\ndef readings_between(start, end):\n    lo = bisect.bisect_left(timestamps, start)     # O(log n)\n    hi = bisect.bisect_right(timestamps, end)      # O(log n)\n    return hi - lo                                 # count in the window\n\nwindows = [(s, s + 300) for s in range(0, 86_400, 300)]\ncounts = [readings_between(s, e) for s, e in windows]\nprint(len(windows), \"windows, busiest has\", max(counts), \"readings\")",
+    "lang": "Python"
+   },
+   {
+    "title": "Hidden loops: N+1 queries and API calls",
+    "body": "Complexity is not only about loops you can see. Calling a database or an API inside a loop multiplies slow network round trips by n. This is called the N+1 problem: one query to get a list, then one more query per item.\n\nA network call might take 20 to 200 milliseconds, while a dict lookup takes well under a microsecond. So 10,000 calls in a loop can take many minutes even though the Big-O looks like a harmless O(n).\n\nThe fix is to fetch in bulk. Use a single SQL query with a JOIN or WHERE id IN (...), or an API's batch endpoint, then build a dict in memory and look up from it.",
+    "example": "A healthcare dashboard loads 3,000 appointments, then queries the patients table once per appointment to get the name. At 30 ms per query that is 90 seconds per page load. Rewriting it as one query that joins appointments to patients returns everything in about 200 ms.",
+    "code": "-- N+1: application runs this once per appointment (3,000 times)\n-- SELECT name FROM patients WHERE id = :patient_id;\n\n-- One query instead: let the database join\nSELECT a.id        AS appointment_id,\n       a.starts_at,\n       p.name      AS patient_name\nFROM appointments a\nJOIN patients p ON p.id = a.patient_id\nWHERE a.starts_at::date = CURRENT_DATE\nORDER BY a.starts_at;",
+    "lang": "SQL"
+   },
+   {
+    "title": "Three patterns FDEs use: adapter, strategy, repository",
+    "body": "The adapter pattern wraps a system with an awkward interface so it matches the one your code expects. Each customer's API becomes a class with the same methods, such as get_orders(), and all the quirks of auth, pagination and field names live inside it.\n\nThe strategy pattern puts interchangeable algorithms behind one interface and picks one at run time. One customer wants prices rounded to the nearest 5 pence and another to the nearest cent. Each rule is a small class or function, and configuration chooses which to use.\n\nThe repository pattern hides where data is stored behind methods like get(id) and save(item). Your business logic does not know whether the data is in PostgreSQL, a CSV file or memory. That makes the logic easy to test with an in-memory repository, and easy to move when the customer changes databases.",
+    "example": "An FDE team serves two retailers. Retailer A exposes a REST API with cursor pagination. Retailer B drops CSV files on an SFTP server. Two adapters, ARestOrders and BCsvOrders, both implement get_orders(since) and return the same Order objects. The forecasting code calls get_orders() and never knows which retailer it is serving.",
+    "code": "from typing import Protocol, Callable\nfrom dataclasses import dataclass\n\n@dataclass\nclass Order:\n    id: str\n    total: float\n\nclass OrderSource(Protocol):                      # the interface our code wants\n    def get_orders(self) -> list[Order]: ...\n\nclass RetailerAApi:                               # ADAPTER for a REST API\n    def __init__(self, client): self.client = client\n    def get_orders(self):\n        return [Order(r[\"orderId\"], r[\"grandTotal\"]) for r in self.client.fetch_all()]\n\nclass InMemoryOrders:                             # REPOSITORY-style fake for tests\n    def __init__(self, orders): self.orders = orders\n    def get_orders(self): return list(self.orders)\n\nROUNDING: dict[str, Callable[[float], float]] = {  # STRATEGY chosen by config\n    \"cent\":  lambda x: round(x, 2),\n    \"5p\":    lambda x: round(x * 20) / 20,\n}\n\ndef revenue(source: OrderSource, rounding: str) -> float:\n    return ROUNDING[rounding](sum(o.total for o in source.get_orders()))\n\nprint(revenue(InMemoryOrders([Order(\"1\", 10.02), Order(\"2\", 4.99)]), \"5p\"))",
+    "lang": "Python"
+   },
+   {
+    "title": "Defensive programming",
+    "body": "Defensive programming means writing code that expects things to go wrong and handles it deliberately. Validate inputs at the boundary, where data enters your system from a file, an API or a user. Check types, required fields and ranges there, once, so the rest of the code can trust the data.\n\nFail loudly and specifically. A clear exception like 'row 812: amount is negative' is far better than silently continuing and producing a wrong total. Avoid bare except clauses that swallow every error.\n\nOther habits: set timeouts on every network call, handle None and empty lists explicitly, use guard clauses that return early on bad input, and never trust that a customer's field means what its name suggests until you have checked the data.",
+    "example": "An insurer's CSV has 40,000 claims. Your loader validates each row: claim_id present, amount a positive number, incident_date not in the future. 37 rows fail. Instead of crashing or dropping them silently, the loader writes them to a rejects file with the row number and reason, loads the rest, and prints a summary. The customer fixes 30 of them at source within a day.",
+    "code": "from datetime import date\n\nclass BadRow(ValueError):\n    pass\n\ndef validate(row: dict, line_no: int) -> dict:\n    if not row.get(\"claim_id\"):                       # guard clause\n        raise BadRow(f\"line {line_no}: claim_id missing\")\n    try:\n        amount = float(row[\"amount\"])\n    except (KeyError, ValueError):\n        raise BadRow(f\"line {line_no}: amount not a number: {row.get('amount')!r}\")\n    if amount <= 0:\n        raise BadRow(f\"line {line_no}: amount must be positive, got {amount}\")\n    when = date.fromisoformat(row[\"incident_date\"])\n    if when > date.today():\n        raise BadRow(f\"line {line_no}: incident_date in the future: {when}\")\n    return {\"claim_id\": row[\"claim_id\"], \"amount\": amount, \"incident_date\": when}\n\nrows = [{\"claim_id\": \"C1\", \"amount\": \"120.50\", \"incident_date\": \"2026-03-02\"},\n        {\"claim_id\": \"\", \"amount\": \"80\", \"incident_date\": \"2026-04-11\"}]\ngood, rejects = [], []\nfor i, row in enumerate(rows, start=2):               # line 1 is the header\n    try:\n        good.append(validate(row, i))\n    except (BadRow, KeyError, ValueError) as e:\n        rejects.append((i, str(e)))                   # keep it, with the reason\nprint(f\"{len(good)} loaded, {len(rejects)} rejected\")",
+    "lang": "Python"
+   }
+  ],
+  "glossary": [
+   [
+    "Big-O notation",
+    "A way to describe how the work of an algorithm grows as its input size n grows."
+   ],
+   [
+    "Time complexity",
+    "How the number of steps grows with input size."
+   ],
+   [
+    "Space complexity",
+    "How the memory used grows with input size."
+   ],
+   [
+    "Hash table",
+    "A data structure behind Python dicts and sets that finds a key in about constant time."
+   ],
+   [
+    "Binary search",
+    "Finding a value in sorted data by repeatedly halving the range, in O(log n)."
+   ],
+   [
+    "N+1 problem",
+    "Making one query for a list and then one extra query per item, instead of fetching in bulk."
+   ],
+   [
+    "Adapter pattern",
+    "A wrapper that makes an external system fit the interface your code expects."
+   ],
+   [
+    "Strategy pattern",
+    "Interchangeable algorithms behind one interface, selected at run time."
+   ],
+   [
+    "Repository pattern",
+    "An object that hides how and where data is stored behind simple get and save methods."
+   ],
+   [
+    "Guard clause",
+    "An early check at the top of a function that rejects bad input before the main logic runs."
+   ]
+  ],
+  "practice": [
+   "Generate 20,000 random order dicts and 20,000 customer dicts. Implement a join with nested loops and another with a dict index. Time both with time.perf_counter, then double the size and time again. Deliverable: a small table showing how each version's time grows, and which Big-O class each matches.",
+   "Take a list of 1 million random timestamps. Answer 1,000 'how many readings between A and B' queries by scanning, then by sorting once and using bisect. Report both timings and explain the difference in terms of Big-O.",
+   "Stretch: build an OrderSource interface with two adapters, one reading a CSV file and one calling a mocked API, plus a validation function that rejects rows with missing ids or negative totals. Write pytest tests that run the same business function against both adapters and an in-memory fake."
+  ]
+ }
+}
